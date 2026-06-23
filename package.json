@@ -2,6 +2,9 @@
   "name": "zk-pay",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,7 +12,6 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@p2pdotme/widgets": "^0.3.0",
     "@privy-io/react-auth": "^1.65.0",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.378.0",
