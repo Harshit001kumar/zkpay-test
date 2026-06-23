@@ -13,7 +13,7 @@ type CashoutStep = "input" | "confirm" | "processing" | "success";
 export default function CashoutFlow({ onClose, walletAddress }: CashoutFlowProps) {
   const [step, setStep] = useState<CashoutStep>("input");
   const [amount, setAmount] = useState("");
-  const [selectedCurrency, setSelectedCurrency] = useState(CURRENCIES[0]);
+  const [selectedCurrency, setSelectedCurrency] = useState<(typeof CURRENCIES)[number]>(CURRENCIES[0]);
   const [payoutHandle, setPayoutHandle] = useState("");
 
   const usdcAmount = parseFloat(amount) || 0;
