@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/constants";
+import Providers from "@/components/Providers";
 
 export const metadata: Metadata = {
   title: `${APP_NAME} — ${APP_DESCRIPTION}`,
@@ -29,11 +30,13 @@ export default function RootLayout({
           href="https://fonts.gstatic.com"
           crossOrigin="anonymous"
         />
-        <meta name="theme-color" content="#111316" />
+        <meta name="theme-color" content="#ffffff" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </head>
-      <body className="antialiased">
-        {children}
+      <body className="antialiased bg-white text-black">
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   );

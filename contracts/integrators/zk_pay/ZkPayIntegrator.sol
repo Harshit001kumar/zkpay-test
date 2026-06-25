@@ -146,17 +146,18 @@ contract ZkPayIntegrator is IP2PIntegrator {
         uint256 amount,
         address recipient
     ) external onlyDiamond {
-        // Calculate platform fee
-        uint256 fee = (amount * platformFeeBps) / 10000;
-        uint256 netAmount = amount - fee;
+        // Calculate platform fee. The amount is the total paid by the user.
+        // merchantAmount = (amount * 10000) / (10000 + platformFeeBps)
+        uint256 merchantAmount = (amount * 10000) / (10000 + platformFeeBps);
+        uint256 fee = amount - merchantAmount;
 
         // Transfer fee to treasury
         if (fee > 0) {
             IERC20(usdc).transfer(treasury, fee);
         }
 
-        // Transfer net amount to the merchant / recipient
-        IERC20(usdc).transfer(recipient, netAmount);
+        // Transfer merchant amount to the recipient
+        IERC20(usdc).transfer(recipient, merchantAmount);
 
         emit OrderCompleted(orderId, user, amount, fee);
     }

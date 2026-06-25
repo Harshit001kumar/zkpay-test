@@ -1,50 +1,41 @@
 "use client";
 
-interface WalletConnectProps {
-  isConnected: boolean;
-  walletAddress: string;
-  onConnect: () => void;
-  onDisconnect: () => void;
-}
+import { usePrivy } from "@privy-io/react-auth";
+import { LogOut } from "lucide-react";
 
-export default function WalletConnect({
-  isConnected,
-  walletAddress,
-  onConnect,
-  onDisconnect,
-}: WalletConnectProps) {
-  const truncate = (addr: string) =>
-    addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : "";
+export default function WalletConnect() {
+  const { login, logout, authenticated, user, ready } = usePrivy();
 
-  if (isConnected) {
+  if (!ready) {
+    return <button className="btn-secondary opacity-50 cursor-not-allowed">Loading...</button>;
+  }
+
+  if (authenticated && user) {
+    const address = user.wallet?.address;
+    const shortAddress = address
+      ? `${address.slice(0, 6)}...${address.slice(-4)}`
+      : "Connected";
+
     return (
-      <button
-        onClick={onDisconnect}
-        className="glass-card flex items-center gap-2 px-3 py-2 transition-all hover:border-white/20"
-      >
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-          style={{ background: "var(--gradient-primary)" }}
-        >
-          {walletAddress.slice(2, 4).toUpperCase()}
+      <div className="flex items-center gap-2">
+        <div className="glass-card-static px-4 py-2 flex items-center gap-2 text-sm font-medium">
+          <div className="w-2 h-2 rounded-full bg-black"></div>
+          {shortAddress}
         </div>
-        <span className="text-xs font-mono font-medium">
-          {truncate(walletAddress)}
-        </span>
-      </button>
+        <button
+          onClick={logout}
+          className="p-2 glass-card-static hover:bg-gray-100 transition-colors text-gray-500"
+          aria-label="Disconnect wallet"
+        >
+          <LogOut size={18} />
+        </button>
+      </div>
     );
   }
 
   return (
-    <button
-      onClick={onConnect}
-      className="glass-card flex items-center gap-2 px-4 py-2.5 transition-all hover:border-white/20"
-    >
-      <div
-        className="w-2 h-2 rounded-full"
-        style={{ background: "var(--color-ocean-blue)" }}
-      />
-      <span className="text-xs font-semibold">Connect</span>
+    <button onClick={login} className="btn-primary w-full sm:w-auto">
+      Connect Wallet
     </button>
   );
 }
