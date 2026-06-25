@@ -47,7 +47,13 @@ export default function Home() {
         console.error("Failed to fetch balance", e);
       }
     }
+
+    // Fetch immediately
     fetchBalance();
+
+    // Poll every 5 seconds so it updates automatically when the faucet arrives
+    const intervalId = setInterval(fetchBalance, 5000);
+    return () => clearInterval(intervalId);
   }, [ready, authenticated, wallets]);
 
   const handleScan = useCallback((data: string) => {

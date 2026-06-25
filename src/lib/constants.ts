@@ -8,8 +8,8 @@ export const CONTRACTS = {
   // Demo MarketplaceCheckoutIntegrator on Sepolia — use this until our own is whitelisted
   INTEGRATOR: process.env.NEXT_PUBLIC_INTEGRATOR_ADDRESS || "0x6daE4C184a32782A72bd99875379fc1E7383213B",
 
-  // USDC on Base Sepolia
-  USDC: process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x4095fE4f1E636f11A95820BA2bB87F335Bd1040d",
+  // Native USDC on Base Sepolia (matches Circle Faucet)
+  USDC: process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
 } as const;
 
 export const CHAIN = {
