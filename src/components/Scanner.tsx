@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { Html5QrcodeScanner } from "html5-qrcode";
 
 interface ScannerProps {
@@ -9,47 +9,64 @@ interface ScannerProps {
 }
 
 export default function Scanner({ onScan, onCancel }: ScannerProps) {
-  const [error, setError] = useState<string | null>(null);
+  const [hasStarted, setHasStarted] = useState(false);
+
+  const stableOnScan = useCallback(onScan, [onScan]);
 
   useEffect(() => {
-    if (!document.getElementById("reader")) return;
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(() => {
+      const el = document.getElementById("reader");
+      if (!el) return;
 
-    const scanner = new Html5QrcodeScanner(
-      "reader",
-      { fps: 10, qrbox: { width: 250, height: 250 } },
-      /* verbose= */ false
-    );
+      const scanner = new Html5QrcodeScanner(
+        "reader",
+        {
+          fps: 10,
+          qrbox: { width: 220, height: 220 },
+          rememberLastUsedCamera: true,
+        },
+        false
+      );
 
-    scanner.render(
-      (text) => {
-        scanner.clear();
-        onScan(text);
-      },
-      (err) => {
-        // Ignored
-      }
-    );
+      scanner.render(
+        (text) => {
+          scanner.clear().catch(() => {});
+          stableOnScan(text);
+        },
+        () => {
+          // scan error — ignored, fires continuously
+        }
+      );
 
-    return () => {
-      scanner.clear().catch(console.error);
-    };
-  }, [onScan]);
+      setHasStarted(true);
+
+      return () => {
+        scanner.clear().catch(() => {});
+      };
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [stableOnScan]);
 
   return (
-    <div className="scanner-overlay animate-fade-in-up">
-      <div className="flex flex-col items-center justify-center h-full w-full px-4">
-        <h2 className="text-xl font-bold mb-8">Scan Merchant QR</h2>
-        
-        <div className="w-full max-w-sm bg-white rounded-xl overflow-hidden border border-gray-200">
+    <div className="scanner-overlay">
+      <div className="w-full max-w-sm px-6 flex flex-col items-center gap-6">
+        {/* Title */}
+        <div className="text-center">
+          <h2 className="text-xl font-bold">Scan QR Code</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Point your camera at a merchant QR code
+          </p>
+        </div>
+
+        {/* Scanner Container */}
+        <div className="w-full rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
           <div id="reader" className="w-full"></div>
         </div>
 
-        {error && <p className="text-red-500 mt-4 text-center">{error}</p>}
-        
-        <button
-          onClick={onCancel}
-          className="btn-secondary mt-12 w-full max-w-xs"
-        >
+        {/* Cancel Button */}
+        <button onClick={onCancel} className="btn-secondary w-full">
           Cancel
         </button>
       </div>

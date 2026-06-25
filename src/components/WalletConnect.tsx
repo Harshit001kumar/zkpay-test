@@ -7,7 +7,9 @@ export default function WalletConnect() {
   const { login, logout, authenticated, user, ready } = usePrivy();
 
   if (!ready) {
-    return <button className="btn-secondary opacity-50 cursor-not-allowed">Loading...</button>;
+    return (
+      <div className="h-9 w-24 bg-gray-100 rounded-lg animate-pulse"></div>
+    );
   }
 
   if (authenticated && user) {
@@ -17,25 +19,28 @@ export default function WalletConnect() {
       : "Connected";
 
     return (
-      <div className="flex items-center gap-2">
-        <div className="glass-card-static px-4 py-2 flex items-center gap-2 text-sm font-medium">
-          <div className="w-2 h-2 rounded-full bg-black"></div>
+      <div className="flex items-center gap-1.5">
+        <div className="bg-gray-100 px-3 py-2 rounded-lg flex items-center gap-2 text-xs font-semibold">
+          <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
           {shortAddress}
         </div>
         <button
           onClick={logout}
-          className="p-2 glass-card-static hover:bg-gray-100 transition-colors text-gray-500"
+          className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-black"
           aria-label="Disconnect wallet"
         >
-          <LogOut size={18} />
+          <LogOut size={16} />
         </button>
       </div>
     );
   }
 
   return (
-    <button onClick={login} className="btn-primary w-full sm:w-auto">
-      Connect Wallet
+    <button
+      onClick={login}
+      className="bg-black text-white text-xs font-semibold px-4 py-2.5 rounded-lg hover:bg-gray-800 transition-colors"
+    >
+      Connect
     </button>
   );
 }

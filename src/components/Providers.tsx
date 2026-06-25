@@ -8,13 +8,14 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID || "mock-app-id"}
       config={{
         appearance: {
-          theme: "dark",
+          theme: "light",
           accentColor: "#000000",
-          logo: "https://auth.privy.io/logos/privy-logo-dark.png",
+          logo: undefined,
         },
         embeddedWallets: {
           createOnLogin: "users-without-wallets",
         },
+        loginMethods: ["wallet", "email"],
       }}
     >
       {children}

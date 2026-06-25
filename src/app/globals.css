@@ -7,13 +7,10 @@
 :root {
   --color-surface: #ffffff;
   --color-on-surface: #0a0a0b;
-  --color-on-surface-variant: #5f6368;
-  --color-outline: #e0e0e0;
-  --color-outline-variant: #f0f0f0;
+  --color-on-surface-variant: #6b7280;
+  --color-outline: #e5e7eb;
+  --color-outline-variant: #f3f4f6;
   --color-primary: #000000;
-  
-  --glass-bg: #ffffff;
-  --glass-border: #e0e0e0;
 }
 
 * {
@@ -23,7 +20,7 @@
 }
 
 body {
-  font-family: 'Hanken Grotesk', sans-serif;
+  font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
   background-color: var(--color-surface);
   color: var(--color-on-surface);
   -webkit-font-smoothing: antialiased;
@@ -32,26 +29,36 @@ body {
 
 h1, h2, h3, h4, h5, h6 {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+/* ─── Remove number input spinners ─── */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] {
+  -moz-appearance: textfield;
 }
 
 @layer components {
   .glass-card {
     background: #ffffff;
-    border: 1px solid var(--glass-border);
+    border: 1px solid var(--color-outline);
     border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
     transition: all 0.2s ease;
   }
 
   .glass-card:hover {
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
   }
 
   .glass-card-static {
     background: #ffffff;
-    border: 1px solid var(--glass-border);
+    border: 1px solid var(--color-outline);
     border-radius: 12px;
   }
 
@@ -61,19 +68,23 @@ h1, h2, h3, h4, h5, h6 {
     font-family: 'Plus Jakarta Sans', sans-serif;
     font-weight: 600;
     border: none;
-    border-radius: 8px;
-    padding: 16px 32px;
-    font-size: 16px;
+    border-radius: 10px;
+    padding: 14px 28px;
+    font-size: 14px;
     cursor: pointer;
-    transition: background 0.2s ease;
+    transition: all 0.15s ease;
+    text-align: center;
   }
 
   .btn-primary:hover {
-    background: #333333;
+    background: #1a1a1a;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
 
   .btn-primary:active {
-    transform: scale(0.98);
+    transform: scale(0.98) translateY(0);
+    box-shadow: none;
   }
 
   .btn-secondary {
@@ -81,23 +92,25 @@ h1, h2, h3, h4, h5, h6 {
     color: #000000;
     font-family: 'Plus Jakarta Sans', sans-serif;
     font-weight: 600;
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    padding: 16px 32px;
-    font-size: 16px;
+    border: 1px solid var(--color-outline);
+    border-radius: 10px;
+    padding: 14px 28px;
+    font-size: 14px;
     cursor: pointer;
-    transition: background 0.2s ease;
+    transition: all 0.15s ease;
+    text-align: center;
   }
 
   .btn-secondary:hover {
-    background: #f9f9f9;
+    background: #f9fafb;
+    border-color: #d1d5db;
   }
 
   .label-caps {
     font-family: 'Geist', monospace;
     font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--color-on-surface-variant);
   }
@@ -108,17 +121,24 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
-/* Animations */
+/* ─── Animations ─── */
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .animate-fade-in-up {
-  animation: fadeInUp 0.4s ease-out forwards;
+  opacity: 0;
+  animation: fadeInUp 0.5s ease-out forwards;
 }
 
-/* Scanner styles */
+/* ─── Scanner Overlay ─── */
 .scanner-overlay {
   position: fixed;
   inset: 0;
@@ -128,18 +148,23 @@ h1, h2, h3, h4, h5, h6 {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  padding: 24px;
 }
 
-.scanner-viewfinder {
-  width: 280px;
-  height: 280px;
-  position: relative;
-  border-radius: 16px;
-  overflow: hidden;
-  border: 1px solid #000;
+/* Override html5-qrcode default styles */
+#reader {
+  border: none !important;
 }
 
-/* Bottom Nav */
+#reader video {
+  border-radius: 12px;
+}
+
+#reader__scan_region {
+  min-height: 260px;
+}
+
+/* ─── Bottom Nav ─── */
 .bottom-nav {
   position: fixed;
   bottom: 0;
@@ -147,13 +172,13 @@ h1, h2, h3, h4, h5, h6 {
   right: 0;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid var(--color-outline);
   padding: 8px 16px;
   padding-bottom: max(8px, env(safe-area-inset-bottom));
   z-index: 40;
 }
 
-/* Status Chips */
+/* ─── Status Chips ─── */
 .status-completed {
   color: #000;
   background: #f0f0f0;
@@ -165,6 +190,20 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .status-failed {
-  color: #d32f2f;
-  background: #ffebee;
+  color: #dc2626;
+  background: #fef2f2;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
 }
