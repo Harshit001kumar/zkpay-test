@@ -1,8 +1,7 @@
 "use client";
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { PaymentHistory as HistoryWidget } from "@p2pdotme/widgets/history";
-import "@p2pdotme/widgets/history/styles.css";
+import { PaymentHistory as HistoryWidget } from "@p2pdotme/widgets";
 import { checkPaymentStatus } from "@/lib/p2pkit";
 
 export default function PaymentHistory() {

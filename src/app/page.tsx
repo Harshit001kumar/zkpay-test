@@ -3,15 +3,17 @@
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useState, useEffect } from "react";
 import WalletConnect from "@/components/WalletConnect";
-import Scanner from "@/components/Scanner";
 import PaymentEntry from "@/components/PaymentEntry";
 import CashoutFlow from "@/components/CashoutFlow";
 import PaymentHistory from "@/components/PaymentHistory";
-import DepositFlow from "@/components/DepositFlow";
+import dynamic from "next/dynamic";
 import { createPublicClient, http, formatUnits } from "viem";
 import { baseSepolia } from "viem/chains";
 import { CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
+
+const Scanner = dynamic(() => import("@/components/Scanner"), { ssr: false });
+const DepositFlow = dynamic(() => import("@/components/DepositFlow"), { ssr: false });
 
 export default function Home() {
   const { ready, authenticated } = usePrivy();

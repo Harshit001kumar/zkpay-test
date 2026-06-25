@@ -1,8 +1,7 @@
 "use client";
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { Cashout } from "@p2pdotme/widgets/cashout";
-import "@p2pdotme/widgets/cashout/styles.css";
+import { Cashout } from "@p2pdotme/widgets";
 import { placeCashout, deliverUpi, reconcile } from "@/lib/p2pkit";
 
 export default function CashoutFlow() {

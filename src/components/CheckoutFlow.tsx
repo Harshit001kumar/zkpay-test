@@ -1,8 +1,7 @@
 "use client";
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { Checkout } from "@p2pdotme/widgets/checkout";
-import "@p2pdotme/widgets/checkout/styles.css";
+import { Checkout } from "@p2pdotme/widgets";
 import { placeOrder } from "@/lib/p2pkit";
 
 export default function CheckoutFlow({ 
@@ -38,7 +37,7 @@ export default function CheckoutFlow({
           defaultAmount: amount,
           recipient: merchantId,
         }}
-        onPlaceOrder={(ctx) => placeOrder(ctx, signer)}
+        onPlaceOrder={(ctx: any) => placeOrder(ctx, signer)}
       />
     </div>
   );
