@@ -14,14 +14,18 @@
   "dependencies": {
     "@bigmi/react": "*",
     "@lifi/widget": "^3.0.0",
+    "@mysten/dapp-kit": "*",
     "@p2pdotme/widgets": "^1.0.0",
     "@privy-io/react-auth": "^1.65.0",
+    "@solana/wallet-adapter-react": "*",
+    "@tanstack/react-query": "*",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.378.0",
     "next": "14.2.3",
     "react": "^18",
     "react-dom": "^18",
-    "viem": "^2.10.0"
+    "viem": "^2.10.0",
+    "wagmi": "*"
   },
   "devDependencies": {
     "@types/node": "^20",
