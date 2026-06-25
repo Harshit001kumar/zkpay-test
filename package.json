@@ -12,6 +12,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@bigmi/react": "*",
     "@lifi/widget": "^3.0.0",
     "@p2pdotme/widgets": "^1.0.0",
     "@privy-io/react-auth": "^1.65.0",
