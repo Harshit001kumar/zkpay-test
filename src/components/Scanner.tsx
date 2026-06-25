@@ -9,65 +9,103 @@ interface ScannerProps {
 }
 
 export default function Scanner({ onScan, onCancel }: ScannerProps) {
-  const [hasStarted, setHasStarted] = useState(false);
-
+  const [manualId, setManualId] = useState("");
   const stableOnScan = useCallback(onScan, [onScan]);
 
   useEffect(() => {
-    // Small delay to ensure DOM is ready
-    const timer = setTimeout(() => {
+    let scanner: Html5QrcodeScanner | null = null;
+
+    // We delay slightly to ensure the #reader div is fully painted
+    const initScanner = () => {
       const el = document.getElementById("reader");
       if (!el) return;
 
-      const scanner = new Html5QrcodeScanner(
+      scanner = new Html5QrcodeScanner(
         "reader",
         {
           fps: 10,
-          qrbox: { width: 220, height: 220 },
+          qrbox: { width: 250, height: 250 },
           rememberLastUsedCamera: true,
+          supportedScanTypes: [0], // 0 = QR_CODE
         },
-        false
+        /* verbose= */ false
       );
 
       scanner.render(
         (text) => {
-          scanner.clear().catch(() => {});
+          if (scanner) {
+            scanner.clear().catch(() => {});
+          }
           stableOnScan(text);
         },
-        () => {
-          // scan error — ignored, fires continuously
+        (error) => {
+          // Continuous scan errors are normal, ignore them
         }
       );
+    };
 
-      setHasStarted(true);
+    const timer = setTimeout(initScanner, 100);
 
-      return () => {
-        scanner.clear().catch(() => {});
-      };
-    }, 100);
-
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      if (scanner) {
+        scanner.clear().catch((e) => console.error("Failed to clear scanner", e));
+      }
+    };
   }, [stableOnScan]);
+
+  const handleManualSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (manualId.trim()) {
+      stableOnScan(manualId.trim());
+    }
+  };
 
   return (
     <div className="scanner-overlay">
-      <div className="w-full max-w-sm px-6 flex flex-col items-center gap-6">
-        {/* Title */}
+      <div className="w-full max-w-sm px-6 flex flex-col items-center gap-6 overflow-y-auto max-h-screen py-8">
+        
         <div className="text-center">
-          <h2 className="text-xl font-bold">Scan QR Code</h2>
+          <h2 className="text-2xl font-bold">Scan to Pay</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Point your camera at a merchant QR code
+            Point your camera at the merchant's QR code
           </p>
         </div>
 
-        {/* Scanner Container */}
-        <div className="w-full rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
-          <div id="reader" className="w-full"></div>
+        {/* QR Scanner */}
+        <div className="w-full rounded-2xl overflow-hidden border-2 border-gray-100 bg-white shadow-sm">
+          <div id="reader" className="w-full min-h-[300px]"></div>
         </div>
 
-        {/* Cancel Button */}
-        <button onClick={onCancel} className="btn-secondary w-full">
-          Cancel
+        <div className="flex items-center gap-4 w-full opacity-50">
+          <div className="h-px bg-gray-400 flex-1"></div>
+          <span className="text-xs font-semibold uppercase tracking-widest">OR</span>
+          <div className="h-px bg-gray-400 flex-1"></div>
+        </div>
+
+        {/* Manual Input Fallback */}
+        <form onSubmit={handleManualSubmit} className="w-full flex flex-col gap-3">
+          <p className="text-sm font-semibold text-center">Camera not working?</p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Enter Merchant ID"
+              value={manualId}
+              onChange={(e) => setManualId(e.target.value)}
+              className="flex-1 border border-gray-300 rounded-lg px-4 py-3 text-sm outline-none focus:border-black transition-colors"
+            />
+            <button 
+              type="submit"
+              disabled={!manualId.trim()}
+              className="bg-black text-white px-6 font-semibold rounded-lg text-sm disabled:opacity-50"
+            >
+              Go
+            </button>
+          </div>
+        </form>
+
+        <button onClick={onCancel} className="btn-secondary w-full mt-4">
+          Cancel Payment
         </button>
       </div>
     </div>
