@@ -1,9 +1,9 @@
 export const ERC20_ABI = [
   {
-    constant: true,
-    inputs: [{ name: "_owner", type: "address" }],
+    inputs: [{ internalType: "address", name: "account", type: "address" }],
     name: "balanceOf",
-    outputs: [{ name: "balance", type: "uint256" }],
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
     type: "function",
   },
 ] as const;
