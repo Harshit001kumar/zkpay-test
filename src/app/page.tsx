@@ -6,6 +6,7 @@ import WalletConnect from "@/components/WalletConnect";
 import PaymentEntry from "@/components/PaymentEntry";
 import CashoutFlow from "@/components/CashoutFlow";
 import PaymentHistory from "@/components/PaymentHistory";
+import LandingPage from "@/components/LandingPage";
 import dynamic from "next/dynamic";
 import { createPublicClient, http, formatUnits } from "viem";
 import { baseSepolia } from "viem/chains";
@@ -80,28 +81,7 @@ export default function Home() {
 
   // ─── Unauthenticated Landing ───
   if (!authenticated) {
-    return (
-      <main className="min-h-screen flex flex-col items-center justify-center px-6">
-        <div className="max-w-sm w-full flex flex-col items-center gap-8 animate-fade-in-up">
-          <div className="flex flex-col items-center gap-3">
-            <h1 className="text-4xl font-bold tracking-tighter">ZkPay</h1>
-            <p className="text-center text-gray-500 text-sm leading-relaxed">
-              Pay merchants in INR via UPI.<br />
-              Settled instantly in USDC on Base.
-            </p>
-          </div>
-
-          <div className="w-full flex flex-col gap-3">
-            <button onClick={login} className="btn-primary w-full">
-              Connect Wallet
-            </button>
-            <p className="text-center text-xs text-gray-400">
-              Base Sepolia Testnet
-            </p>
-          </div>
-        </div>
-      </main>
-    );
+    return <LandingPage login={login} />;
   }
 
   // ─── Authenticated Dashboard ───
