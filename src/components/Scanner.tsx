@@ -14,19 +14,29 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
 
   useEffect(() => {
     let scanner: Html5QrcodeScanner | null = null;
+    let isMounted = true;
 
     // We delay slightly to ensure the #reader div is fully painted
-    const initScanner = () => {
+    const timer = setTimeout(() => {
+      if (!isMounted) return;
+      
       const el = document.getElementById("reader");
       if (!el) return;
 
+      // Clean up any existing injected HTML just in case
+      el.innerHTML = '';
+
+      // Removing qrbox completely removes the broken CSS corners 
+      // and lets the user scan using the entire camera frame
       scanner = new Html5QrcodeScanner(
         "reader",
         {
           fps: 10,
-          qrbox: { width: 250, height: 250 },
           rememberLastUsedCamera: true,
           supportedScanTypes: [0], // 0 = QR_CODE
+          videoConstraints: {
+            facingMode: "environment" // Force back camera
+          }
         },
         /* verbose= */ false
       );
@@ -42,11 +52,10 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
           // Continuous scan errors are normal, ignore them
         }
       );
-    };
-
-    const timer = setTimeout(initScanner, 100);
+    }, 150);
 
     return () => {
+      isMounted = false;
       clearTimeout(timer);
       if (scanner) {
         scanner.clear().catch((e) => console.error("Failed to clear scanner", e));
