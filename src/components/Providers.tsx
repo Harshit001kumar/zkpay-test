@@ -1,6 +1,7 @@
 "use client";
 
 import { PrivyProvider } from "@privy-io/react-auth";
+import { baseSepolia } from "viem/chains";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -15,6 +16,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         embeddedWallets: {
           createOnLogin: "users-without-wallets",
         },
+        defaultChain: baseSepolia,
+        supportedChains: [baseSepolia],
         loginMethods: ["wallet", "email"],
       }}
     >
