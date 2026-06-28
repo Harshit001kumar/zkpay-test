@@ -2,15 +2,47 @@
 
 import { useEffect, useCallback, useState } from "react";
 import { Html5QrcodeScanner } from "html5-qrcode";
+import { MerchantData } from "@/lib/types";
 
 interface ScannerProps {
-  onScan: (data: string) => void;
+  onScan: (data: MerchantData) => void;
   onCancel: () => void;
 }
 
 export default function Scanner({ onScan, onCancel }: ScannerProps) {
   const [manualId, setManualId] = useState("");
-  const stableOnScan = useCallback(onScan, [onScan]);
+  
+  const processScanData = useCallback((text: string) => {
+    // Parse UPI string if it matches the format
+    if (text.toLowerCase().startsWith("upi://pay")) {
+      try {
+        const url = new URL(text);
+        const upiId = url.searchParams.get("pa") || undefined;
+        const name = url.searchParams.get("pn") || undefined;
+        const defaultAmount = url.searchParams.get("am") || undefined;
+        
+        onScan({
+          type: "upi",
+          raw: text,
+          upiId,
+          name,
+          defaultAmount
+        });
+        return;
+      } catch (e) {
+        console.error("Failed to parse UPI URL", e);
+      }
+    }
+    
+    // Fallback for ETH addresses or raw text
+    onScan({
+      type: "eth",
+      raw: text,
+      address: text
+    });
+  }, [onScan]);
+
+  const stableOnScan = useCallback(processScanData, [processScanData]);
 
   useEffect(() => {
     let scanner: Html5QrcodeScanner | null = null;

@@ -2,19 +2,19 @@
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useState } from "react";
-import { createPublicClient, http, encodeFunctionData, parseUnits } from "viem";
-import { baseSepolia } from "viem/chains";
+import { encodeFunctionData, parseUnits, stringToHex, padHex } from "viem";
 import { CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI, INTEGRATOR_ABI } from "@/lib/abi";
+import { MerchantData } from "@/lib/types";
 
 interface CheckoutFlowProps {
   amount: number; // total INR amount including fee
-  merchantId: string;
+  merchantData: MerchantData;
 }
 
 type TxStatus = "idle" | "approving" | "sending" | "confirmed" | "error";
 
-export default function CheckoutFlow({ amount, merchantId }: CheckoutFlowProps) {
+export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps) {
   const { ready, authenticated } = usePrivy();
   const { wallets } = useWallets();
   const [status, setStatus] = useState<TxStatus>("idle");
@@ -34,17 +34,18 @@ export default function CheckoutFlow({ amount, merchantId }: CheckoutFlowProps) 
       const provider = await wallet.getEthereumProvider();
 
       // Convert INR amount to USDC (6 decimals)
-      // For testnet demo, we treat 1 INR ≈ 1 USDC-unit for simplicity
-      const usdcAmount = parseUnits(amount.toFixed(2), 6);
+      // Hardcoded exchange rate for testnet: 1 INR = 0.012 USDC
+      const usdcFloat = amount * 0.012;
+      const usdcAmount = parseUnits(usdcFloat.toFixed(6), 6);
 
-      // Step 1: Approve USDC spend
+      // Step 1: Approve USDC spend for the Integrator
       const approveData = encodeFunctionData({
         abi: ERC20_ABI,
         functionName: "approve",
         args: [CONTRACTS.INTEGRATOR as `0x${string}`, usdcAmount],
       });
 
-      const approveTx = await provider.request({
+      await provider.request({
         method: "eth_sendTransaction",
         params: [{
           from: wallet.address,
@@ -56,23 +57,49 @@ export default function CheckoutFlow({ amount, merchantId }: CheckoutFlowProps) 
       // Wait briefly for approval to confirm
       setStatus("sending");
 
-      // Step 2: Call integrator contract to place order
-      // For now, we do a simple USDC transfer to the merchant
-      // In production, this calls userPlaceOrder on the integrator
-      const transferData = encodeFunctionData({
-        abi: ERC20_ABI,
-        functionName: "transfer",
-        args: [merchantId as `0x${string}`, usdcAmount],
-      });
+      let payTx;
+      if (merchantData.type === "upi") {
+        // Step 2: Call Integrator contract to place order (P2PKit flow)
+        const orderData = encodeFunctionData({
+          abi: INTEGRATOR_ABI,
+          functionName: 'userPlaceOrder',
+          args: [
+            wallet.address as `0x${string}`, // client
+            1n,                              // productId (Demo "Common" product)
+            1n,                              // quantity
+            stringToHex("INR", { size: 32 }),// currency
+            padHex("0x0", { size: 32 }),     // circleId
+            padHex("0x0", { size: 32 }),     // relayPubKey
+            0n,                              // totalFeeAmount
+            0n                               // merchantAmount
+          ],
+        });
 
-      const payTx = await provider.request({
-        method: "eth_sendTransaction",
-        params: [{
-          from: wallet.address,
-          to: CONTRACTS.USDC,
-          data: transferData,
-        }],
-      });
+        payTx = await provider.request({
+          method: "eth_sendTransaction",
+          params: [{
+            from: wallet.address,
+            to: CONTRACTS.INTEGRATOR,
+            data: orderData,
+          }],
+        });
+      } else {
+        // Fallback for raw ETH addresses (dummy transfer)
+        const transferData = encodeFunctionData({
+          abi: ERC20_ABI,
+          functionName: "transfer",
+          args: [merchantData.address as `0x${string}`, usdcAmount],
+        });
+
+        payTx = await provider.request({
+          method: "eth_sendTransaction",
+          params: [{
+            from: wallet.address,
+            to: CONTRACTS.USDC,
+            data: transferData,
+          }],
+        });
+      }
 
       setTxHash(payTx as string);
       setStatus("confirmed");

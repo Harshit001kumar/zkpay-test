@@ -12,6 +12,7 @@ import { createPublicClient, http, formatUnits, erc20Abi } from "viem";
 import { baseSepolia } from "viem/chains";
 import { CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
+import { MerchantData } from "@/lib/types";
 
 const Scanner = dynamic(() => import("@/components/Scanner"), { ssr: false });
 const DepositFlow = dynamic(() => import("@/components/DepositFlow"), { ssr: false });
@@ -24,7 +25,7 @@ export default function Home() {
   const [balance, setBalance] = useState("0.00");
   const [activeTab, setActiveTab] = useState<ActiveTab>("pay");
   const [isScanning, setIsScanning] = useState(false);
-  const [merchantId, setMerchantId] = useState<string | null>(null);
+  const [merchantId, setMerchantId] = useState<MerchantData | null>(null);
 
   useEffect(() => {
     async function fetchBalance() {
@@ -57,7 +58,7 @@ export default function Home() {
     return () => clearInterval(intervalId);
   }, [ready, authenticated, wallets]);
 
-  const handleScan = useCallback((data: string) => {
+  const handleScan = useCallback((data: MerchantData) => {
     setIsScanning(false);
     setMerchantId(data);
   }, []);
@@ -164,10 +165,7 @@ export default function Home() {
           )}
 
           {activeTab === "pay" && merchantId && (
-            <PaymentEntry
-              merchantId={merchantId}
-              onCancel={() => setMerchantId(null)}
-            />
+            <PaymentEntry merchantData={merchantId} onCancel={() => setMerchantId(null)} />
           )}
 
           {/* ── Cash Out Tab ── */}

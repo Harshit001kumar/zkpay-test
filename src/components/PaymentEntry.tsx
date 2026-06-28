@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 import CheckoutFlow from "./CheckoutFlow";
+import { MerchantData } from "@/lib/types";
 
 interface PaymentEntryProps {
-  merchantId: string;
+  merchantData: MerchantData;
   onCancel: () => void;
 }
 
-export default function PaymentEntry({ merchantId, onCancel }: PaymentEntryProps) {
-  const [amountStr, setAmountStr] = useState("");
+export default function PaymentEntry({ merchantData, onCancel }: PaymentEntryProps) {
+  const [amountStr, setAmountStr] = useState(merchantData.defaultAmount || "");
   const [showCheckout, setShowCheckout] = useState(false);
 
   const amount = parseFloat(amountStr) || 0;
@@ -28,17 +29,23 @@ export default function PaymentEntry({ merchantId, onCancel }: PaymentEntryProps
         <button onClick={() => setShowCheckout(false)} className="mb-4 text-sm font-semibold text-gray-500 hover:text-black">
           ← Back
         </button>
-        <CheckoutFlow amount={total} merchantId={merchantId} />
+        <CheckoutFlow amount={total} merchantData={merchantData} />
       </div>
     );
   }
+
+  const isUpi = merchantData.type === "upi";
+  const displayName = isUpi ? merchantData.name || "Unknown Merchant" : "Crypto Wallet";
+  const displayId = isUpi ? merchantData.upiId : merchantData.address;
 
   return (
     <div className="w-full bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm animate-fade-in-up">
       <div className="p-6 flex flex-col gap-6">
         <div className="text-center">
-          <h3 className="text-lg font-bold">Pay Merchant</h3>
-          <p className="text-sm text-gray-500 break-all">{merchantId}</p>
+          <h3 className="text-lg font-bold flex items-center justify-center gap-2">
+            Pay {displayName}
+          </h3>
+          <p className="text-sm text-gray-500 break-all">{displayId}</p>
         </div>
 
         <div className="flex flex-col items-center">
@@ -50,7 +57,8 @@ export default function PaymentEntry({ merchantId, onCancel }: PaymentEntryProps
               value={amountStr}
               onChange={(e) => setAmountStr(e.target.value)}
               placeholder="0.00"
-              className="text-5xl font-bold tracking-tighter text-center bg-transparent outline-none w-full max-w-[200px]"
+              disabled={!!merchantData.defaultAmount}
+              className={`text-5xl font-bold tracking-tighter text-center bg-transparent outline-none w-full max-w-[200px] ${merchantData.defaultAmount ? 'text-gray-400' : ''}`}
               autoFocus
             />
           </div>
