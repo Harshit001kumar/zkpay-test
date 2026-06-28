@@ -65,13 +65,13 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
           functionName: 'userPlaceOrder',
           args: [
             wallet.address as `0x${string}`, // client
-            1n,                              // productId (Demo "Common" product)
-            1n,                              // quantity
+            BigInt(1),                       // productId (Demo "Common" product)
+            BigInt(1),                       // quantity
             stringToHex("INR", { size: 32 }),// currency
             padHex("0x0", { size: 32 }),     // circleId
             padHex("0x0", { size: 32 }),     // relayPubKey
-            0n,                              // totalFeeAmount
-            0n                               // merchantAmount
+            BigInt(0),                       // totalFeeAmount
+            BigInt(0)                        // merchantAmount
           ],
         });
 
