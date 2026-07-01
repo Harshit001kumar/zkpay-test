@@ -68,7 +68,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
             stringToHex("INR", { size: 32 }),// currency
             BigInt(0),                       // circleId
             "",                              // pubKey
-            merchantData.address as `0x${string}` // merchantClient
+            wallet.address as `0x${string}`  // merchantClient (testnet dummy)
           ],
         });
 
