@@ -5,8 +5,8 @@ export const CONTRACTS = {
   // The P2P Diamond — the core protocol contract
   DIAMOND: process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0xeb0BB8E3c014D915D9B2df03aBB130a1Fb44beb9",
 
-  // Demo MarketplaceCheckoutIntegrator on Sepolia — use this until our own is whitelisted
-  INTEGRATOR: process.env.NEXT_PUBLIC_INTEGRATOR_ADDRESS || "0x6daE4C184a32782A72bd99875379fc1E7383213B",
+  // ZkPay custom integrator on Base Sepolia
+  INTEGRATOR: process.env.NEXT_PUBLIC_INTEGRATOR_ADDRESS || "0x5610D5f587F9cEEBb11C2920D15aC54175b40b2f",
 
   // Native USDC on Base Sepolia (matches Circle Faucet)
   USDC: process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x036CbD53842c5426634e7929541eC2318f3dCF7e",

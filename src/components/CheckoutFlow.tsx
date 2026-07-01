@@ -64,14 +64,11 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
           abi: INTEGRATOR_ABI,
           functionName: 'userPlaceOrder',
           args: [
-            wallet.address as `0x${string}`, // client
-            BigInt(1),                       // productId (Demo "Common" product)
-            BigInt(1),                       // quantity
+            usdcAmount,                      // amount
             stringToHex("INR", { size: 32 }),// currency
-            padHex("0x0", { size: 32 }),     // circleId
-            padHex("0x0", { size: 32 }),     // relayPubKey
-            BigInt(0),                       // totalFeeAmount
-            BigInt(0)                        // merchantAmount
+            BigInt(0),                       // circleId
+            "",                              // pubKey
+            merchantData.address as `0x${string}` // merchantClient
           ],
         });
 

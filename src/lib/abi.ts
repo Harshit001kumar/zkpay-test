@@ -31,30 +31,14 @@ export const ERC20_ABI = [
 export const INTEGRATOR_ABI = [
   {
     inputs: [
-      { name: "client", type: "address" },
-      { name: "productId", type: "uint256" },
-      { name: "quantity", type: "uint256" },
-      { name: "currency", type: "bytes32" },
-      { name: "circleId", type: "bytes32" },
-      { name: "relayPubKey", type: "bytes32" },
-      { name: "totalFeeAmount", type: "uint256" },
-      { name: "merchantAmount", type: "uint256" }
-    ],
-    name: "userPlaceOrder",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function"
-  },
-  {
-    inputs: [
-      { name: "client", type: "address" },
       { name: "amount", type: "uint256" },
       { name: "currency", type: "bytes32" },
-      { name: "circleId", type: "bytes32" },
-      { name: "relayPubKey", type: "bytes32" }
+      { name: "circleId", type: "uint256" },
+      { name: "pubKey", type: "string" },
+      { name: "merchantClient", type: "address" }
     ],
-    name: "userInitiateSellBack",
-    outputs: [],
+    name: "userPlaceOrder",
+    outputs: [{ name: "orderId", type: "uint256" }],
     stateMutability: "nonpayable",
     type: "function"
   }
