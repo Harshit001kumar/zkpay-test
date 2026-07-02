@@ -2,9 +2,31 @@
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useState } from "react";
-import { LiFiWidget, WidgetConfig } from "@lifi/widget";
-import { base } from "viem/chains";
 import { CONTRACTS } from "@/lib/constants";
+
+// LI.FI Widget iframe URL with ZkPay branding and 1% fee
+// Docs: https://docs.li.fi/integrate-li.fi-widget/li.fi-widget/iframe-integration
+function buildWidgetUrl(walletAddress: string) {
+  const params = new URLSearchParams({
+    integrator: 'zkpay',
+    fee: '0.01', // 1% commission
+    toChain: '8453', // Base mainnet chain ID
+    toToken: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC on Base mainnet
+    toAddress: walletAddress,
+    variant: 'compact',
+    subvariant: 'default',
+    // Theme: monochrome to match ZkPay
+    'theme.palette.primary.main': '#000000',
+    'theme.palette.secondary.main': '#8E8E93',
+    'theme.palette.background.default': '#FFFFFF',
+    'theme.palette.background.paper': '#F5F5F5',
+    'theme.shape.borderRadius': '4',
+    'theme.shape.borderRadiusSecondary': '4',
+    'theme.typography.fontFamily': 'Inter, sans-serif',
+  });
+
+  return `https://widget.li.fi/?${params.toString()}`;
+}
 
 export default function DepositFlow() {
   const { ready, authenticated } = usePrivy();
@@ -23,35 +45,10 @@ export default function DepositFlow() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const widgetConfig: WidgetConfig = {
-    integrator: 'zkpay',
-    fee: 0.01, // 1% commission
-    apiUrl: '/api/lifi', // Point to our secure server-side proxy
-    toChain: base.id, // Deposit directly to Base
-    toToken: CONTRACTS.USDC, // Target token is USDC
-    toAddress: address, // Deposit into the user's Privy embedded wallet
-    variant: 'compact',
-    theme: {
-      palette: {
-        primary: { main: '#000000' },
-        secondary: { main: '#8E8E93' },
-        background: { default: '#FFFFFF', paper: '#F2F2F2' },
-        text: { primary: '#000000', secondary: '#5d5e63' }
-      },
-      shape: {
-        borderRadius: 4,
-        borderRadiusSecondary: 4
-      },
-      typography: {
-        fontFamily: 'Hanken Grotesk, sans-serif'
-      }
-    }
-  };
-
   return (
     <div className="w-full flex flex-col gap-4 mb-32">
       
-      {/* Cross-Chain Deposit Widget */}
+      {/* Cross-Chain Deposit Widget (iframe) */}
       <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col items-center gap-4 shadow-sm w-full">
         <div className="flex items-center gap-3 w-full border-b border-gray-100 pb-3">
           <div className="w-8 h-8 bg-gray-100 flex items-center justify-center rounded">
@@ -65,12 +62,20 @@ export default function DepositFlow() {
           <h2 className="text-lg font-bold font-['Inter']">Cross-Chain Deposit</h2>
         </div>
         <p className="text-sm text-gray-500 font-['Hanken_Grotesk'] text-left w-full mb-2">
-          Bridge tokens directly to your ZkPay wallet from any chain.
+          Bridge tokens from any chain directly to your ZkPay wallet. Connect your external wallet in the widget below.
         </p>
         
-        {/* LI.FI Widget Container */}
-        <div className="w-full rounded-lg overflow-hidden border border-gray-200 bg-white min-h-[400px]">
-          <LiFiWidget config={widgetConfig} />
+        {/* LI.FI Widget iframe */}
+        <div className="w-full rounded-lg overflow-hidden border border-gray-200 bg-white">
+          <iframe
+            src={buildWidgetUrl(address)}
+            width="100%"
+            height="640"
+            style={{ border: 'none', borderRadius: '4px' }}
+            allow="clipboard-write"
+            loading="lazy"
+            title="Cross-Chain Deposit Widget"
+          />
         </div>
       </div>
 
