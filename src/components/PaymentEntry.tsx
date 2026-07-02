@@ -14,8 +14,6 @@ export default function PaymentEntry({ merchantData, onCancel }: PaymentEntryPro
   const [showCheckout, setShowCheckout] = useState(false);
 
   const amount = parseFloat(amountStr) || 0;
-  const fee = amount * 0.01;
-  const total = amount + fee;
 
   const handleConfirm = () => {
     if (amount > 0) {
@@ -29,7 +27,7 @@ export default function PaymentEntry({ merchantData, onCancel }: PaymentEntryPro
         <button onClick={() => setShowCheckout(false)} className="mb-4 text-sm font-semibold text-gray-500 hover:text-black">
           ← Back
         </button>
-        <CheckoutFlow amount={total} merchantData={merchantData} />
+        <CheckoutFlow amount={amount} merchantData={merchantData} />
       </div>
     );
   }
@@ -65,18 +63,9 @@ export default function PaymentEntry({ merchantData, onCancel }: PaymentEntryPro
         </div>
 
         <div className="bg-gray-50 rounded-lg p-4 flex flex-col gap-2 text-sm">
-          <div className="flex justify-between text-gray-600">
-            <span>Entered Amount</span>
-            <span>₹ {amount.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-gray-600">
-            <span>Platform Fee (1%)</span>
-            <span>₹ {fee.toFixed(2)}</span>
-          </div>
-          <div className="divider my-1"></div>
           <div className="flex justify-between font-bold text-lg">
-            <span>Total to Pay</span>
-            <span>₹ {total.toFixed(2)}</span>
+            <span>Payment Amount</span>
+            <span>₹ {amount.toFixed(2)}</span>
           </div>
         </div>
 
