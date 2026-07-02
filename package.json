@@ -18,6 +18,7 @@
     "@lifi/widget": "latest",
     "@mysten/dapp-kit": "latest",
     "@mysten/sui": "latest",
+    "porto": "latest",
     "@privy-io/react-auth": "latest",
     "@privy-io/wagmi": "latest",
     "@solana/wallet-adapter-base": "latest",
