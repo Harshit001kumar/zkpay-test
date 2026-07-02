@@ -28,7 +28,11 @@ export default function DepositFlow() {
     fee: 0.01, // 1% commission
     toChain: baseSepolia.id, // Deposit directly to Base Sepolia testnet
     toToken: CONTRACTS.USDC, // Target token is Testnet USDC
-    toAddress: address, // Deposit into the user's Privy embedded wallet
+    toAddress: {
+      address: address,
+      chainType: 'EVM' as any, // Tell LI.FI this is an EVM address
+      name: 'ZkPay Embedded Wallet'
+    },
     variant: 'compact',
     theme: {
       palette: {
