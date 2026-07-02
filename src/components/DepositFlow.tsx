@@ -3,7 +3,7 @@
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useState } from "react";
 import { LiFiWidget, WidgetConfig } from "@lifi/widget";
-import { base } from "viem/chains";
+import { baseSepolia } from "viem/chains";
 import { CONTRACTS } from "@/lib/constants";
 
 export default function DepositFlow() {
@@ -26,8 +26,8 @@ export default function DepositFlow() {
   const widgetConfig: WidgetConfig = {
     integrator: 'zkpay',
     fee: 0.01, // 1% commission
-    toChain: base.id, // Deposit directly to Base
-    toToken: CONTRACTS.USDC, // Target token is USDC
+    toChain: baseSepolia.id, // Deposit directly to Base Sepolia testnet
+    toToken: CONTRACTS.USDC, // Target token is Testnet USDC
     toAddress: address, // Deposit into the user's Privy embedded wallet
     variant: 'compact',
     theme: {
