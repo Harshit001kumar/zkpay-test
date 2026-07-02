@@ -14,7 +14,8 @@
   "dependencies": {
     "@bigmi/react": "latest",
     "@farcaster/mini-app-solana": "latest",
-    "@lifi/widget": "^3.12.0",
+    "@farcaster/miniapp-sdk": "latest",
+    "@lifi/widget": "latest",
     "@mysten/dapp-kit": "latest",
     "@mysten/sui": "latest",
     "@privy-io/react-auth": "latest",
@@ -22,21 +23,22 @@
     "@solana/wallet-adapter-base": "latest",
     "@solana/wallet-adapter-react": "latest",
     "@stripe/crypto": "latest",
-    "@tanstack/react-query": "^5.29.0",
-    "html5-qrcode": "^2.3.8",
-    "lucide-react": "^0.378.0",
+    "@stripe/stripe-js": "latest",
+    "@tanstack/react-query": "latest",
+    "html5-qrcode": "latest",
+    "lucide-react": "latest",
     "next": "14.2.3",
     "react": "^18",
     "react-dom": "^18",
-    "viem": "^2.10.0",
-    "wagmi": "^2.5.17"
+    "viem": "latest",
+    "wagmi": "latest"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "latest",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "postcss": "^8",
-    "tailwindcss": "^3.4.1",
+    "postcss": "latest",
+    "tailwindcss": "latest",
     "typescript": "^5"
   }
 }
