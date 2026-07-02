@@ -14,7 +14,7 @@
   "dependencies": {
     "@lifi/widget": "^3.12.0",
     "@privy-io/react-auth": "^1.65.0",
-    "@privy-io/wagmi": "^0.2.14",
+    "@privy-io/wagmi": "^4.0.13",
     "@tanstack/react-query": "^5.29.0",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.378.0",
