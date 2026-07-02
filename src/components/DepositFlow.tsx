@@ -1,8 +1,10 @@
 "use client";
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { Copy, ExternalLink, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
+import { LiFiWidget, WidgetConfig } from "@lifi/widget";
+import { base } from "viem/chains";
+import { CONTRACTS } from "@/lib/constants";
 
 export default function DepositFlow() {
   const { ready, authenticated } = usePrivy();
@@ -21,65 +23,87 @@ export default function DepositFlow() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const widgetConfig: WidgetConfig = {
+    integrator: 'zkpay',
+    fee: 0.01, // 1% commission
+    apiUrl: '/api/lifi', // Point to our secure server-side proxy
+    toChain: base.id, // Deposit directly to Base
+    toToken: CONTRACTS.USDC, // Target token is USDC
+    toAddress: address, // Deposit into the user's Privy embedded wallet
+    variant: 'compact',
+    theme: {
+      palette: {
+        primary: { main: '#000000' },
+        secondary: { main: '#8E8E93' },
+        background: { default: '#FFFFFF', paper: '#F2F2F2' },
+        text: { primary: '#000000', secondary: '#5d5e63' }
+      },
+      shape: {
+        borderRadius: 4,
+        borderRadiusSecondary: 4
+      },
+      typography: {
+        fontFamily: 'Hanken Grotesk, sans-serif'
+      }
+    }
+  };
+
   return (
-    <div className="w-full flex flex-col gap-4">
+    <div className="w-full flex flex-col gap-4 mb-32">
       
-      {/* Real Cross-Chain Bridging (External Link) */}
-      <div className="bg-white border border-gray-200 rounded-xl p-6 flex flex-col items-center text-center gap-4 shadow-sm">
-        <div className="w-16 h-16 bg-black rounded-2xl flex items-center justify-center transform rotate-3">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m2 9 3-3 3 3"/>
-            <path d="M13 18L15 21L17 18"/>
-            <path d="M5 6v11a4 4 0 0 0 4 4h6"/>
-            <path d="M19 18V7a4 4 0 0 0-4-4H9"/>
-          </svg>
+      {/* Cross-Chain Deposit Widget */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col items-center gap-4 shadow-sm w-full">
+        <div className="flex items-center gap-3 w-full border-b border-gray-100 pb-3">
+          <div className="w-8 h-8 bg-gray-100 flex items-center justify-center rounded">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m2 9 3-3 3 3"/>
+              <path d="M13 18L15 21L17 18"/>
+              <path d="M5 6v11a4 4 0 0 0 4 4h6"/>
+              <path d="M19 18V7a4 4 0 0 0-4-4H9"/>
+            </svg>
+          </div>
+          <h2 className="text-lg font-bold font-['Inter']">Cross-Chain Deposit</h2>
         </div>
-        <div>
-          <h3 className="text-lg font-bold">Cross-Chain Deposit</h3>
-          <p className="text-sm text-gray-500 mt-1 max-w-[280px]">
-            Bridge tokens from Solana, Ethereum, or Arbitrum directly to your ZkPay wallet using Li.Fi.
-          </p>
+        <p className="text-sm text-gray-500 font-['Hanken_Grotesk'] text-left w-full mb-2">
+          Bridge tokens directly to your ZkPay wallet from any chain.
+        </p>
+        
+        {/* LI.FI Widget Container */}
+        <div className="w-full rounded-lg overflow-hidden border border-gray-200 bg-white min-h-[400px]">
+          <LiFiWidget config={widgetConfig} />
         </div>
-        <a 
-          href="https://jumper.exchange/?toChain=8453&toToken=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="btn-primary w-full flex items-center justify-center gap-2 mt-2"
-        >
-          Open Jumper <ExternalLink size={16} />
-        </a>
       </div>
 
-      <div className="flex items-center gap-4 opacity-50 px-4 py-2">
-        <div className="h-px bg-gray-400 flex-1"></div>
-        <span className="text-xs font-semibold uppercase tracking-widest">Testnet Faucets</span>
-        <div className="h-px bg-gray-400 flex-1"></div>
+      <div className="relative flex items-center my-6">
+        <div className="flex-grow border-t border-gray-200"></div>
+        <span className="flex-shrink-0 mx-4 text-[11px] font-bold text-gray-400 tracking-widest uppercase font-['Geist']">TESTNET FAUCETS</span>
+        <div className="flex-grow border-t border-gray-200"></div>
       </div>
 
       {/* Testnet Faucets */}
-      <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 flex flex-col gap-4 shadow-sm">
-        <p className="text-xs text-gray-500 leading-relaxed">
+      <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-4 shadow-sm">
+        <p className="text-xs text-gray-500 leading-relaxed font-['Hanken_Grotesk']">
           Testing on <strong>Base Sepolia</strong>? Copy your embedded wallet address and use the faucets below to get free testnet tokens.
         </p>
 
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg p-1.5 pl-3">
-            <code className="text-xs font-mono text-gray-600 flex-1 truncate">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md p-1.5 pl-3">
+            <code className="text-[13px] font-mono text-gray-700 flex-1 truncate font-['Geist']">
               {address}
             </code>
             <button 
               onClick={copyAddress}
-              className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-1.5 text-xs font-bold rounded-md transition-colors"
+              className="bg-white border border-gray-200 hover:bg-gray-50 text-black px-3 py-1.5 text-xs font-bold rounded uppercase tracking-wider transition-colors font-['Geist']"
             >
-              {copied ? "Copied!" : "Copy"}
+              {copied ? "Copied" : "Copy"}
             </button>
           </div>
           
           <div className="flex gap-2 mt-1">
-            <a href="https://sepoliafaucet.com/" target="_blank" rel="noopener noreferrer" className="flex-1 bg-white border border-gray-200 hover:border-black text-center text-xs font-semibold py-2.5 rounded-lg text-black transition-colors">
+            <a href="https://sepoliafaucet.com/" target="_blank" rel="noopener noreferrer" className="flex-1 bg-white border border-black hover:bg-gray-50 text-center text-[11px] font-bold tracking-wider py-3 rounded uppercase text-black transition-colors font-['Geist']">
               Get Test ETH
             </a>
-            <a href="https://faucet.circle.com/" target="_blank" rel="noopener noreferrer" className="flex-1 bg-white border border-gray-200 hover:border-black text-center text-xs font-semibold py-2.5 rounded-lg text-black transition-colors">
+            <a href="https://faucet.circle.com/" target="_blank" rel="noopener noreferrer" className="flex-1 bg-white border border-black hover:bg-gray-50 text-center text-[11px] font-bold tracking-wider py-3 rounded uppercase text-black transition-colors font-['Geist']">
               Get Test USDC
             </a>
           </div>
