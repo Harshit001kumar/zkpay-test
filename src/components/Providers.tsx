@@ -1,7 +1,20 @@
 "use client";
 
 import { PrivyProvider } from "@privy-io/react-auth";
-import { baseSepolia } from "viem/chains";
+import { baseSepolia, base } from "viem/chains";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createConfig, WagmiProvider } from "@privy-io/wagmi";
+import { http } from "wagmi";
+
+const queryClient = new QueryClient();
+
+const wagmiConfig = createConfig({
+  chains: [baseSepolia, base],
+  transports: {
+    [baseSepolia.id]: http(),
+    [base.id]: http(),
+  },
+});
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -17,11 +30,15 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           createOnLogin: "users-without-wallets",
         },
         defaultChain: baseSepolia,
-        supportedChains: [baseSepolia],
+        supportedChains: [baseSepolia, base],
         loginMethods: ["wallet", "email"],
       }}
     >
-      {children}
+      <QueryClientProvider client={queryClient}>
+        <WagmiProvider config={wagmiConfig}>
+          {children}
+        </WagmiProvider>
+      </QueryClientProvider>
     </PrivyProvider>
   );
 }

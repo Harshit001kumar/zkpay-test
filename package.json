@@ -12,13 +12,27 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@privy-io/react-auth": "^1.65.0",
+    "@bigmi/react": "latest",
+    "@farcaster/mini-app-solana": "latest",
+    "@farcaster/miniapp-sdk": "latest",
+    "@lifi/widget": "^3.12.0",
+    "@mysten/dapp-kit": "latest",
+    "@mysten/sui": "latest",
+    "porto": "latest",
+    "@privy-io/react-auth": "latest",
+    "@privy-io/wagmi": "latest",
+    "@solana/wallet-adapter-base": "latest",
+    "@solana/wallet-adapter-react": "latest",
+    "@stripe/crypto": "latest",
+    "@stripe/stripe-js": "latest",
+    "@tanstack/react-query": "^5.29.0",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.378.0",
     "next": "14.2.3",
     "react": "^18",
     "react-dom": "^18",
-    "viem": "^2.10.0"
+    "viem": "^2.10.0",
+    "wagmi": "latest"
   },
   "devDependencies": {
     "@types/node": "^20",
