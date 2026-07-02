@@ -3,7 +3,7 @@
 
 export const CONTRACTS = {
   // The P2P Diamond — the core protocol contract
-  DIAMOND: process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0xeb0BB8E3c014D915D9B2df03aBB130a1Fb44beb9",
+  DIAMOND: process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0xd8d6acdbc5dbafa073827f3335dbb06df31580f6",
 
   // ZkPay custom integrator on Base Sepolia
   INTEGRATOR: process.env.NEXT_PUBLIC_INTEGRATOR_ADDRESS || "0x5610D5f587F9cEEBb11C2920D15aC54175b40b2f",
