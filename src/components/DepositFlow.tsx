@@ -73,7 +73,7 @@ export default function DepositFlow() {
         
         {/* LI.FI Widget Container */}
         <div className="w-full rounded-lg overflow-hidden border border-gray-200 bg-white min-h-[400px]">
-          <LiFiWidget config={widgetConfig} />
+          <LiFiWidget integrator="zkpay" config={widgetConfig} />
         </div>
       </div>
 
