@@ -2,7 +2,7 @@
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useState, useCallback } from "react";
-import { useBalance } from "wagmi";
+import { useReadContract } from "wagmi";
 import WalletConnect from "@/components/WalletConnect";
 import PaymentEntry from "@/components/PaymentEntry";
 import CashoutFlow from "@/components/CashoutFlow";
@@ -10,6 +10,7 @@ import PaymentHistory from "@/components/PaymentHistory";
 import LandingPage from "@/components/LandingPage";
 import dynamic from "next/dynamic";
 import { baseSepolia } from "viem/chains";
+import { formatUnits, erc20Abi } from "viem";
 import { CONTRACTS } from "@/lib/constants";
 import { MerchantData } from "@/lib/types";
 
@@ -26,18 +27,20 @@ export default function Home() {
   const [isScanning, setIsScanning] = useState(false);
   const [merchantId, setMerchantId] = useState<MerchantData | null>(null);
 
-  // Fetch USDC balance automatically via Wagmi
-  const { data: balanceData } = useBalance({
-    address: wallets?.[0]?.address as `0x${string}` | undefined,
-    token: CONTRACTS.USDC as `0x${string}`,
+  // Fetch USDC balance automatically via Wagmi useReadContract
+  const { data: bal } = useReadContract({
+    address: CONTRACTS.USDC as `0x${string}`,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: [wallets?.[0]?.address as `0x${string}`],
     chainId: baseSepolia.id,
     query: {
-      enabled: ready && authenticated && wallets.length > 0,
+      enabled: ready && authenticated && wallets.length > 0 && !!wallets[0]?.address,
       refetchInterval: 5000, // Poll every 5 seconds
     }
   });
 
-  const balance = balanceData ? Number(balanceData.formatted).toFixed(2) : "0.00";
+  const balance = bal !== undefined ? formatUnits(bal as bigint, 6) : "0.00";
 
   const handleScan = useCallback((data: MerchantData) => {
     setIsScanning(false);
