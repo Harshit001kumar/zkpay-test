@@ -1,17 +1,16 @@
 "use client";
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
+import { useBalance } from "wagmi";
 import WalletConnect from "@/components/WalletConnect";
 import PaymentEntry from "@/components/PaymentEntry";
 import CashoutFlow from "@/components/CashoutFlow";
 import PaymentHistory from "@/components/PaymentHistory";
 import LandingPage from "@/components/LandingPage";
 import dynamic from "next/dynamic";
-import { createPublicClient, http, formatUnits, erc20Abi } from "viem";
 import { baseSepolia } from "viem/chains";
 import { CONTRACTS } from "@/lib/constants";
-import { ERC20_ABI } from "@/lib/abi";
 import { MerchantData } from "@/lib/types";
 
 const Scanner = dynamic(() => import("@/components/Scanner"), { ssr: false });
@@ -22,41 +21,23 @@ type ActiveTab = "pay" | "cashout" | "deposit";
 export default function Home() {
   const { ready, authenticated, login } = usePrivy();
   const { wallets } = useWallets();
-  const [balance, setBalance] = useState("0.00");
+  
   const [activeTab, setActiveTab] = useState<ActiveTab>("pay");
   const [isScanning, setIsScanning] = useState(false);
   const [merchantId, setMerchantId] = useState<MerchantData | null>(null);
 
-  useEffect(() => {
-    async function fetchBalance() {
-      if (!ready || !authenticated || !wallets.length) return;
-      const wallet = wallets[0];
-
-      const publicClient = createPublicClient({
-        chain: baseSepolia,
-        transport: http("https://base-sepolia-rpc.publicnode.com"),
-      });
-
-      try {
-        const bal = await publicClient.readContract({
-          address: CONTRACTS.USDC as `0x${string}`,
-          abi: erc20Abi,
-          functionName: "balanceOf",
-          args: [wallet.address as `0x${string}`],
-        });
-        setBalance(formatUnits(bal as bigint, 6));
-      } catch (e) {
-        console.error("Failed to fetch balance", e);
-      }
+  // Fetch USDC balance automatically via Wagmi
+  const { data: balanceData } = useBalance({
+    address: wallets?.[0]?.address as `0x${string}` | undefined,
+    token: CONTRACTS.USDC as `0x${string}`,
+    chainId: baseSepolia.id,
+    query: {
+      enabled: ready && authenticated && wallets.length > 0,
+      refetchInterval: 5000, // Poll every 5 seconds
     }
+  });
 
-    // Fetch immediately
-    fetchBalance();
-
-    // Poll every 5 seconds so it updates automatically when the faucet arrives
-    const intervalId = setInterval(fetchBalance, 5000);
-    return () => clearInterval(intervalId);
-  }, [ready, authenticated, wallets]);
+  const balance = balanceData ? Number(balanceData.formatted).toFixed(2) : "0.00";
 
   const handleScan = useCallback((data: MerchantData) => {
     setIsScanning(false);
