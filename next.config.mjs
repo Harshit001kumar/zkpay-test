@@ -17,6 +17,16 @@ const nextConfig = {
       "@stripe/stripe-js": false,
       "@bigmi/react": false
     };
+    
+    // Force Webpack to return an empty module for these instead of trying to compile them
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "@mysten/sui": false,
+      "@mysten/dapp-kit": false,
+      "@solana/wallet-adapter-base": false,
+      "@solana/wallet-adapter-react": false
+    };
+    
     return config;
   }
 };
