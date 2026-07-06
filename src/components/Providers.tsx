@@ -27,7 +27,6 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           logo: undefined,
         },
         embeddedWallets: {
-          createOnLogin: "users-without-wallets" as any, // Support old SDK versions
           ethereum: {
             createOnLogin: "users-without-wallets",
           },
