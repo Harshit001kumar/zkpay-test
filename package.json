@@ -28,9 +28,6 @@
     "viem": "^2.10.0",
     "wagmi": "latest"
   },
-  "resolutions": {
-    "@noble/hashes": "1.3.3"
-  },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
