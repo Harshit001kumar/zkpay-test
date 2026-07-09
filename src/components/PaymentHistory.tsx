@@ -2,21 +2,14 @@
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useState, useEffect } from "react";
-import { createPublicClient, http, formatUnits } from "viem";
-import { baseSepolia } from "viem/chains";
-
-interface Transaction {
-  id: string;
-  type: "payment" | "cashout" | "deposit";
-  title: string;
-  amount: string;
-  date: string;
-}
+import { useRouter } from "next/navigation";
+import { getTransactions, timeAgo, TransactionRecord } from "@/lib/history";
 
 export default function PaymentHistory() {
   const { ready, authenticated } = usePrivy();
   const { wallets } = useWallets();
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const router = useRouter();
+  const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -25,14 +18,17 @@ export default function PaymentHistory() {
       return;
     }
 
-    // In production, fetch from subgraph or indexer
-    // For testnet demo, show placeholder data
-    setTransactions([
-      { id: "1", type: "payment", title: "Merchant Payment", amount: "-₹505.00", date: "Just now" },
-      { id: "2", type: "deposit", title: "Deposit (ETH → USDC)", amount: "+₹8,350.00", date: "2 hours ago" },
-      { id: "3", type: "cashout", title: "Cash Out to UPI", amount: "-₹2,020.00", date: "Yesterday" },
-    ]);
+    // Load real transactions from localStorage
+    const txs = getTransactions();
+    setTransactions(txs);
     setLoading(false);
+
+    // Re-check every 3 seconds to pick up new transactions
+    const interval = setInterval(() => {
+      setTransactions(getTransactions());
+    }, 3000);
+
+    return () => clearInterval(interval);
   }, [ready, authenticated, wallets]);
 
   if (!ready || !authenticated || !wallets.length) {
@@ -64,23 +60,41 @@ export default function PaymentHistory() {
     }
   };
 
+  const getIconBg = (type: string) => {
+    switch (type) {
+      case "payment": return "bg-red-50 text-red-500";
+      case "cashout": return "bg-orange-50 text-orange-500";
+      case "deposit": return "bg-green-50 text-green-500";
+      default: return "bg-gray-100 text-gray-500";
+    }
+  };
+
   return (
     <div className="w-full bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm divide-y divide-gray-100">
       {transactions.map((tx) => (
-        <div key={tx.id} className="flex justify-between items-center p-4 hover:bg-gray-50 transition-colors">
+        <button
+          key={tx.hash}
+          onClick={() => router.push(`/tx/${tx.hash}`)}
+          className="flex justify-between items-center p-4 hover:bg-gray-50 transition-colors w-full text-left"
+        >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center font-bold text-lg">
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${getIconBg(tx.type)}`}>
               {getIcon(tx.type)}
             </div>
             <div>
               <p className="font-semibold text-sm">{tx.title}</p>
-              <p className="text-xs text-gray-500">{tx.date}</p>
+              <p className="text-xs text-gray-500">{timeAgo(tx.timestamp)}</p>
             </div>
           </div>
-          <p className={`font-semibold text-sm ${tx.amount.startsWith('+') ? 'text-green-600' : ''}`}>
-            {tx.amount}
-          </p>
-        </div>
+          <div className="flex items-center gap-2">
+            <p className={`font-semibold text-sm ${tx.type === "deposit" ? "text-green-600" : ""}`}>
+              {tx.type === "deposit" ? "+" : "-"}₹{tx.amountINR.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </div>
+        </button>
       ))}
     </div>
   );

@@ -133,9 +133,28 @@ input[type=number] {
   }
 }
 
+@keyframes receiptPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .animate-fade-in-up {
   opacity: 0;
   animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.animate-receipt-pop {
+  animation: receiptPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 /* ─── Scanner Overlay ─── */

@@ -2,23 +2,25 @@
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useState } from "react";
-import { encodeFunctionData, parseUnits, stringToHex, padHex } from "viem";
+import { useRouter } from "next/navigation";
+import { encodeFunctionData, parseUnits, stringToHex } from "viem";
 import { CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI, INTEGRATOR_ABI } from "@/lib/abi";
 import { MerchantData } from "@/lib/types";
+import { saveTransaction } from "@/lib/history";
 
 interface CheckoutFlowProps {
   amount: number; // total INR amount including fee
   merchantData: MerchantData;
 }
 
-type TxStatus = "idle" | "approving" | "sending" | "confirmed" | "error";
+type TxStatus = "idle" | "approving" | "sending" | "error";
 
 export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps) {
   const { ready, authenticated } = usePrivy();
   const { wallets } = useWallets();
+  const router = useRouter();
   const [status, setStatus] = useState<TxStatus>("idle");
-  const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   if (!ready || !authenticated || !wallets.length) {
@@ -101,8 +103,29 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         });
       }
 
-      setTxHash(payTx as string);
-      setStatus("confirmed");
+      const txHash = payTx as string;
+      const fee2 = amount * 0.01;
+      const totalAmount2 = amount + fee2;
+
+      // Save transaction to local history
+      saveTransaction({
+        hash: txHash,
+        type: "payment",
+        title: merchantData.type === "upi"
+          ? `Paid to ${merchantData.name || merchantData.upiId || "Merchant"}`
+          : `Sent to ${merchantData.address?.slice(0, 10)}...`,
+        amountINR: amount,
+        amountUSDC: usdcFloat,
+        fee: fee2,
+        recipient: merchantData.type === "upi"
+          ? (merchantData.upiId || merchantData.name || "Merchant")
+          : (merchantData.address || "Unknown"),
+        network: "Base Sepolia",
+        timestamp: Date.now(),
+      });
+
+      // Redirect to the UPI-style receipt page
+      router.push(`/tx/${txHash}`);
     } catch (e: any) {
       console.error("Payment failed", e);
       setError(e?.message || "Transaction failed");
@@ -133,7 +156,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
             </div>
           </div>
           <button onClick={handlePay} className="btn-primary w-full">
-            Confirm & Pay
+            Confirm &amp; Pay
           </button>
         </div>
       )}
@@ -151,25 +174,6 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
           <div className="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
           <p className="font-semibold">Sending Payment...</p>
           <p className="text-xs text-gray-500">Processing transaction on Base Sepolia</p>
-        </div>
-      )}
-
-      {status === "confirmed" && (
-        <div className="flex flex-col gap-3 items-center text-center">
-          <div className="w-12 h-12 rounded-full bg-black flex items-center justify-center">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-          </div>
-          <p className="font-bold text-lg">Payment Sent!</p>
-          {txHash && (
-            <a
-              href={`https://sepolia.basescan.org/tx/${txHash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs underline text-gray-500 break-all"
-            >
-              View on BaseScan →
-            </a>
-          )}
         </div>
       )}
 

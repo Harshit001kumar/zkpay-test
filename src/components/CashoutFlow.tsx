@@ -2,19 +2,21 @@
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { encodeFunctionData, parseUnits } from "viem";
 import { CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
+import { saveTransaction } from "@/lib/history";
 
-type CashoutStatus = "input" | "processing" | "awaiting_upi" | "completed" | "error";
+type CashoutStatus = "input" | "processing" | "error";
 
 export default function CashoutFlow() {
   const { ready, authenticated } = usePrivy();
   const { wallets } = useWallets();
+  const router = useRouter();
   const [amountStr, setAmountStr] = useState("");
   const [upiId, setUpiId] = useState("");
   const [status, setStatus] = useState<CashoutStatus>("input");
-  const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const amount = parseFloat(amountStr) || 0;
@@ -52,8 +54,23 @@ export default function CashoutFlow() {
         }],
       });
 
-      setTxHash(tx as string);
-      setStatus("completed");
+      const txHash = tx as string;
+
+      // Save transaction to local history
+      saveTransaction({
+        hash: txHash,
+        type: "cashout",
+        title: `Cash Out to ${upiId}`,
+        amountINR: amount,
+        amountUSDC: total * 0.012, // approximate USDC equivalent
+        fee: fee,
+        recipient: upiId,
+        network: "Base Sepolia",
+        timestamp: Date.now(),
+      });
+
+      // Redirect to the UPI-style receipt page
+      router.push(`/tx/${txHash}`);
     } catch (e: any) {
       console.error("Cashout failed", e);
       setError(e?.message || "Transaction failed");
@@ -123,29 +140,6 @@ export default function CashoutFlow() {
           <div className="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
           <p className="font-semibold">Processing Cash Out...</p>
           <p className="text-xs text-gray-500">Please confirm in your wallet</p>
-        </div>
-      )}
-
-      {status === "completed" && (
-        <div className="flex flex-col gap-3 items-center text-center py-8">
-          <div className="w-12 h-12 rounded-full bg-black flex items-center justify-center">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-          </div>
-          <p className="font-bold text-lg">Cash Out Initiated!</p>
-          <p className="text-sm text-gray-500">₹{amount.toFixed(2)} will be sent to <strong>{upiId}</strong></p>
-          {txHash && (
-            <a
-              href={`https://sepolia.basescan.org/tx/${txHash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs underline text-gray-500 break-all"
-            >
-              View on BaseScan →
-            </a>
-          )}
-          <button onClick={() => { setStatus("input"); setAmountStr(""); setUpiId(""); }} className="btn-secondary mt-4">
-            New Cash Out
-          </button>
         </div>
       )}
 

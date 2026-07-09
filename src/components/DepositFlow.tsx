@@ -103,7 +103,7 @@ export default function DepositFlow() {
           </div>
           
           <div className="flex gap-2 mt-1">
-            <a href="https://sepoliafaucet.com/" target="_blank" rel="noopener noreferrer" className="flex-1 bg-white border border-black hover:bg-gray-50 text-center text-[11px] font-bold tracking-wider py-3 rounded uppercase text-black transition-colors font-['Geist']">
+            <a href="https://www.alchemy.com/faucets/base-sepolia" target="_blank" rel="noopener noreferrer" className="flex-1 bg-white border border-black hover:bg-gray-50 text-center text-[11px] font-bold tracking-wider py-3 rounded uppercase text-black transition-colors font-['Geist']">
               Get Test ETH
             </a>
             <a href="https://faucet.circle.com/" target="_blank" rel="noopener noreferrer" className="flex-1 bg-white border border-black hover:bg-gray-50 text-center text-[11px] font-bold tracking-wider py-3 rounded uppercase text-black transition-colors font-['Geist']">
