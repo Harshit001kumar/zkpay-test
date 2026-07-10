@@ -87,10 +87,16 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         });
       } else {
         // Fallback for raw ETH addresses (dummy transfer)
-        const transferData = encodeFunctionData({
+        const principalFloat = amount * 0.012;
+        const feeFloat = fee * 0.012;
+        const principalUsdc = parseUnits(principalFloat.toFixed(6), 6);
+        const feeUsdc = parseUnits(feeFloat.toFixed(6), 6);
+
+        // Send principal to merchant
+        const transferPrincipal = encodeFunctionData({
           abi: ERC20_ABI,
           functionName: "transfer",
-          args: [merchantData.address as `0x${string}`, usdcAmount],
+          args: [merchantData.address as `0x${string}`, principalUsdc],
         });
 
         payTx = await provider.request({
@@ -98,9 +104,27 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
           params: [{
             from: wallet.address,
             to: CONTRACTS.USDC,
-            data: transferData,
+            data: transferPrincipal,
           }],
         });
+
+        // Send fee to treasury
+        if (feeUsdc > 0n) {
+          const transferFee = encodeFunctionData({
+            abi: ERC20_ABI,
+            functionName: "transfer",
+            args: [(CONTRACTS as any).TREASURY as `0x${string}`, feeUsdc],
+          });
+
+          await provider.request({
+            method: "eth_sendTransaction",
+            params: [{
+              from: wallet.address,
+              to: CONTRACTS.USDC,
+              data: transferFee,
+            }],
+          });
+        }
       }
 
       const txHash = payTx as string;

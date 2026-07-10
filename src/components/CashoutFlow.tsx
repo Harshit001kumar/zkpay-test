@@ -36,13 +36,16 @@ export default function CashoutFlow() {
 
       const wallet = wallets[0];
       const provider = await wallet.getEthereumProvider();
-      const usdcAmount = parseUnits(total.toFixed(2), 6);
+      const principalFloat = amount * 0.012;
+      const feeFloat = fee * 0.012;
+      const principalUsdc = parseUnits(principalFloat.toFixed(6), 6);
+      const feeUsdc = parseUnits(feeFloat.toFixed(6), 6);
 
-      // Transfer USDC to integrator contract for offramp
-      const transferData = encodeFunctionData({
+      // 1. Transfer principal USDC to integrator contract for offramp
+      const transferPrincipal = encodeFunctionData({
         abi: ERC20_ABI,
         functionName: "transfer",
-        args: [CONTRACTS.INTEGRATOR as `0x${string}`, usdcAmount],
+        args: [CONTRACTS.INTEGRATOR as `0x${string}`, principalUsdc],
       });
 
       const tx = await provider.request({
@@ -50,9 +53,26 @@ export default function CashoutFlow() {
         params: [{
           from: wallet.address,
           to: CONTRACTS.USDC,
-          data: transferData,
+          data: transferPrincipal,
         }],
       });
+
+      // 2. Transfer fee to Treasury
+      if (feeUsdc > 0n) {
+        const transferFee = encodeFunctionData({
+          abi: ERC20_ABI,
+          functionName: "transfer",
+          args: [(CONTRACTS as any).TREASURY as `0x${string}`, feeUsdc],
+        });
+        await provider.request({
+          method: "eth_sendTransaction",
+          params: [{
+            from: wallet.address,
+            to: CONTRACTS.USDC,
+            data: transferFee,
+          }],
+        });
+      }
 
       const txHash = tx as string;
 
