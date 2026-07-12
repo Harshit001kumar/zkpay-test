@@ -28,14 +28,15 @@ export default function Home() {
   const [merchantId, setMerchantId] = useState<MerchantData | null>(null);
 
   // Fetch USDC balance automatically via Wagmi useReadContract
+  const walletAddress = wallets?.[0]?.address as `0x${string}` | undefined;
   const { data: bal } = useReadContract({
     address: CONTRACTS.USDC as `0x${string}`,
     abi: erc20Abi,
     functionName: 'balanceOf',
-    args: [wallets?.[0]?.address as `0x${string}`],
+    args: [walletAddress ?? "0x0000000000000000000000000000000000000000"],
     chainId: baseSepolia.id,
     query: {
-      enabled: ready && authenticated && wallets.length > 0 && !!wallets[0]?.address,
+      enabled: ready && authenticated && !!walletAddress,
       refetchInterval: 5000, // Poll every 5 seconds
     }
   });
