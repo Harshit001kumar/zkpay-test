@@ -1,8 +1,32 @@
 "use client";
 
 import { ScanLine, ArrowRightLeft, Globe, Zap, ArrowRight, ShieldCheck } from "lucide-react";
+import { useEffect, useRef, useState, useMemo } from "react";
+
+function useInView(options = { threshold: 0.5 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isInView, setIsInView] = useState(false);
+
+  // Memoize options to prevent unnecessary re-renders in useEffect
+  const optionsMemo = useMemo(() => options, [options.threshold]);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsInView(entry.isIntersecting);
+    }, optionsMemo);
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [optionsMemo]);
+
+  return { ref, isInView };
+}
 
 export default function LandingPage({ login }: { login: () => void }) {
+  const { ref: ref1, isInView: inView1 } = useInView({ threshold: 0.5 });
+  const { ref: ref2, isInView: inView2 } = useInView({ threshold: 0.5 });
+  const { ref: ref3, isInView: inView3 } = useInView({ threshold: 0.5 });
+
   return (
     <div className="min-h-screen bg-white text-black selection:bg-black selection:text-white font-sans overflow-x-hidden">
       
@@ -50,7 +74,7 @@ export default function LandingPage({ login }: { login: () => void }) {
       <section className="py-24 px-6 max-w-5xl mx-auto">
         
         {/* Feature 1: Scan & Pay */}
-        <div className="flex flex-col md:flex-row items-center gap-16 mb-32">
+        <div ref={ref1} className="flex flex-col md:flex-row items-center gap-16 mb-32">
           <div className="flex-1 space-y-6">
             <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center border border-gray-200">
               <ScanLine size={24} />
@@ -60,10 +84,10 @@ export default function LandingPage({ login }: { login: () => void }) {
               No need to wait for merchant adoption. Scan standard Indian UPI QR codes and pay directly with USDC. We handle the on-chain to off-chain settlement instantly.
             </p>
           </div>
-          <div className="flex-1 relative w-full aspect-square md:aspect-auto md:h-[400px] bg-gray-50 rounded-3xl border border-gray-200 overflow-hidden group">
+          <div className="flex-1 relative w-full aspect-square md:aspect-auto md:h-[400px] bg-gray-50 rounded-3xl border border-gray-200 overflow-hidden">
             {/* Abstract UI representation */}
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-48 h-48 border-[3px] border-black border-dashed rounded-3xl group-hover:rotate-12 transition-transform duration-700 ease-out flex items-center justify-center">
+              <div className={`w-48 h-48 border-[3px] border-black border-dashed rounded-3xl transition-transform duration-700 ease-out flex items-center justify-center ${inView1 ? 'rotate-12' : ''}`}>
                 <div className="w-32 h-1 bg-black rounded-full animate-pulse"></div>
               </div>
             </div>
@@ -71,7 +95,7 @@ export default function LandingPage({ login }: { login: () => void }) {
         </div>
 
         {/* Feature 2: Withdraw */}
-        <div className="flex flex-col md:flex-row-reverse items-center gap-16 mb-32">
+        <div ref={ref2} className="flex flex-col md:flex-row-reverse items-center gap-16 mb-32">
           <div className="flex-1 space-y-6">
             <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center border border-gray-200">
               <ArrowRightLeft size={24} />
@@ -81,13 +105,13 @@ export default function LandingPage({ login }: { login: () => void }) {
               Convert your crypto directly to fiat and deposit into your bank account. Our liquidity network ensures you get the best rates with minimal slippage.
             </p>
           </div>
-          <div className="flex-1 relative w-full aspect-square md:aspect-auto md:h-[400px] bg-gray-50 rounded-3xl border border-gray-200 overflow-hidden group">
+          <div className="flex-1 relative w-full aspect-square md:aspect-auto md:h-[400px] bg-gray-50 rounded-3xl border border-gray-200 overflow-hidden">
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-              <div className="w-32 h-16 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-center font-mono font-bold group-hover:-translate-y-2 transition-transform duration-500">
+              <div className={`w-32 h-16 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-center font-mono font-bold transition-transform duration-500 ${inView2 ? '-translate-y-2' : ''}`}>
                 100 USDC
               </div>
-              <ArrowRight size={24} className="rotate-90 text-gray-400 group-hover:text-black transition-colors" />
-              <div className="w-32 h-16 bg-black text-white rounded-xl shadow-sm flex items-center justify-center font-mono font-bold group-hover:translate-y-2 transition-transform duration-500">
+              <ArrowRight size={24} className={`rotate-90 transition-colors ${inView2 ? 'text-black' : 'text-gray-400'}`} />
+              <div className={`w-32 h-16 bg-black text-white rounded-xl shadow-sm flex items-center justify-center font-mono font-bold transition-transform duration-500 ${inView2 ? 'translate-y-2' : ''}`}>
                 ₹8,350
               </div>
             </div>
@@ -95,7 +119,7 @@ export default function LandingPage({ login }: { login: () => void }) {
         </div>
 
         {/* Feature 3: Expansion */}
-        <div className="flex flex-col md:flex-row items-center gap-16">
+        <div ref={ref3} className="flex flex-col md:flex-row items-center gap-16">
           <div className="flex-1 space-y-6">
             <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center border border-gray-200">
               <Globe size={24} />
@@ -105,9 +129,9 @@ export default function LandingPage({ login }: { login: () => void }) {
               Starting with India's UPI, our architecture is built to scale. We are actively expanding to support regional payment networks across Southeast Asia, Europe, and LATAM.
             </p>
           </div>
-          <div className="flex-1 relative w-full aspect-square md:aspect-auto md:h-[400px] bg-gray-50 rounded-3xl border border-gray-200 overflow-hidden group">
+          <div className="flex-1 relative w-full aspect-square md:aspect-auto md:h-[400px] bg-gray-50 rounded-3xl border border-gray-200 overflow-hidden">
             <div className="absolute inset-0 flex items-center justify-center">
-              <Globe size={120} strokeWidth={1} className="text-gray-200 group-hover:scale-110 group-hover:text-black transition-all duration-700 ease-out" />
+              <Globe size={120} strokeWidth={1} className={`transition-all duration-700 ease-out ${inView3 ? 'scale-110 text-black' : 'text-gray-200'}`} />
               <div className="absolute flex gap-2">
                 <div className="w-3 h-3 bg-black rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
                 <div className="w-3 h-3 bg-black rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
