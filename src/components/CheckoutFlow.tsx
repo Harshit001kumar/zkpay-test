@@ -109,7 +109,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         });
 
         // Send fee to treasury
-        if (feeUsdc > 0n) {
+        if (feeUsdc > BigInt(0)) {
           const transferFee = encodeFunctionData({
             abi: ERC20_ABI,
             functionName: "transfer",

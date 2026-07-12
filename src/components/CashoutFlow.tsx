@@ -58,7 +58,7 @@ export default function CashoutFlow() {
       });
 
       // 2. Transfer fee to Treasury
-      if (feeUsdc > 0n) {
+      if (feeUsdc > BigInt(0)) {
         const transferFee = encodeFunctionData({
           abi: ERC20_ABI,
           functionName: "transfer",
