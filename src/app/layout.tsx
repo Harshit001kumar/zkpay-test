@@ -3,6 +3,8 @@ import "./globals.css";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/constants";
 import Providers from "@/components/Providers";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: `${APP_NAME} — ${APP_DESCRIPTION}`,
   description:
