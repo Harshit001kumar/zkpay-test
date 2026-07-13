@@ -16,15 +16,14 @@ const nextConfig = {
 
     config.resolve.alias = {
       ...config.resolve.alias,
-      // Alias ONLY the problematic deep hash imports to bypass the ESM build errors.
-      // This ensures the real Sui/Solana base classes exist at runtime so the LI.FI SDK
-      // can extend them without throwing "Class extends value undefined".
-      "@noble/hashes/hmac": false,
-      "@noble/hashes/sha2": false,
-      "@noble/hashes/sha256": false,
-      "@noble/hashes/utils": false,
-      "@noble/hashes/blake2b": false,
-      "@noble/hashes/pbkdf2": false
+      // Fix the strict ESM export errors without breaking runtime cryptography
+      // by aliasing the explicit `.js` imports to their extensionless equivalents
+      "@noble/hashes/hmac.js": "@noble/hashes/hmac",
+      "@noble/hashes/sha2.js": "@noble/hashes/sha2",
+      "@noble/hashes/sha256.js": "@noble/hashes/sha256",
+      "@noble/hashes/utils.js": "@noble/hashes/utils",
+      "@noble/hashes/blake2b.js": "@noble/hashes/blake2b",
+      "@noble/hashes/pbkdf2.js": "@noble/hashes/pbkdf2"
     };
     
     return config;

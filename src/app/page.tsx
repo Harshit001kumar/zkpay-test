@@ -29,6 +29,7 @@ export default function Home() {
 
   // Fetch USDC balance automatically via Wagmi useReadContract
   const walletAddress = wallets?.[0]?.address as `0x${string}` | undefined;
+  
   const { data: bal } = useReadContract({
     address: CONTRACTS.USDC as `0x${string}`,
     abi: erc20Abi,
@@ -40,6 +41,7 @@ export default function Home() {
       refetchInterval: 5000, // Poll every 5 seconds
     }
   });
+
 
   const balance = bal !== undefined ? formatUnits(bal as bigint, 6) : "0.00";
 
