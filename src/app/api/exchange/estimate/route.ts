@@ -20,7 +20,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    let url = `${API_BASE_URL}/exchange/estimated-amount?fromCurrency=${fromCurrency}&toCurrency=${toCurrency}&fromAmount=${fromAmount}`;
+    let url = `${API_BASE_URL}/exchange/estimate?from=${fromCurrency}&to=${toCurrency}&amount=${fromAmount}`;
     if (fromNetwork) url += `&fromNetwork=${fromNetwork}`;
     if (toNetwork) url += `&toNetwork=${toNetwork}`;
     url += `&flow=standard`;

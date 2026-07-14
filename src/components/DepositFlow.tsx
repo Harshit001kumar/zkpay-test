@@ -34,7 +34,7 @@ export default function DepositFlow() {
       setIsEstimating(true);
       try {
         const res = await fetch(
-          `/api/exchange/estimate?fromCurrency=${sourceAsset.ticker}&toCurrency=${TARGET_ASSET.ticker}&fromAmount=${depositAmount}`
+          `/api/exchange/estimate?fromCurrency=${sourceAsset.ticker}&toCurrency=${TARGET_ASSET.ticker}&fromNetwork=${sourceAsset.network}&toNetwork=${TARGET_ASSET.network}&fromAmount=${depositAmount}`
         );
         const data = await res.json();
         if (res.ok && data.estimatedAmount) {
