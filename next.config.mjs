@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ['@mysten/sui', '@mysten/dapp-kit', '@lifi/widget', '@lifi/sdk', '@noble/curves', '@noble/hashes'],
   webpack: (config) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,
