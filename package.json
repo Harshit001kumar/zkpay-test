@@ -12,13 +12,8 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@lifi/widget": "^3.12.0",
-    "@mysten/dapp-kit": "latest",
-    "@mysten/sui": "latest",
     "@privy-io/react-auth": "latest",
     "@privy-io/wagmi": "latest",
-    "@solana/wallet-adapter-base": "latest",
-    "@solana/wallet-adapter-react": "latest",
     "@tanstack/react-query": "^5.29.0",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.378.0",
