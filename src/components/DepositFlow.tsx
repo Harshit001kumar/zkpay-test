@@ -10,7 +10,8 @@ export default function DepositFlow() {
   const { wallets } = useWallets();
 
   // Step 1: Input state
-  const [sourceAsset, setSourceAsset] = useState(DEPOSIT_ASSETS[0]);
+  type DepositAsset = typeof DEPOSIT_ASSETS[number];
+  const [sourceAsset, setSourceAsset] = useState<DepositAsset>(DEPOSIT_ASSETS[0]);
   const [depositAmount, setDepositAmount] = useState("0.01");
   const [estimatedReceive, setEstimatedReceive] = useState<string | null>(null);
   const [isEstimating, setIsEstimating] = useState(false);
