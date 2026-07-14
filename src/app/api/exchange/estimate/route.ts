@@ -13,7 +13,7 @@ export async function GET(req: Request) {
     const toNetwork = searchParams.get("toNetwork");
 
     if (!CHANGENOW_API_KEY) {
-      return NextResponse.json({ error: "API key is missing" }, { status: 500 });
+      return NextResponse.json({ error: "API key is missing. Set CHANGENOW_API_KEY in .env" }, { status: 500 });
     }
 
     if (!fromCurrency || !toCurrency || !fromAmount) {
@@ -25,6 +25,8 @@ export async function GET(req: Request) {
     if (toNetwork) url += `&toNetwork=${toNetwork}`;
     url += `&flow=standard`;
 
+    console.log("[ChangeNOW Estimate] Calling:", url);
+
     const response = await fetch(url, {
       method: "GET",
       headers: {
@@ -32,15 +34,23 @@ export async function GET(req: Request) {
       },
     });
 
-    const data = await response.json();
+    const responseText = await response.text();
+    console.log("[ChangeNOW Estimate] Status:", response.status, "Body:", responseText);
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      return NextResponse.json({ error: `API returned non-JSON: ${responseText.slice(0, 200)}` }, { status: 502 });
+    }
 
     if (!response.ok) {
-      return NextResponse.json(data, { status: response.status });
+      return NextResponse.json({ error: data.error || data.message || JSON.stringify(data) }, { status: response.status });
     }
 
     return NextResponse.json(data);
   } catch (error: any) {
-    console.error("ChangeNOW Estimate Error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("[ChangeNOW Estimate] Exception:", error);
+    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
   }
 }
