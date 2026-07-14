@@ -37,13 +37,14 @@ export default function DepositFlow() {
           `/api/exchange/estimate?fromCurrency=${sourceAsset.ticker}&toCurrency=${TARGET_ASSET.ticker}&fromAmount=${depositAmount}`
         );
         const data = await res.json();
-        if (data.estimatedAmount) {
+        if (res.ok && data.estimatedAmount) {
           setEstimatedReceive(data.estimatedAmount.toString());
         } else {
-          setEstimatedReceive("Error");
+          // ChangeNOW usually returns { error: "message" } or { message: "error" }
+          setEstimatedReceive(`Error: ${data.error || data.message || "Unknown"}`);
         }
-      } catch (err) {
-        setEstimatedReceive("Error");
+      } catch (err: any) {
+        setEstimatedReceive(`Error: ${err.message}`);
       }
       setIsEstimating(false);
     };
@@ -188,17 +189,21 @@ export default function DepositFlow() {
               <div className="flex items-center gap-2 mt-1">
                 {isEstimating ? (
                   <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                ) : estimatedReceive?.startsWith("Error:") ? (
+                  <span className="text-xs font-bold text-red-500 font-['Inter'] px-2">{estimatedReceive.replace("Error: ", "")}</span>
                 ) : (
-                  <span className="text-2xl font-bold font-mono text-black">{estimatedReceive || "0.00"}</span>
+                  <>
+                    <span className="text-2xl font-bold font-mono text-black">{estimatedReceive || "0.00"}</span>
+                    <span className="text-sm font-bold text-gray-600 font-['Inter']">USDC (Base)</span>
+                  </>
                 )}
-                <span className="text-sm font-bold text-gray-600 font-['Inter']">USDC (Base)</span>
               </div>
             </div>
 
             {/* Submit Button */}
             <button
               onClick={handleCreateDeposit}
-              disabled={isCreating || !estimatedReceive || estimatedReceive === "Error" || isEstimating}
+              disabled={isCreating || !estimatedReceive || estimatedReceive.startsWith("Error") || isEstimating}
               className="mt-2 w-full bg-black text-white py-4 rounded font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2 hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-['Geist']"
             >
               {isCreating ? (
