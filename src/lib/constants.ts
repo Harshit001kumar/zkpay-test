@@ -57,6 +57,6 @@ export const DEPOSIT_ASSETS = [
 
 // The target asset on the Base network for our embedded wallet
 export const TARGET_ASSET = {
-  ticker: "usdcbase",
+  ticker: "usdc",
   network: "base",
 };
