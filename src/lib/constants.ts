@@ -43,3 +43,20 @@ export const PLATFORM_FEE_BPS = 100; // 100 basis points = 1%
 
 export const APP_NAME = "ZkPay";
 export const APP_DESCRIPTION = "Crypto to Fiat — Scan and Pay";
+
+// ChangeNOW supported deposit assets
+export const DEPOSIT_ASSETS = [
+  { symbol: "BTC", name: "Bitcoin", network: "btc", ticker: "btc" },
+  { symbol: "ETH", name: "Ethereum", network: "eth", ticker: "eth" },
+  { symbol: "SOL", name: "Solana", network: "sol", ticker: "sol" },
+  { symbol: "USDT", name: "Tether (TRC20)", network: "trx", ticker: "usdttrx" },
+  { symbol: "USDC", name: "USDC (ERC20)", network: "eth", ticker: "usdc" },
+  { symbol: "MATIC", name: "Polygon", network: "matic", ticker: "matic" },
+  { symbol: "BNB", name: "BNB (BSC)", network: "bsc", ticker: "bnbbsc" }
+] as const;
+
+// The target asset on the Base network for our embedded wallet
+export const TARGET_ASSET = {
+  ticker: "usdcbase",
+  network: "base",
+};
