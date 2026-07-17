@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  webpack: (config) => {
+  webpack: (config, { webpack }) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,
       "accounts": false,
@@ -11,7 +11,11 @@ const nextConfig = {
       "@farcaster/mini-app-solana": false,
       "@stripe/crypto": false,
       "@stripe/stripe-js": false,
-      "@bigmi/react": false
+      "@bigmi/react": false,
+      "fs": false,
+      "buffer": false,
+      "process": false,
+      "stream": false,
     };
 
     config.resolve.alias = {
@@ -25,6 +29,13 @@ const nextConfig = {
       "@noble/hashes/blake2b.js": "@noble/hashes/blake2b",
       "@noble/hashes/pbkdf2.js": "@noble/hashes/pbkdf2"
     };
+
+    config.plugins.push(
+      new webpack.ProvidePlugin({
+        Buffer: ['buffer', 'Buffer'],
+        process: 'process/browser',
+      })
+    );
     
     return config;
   }

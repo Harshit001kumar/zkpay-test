@@ -12,9 +12,11 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@p2pdotme/sdk": "latest",
     "@privy-io/react-auth": "latest",
     "@privy-io/wagmi": "latest",
     "@tanstack/react-query": "^5.29.0",
+    "buffer": "^6.0.3",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.378.0",
     "next": "14.2.3",

@@ -1,148 +1,174 @@
-/**
- * P2PKit Integration Helpers
- *
- * This module wraps the @p2pdotme/widgets SDK calls.
- * In production, these functions are passed as callbacks to the
- * <Checkout/> and <Cashout/> widgets from @p2pdotme/widgets.
- *
- * On testnet (Base Sepolia), you can use the pre-deployed demo
- * MarketplaceCheckoutIntegrator at:
- *   0x6daE4C184a32782A72bd99875379fc1E7383213B
- */
-
+import { createPublicClient, http, zeroAddress } from "viem";
+import { baseSepolia, base } from "viem/chains";
+import { createOrders, createLocalStorageRelayStore } from "@p2pdotme/sdk/orders";
+import { createProfile } from "@p2pdotme/sdk/profile";
+import { createPrices } from "@p2pdotme/sdk/prices";
 import { CONTRACTS, CHAIN, SUBGRAPH_URL } from "./constants";
 
-// ──────────────────────────────────────────────
-// Types
-// ──────────────────────────────────────────────
+const isTestnet = CHAIN.id === baseSepolia.id;
+const chain = isTestnet ? baseSepolia : base;
 
-export interface CheckoutSigner {
-  address: string;
-  sendTransaction: (tx: {
-    to: string;
-    data: string;
-    gasLimit?: bigint;
-  }) => Promise<{ hash: string }>;
+export const p2pPublicClient = createPublicClient({ 
+  chain, 
+  transport: http(CHAIN.rpcUrl) 
+});
+
+// We create the SDK instances lazily or export getters because window.localStorage 
+// is required for createLocalStorageRelayStore() which is browser-only.
+let ordersClient: any = null;
+let profileClient: any = null;
+let pricesClient: any = null;
+
+export function getP2POrders() {
+  if (typeof window === "undefined") return null;
+  if (!ordersClient) {
+    ordersClient = createOrders({
+      publicClient: p2pPublicClient,
+      diamondAddress: CONTRACTS.DIAMOND as `0x${string}`,
+      usdcAddress: CONTRACTS.USDC as `0x${string}`,
+      subgraphUrl: SUBGRAPH_URL,
+      relayIdentityStore: createLocalStorageRelayStore(),
+    });
+  }
+  return ordersClient;
 }
 
-export interface PlaceOrderContext {
-  currency: {
-    symbol: string;
-    circleId: string;
-  };
-  amount: bigint;
+export function getP2PProfile() {
+  if (!profileClient) {
+    profileClient = createProfile({
+      publicClient: p2pPublicClient,
+      diamondAddress: CONTRACTS.DIAMOND as `0x${string}`,
+      usdcAddress: CONTRACTS.USDC as `0x${string}`,
+    });
+  }
+  return profileClient;
 }
 
-export interface PlaceOrderResult {
-  orderId: string;
-  txHash: string;
-}
-
-// ──────────────────────────────────────────────
-// Onramp (Buy) — placeOrder callback for <Checkout/>
-// ──────────────────────────────────────────────
-
-/**
- * Submit a buy order through our integrator contract.
- * The <Checkout/> widget calls this with the order context,
- * and we return { orderId, txHash }.
- *
- * In production you would use:
- *   import { parseOrderIdFromReceipt } from '@p2pdotme/widgets';
- *   import { encodeFunctionData, stringToHex } from 'viem';
- */
-export async function placeOrder(
-  ctx: PlaceOrderContext,
-  signer: CheckoutSigner
-): Promise<PlaceOrderResult> {
-  // TODO: Replace with real contract call once whitelisted
-  // const data = encodeFunctionData({
-  //   abi: INTEGRATOR_ABI,
-  //   functionName: 'userPlaceOrder',
-  //   args: [CLIENT, productId, 1n,
-  //          stringToHex(ctx.currency.symbol, { size: 32 }),
-  //          ctx.currency.circleId, relayPubKey, 0n, 0n],
-  // });
-  // const { hash } = await signer.sendTransaction({ to: CONTRACTS.INTEGRATOR, data });
-  // const receipt = await publicClient.waitForTransactionReceipt({ hash });
-  // return { orderId: parseOrderIdFromReceipt(receipt), txHash: hash };
-
-  console.log("[P2PKit] placeOrder called", { ctx, signer: signer.address });
-
-  // Demo: simulate a successful order
-  return {
-    orderId: `demo-${Date.now()}`,
-    txHash: `0x${"a".repeat(64)}`,
-  };
-}
-
-// ──────────────────────────────────────────────
-// Offramp (Cash Out) callbacks for <Cashout/>
-// ──────────────────────────────────────────────
-
-/**
- * Pull USDC from the user and place a SELL order.
- * Passed as `placeCashout` to <Cashout/>.
- */
-export async function placeCashout(
-  amount: bigint,
-  signer: CheckoutSigner
-): Promise<{ orderId: string; txHash: string }> {
-  // TODO: call integrator's userInitiateOfframp
-  console.log("[P2PKit] placeCashout called", { amount, signer: signer.address });
-
-  return {
-    orderId: `cashout-${Date.now()}`,
-    txHash: `0x${"b".repeat(64)}`,
-  };
+export function getP2PPrices() {
+  if (!pricesClient) {
+    pricesClient = createPrices({
+      publicClient: p2pPublicClient,
+      diamondAddress: CONTRACTS.DIAMOND as `0x${string}`,
+    });
+  }
+  return pricesClient;
 }
 
 /**
- * Deliver the encrypted UPI/payout handle to the merchant.
- * Passed as `deliverUpi` to <Cashout/>.
+ * Get the max sellable amount in USDC for a given currency (e.g. "INR").
  */
-export async function deliverUpi(
-  orderId: string,
-  encryptedHandle: string
-): Promise<{ txHash: string }> {
-  // TODO: call integrator's deliverOfframpUpi
-  console.log("[P2PKit] deliverUpi called", { orderId });
-
-  return { txHash: `0x${"c".repeat(64)}` };
+export async function getOfframpLimits(address: `0x${string}`, currency: string) {
+  const profile = getP2PProfile();
+  const limits = await profile.getTxLimits({
+    address,
+    currency,
+  });
+  
+  if (limits.isErr()) {
+    throw new Error(`Failed to get limits: ${limits.error.code} - ${limits.error.message}`);
+  }
+  
+  return limits.value;
 }
 
 /**
- * Record the terminal status of a cashout.
- * Passed as `reconcile` to <Cashout/>.
+ * Get the current fiat exchange rate for a given currency.
+ * Returns sellPrice (bigint, 6 decimals)
  */
-export async function reconcile(
-  orderId: string,
-  status: "completed" | "cancelled"
-): Promise<void> {
-  console.log("[P2PKit] reconcile called", { orderId, status });
+export async function getOfframpPrice(currency: string) {
+  const prices = getP2PPrices();
+  const cfg = await prices.getPriceConfig({ currency });
+  
+  if (cfg.isErr()) {
+    throw new Error(`Failed to get price: ${cfg.error.code}`);
+  }
+  
+  return cfg.value;
 }
 
-// ──────────────────────────────────────────────
-// Payment status
-// ──────────────────────────────────────────────
-
-export async function checkPaymentStatus(
-  orderId: string
-): Promise<{ status: string; amount?: number }> {
-  // TODO: Query the subgraph at SUBGRAPH_URL for order status
-  console.log("[P2PKit] checkPaymentStatus", { orderId, subgraph: SUBGRAPH_URL });
-
-  return { status: "completed", amount: 5 };
+/**
+ * Place a SELL order.
+ */
+export async function placeOfframpOrder(
+  walletClient: any, 
+  params: {
+    userAddress: `0x${string}`;
+    currency: string;
+    usdcAmount: bigint;
+    sellPrice: bigint;
+  }
+) {
+  const orders = getP2POrders();
+  
+  // Slippage protection: mirror contract math
+  const fiatAmountLimit = (params.usdcAmount * params.sellPrice) / 1_000_000n;
+  
+  const placed = await orders.placeOrder.execute({
+    walletClient,
+    waitForReceipt: true,
+    orderType: 1, // 1 = SELL
+    currency: params.currency,
+    user: params.userAddress,
+    recipientAddr: zeroAddress,
+    amount: params.usdcAmount,
+    fiatAmount: fiatAmountLimit,
+    fiatAmountLimit,
+  });
+  
+  if (placed.isErr()) {
+    throw placed.error;
+  }
+  
+  return placed.value;
 }
 
-// ──────────────────────────────────────────────
-// Config export for widgets
-// ──────────────────────────────────────────────
+/**
+ * Encrypt and deliver the user's UPI ID to the merchant once the order is accepted.
+ */
+export async function sendPayoutAddress(
+  walletClient: any,
+  params: {
+    orderId: bigint;
+    paymentAddress: string;
+    merchantPublicKey: string;
+  }
+) {
+  const orders = getP2POrders();
+  
+  const set = await orders.setSellOrderUpi.execute({
+    walletClient,
+    waitForReceipt: true,
+    orderId: params.orderId,
+    paymentAddress: params.paymentAddress,
+    merchantPublicKey: params.merchantPublicKey,
+    updatedAmount: 0n, // keep original amount
+  });
+  
+  if (set.isErr()) {
+    throw set.error;
+  }
+  
+  return set.value;
+}
 
-export const p2pWidgetConfig = {
-  diamondAddress: CONTRACTS.DIAMOND,
-  usdcAddress: CONTRACTS.USDC,
-  integratorAddress: CONTRACTS.INTEGRATOR,
-  subgraphUrl: SUBGRAPH_URL,
-  chainId: CHAIN.id,
-};
+/**
+ * Fetch a single order's status by its ID.
+ */
+export async function getOrderStatus(orderId: bigint) {
+  const orders = getP2POrders();
+  const res = await orders.getOrder({ orderId });
+  
+  if (res.isErr()) {
+    throw res.error;
+  }
+  
+  return res.value;
+}
+
+export async function parseP2PError(error: any) {
+  // @p2pdotme/sdk provides these utils
+  const { parseContractError, getContractErrorMessage } = await import("@p2pdotme/sdk/orders");
+  const code = parseContractError(error.cause || error);
+  const message = getContractErrorMessage(code);
+  return { code, message };
+}

@@ -10,6 +10,9 @@ export const CONTRACTS = {
 
   // Native USDC on Base Sepolia (matches Circle Faucet)
   USDC: process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  
+  // ZkPay Treasury (receives 1% platform fee)
+  TREASURY: process.env.NEXT_PUBLIC_TREASURY_ADDRESS || "0x0242898972A3DCA88082Ccc366B27cBf950E25b8",
 } as const;
 
 export const CHAIN = {
