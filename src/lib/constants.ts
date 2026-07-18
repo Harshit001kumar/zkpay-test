@@ -18,7 +18,7 @@ export const CONTRACTS = {
 export const CHAIN = {
   id: Number(process.env.NEXT_PUBLIC_CHAIN_ID) || 84532, // Base Sepolia
   name: "Base Sepolia",
-  rpcUrl: "https://sepolia.base.org",
+  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || "https://base-sepolia-rpc.publicnode.com",
   blockExplorer: "https://sepolia.basescan.org",
 } as const;
 
