@@ -31,6 +31,7 @@ export default function CashoutFlow() {
   
   const [maxSellable, setMaxSellable] = useState<number | null>(null);
   const [sellPrice, setSellPrice] = useState<bigint | null>(null);
+  const [initError, setInitError] = useState<string | null>(null);
 
   // Fetch limits and price on mount
   useEffect(() => {
@@ -50,9 +51,13 @@ export default function CashoutFlow() {
           // limits.sellLimit is in 6 decimals (USDC)
           setMaxSellable(Number(formatUnits(limits.sellLimit, 6)));
           setSellPrice(priceCfg.sellPrice);
+          setInitError(null);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to fetch P2P limits/price", err);
+        if (isMounted) {
+          setInitError(err?.message || String(err) || "Failed to load protocol limits");
+        }
       }
     };
     
@@ -240,6 +245,12 @@ export default function CashoutFlow() {
       {status === "input" && (
         <div className="flex flex-col gap-5">
           <h3 className="text-lg font-bold text-center">Cash Out to UPI</h3>
+
+          {initError && (
+            <div className="bg-red-50 text-red-500 p-3 rounded text-sm mb-4 border border-red-100">
+              <span className="font-bold">Initialization Error:</span> {initError}
+            </div>
+          )}
 
           <div>
             <div className="flex justify-between mb-1">
