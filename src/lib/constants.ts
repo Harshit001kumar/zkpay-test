@@ -1,18 +1,19 @@
 // P2PKit contract addresses — Base Sepolia (testnet)
 // Switch to mainnet addresses (chainId 8453) when going live.
+import { getAddress } from "viem";
 
 export const CONTRACTS = {
   // The P2P Diamond — the core protocol contract
-  DIAMOND: process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0xd8d6acdbc5dbafa073827f3335dbb06df31580f6",
+  DIAMOND: getAddress(process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0xd8d6acdbc5dbafa073827f3335dbb06df31580f6"),
 
   // ZkPay custom integrator on Base Sepolia
-  INTEGRATOR: process.env.NEXT_PUBLIC_INTEGRATOR_ADDRESS || "0x5610D5f587F9cEEBb11C2920D15aC54175b40b2f",
+  INTEGRATOR: getAddress(process.env.NEXT_PUBLIC_INTEGRATOR_ADDRESS || "0x5610D5f587F9cEEBb11C2920D15aC54175b40b2f"),
 
   // Native USDC on Base Sepolia (matches Circle Faucet)
-  USDC: process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  USDC: getAddress(process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x036CbD53842c5426634e7929541eC2318f3dCF7e"),
   
   // ZkPay Treasury (receives 1% platform fee)
-  TREASURY: process.env.NEXT_PUBLIC_TREASURY_ADDRESS || "0x0242898972A3DCA88082Ccc366B27cBf950E25b8",
+  TREASURY: getAddress(process.env.NEXT_PUBLIC_TREASURY_ADDRESS || "0x0242898972A3DCA88082Ccc366B27cBf950E25b8"),
 } as const;
 
 export const CHAIN = {
