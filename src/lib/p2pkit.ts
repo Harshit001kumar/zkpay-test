@@ -65,7 +65,8 @@ export async function getOfframpLimits(address: `0x${string}`, currency: string)
   });
   
   if (limits.isErr()) {
-    throw new Error(`Failed to get limits: ${limits.error.code} - ${limits.error.message}`);
+    const causeStr = limits.error.cause ? (limits.error.cause as any).message || String(limits.error.cause) : "No underlying cause";
+    throw new Error(`Limits Error (${limits.error.code}): ${causeStr}`);
   }
   
   return limits.value;
@@ -80,7 +81,8 @@ export async function getOfframpPrice(currency: string) {
   const cfg = await prices.getPriceConfig({ currency });
   
   if (cfg.isErr()) {
-    throw new Error(`Failed to get price: ${cfg.error.code}`);
+    const causeStr = cfg.error.cause ? (cfg.error.cause as any).message || String(cfg.error.cause) : "No underlying cause";
+    throw new Error(`Price Error (${cfg.error.code}): ${causeStr}`);
   }
   
   return cfg.value;
