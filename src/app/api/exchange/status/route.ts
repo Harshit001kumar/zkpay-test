@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = 'force-dynamic';
+
 const CHANGENOW_API_KEY = process.env.CHANGENOW_API_KEY;
 const API_BASE_URL = "https://api.changenow.io/v2";
 
