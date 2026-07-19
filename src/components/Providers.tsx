@@ -27,9 +27,10 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           logo: undefined,
         },
         embeddedWallets: {
-          ethereum: {
-            createOnLogin: "users-without-wallets",
-          },
+          createOnLogin: "users-without-wallets",
+        },
+        smartWallets: {
+          createOnLogin: "all-users",
         },
         defaultChain: baseSepolia,
         supportedChains: [baseSepolia, base],

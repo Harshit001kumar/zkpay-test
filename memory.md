@@ -44,9 +44,10 @@
 
 ## Fee Collection Strategy
 - **1% platform fee** (100 bps) on every transaction.
-- Collected via **two separate wallet signatures** (Privy free plan, no Smart Wallets):
-  1. Signature 1: `transfer(TREASURY, 1% of USDC)`
-  2. Signature 2: `approve(DIAMOND, 99% USDC)` + SDK `placeOrder`
+- **Collection Method (1-Click UX)**: Since the user enabled Coinbase Smart Wallet in Privy, we bundle the transactions using EIP-5792 (`wallet_sendCalls`):
+  1. Transfer 1% fee (extra on top) to Treasury
+  2. Approve DIAMOND for 100% of the requested amount
+  3. SDK `placeOrder` (via prepared calldata)
 
 ## ChangeNOW Cross-Chain Deposits
 - API routes: `/api/exchange`, `/api/exchange/estimate`, `/api/exchange/status`

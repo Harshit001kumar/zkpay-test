@@ -11,7 +11,7 @@ import { PAYMENT_ID_FIELDS } from "@p2pdotme/sdk/country";
 import { 
   getOfframpLimits, 
   getOfframpPrice, 
-  placeOfframpOrder, 
+  prepareOfframpOrder, 
   sendPayoutAddress, 
   getOrderStatus,
   parseP2PError
@@ -119,52 +119,80 @@ export default function CashoutFlow() {
       const principalUsdcBigInt = parseUnits(amountUsdc.toFixed(6), 6);
       const feeUsdcBigInt = parseUnits(feeUsdc.toFixed(6), 6);
       
-      // We are using Privy Free Plan (no Smart Wallets), so we do 2 signatures.
-      // Signature 1: Transfer 1% fee to Treasury
-      if (feeUsdcBigInt > 0n) {
-        const transferFee = encodeFunctionData({
-          abi: ERC20_ABI,
-          functionName: "transfer",
-          args: [(CONTRACTS as any).TREASURY as `0x${string}`, feeUsdcBigInt],
-        });
-        
-        await provider.request({
-          method: "eth_sendTransaction",
-          params: [{
-            from: wallet.address,
-            to: CONTRACTS.USDC,
-            data: transferFee,
-          }],
-        });
-      }
-
-      // Signature 2: Approve P2PKit Diamond for the principal amount
-      const approveDiamond = encodeFunctionData({
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [CONTRACTS.DIAMOND as `0x${string}`, principalUsdcBigInt],
-      });
-      
-      await provider.request({
-        method: "eth_sendTransaction",
-        params: [{
-          from: wallet.address,
-          to: CONTRACTS.USDC,
-          data: approveDiamond,
-        }],
-      });
-
-      // Place the SELL order via SDK
-      const orderRes = await placeOfframpOrder(provider, {
+      // Prepare P2P Order Calldata (no I/O sent yet)
+      const orderCall = await prepareOfframpOrder({
         userAddress: wallet.address as `0x${string}`,
         currency: "INR",
         usdcAmount: principalUsdcBigInt,
         sellPrice: sellPrice,
       });
+
+      const calls = [];
+
+      // 1. Fee transfer to ZkPay Treasury
+      if (feeUsdcBigInt > 0n) {
+        calls.push({
+          to: CONTRACTS.USDC,
+          data: encodeFunctionData({
+            abi: ERC20_ABI,
+            functionName: "transfer",
+            args: [(CONTRACTS as any).TREASURY as `0x${string}`, feeUsdcBigInt],
+          })
+        });
+      }
+
+      // 2. Approve P2P Diamond for the principal amount
+      calls.push({
+        to: CONTRACTS.USDC,
+        data: encodeFunctionData({
+          abi: ERC20_ABI,
+          functionName: "approve",
+          args: [CONTRACTS.DIAMOND as `0x${string}`, principalUsdcBigInt],
+        })
+      });
+
+      // 3. Place the SELL order
+      calls.push({
+        to: orderCall.to,
+        data: orderCall.data
+      });
+
+      // Send the batched transaction using EIP-5792
+      const id = await provider.request({
+        method: "wallet_sendCalls",
+        params: [{
+          version: "1.0",
+          from: wallet.address,
+          calls: calls
+        }]
+      });
+
+      // Poll for batch status
+      let hash = "";
+      while (true) {
+        const statusRes: any = await provider.request({
+          method: "wallet_getCallsStatus",
+          params: [id]
+        });
+        if (statusRes.status === "CONFIRMED" && statusRes.receipts && statusRes.receipts.length > 0) {
+          // Depending on wallet, transactionHash might be here or we might just use the first receipt
+          hash = statusRes.receipts[0].transactionHash || statusRes.receipts[0].blockHash; 
+          break;
+        }
+        await new Promise(r => setTimeout(r, 2000));
+      }
+
+      // We need a proper Viem receipt to pass to the SDK's parser
+      const { p2pPublicClient } = await import("@/lib/p2pkit");
+      const receipt = await p2pPublicClient.waitForTransactionReceipt({ 
+        hash: hash as `0x${string}` 
+      });
+
+      const { parseOrderIdFromReceipt } = await import("@p2pdotme/sdk/orders");
+      const orderId = parseOrderIdFromReceipt(receipt);
       
-      const orderId = orderRes.meta?.orderId;
       if (!orderId) {
-        throw new Error("Failed to get orderId from receipt");
+        throw new Error("Failed to get orderId from receipt logs");
       }
       
       // Wait for merchant to accept

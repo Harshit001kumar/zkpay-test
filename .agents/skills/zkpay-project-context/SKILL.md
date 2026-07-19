@@ -7,10 +7,9 @@ description: ZkPay project architecture, deployed contracts, key files, deployme
 ZkPay is a mobile-first crypto-to-fiat payment app. Users scan a UPI QR code and pay with USDC on Base chain. The app routes payments through the P2PKit protocol.
 
 ## Tech Stack
-- **Frontend**: Next.js, TypeScript, Privy (wallet auth), viem (contract calls), html5-qrcode (QR scanning)
-- **Smart Contract**: Solidity 0.8.28, Hardhat, deployed on Base (Sepolia testnet)
-- **Hosting**: Render (auto-deploys from `Harshit001kumar/zkpay-test` GitHub repo)
-- **Protocol**: P2PKit (`p2pdotme/payment-integrators`)
+- **Frontend**: Next.js, TypeScript, Privy (wallet auth - FREE PLAN), viem (contract calls), html5-qrcode (QR scanning)
+- **Hosting**: Render (auto-deploys from `Harshit001kumar/zkpay-test` GitHub repo. NEVER run npm install locally.)
+- **Protocol**: P2PKit (`@p2pdotme/sdk` pure frontend integration, NO custom smart contract wrapper)
 
 ## Deployed Contract (Base Sepolia)
 - **ZkPayIntegrator**: `0x5610D5f587F9cEEBb11C2920D15aC54175b40b2f`
@@ -28,14 +27,16 @@ ZkPay is a mobile-first crypto-to-fiat payment app. Users scan a UPI QR code and
 - `src/components/PaymentEntry.tsx` — Amount entry screen
 - `src/components/CheckoutFlow.tsx` — Payment execution (approve + userPlaceOrder)
 
-## Smart Contract (d:\zk_pay\payment-integrators)
-- `contracts/integrators/zk_pay/ZkPayIntegrator.sol` — Custom integrator
-- `scripts/deploy-zkpay.ts` — Hardhat deployment script
-- Follows P2PKit's canonical `UserProxy` + `CREATE2` architecture
-- Implements: `validateOrder`, `onOrderComplete`, `onOrderCancel`, `userPlaceOrder`
+## Architecture (Pure SDK Flow)
+- We integrate directly with P2PKit via `@p2pdotme/sdk` using the no-KYC quickstart guidelines.
+- **No custom smart contract** is deployed for Phase 1. The `payment-integrators` folder is legacy testnet work.
+- Offramp (SELL) limit is 100 USDC for INR with zero verification.
 
 ## Monetization (Current)
-- 1% platform convenience fee (100 bps), charged to sender, routed to Treasury wallet automatically via smart contract
+- 1% platform convenience fee (100 bps) charged to sender.
+- **Collection Method**: Two separate wallet signatures (due to Privy free plan lacking Smart Wallets):
+  1. `transfer(TREASURY, 1% fee)`
+  2. `approve(DIAMOND, 99%)` + SDK `placeOrder`
 
 ## Monetization (Future Roadmap)
 - ZkPay Pro subscription (0% fees for $10/month)
@@ -49,8 +50,5 @@ ZkPay is a mobile-first crypto-to-fiat payment app. Users scan a UPI QR code and
 - Affiliate cashback deals
 
 ## Whitelisting Status
-- ✅ Contract deployed to Base Sepolia
-- ✅ Contract verified on Basescan
-- ⬜ Fork `p2pdotme/payment-integrators` and open Pull Request
-- ⬜ File Whitelist Request issue
-- ⬜ Deploy to Base Mainnet after approval
+- **NOT REQUIRED**: Based on the P2PKit `offramp-no-kyc-quickstart.md`, the offramp flow requires zero verification and no smart contract whitelisting. 
+- We bypass the GitHub PR and whitelisting process completely for Phase 1.
