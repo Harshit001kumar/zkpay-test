@@ -85,8 +85,8 @@ export default function CashoutFlow() {
   let estimatedFiat = 0;
   if (amountUsdc > 0 && sellPrice) {
     const usdcBigInt = parseUnits(amountUsdc.toFixed(6), 6);
-    const fiatBigInt = (usdcBigInt * sellPrice) / 1_000_000n;
-    estimatedFiat = Number(formatUnits(fiatBigInt, 6)); // Assuming INR price is also scaled
+    const fiatBigInt = (usdcBigInt * sellPrice) / BigInt(1_000_000);
+    estimatedFiat = Number(formatUnits(fiatBigInt, 6));
   }
 
   if (!ready || !authenticated || !wallets.length) {
@@ -243,7 +243,7 @@ export default function CashoutFlow() {
           
           // Save to local history
           saveTransaction({
-            hash: orderRes.hash,
+            hash: hash,
             type: "cashout",
             title: `Cash Out to ${upiId}`,
             amountINR: estimatedFiat,
@@ -255,7 +255,7 @@ export default function CashoutFlow() {
           });
           
           setStatus("completed");
-          router.push(`/tx/${orderRes.hash}`);
+          router.push(`/tx/${hash}`);
           return;
         }
         if (currentOrder.status === "cancelled") {
