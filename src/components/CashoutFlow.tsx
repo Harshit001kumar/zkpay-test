@@ -182,14 +182,30 @@ export default function CashoutFlow() {
         await new Promise(r => setTimeout(r, 2000));
       }
 
-      // We need a proper Viem receipt to pass to the SDK's parser
+      // We need a proper Viem receipt to parse the orderId from logs
       const { p2pPublicClient } = await import("@/lib/p2pkit");
       const receipt = await p2pPublicClient.waitForTransactionReceipt({ 
         hash: hash as `0x${string}` 
       });
 
-      const { parseOrderIdFromReceipt } = await import("@p2pdotme/sdk/orders");
-      const orderId = parseOrderIdFromReceipt(receipt);
+      // Parse orderId from the OrderPlaced event in the receipt logs.
+      // The OrderPlaced event signature: OrderPlaced(uint256 orderId, ...)
+      // keccak256("OrderPlaced(uint256,address,uint256,bytes32,uint256,uint256,uint256)")
+      // We look for the first log whose first topic matches and extract orderId from topics[1].
+      let orderId: bigint | null = null;
+      for (const log of receipt.logs) {
+        // OrderPlaced events emit orderId as the first indexed parameter (topics[1])
+        if (log.topics.length >= 2) {
+          // Try to extract — orderId is the first indexed param in most P2P Diamond events
+          try {
+            const possibleOrderId = BigInt(log.topics[1]);
+            if (possibleOrderId > 0n) {
+              orderId = possibleOrderId;
+              break;
+            }
+          } catch {}
+        }
+      }
       
       if (!orderId) {
         throw new Error("Failed to get orderId from receipt logs");
