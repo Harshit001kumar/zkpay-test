@@ -119,6 +119,39 @@ export async function prepareOfframpOrder(
 }
 
 /**
+ * Prepare a PAY order calldata for batching (Smart Wallets).
+ */
+export async function preparePayOrder(
+  params: {
+    userAddress: `0x${string}`;
+    currency: string;
+    usdcAmount: bigint;
+    sellPrice: bigint;
+    recipientAddr: `0x${string}`;
+  }
+) {
+  const orders = getP2POrders();
+  
+  const fiatAmountLimit = (params.usdcAmount * params.sellPrice) / 1_000_000n;
+  
+  const prepared = await orders.placeOrder.prepare({
+    orderType: 2, // 2 = PAY
+    currency: params.currency,
+    user: params.userAddress,
+    recipientAddr: params.recipientAddr,
+    amount: params.usdcAmount,
+    fiatAmount: fiatAmountLimit,
+    fiatAmountLimit,
+  });
+  
+  if (prepared.isErr()) {
+    throw prepared.error;
+  }
+  
+  return prepared.value;
+}
+
+/**
  * Place a SELL order.
  */
 export async function placeOfframpOrder(
