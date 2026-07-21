@@ -9,9 +9,9 @@ import CashoutFlow from "@/components/CashoutFlow";
 import PaymentHistory from "@/components/PaymentHistory";
 import LandingPage from "@/components/LandingPage";
 import dynamic from "next/dynamic";
-import { baseSepolia } from "viem/chains";
+import { base } from "viem/chains";
 import { formatUnits, erc20Abi } from "viem";
-import { CONTRACTS } from "@/lib/constants";
+import { CONTRACTS, CHAIN } from "@/lib/constants";
 import { MerchantData } from "@/lib/types";
 
 const Scanner = dynamic(() => import("@/components/Scanner"), { ssr: false });
@@ -35,7 +35,7 @@ export default function Home() {
     abi: erc20Abi,
     functionName: 'balanceOf',
     args: [walletAddress ?? "0x0000000000000000000000000000000000000000"],
-    chainId: baseSepolia.id,
+    chainId: base.id,
     query: {
       enabled: ready && authenticated && !!walletAddress,
       refetchInterval: 5000, // Poll every 5 seconds
@@ -95,7 +95,7 @@ export default function Home() {
             USDC Balance
           </p>
           <h2 className="text-4xl font-bold tracking-tighter mt-1">${balance}</h2>
-          <p className="text-xs text-white/40 mt-1">Base Sepolia</p>
+          <p className="text-xs text-white/40 mt-1">{CHAIN.name}</p>
         </section>
 
         {/* Tab Switcher */}

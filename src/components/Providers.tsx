@@ -1,7 +1,7 @@
 "use client";
 
 import { PrivyProvider } from "@privy-io/react-auth";
-import { baseSepolia, base } from "viem/chains";
+import { base } from "viem/chains";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createConfig, WagmiProvider } from "@privy-io/wagmi";
 import { http } from "wagmi";
@@ -32,8 +32,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         smartWallets: {
           createOnLogin: "all-users",
         },
-        defaultChain: baseSepolia,
-        supportedChains: [baseSepolia, base],
+        defaultChain: base,
+        supportedChains: [base],
         loginMethods: ["wallet", "email"],
       }}
     >

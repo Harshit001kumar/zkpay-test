@@ -1,31 +1,27 @@
-// P2PKit contract addresses — Base Sepolia (testnet)
-// Switch to mainnet addresses (chainId 8453) when going live.
+// P2PKit contract addresses — Base Mainnet
 import { getAddress } from "viem";
 
 export const CONTRACTS = {
   // The P2P Diamond — the core protocol contract
   DIAMOND: getAddress(process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0xd8d6acdbc5dbafa073827f3335dbb06df31580f6"),
 
-  // ZkPay custom integrator on Base Sepolia
-  INTEGRATOR: getAddress(process.env.NEXT_PUBLIC_INTEGRATOR_ADDRESS || "0x5610D5f587F9cEEBb11C2920D15aC54175b40b2f"),
-
-  // Native USDC on Base Sepolia (matches Circle Faucet)
-  USDC: getAddress(process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x036CbD53842c5426634e7929541eC2318f3dCF7e"),
+  // Native USDC on Base Mainnet
+  USDC: getAddress(process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"),
   
   // ZkPay Treasury (receives 1% platform fee)
   TREASURY: getAddress(process.env.NEXT_PUBLIC_TREASURY_ADDRESS || "0x0242898972A3DCA88082Ccc366B27cBf950E25b8"),
 } as const;
 
 export const CHAIN = {
-  id: Number(process.env.NEXT_PUBLIC_CHAIN_ID) || 84532, // Base Sepolia
-  name: "Base Sepolia",
-  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || "https://base-sepolia-rpc.publicnode.com",
-  blockExplorer: "https://sepolia.basescan.org",
+  id: Number(process.env.NEXT_PUBLIC_CHAIN_ID) || 8453, // Base Mainnet
+  name: "Base",
+  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org",
+  blockExplorer: "https://basescan.org",
 } as const;
 
 export const SUBGRAPH_URL =
   process.env.NEXT_PUBLIC_SUBGRAPH_URL ||
-  "https://api.studio.thegraph.com/query/p2p/base-sepolia/version/latest";
+  "https://api.studio.thegraph.com/query/p2p/base-mainnet/version/latest";
 
 // Demo products available on the Sepolia integrator
 export const DEMO_PRODUCTS = [

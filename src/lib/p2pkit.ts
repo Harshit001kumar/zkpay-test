@@ -1,15 +1,12 @@
 import { createPublicClient, http, zeroAddress } from "viem";
-import { baseSepolia, base } from "viem/chains";
+import { base } from "viem/chains";
 import { createOrders, createLocalStorageRelayStore } from "@p2pdotme/sdk/orders";
 import { createProfile } from "@p2pdotme/sdk/profile";
 import { createPrices } from "@p2pdotme/sdk/prices";
 import { CONTRACTS, CHAIN, SUBGRAPH_URL } from "./constants";
 
-const isTestnet = CHAIN.id === baseSepolia.id;
-const chain = isTestnet ? baseSepolia : base;
-
 export const p2pPublicClient = createPublicClient({ 
-  chain, 
+  chain: base, 
   transport: http(CHAIN.rpcUrl) 
 });
 
