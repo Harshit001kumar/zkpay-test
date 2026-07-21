@@ -9,9 +9,8 @@ import { http } from "wagmi";
 const queryClient = new QueryClient();
 
 const wagmiConfig = createConfig({
-  chains: [baseSepolia, base],
+  chains: [base],
   transports: {
-    [baseSepolia.id]: http(),
     [base.id]: http(),
   },
 });

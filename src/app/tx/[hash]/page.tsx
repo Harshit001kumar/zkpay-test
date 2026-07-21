@@ -138,7 +138,7 @@ export default function TransactionReceipt() {
             <div className="flex justify-between items-center pt-2">
               <span className="text-sm font-semibold text-gray-500">Transaction Hash</span>
               <a
-                href={`https://sepolia.basescan.org/tx/${tx.hash}`}
+                href={`https://basescan.org/tx/${tx.hash}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded cursor-pointer hover:bg-gray-100 transition-colors group"
@@ -165,7 +165,7 @@ export default function TransactionReceipt() {
             Back to Home
           </button>
           <a
-            href={`https://sepolia.basescan.org/tx/${tx.hash}`}
+            href={`https://basescan.org/tx/${tx.hash}`}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full border border-black text-black py-4 px-6 text-xs font-bold uppercase tracking-widest hover:bg-gray-50 transition-all rounded-lg flex items-center justify-center gap-2 active:scale-[0.98]"

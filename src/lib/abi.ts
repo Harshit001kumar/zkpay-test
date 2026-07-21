@@ -28,18 +28,3 @@ export const ERC20_ABI = [
   }
 ] as const;
 
-export const INTEGRATOR_ABI = [
-  {
-    inputs: [
-      { name: "amount", type: "uint256" },
-      { name: "currency", type: "bytes32" },
-      { name: "circleId", type: "uint256" },
-      { name: "pubKey", type: "string" },
-      { name: "merchantClient", type: "address" }
-    ],
-    name: "userPlaceOrder",
-    outputs: [{ name: "orderId", type: "uint256" }],
-    stateMutability: "nonpayable",
-    type: "function"
-  }
-] as const;

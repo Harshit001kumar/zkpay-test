@@ -252,7 +252,7 @@ export default function CashoutFlow() {
             amountUSDC: totalUsdc,
             fee: feeUsdc,
             recipient: upiId,
-            network: "Base Sepolia",
+            network: "Base",
             timestamp: Date.now(),
           });
           

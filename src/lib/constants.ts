@@ -23,7 +23,7 @@ export const SUBGRAPH_URL =
   process.env.NEXT_PUBLIC_SUBGRAPH_URL ||
   "https://api.studio.thegraph.com/query/p2p/base-mainnet/version/latest";
 
-// Demo products available on the Sepolia integrator
+// Demo products available for testing
 export const DEMO_PRODUCTS = [
   { id: 1, name: "Common", price: 5, currency: "USDC" },
   { id: 2, name: "Rare", price: 10, currency: "USDC" },

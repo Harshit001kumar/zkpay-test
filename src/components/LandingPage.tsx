@@ -45,7 +45,7 @@ export default function LandingPage({ login }: { login: () => void }) {
       <section className="pt-40 pb-20 px-6 flex flex-col items-center text-center max-w-4xl mx-auto min-h-[80vh] justify-center">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 border border-gray-200 text-xs font-semibold mb-8 animate-fade-in-up">
           <span className="w-2 h-2 rounded-full bg-black animate-pulse"></span>
-          Live on Base Sepolia
+          Live on Base
         </div>
         
         <h1 className="text-5xl md:text-7xl font-extrabold tracking-tighter leading-[1.1] mb-6 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
