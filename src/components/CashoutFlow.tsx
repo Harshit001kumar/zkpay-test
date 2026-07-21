@@ -85,7 +85,7 @@ export default function CashoutFlow() {
   let estimatedFiat = 0;
   if (amountUsdc > 0 && sellPrice) {
     const usdcBigInt = parseUnits(amountUsdc.toFixed(6), 6);
-    const fiatBigInt = (usdcBigInt * sellPrice) / BigInt(1_000_000);
+    const fiatBigInt = (usdcBigInt * sellPrice) / 1000000n;
     estimatedFiat = Number(formatUnits(fiatBigInt, 6));
   }
 
