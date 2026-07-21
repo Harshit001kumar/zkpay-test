@@ -9,7 +9,7 @@ export const CONTRACTS = {
   USDC: getAddress(process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"),
   
   // ZkPay Treasury (receives 1% platform fee)
-  TREASURY: getAddress(process.env.NEXT_PUBLIC_TREASURY_ADDRESS || "0x0242898972A3DCA88082Ccc366B27cBf950E25b8"),
+  TREASURY: getAddress(process.env.NEXT_PUBLIC_TREASURY_ADDRESS || "0x4747883abdf84ad96565415514de298e3a3fd3e1"),
 } as const;
 
 export const CHAIN = {

@@ -21,11 +21,9 @@
 ## Deployed Contracts (Base Sepolia)
 | Contract | Address |
 |---|---|
-| ZkPayIntegrator | `0x5610D5f587F9cEEBb11C2920D15aC54175b40b2f` |
 | Diamond (P2PKit) | `0xd8d6acdbc5dbafa073827f3335dbb06df31580f6` |
-| USDC | `0x036cbd53842c5426634e7929541ec2318f3dcf7e` |
-| Treasury | `0x0242898972A3DCA88082Ccc366B27cBf950E25b8` |
-| Owner/Deployer | `0x21F082Ed82FE2700bFd621BAf01CbC0CEb0616E5` |
+| USDC (Mainnet) | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+| Treasury (Mainnet) | `0x4747883abdf84ad96565415514de298e3a3fd3e1` |
 
 ## P2PKit Integration (Critical Knowledge)
 - **No whitelist needed** for offramp (SELL). The P2PKit team confirmed this.
