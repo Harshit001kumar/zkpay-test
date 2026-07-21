@@ -198,7 +198,9 @@ export default function CashoutFlow() {
         if (log.topics.length >= 2) {
           // Try to extract — orderId is the first indexed param in most P2P Diamond events
           try {
-            const possibleOrderId = BigInt(log.topics[1]);
+            const topic = log.topics[1];
+            if (!topic) continue;
+            const possibleOrderId = BigInt(topic);
             if (possibleOrderId > 0n) {
               orderId = possibleOrderId;
               break;
