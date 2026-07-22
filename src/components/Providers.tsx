@@ -19,7 +19,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <PrivyProvider
       appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID || "mock-app-id"}
-      config={{
+      config={({
         appearance: {
           theme: "light",
           accentColor: "#000000",
@@ -27,14 +27,14 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         },
         embeddedWallets: {
           createOnLogin: "users-without-wallets"
-        } as any,
+        },
         smartWallets: {
           createOnLogin: "all-users",
         },
         defaultChain: base,
         supportedChains: [base],
         loginMethods: ["wallet", "email"],
-      }}
+      }) as any}
     >
       <QueryClientProvider client={queryClient}>
         <WagmiProvider config={wagmiConfig}>
