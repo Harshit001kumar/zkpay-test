@@ -26,8 +26,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           logo: undefined,
         },
         embeddedWallets: {
-          createOnLogin: "users-without-wallets",
-        },
+          createOnLogin: "users-without-wallets"
+        } as any,
         smartWallets: {
           createOnLogin: "all-users",
         },
