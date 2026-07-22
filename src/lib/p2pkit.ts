@@ -1,14 +1,23 @@
-import { createPublicClient, http, zeroAddress } from "viem";
-import { base } from "viem/chains";
+// Inline zeroAddress to avoid importing viem at module scope (SSR crash prevention)
+const zeroAddress = "0x0000000000000000000000000000000000000000" as `0x${string}`;
 import { createOrders, createLocalStorageRelayStore } from "@p2pdotme/sdk/orders";
 import { createProfile } from "@p2pdotme/sdk/profile";
 import { createPrices } from "@p2pdotme/sdk/prices";
 import { CONTRACTS, CHAIN, SUBGRAPH_URL } from "./constants";
 
-export const p2pPublicClient = createPublicClient({ 
-  chain: base, 
-  transport: http(CHAIN.rpcUrl) 
-});
+let _publicClient: any = null;
+
+export function getPublicClient() {
+  if (!_publicClient) {
+    const { createPublicClient, http } = require("viem");
+    const { base } = require("viem/chains");
+    _publicClient = createPublicClient({ 
+      chain: base, 
+      transport: http(CHAIN.rpcUrl) 
+    });
+  }
+  return _publicClient;
+}
 
 // We create the SDK instances lazily or export getters because window.localStorage 
 // is required for createLocalStorageRelayStore() which is browser-only.
@@ -20,7 +29,7 @@ export function getP2POrders() {
   if (typeof window === "undefined") return null;
   if (!ordersClient) {
     ordersClient = createOrders({
-      publicClient: p2pPublicClient,
+      publicClient: getPublicClient(),
       diamondAddress: CONTRACTS.DIAMOND as `0x${string}`,
       usdcAddress: CONTRACTS.USDC as `0x${string}`,
       subgraphUrl: SUBGRAPH_URL,
@@ -33,7 +42,7 @@ export function getP2POrders() {
 export function getP2PProfile() {
   if (!profileClient) {
     profileClient = createProfile({
-      publicClient: p2pPublicClient,
+      publicClient: getPublicClient(),
       diamondAddress: CONTRACTS.DIAMOND as `0x${string}`,
       usdcAddress: CONTRACTS.USDC as `0x${string}`,
     });
@@ -44,7 +53,7 @@ export function getP2PProfile() {
 export function getP2PPrices() {
   if (!pricesClient) {
     pricesClient = createPrices({
-      publicClient: p2pPublicClient,
+      publicClient: getPublicClient(),
       diamondAddress: CONTRACTS.DIAMOND as `0x${string}`,
     });
   }

@@ -77,6 +77,91 @@ export default function CashoutFlow() {
     };
   }, [ready, authenticated, wallets]);
 
+  // Check for pending order on mount
+  useEffect(() => {
+    if (!ready || !authenticated || !wallets.length) return;
+    const pendingOrderStr = localStorage.getItem("pending_cashout_order");
+    if (pendingOrderStr) {
+      try {
+        const pending = JSON.parse(pendingOrderStr);
+        if (pending.orderId && pending.upiId) {
+          setUpiId(pending.upiId);
+          setStatus("matching");
+          resumePendingOrder(BigInt(pending.orderId), pending.upiId, pending.hash, pending);
+        }
+      } catch (e) {
+        localStorage.removeItem("pending_cashout_order");
+      }
+    }
+  }, [ready, authenticated, wallets]);
+
+  const resumePendingOrder = async (orderId: bigint, savedUpiId: string, hash: string, pending: any) => {
+    try {
+      // 1. Wait for merchant to accept
+      let acceptedOrder: any = null;
+      while (true) {
+        const currentOrder = await getOrderStatus(orderId);
+        if (currentOrder.status === "accepted") {
+          acceptedOrder = currentOrder;
+          break;
+        }
+        if (currentOrder.status === "completed") {
+          localStorage.removeItem("pending_cashout_order");
+          setStatus("completed");
+          router.push(`/tx/${hash}`);
+          return;
+        }
+        if (currentOrder.status === "cancelled") {
+          throw new Error("Order was cancelled by the protocol.");
+        }
+        await new Promise(r => setTimeout(r, 3000));
+      }
+
+      // 2. Deliver encrypted UPI
+      const wallet = wallets[0];
+      const provider = await wallet.getEthereumProvider();
+      await sendPayoutAddress(provider, {
+        orderId,
+        paymentAddress: savedUpiId,
+        merchantPublicKey: acceptedOrder.pubkey,
+      });
+
+      // 3. Wait for merchant to pay
+      setStatus("paying");
+      while (true) {
+        const currentOrder = await getOrderStatus(orderId);
+        if (currentOrder.status === "completed") {
+          localStorage.removeItem("pending_cashout_order");
+          
+          saveTransaction({
+            hash: hash,
+            type: "cashout",
+            title: `Cash Out to ${savedUpiId}`,
+            amountINR: pending.estimatedFiat || 0,
+            amountUSDC: pending.totalUsdc || 0,
+            fee: pending.feeUsdc || 0,
+            recipient: savedUpiId,
+            network: "Base",
+            timestamp: pending.timestamp || Date.now(),
+          });
+          
+          setStatus("completed");
+          router.push(`/tx/${hash}`);
+          return;
+        }
+        if (currentOrder.status === "cancelled") {
+          throw new Error("Order was cancelled.");
+        }
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    } catch (e: any) {
+      console.error("Resume failed", e);
+      localStorage.removeItem("pending_cashout_order");
+      setError(e.message || "Failed to resume order.");
+      setStatus("error");
+    }
+  };
+
   const amountUsdc = parseFloat(amountStr) || 0;
   const feeUsdc = amountUsdc * 0.01;
   const totalUsdc = amountUsdc + feeUsdc;
@@ -183,7 +268,8 @@ export default function CashoutFlow() {
       }
 
       // We need a proper Viem receipt to parse the orderId from logs
-      const { p2pPublicClient } = await import("@/lib/p2pkit");
+      const { getPublicClient } = await import("@/lib/p2pkit");
+      const p2pPublicClient = getPublicClient();
       const receipt = await p2pPublicClient.waitForTransactionReceipt({ 
         hash: hash as `0x${string}` 
       });
@@ -212,59 +298,22 @@ export default function CashoutFlow() {
       if (!orderId) {
         throw new Error("Failed to get orderId from receipt logs");
       }
+
+      // Save pending order to local storage for durability
+      const pendingOrderData = {
+        orderId: orderId.toString(),
+        upiId: upiId,
+        hash: hash,
+        estimatedFiat: estimatedFiat,
+        totalUsdc: totalUsdc,
+        feeUsdc: feeUsdc,
+        timestamp: Date.now()
+      };
+      localStorage.setItem("pending_cashout_order", JSON.stringify(pendingOrderData));
       
-      // Wait for merchant to accept
+      // Call resumePendingOrder to continue the flow
       setStatus("matching");
-      let acceptedOrder: any = null;
-      
-      while (true) {
-        const currentOrder = await getOrderStatus(orderId);
-        if (currentOrder.status === "accepted") {
-          acceptedOrder = currentOrder;
-          break;
-        }
-        if (currentOrder.status === "cancelled") {
-          throw new Error("Order was cancelled by the protocol.");
-        }
-        await new Promise(r => setTimeout(r, 3000));
-      }
-      
-      // Deliver the encrypted UPI ID to the merchant
-      await sendPayoutAddress(provider, {
-        orderId,
-        paymentAddress: upiId,
-        merchantPublicKey: acceptedOrder.pubkey,
-      });
-      
-      // Wait for merchant to pay
-      setStatus("paying");
-      
-      while (true) {
-        const currentOrder = await getOrderStatus(orderId);
-        if (currentOrder.status === "completed") {
-          
-          // Save to local history
-          saveTransaction({
-            hash: hash,
-            type: "cashout",
-            title: `Cash Out to ${upiId}`,
-            amountINR: estimatedFiat,
-            amountUSDC: totalUsdc,
-            fee: feeUsdc,
-            recipient: upiId,
-            network: "Base",
-            timestamp: Date.now(),
-          });
-          
-          setStatus("completed");
-          router.push(`/tx/${hash}`);
-          return;
-        }
-        if (currentOrder.status === "cancelled") {
-          throw new Error("Order was cancelled.");
-        }
-        await new Promise(r => setTimeout(r, 3000));
-      }
+      resumePendingOrder(orderId, upiId, hash, pendingOrderData);
 
     } catch (e: any) {
       console.error("Cashout failed", e);

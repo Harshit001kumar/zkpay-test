@@ -2,15 +2,15 @@ import { NextResponse } from "next/server";
 
 export const dynamic = 'force-dynamic';
 
-const CHANGENOW_API_KEY = process.env.CHANGENOW_API_KEY;
-const API_BASE_URL = "https://api.changenow.io/v2";
+const SIDESHIFT_AFFILIATE_ID = process.env.SIDESHIFT_AFFILIATE_ID;
+const API_BASE_URL = "https://sideshift.ai/api/v2";
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
-    if (!CHANGENOW_API_KEY) {
+    if (!SIDESHIFT_AFFILIATE_ID) {
       return NextResponse.json({ error: "API key is missing" }, { status: 500 });
     }
 
@@ -18,11 +18,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing exchange ID" }, { status: 400 });
     }
 
-    const response = await fetch(`${API_BASE_URL}/exchange/by-id?id=${id}`, {
+    const response = await fetch(`${API_BASE_URL}/shifts/${id}`, {
       method: "GET",
-      headers: {
-        "x-changenow-api-key": CHANGENOW_API_KEY,
-      },
+      // SideShift public endpoints might not strictly require affiliateId in header,
+      // but we do not need custom headers like x-changenow-api-key here.
     });
 
     const data = await response.json();
@@ -31,9 +30,15 @@ export async function GET(req: Request) {
       return NextResponse.json(data, { status: response.status });
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json({
+      status: data.status,
+      // SideShift specific fields can also be mapped here if needed
+      depositAmount: data.depositAmount,
+      settleAmount: data.settleAmount,
+      txId: data.settleTx ? data.settleTx.txHash : null,
+    });
   } catch (error: any) {
-    console.error("ChangeNOW Status Error:", error);
+    console.error("SideShift Status Error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

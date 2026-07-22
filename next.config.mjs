@@ -1,3 +1,6 @@
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   webpack: (config, { webpack }) => {
@@ -13,7 +16,7 @@ const nextConfig = {
       "@stripe/stripe-js": false,
       "@bigmi/react": false,
       "fs": false,
-      "buffer": false,
+      "buffer": require.resolve("buffer/"),
       "process": false,
       "stream": false,
     };

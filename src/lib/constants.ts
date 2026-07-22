@@ -1,15 +1,12 @@
-// P2PKit contract addresses — Base Mainnet
-import { getAddress } from "viem";
-
 export const CONTRACTS = {
   // The P2P Diamond — the core protocol contract
-  DIAMOND: getAddress(process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0xd8d6acdbc5dbafa073827f3335dbb06df31580f6"),
+  DIAMOND: (process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0xd8d6ACdbc5dbAFa073827F3335dbb06Df31580F6") as `0x${string}`,
 
   // Native USDC on Base Mainnet
-  USDC: getAddress(process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"),
+  USDC: (process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913") as `0x${string}`,
   
   // ZkPay Treasury (receives 1% platform fee)
-  TREASURY: getAddress(process.env.NEXT_PUBLIC_TREASURY_ADDRESS || "0x4747883abdf84ad96565415514de298e3a3fd3e1"),
+  TREASURY: (process.env.NEXT_PUBLIC_TREASURY_ADDRESS || "0x4747883abdf84ad96565415514de298e3a3fd3e1") as `0x${string}`,
 } as const;
 
 export const CHAIN = {
@@ -44,19 +41,19 @@ export const PLATFORM_FEE_BPS = 100; // 100 basis points = 1%
 export const APP_NAME = "ZkPay";
 export const APP_DESCRIPTION = "Crypto to Fiat — Scan and Pay";
 
-// ChangeNOW supported deposit assets
+// SideShift supported deposit assets
 export const DEPOSIT_ASSETS = [
-  { symbol: "BTC", name: "Bitcoin", network: "btc", ticker: "btc" },
-  { symbol: "ETH", name: "Ethereum", network: "eth", ticker: "eth" },
-  { symbol: "SOL", name: "Solana", network: "sol", ticker: "sol" },
-  { symbol: "USDT", name: "Tether (TRC20)", network: "trx", ticker: "usdttrx" },
-  { symbol: "USDC", name: "USDC (ERC20)", network: "eth", ticker: "usdc" },
-  { symbol: "MATIC", name: "Polygon", network: "matic", ticker: "matic" },
-  { symbol: "BNB", name: "BNB (BSC)", network: "bsc", ticker: "bnbbsc" }
+  { symbol: "BTC", name: "Bitcoin", coin: "BTC", network: "bitcoin" },
+  { symbol: "ETH", name: "Ethereum", coin: "ETH", network: "ethereum" },
+  { symbol: "SOL", name: "Solana", coin: "SOL", network: "solana" },
+  { symbol: "USDT", name: "Tether (TRC20)", coin: "USDT", network: "tron" },
+  { symbol: "USDC", name: "USDC (ERC20)", coin: "USDC", network: "ethereum" },
+  { symbol: "MATIC", name: "Polygon", coin: "MATIC", network: "polygon" },
+  { symbol: "BNB", name: "BNB (BSC)", coin: "BNB", network: "bsc" }
 ] as const;
 
 // The target asset on the Base network for our embedded wallet
 export const TARGET_ASSET = {
-  ticker: "usdc",
+  coin: "USDC",
   network: "base",
 };

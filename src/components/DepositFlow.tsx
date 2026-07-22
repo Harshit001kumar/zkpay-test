@@ -34,7 +34,7 @@ export default function DepositFlow() {
       setIsEstimating(true);
       try {
         const res = await fetch(
-          `/api/exchange/estimate?fromCurrency=${sourceAsset.ticker}&toCurrency=${TARGET_ASSET.ticker}&fromNetwork=${sourceAsset.network}&toNetwork=${TARGET_ASSET.network}&fromAmount=${depositAmount}`
+          `/api/exchange/estimate?depositCoin=${sourceAsset.coin}&settleCoin=${TARGET_ASSET.coin}&depositNetwork=${sourceAsset.network}&settleNetwork=${TARGET_ASSET.network}&depositAmount=${depositAmount}`
         );
         const data = await res.json();
         if (res.ok && data.estimatedAmount) {
@@ -59,7 +59,7 @@ export default function DepositFlow() {
   // Polling effect
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (exchangeId && exchangeStatus !== "finished" && exchangeStatus !== "failed") {
+    if (exchangeId && exchangeStatus !== "settled" && exchangeStatus !== "failed" && exchangeStatus !== "expired") {
       interval = setInterval(async () => {
         try {
           const res = await fetch(`/api/exchange/status?id=${exchangeId}`);
@@ -88,19 +88,18 @@ export default function DepositFlow() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fromCurrency: sourceAsset.ticker,
-          toCurrency: TARGET_ASSET.ticker,
-          fromNetwork: sourceAsset.network,
-          toNetwork: TARGET_ASSET.network,
-          fromAmount: depositAmount,
-          address: baseAddress, // Send to our embedded wallet
+          depositCoin: sourceAsset.coin,
+          settleCoin: TARGET_ASSET.coin,
+          depositNetwork: sourceAsset.network,
+          settleNetwork: TARGET_ASSET.network,
+          settleAddress: baseAddress, // Send to our embedded wallet
         }),
       });
       const data = await res.json();
       if (data.id && data.payinAddress) {
         setExchangeId(data.id);
         setDepositAddress(data.payinAddress);
-        setExchangeStatus("waiting");
+        setExchangeStatus("pending");
       } else {
         alert("Failed to create deposit: " + (data.error || "Unknown error"));
       }
@@ -119,19 +118,19 @@ export default function DepositFlow() {
 
   const getStatusText = (status: string) => {
     const states: Record<string, string> = {
-      waiting: "Waiting for deposit...",
-      confirming: "Confirming on blockchain...",
-      exchanging: "Swapping to USDC...",
-      sending: "Sending to your Base wallet...",
-      finished: "Deposit Complete!",
+      pending: "Waiting for deposit...",
+      processing: "Confirming on blockchain...",
+      settling: "Swapping to USDC & Sending...",
+      settled: "Deposit Complete!",
       failed: "Deposit Failed",
       refunded: "Refunded",
+      expired: "Deposit Window Expired",
     };
     return states[status] || status;
   };
 
   const getStepProgress = (status: string) => {
-    const steps = ["waiting", "confirming", "exchanging", "sending", "finished"];
+    const steps = ["pending", "processing", "settling", "settled"];
     const index = steps.indexOf(status);
     return index >= 0 ? index : 0;
   };
@@ -275,7 +274,7 @@ export default function DepositFlow() {
               </div>
 
               <div className="mt-4 p-3 bg-gray-50 rounded border border-gray-100 flex items-center gap-3">
-                {exchangeStatus === "finished" ? (
+                {exchangeStatus === "settled" ? (
                   <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center flex-shrink-0">
                     <Check className="w-4 h-4 text-white" />
                   </div>

@@ -2,42 +2,47 @@ import { NextResponse } from "next/server";
 
 export const dynamic = 'force-dynamic';
 
-const CHANGENOW_API_KEY = process.env.CHANGENOW_API_KEY;
-const API_BASE_URL = "https://api.changenow.io/v2";
+const SIDESHIFT_AFFILIATE_ID = process.env.SIDESHIFT_AFFILIATE_ID;
+const API_BASE_URL = "https://sideshift.ai/api/v2";
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const fromCurrency = searchParams.get("fromCurrency");
-    const toCurrency = searchParams.get("toCurrency");
-    const fromAmount = searchParams.get("fromAmount");
-    const fromNetwork = searchParams.get("fromNetwork");
-    const toNetwork = searchParams.get("toNetwork");
+    const depositCoin = searchParams.get("depositCoin");
+    const depositNetwork = searchParams.get("depositNetwork");
+    const settleCoin = searchParams.get("settleCoin");
+    const settleNetwork = searchParams.get("settleNetwork");
+    const depositAmount = searchParams.get("depositAmount");
 
-    if (!CHANGENOW_API_KEY) {
-      return NextResponse.json({ error: "API key is missing. Set CHANGENOW_API_KEY in .env" }, { status: 500 });
+    if (!SIDESHIFT_AFFILIATE_ID) {
+      return NextResponse.json({ error: "API key is missing. Set SIDESHIFT_AFFILIATE_ID in .env" }, { status: 500 });
     }
 
-    if (!fromCurrency || !toCurrency || !fromAmount) {
+    if (!depositCoin || !depositNetwork || !settleCoin || !settleNetwork || !depositAmount) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    let url = `${API_BASE_URL}/exchange/estimated-amount?fromCurrency=${fromCurrency}&toCurrency=${toCurrency}&fromAmount=${fromAmount}`;
-    if (fromNetwork) url += `&fromNetwork=${fromNetwork}`;
-    if (toNetwork) url += `&toNetwork=${toNetwork}`;
-    url += `&flow=standard`;
+    const payload = {
+      depositCoin,
+      depositNetwork,
+      settleCoin,
+      settleNetwork,
+      depositAmount,
+      affiliateId: SIDESHIFT_AFFILIATE_ID,
+    };
 
-    console.log("[ChangeNOW Estimate] Calling:", url);
+    console.log("[SideShift Estimate] Calling Quote API:", payload);
 
-    const response = await fetch(url, {
-      method: "GET",
+    const response = await fetch(`${API_BASE_URL}/quotes`, {
+      method: "POST",
       headers: {
-        "x-changenow-api-key": CHANGENOW_API_KEY,
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify(payload),
     });
 
     const responseText = await response.text();
-    console.log("[ChangeNOW Estimate] Status:", response.status, "Body:", responseText);
+    console.log("[SideShift Estimate] Status:", response.status, "Body:", responseText);
 
     let data;
     try {
@@ -47,12 +52,14 @@ export async function GET(req: Request) {
     }
 
     if (!response.ok) {
-      return NextResponse.json({ error: data.error || data.message || JSON.stringify(data) }, { status: response.status });
+      return NextResponse.json({ error: data.error?.message || data.message || JSON.stringify(data) }, { status: response.status });
     }
 
-    return NextResponse.json(data);
+    // SideShift returns `settleAmount` when `depositAmount` is provided.
+    // Map it to `estimatedAmount` for the frontend.
+    return NextResponse.json({ estimatedAmount: data.settleAmount });
   } catch (error: any) {
-    console.error("[ChangeNOW Estimate] Exception:", error);
+    console.error("[SideShift Estimate] Exception:", error);
     return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
   }
 }
