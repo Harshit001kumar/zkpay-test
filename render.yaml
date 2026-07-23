@@ -8,11 +8,13 @@ services:
     envVars:
       - key: NEXT_PUBLIC_PRIVY_APP_ID
         sync: false
+      - key: SIDESHIFT_AFFILIATE_ID
+        sync: false
       - key: NEXT_PUBLIC_DIAMOND_ADDRESS
-        value: "0xeb0BB8E3c014D915D9B2df03aBB130a1Fb44beb9"
-      - key: NEXT_PUBLIC_INTEGRATOR_ADDRESS
-        value: "0x6daE4C184a32782A72bd99875379fc1E7383213B"
+        sync: false
       - key: NEXT_PUBLIC_USDC_ADDRESS
-        value: "0x4095fE4f1E636f11A95820BA2bB87F335Bd1040d"
+        sync: false
       - key: NEXT_PUBLIC_CHAIN_ID
-        value: "84532"
+        sync: false
+      - key: NEXT_PUBLIC_SUBGRAPH_URL
+        sync: false
