@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 
-const SIDESHIFT_AFFILIATE_ID = process.env.SIDESHIFT_AFFILIATE_ID;
 const API_BASE_URL = "https://sideshift.ai/api/v2";
 
 export async function POST(req: Request) {
   try {
+    const SIDESHIFT_AFFILIATE_ID = process.env.SIDESHIFT_AFFILIATE_ID;
     const body = await req.json();
     const { depositCoin, depositNetwork, settleCoin, settleNetwork, settleAddress } = body;
 

@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 
 export const dynamic = 'force-dynamic';
 
-const SIDESHIFT_AFFILIATE_ID = process.env.SIDESHIFT_AFFILIATE_ID;
 const API_BASE_URL = "https://sideshift.ai/api/v2";
 
 export async function GET(req: Request) {
   try {
+    const SIDESHIFT_AFFILIATE_ID = process.env.SIDESHIFT_AFFILIATE_ID;
     const { searchParams } = new URL(req.url);
     const depositCoin = searchParams.get("depositCoin");
     const depositNetwork = searchParams.get("depositNetwork");
