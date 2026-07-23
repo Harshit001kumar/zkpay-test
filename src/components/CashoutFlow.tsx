@@ -48,8 +48,8 @@ export default function CashoutFlow() {
         ]);
         
         if (isMounted) {
-          // limits.sellLimit is in 6 decimals (USDC)
-          setMaxSellable(Number(formatUnits(limits.sellLimit, 6)));
+          // limits.sellLimit is already in normalized USDC (e.g. 100)
+          setMaxSellable(Number(limits.sellLimit));
           setSellPrice(priceCfg.sellPrice);
           setInitError(null);
         }
@@ -120,7 +120,16 @@ export default function CashoutFlow() {
       // 2. Deliver encrypted UPI
       const wallet = wallets[0];
       const provider = await wallet.getEthereumProvider();
-      await sendPayoutAddress(provider, {
+      
+      const { createWalletClient, custom } = await import("viem");
+      const { base } = await import("viem/chains");
+      const walletClient = createWalletClient({
+        account: wallet.address as `0x${string}`,
+        chain: base,
+        transport: custom(provider)
+      });
+      
+      await sendPayoutAddress(walletClient, {
         orderId,
         paymentAddress: savedUpiId,
         merchantPublicKey: acceptedOrder.pubkey,
@@ -276,13 +285,13 @@ export default function CashoutFlow() {
 
       // Parse orderId from the OrderPlaced event in the receipt logs.
       // The OrderPlaced event signature: OrderPlaced(uint256 orderId, ...)
-      // keccak256("OrderPlaced(uint256,address,uint256,bytes32,uint256,uint256,uint256)")
-      // We look for the first log whose first topic matches and extract orderId from topics[1].
+      const { toEventSelector } = await import("viem");
+      const orderPlacedTopic0 = toEventSelector("OrderPlaced(uint256,address,uint256,bytes32,uint256,uint256,uint256)");
+      
       let orderId: bigint | null = null;
       for (const log of receipt.logs) {
-        // OrderPlaced events emit orderId as the first indexed parameter (topics[1])
-        if (log.topics.length >= 2) {
-          // Try to extract — orderId is the first indexed param in most P2P Diamond events
+        if (log.topics.length >= 2 && log.topics[0] === orderPlacedTopic0) {
+          // Try to extract — orderId is the first indexed param
           try {
             const topic = log.topics[1];
             if (!topic) continue;
