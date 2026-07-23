@@ -144,13 +144,15 @@ export default function Dashboard() {
         </div>
 
         {/* Recent Activity */}
-        <section
-          className="animate-fade-in-up border-t border-gray-100 pt-6"
-          style={{ animationDelay: "0.2s" }}
-        >
-          <h3 className="text-base font-bold mb-3">Recent Activity</h3>
-          <PaymentHistory />
-        </section>
+        {activeTab === "pay" && !merchantId && (
+          <section
+            className="animate-fade-in-up border-t border-gray-100 pt-6"
+            style={{ animationDelay: "0.2s" }}
+          >
+            <h3 className="text-base font-bold mb-3">Recent Activity</h3>
+            <PaymentHistory />
+          </section>
+        )}
       </div>
     </main>
   );

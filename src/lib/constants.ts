@@ -1,6 +1,6 @@
 export const CONTRACTS = {
   // The P2P Diamond — the core protocol contract
-  DIAMOND: (process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0xd8d6ACdbc5dbAFa073827F3335dbb06Df31580F6") as `0x${string}`,
+  DIAMOND: (process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0x4cad6eC90e65baBec9335cAd728DDC610c316368") as `0x${string}`,
 
   // Native USDC on Base Mainnet
   USDC: (process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913") as `0x${string}`,
@@ -18,7 +18,7 @@ export const CHAIN = {
 
 export const SUBGRAPH_URL =
   process.env.NEXT_PUBLIC_SUBGRAPH_URL ||
-  "https://api.studio.thegraph.com/query/p2p/base-mainnet/version/latest";
+  "https://api.goldsky.com/api/public/project_cmq7kbyqt81p501xi7h0wdeuh/subgraphs/p2pme-subgraph/prod/gn";
 
 // Demo products available for testing
 export const DEMO_PRODUCTS = [

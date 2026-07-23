@@ -18,10 +18,10 @@
 - **Privy is on the FREE plan** — no Smart Wallets (ERC-4337). Use two-signature approach for fee collection.
 - **Deployment is on Render** — not Vercel, not local. Always remember this.
 
-## Deployed Contracts (Base Sepolia)
+## Deployed Contracts (Base Mainnet)
 | Contract | Address |
 |---|---|
-| Diamond (P2PKit) | `0xd8d6acdbc5dbafa073827f3335dbb06df31580f6` |
+| Diamond (P2PKit) | `0x4cad6eC90e65baBec9335cAd728DDC610c316368` |
 | USDC (Mainnet) | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
 | Treasury (Mainnet) | `0x4747883abdf84ad96565415514de298e3a3fd3e1` |
 
