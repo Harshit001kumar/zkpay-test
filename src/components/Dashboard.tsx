@@ -3,7 +3,6 @@
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useState, useCallback } from "react";
 import { useReadContract } from "wagmi";
-import WalletConnect from "@/components/WalletConnect";
 import PaymentEntry from "@/components/PaymentEntry";
 import CashoutFlow from "@/components/CashoutFlow";
 import PaymentHistory from "@/components/PaymentHistory";
@@ -55,17 +54,12 @@ export default function Dashboard() {
   };
 
   return (
-    <main className="min-h-screen pb-32 flex flex-col items-center">
+    <div className="flex flex-col items-center">
       {isScanning && (
         <Scanner onScan={handleScan} onCancel={() => setIsScanning(false)} />
       )}
 
-      <div className="w-full max-w-md px-5 pt-6 pb-4 flex flex-col gap-6">
-        {/* Header */}
-        <header className="flex justify-between items-center animate-fade-in-up">
-          <h1 className="text-xl font-bold tracking-tight">ZkPay</h1>
-          <WalletConnect />
-        </header>
+      <div className="w-full max-w-md px-5 flex flex-col gap-6">
 
         {/* Balance Card */}
         <section
@@ -154,6 +148,6 @@ export default function Dashboard() {
           </section>
         )}
       </div>
-    </main>
+    </div>
   );
 }

@@ -18,3 +18,9 @@ services:
         sync: false
       - key: NEXT_PUBLIC_SUBGRAPH_URL
         sync: false
+      - key: PRIVY_APP_SECRET
+        sync: false
+      - key: PRIVY_EARN_VAULT_ID
+        sync: false
+      - key: PRIVY_AUTH_PRIVATE_KEY
+        sync: false

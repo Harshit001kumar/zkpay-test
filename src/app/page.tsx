@@ -4,7 +4,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import LandingPage from "@/components/LandingPage";
 import dynamic from "next/dynamic";
 
-const Dashboard = dynamic(() => import("@/components/Dashboard"), { ssr: false });
+const AppShell = dynamic(() => import("@/components/AppShell"), { ssr: false });
 
 export default function Home() {
   const { ready, authenticated, login } = usePrivy();
@@ -24,5 +24,5 @@ export default function Home() {
     return <LandingPage login={login} />;
   }
 
-  return <Dashboard />;
+  return <AppShell />;
 }

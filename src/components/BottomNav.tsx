@@ -1,89 +1,94 @@
-"use client";
+import { SVGProps } from "react";
+
+export type BottomNavTab = "home" | "earn" | "cards" | "profile";
 
 interface BottomNavProps {
-  activeView: string;
-  onNavigate: (view: string) => void;
+  activeTab: BottomNavTab;
+  onTabChange: (tab: BottomNavTab) => void;
 }
 
-const navItems = [
-  {
-    id: "home",
-    label: "Home",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-        <polyline points="9 22 9 12 15 12 15 22" />
-      </svg>
-    ),
-  },
-  {
-    id: "scan",
-    label: "Scan",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 7V5a2 2 0 0 1 2-2h2" />
-        <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-        <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-        <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-        <rect x="7" y="7" width="10" height="10" rx="1" />
-      </svg>
-    ),
-    isPrimary: true,
-  },
-  {
-    id: "history",
-    label: "Activity",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10" />
-        <polyline points="12 6 12 12 16 14" />
-      </svg>
-    ),
-  },
-];
-
-export default function BottomNav({ activeView, onNavigate }: BottomNavProps) {
+export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
   return (
-    <nav className="bottom-nav">
-      <div className="flex items-center justify-around max-w-md mx-auto">
-        {navItems.map((item) => {
-          const isActive = activeView === item.id;
-
-          if (item.isPrimary) {
-            return (
-              <button
-                key={item.id}
-                onClick={() => onNavigate(item.id)}
-                className="relative -mt-6 flex flex-col items-center"
-              >
-                <div
-                  className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-ocean-glow transition-transform active:scale-95"
-                  style={{ background: "var(--gradient-primary)" }}
-                >
-                  {item.icon}
-                </div>
-                <span className="text-[10px] font-semibold mt-1" style={{ color: "var(--color-primary)" }}>
-                  {item.label}
-                </span>
-              </button>
-            );
-          }
-
-          return (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              className="flex flex-col items-center py-2 px-4 transition-colors"
-              style={{
-                color: isActive ? "var(--color-primary)" : "var(--color-on-surface-variant)",
-              }}
-            >
-              {item.icon}
-              <span className="text-[10px] font-medium mt-1">{item.label}</span>
-            </button>
-          );
-        })}
-      </div>
+    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-between items-center z-50 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+      <NavItem 
+        id="home" 
+        label="Home" 
+        isActive={activeTab === "home"} 
+        onClick={() => onTabChange("home")}
+        icon={<HomeIcon />}
+      />
+      <NavItem 
+        id="earn" 
+        label="Earn" 
+        isActive={activeTab === "earn"} 
+        onClick={() => onTabChange("earn")}
+        icon={<EarnIcon />}
+      />
+      <NavItem 
+        id="cards" 
+        label="Cards" 
+        isActive={activeTab === "cards"} 
+        onClick={() => onTabChange("cards")}
+        icon={<CardsIcon />}
+      />
+      <NavItem 
+        id="profile" 
+        label="Profile" 
+        isActive={activeTab === "profile"} 
+        onClick={() => onTabChange("profile")}
+        icon={<ProfileIcon />}
+      />
     </nav>
+  );
+}
+
+function NavItem({ id, label, isActive, onClick, icon }: { id: string; label: string; isActive: boolean; onClick: () => void; icon: React.ReactNode }) {
+  return (
+    <button 
+      onClick={onClick}
+      className={`flex flex-col items-center justify-center gap-1 min-w-[64px] ${isActive ? 'text-black' : 'text-gray-400 hover:text-gray-600'} transition-colors`}
+    >
+      <div className={`w-6 h-6 flex items-center justify-center ${isActive ? 'fill-current stroke-current' : 'fill-none stroke-current'}`}>
+        {icon}
+      </div>
+      <span className={`text-[10px] font-semibold ${isActive ? 'font-bold' : ''}`}>{label}</span>
+    </button>
+  );
+}
+
+// Minimalist SVGs
+function HomeIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+      <polyline points="9 22 9 12 15 12 15 22"></polyline>
+    </svg>
+  );
+}
+
+function EarnIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <line x1="12" y1="2" x2="12" y2="22"></line>
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+    </svg>
+  );
+}
+
+function CardsIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
+      <line x1="1" y1="10" x2="23" y2="10"></line>
+    </svg>
+  );
+}
+
+function ProfileIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+      <circle cx="12" cy="7" r="4"></circle>
+    </svg>
   );
 }
