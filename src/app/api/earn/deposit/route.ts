@@ -31,9 +31,7 @@ export async function POST(request: Request) {
 
     let verifiedClaims;
     try {
-      verifiedClaims = await privy.utils().auth().verifyAccessToken({
-        access_token: accessToken,
-      });
+      verifiedClaims = await privy.verifyAuthToken(accessToken);
     } catch {
       return NextResponse.json(
         { error: "Unauthorized — invalid or expired token" },
