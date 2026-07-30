@@ -165,3 +165,4 @@ Below is the documented flow of screens selected during the design phase. All sc
 *   **Payment Success**: "Variant 2" from the generated set (Minimalist Typographical Success).
 *   **Cashout (USDC to INR)**: [Offramp Cashout Flow](https://stitch.withgoogle.com/preview/10727706339367747078?node-id=6236381d049b42a2b280346c0135b2b9)
 *   **Earn / Vault**: [Earn Vault UI](https://stitch.withgoogle.com/preview/10727706339367747078?node-id=6be9ea0d37604a45a5b1d5ba257d6092)
+*   **Deposit Crypto**: [Deposit Crypto UI](https://stitch.withgoogle.com/preview/10727706339367747078?node-id=ddb3d00d046041449250caf6b05e20ff)

@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     }
 
     try {
-      await privy.verifyAuthToken(accessToken);
+      await privy.utils().auth().verifyAccessToken(accessToken);
     } catch {
       return NextResponse.json(
         { error: "Unauthorized — invalid or expired token" },
