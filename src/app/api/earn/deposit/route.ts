@@ -39,7 +39,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const userId = verifiedClaims.userId;
+    const userId = verifiedClaims.user_id;
 
     // ── 2. Validate environment is configured ──
     if (!VAULT_ID) {
