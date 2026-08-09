@@ -11,7 +11,7 @@ const queryClient = new QueryClient();
 const wagmiConfig = createConfig({
   chains: [base],
   transports: {
-    [base.id]: http(),
+    [base.id]: http(process.env.NEXT_PUBLIC_RPC_URL || undefined),
   },
 });
 

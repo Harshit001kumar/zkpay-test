@@ -19,7 +19,7 @@ import {
 
 type CashoutStatus = "input" | "processing" | "matching" | "paying" | "completed" | "error";
 
-export default function CashoutFlow() {
+export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
   const { ready, authenticated } = usePrivy();
   const { wallets } = useWallets();
   const router = useRouter();
@@ -33,7 +33,6 @@ export default function CashoutFlow() {
   const [sellPrice, setSellPrice] = useState<bigint | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
 
-  // Fetch limits and price on mount
   useEffect(() => {
     if (!ready || !authenticated || !wallets.length) return;
     
@@ -48,7 +47,6 @@ export default function CashoutFlow() {
         ]);
         
         if (isMounted) {
-          // limits.sellLimit is already in normalized USDC (e.g. 100)
           setMaxSellable(Number(limits.sellLimit));
           setSellPrice(priceCfg.sellPrice);
           setInitError(null);
@@ -63,7 +61,6 @@ export default function CashoutFlow() {
     
     fetchConfig();
     
-    // Refresh price every 60 seconds
     const interval = setInterval(async () => {
       try {
         const priceCfg = await getOfframpPrice("INR");
@@ -77,7 +74,6 @@ export default function CashoutFlow() {
     };
   }, [ready, authenticated, wallets]);
 
-  // Check for pending order on mount
   useEffect(() => {
     if (!ready || !authenticated || !wallets.length) return;
     const pendingOrderStr = localStorage.getItem("pending_cashout_order");
@@ -97,7 +93,6 @@ export default function CashoutFlow() {
 
   const resumePendingOrder = async (orderId: bigint, savedUpiId: string, hash: string, pending: any) => {
     try {
-      // 1. Wait for merchant to accept (max 10 minutes = 200 polls × 3s)
       let acceptedOrder: any = null;
       const MAX_ACCEPT_POLLS = 200;
       for (let i = 0; i < MAX_ACCEPT_POLLS; i++) {
@@ -121,7 +116,6 @@ export default function CashoutFlow() {
         await new Promise(r => setTimeout(r, 3000));
       }
 
-      // 2. Deliver encrypted UPI
       const wallet = wallets[0];
       const provider = await wallet.getEthereumProvider();
       
@@ -139,7 +133,6 @@ export default function CashoutFlow() {
         merchantPublicKey: acceptedOrder.pubkey,
       });
 
-      // 3. Wait for merchant to pay (max 15 minutes = 300 polls × 3s)
       setStatus("paying");
       const MAX_PAY_POLLS = 300;
       for (let j = 0; j < MAX_PAY_POLLS; j++) {
@@ -183,8 +176,13 @@ export default function CashoutFlow() {
   const feeUsdc = amountUsdc * 0.01;
   const totalUsdc = amountUsdc + feeUsdc;
   
-  // Calculate estimated fiat based on current price
   let estimatedFiat = 0;
+  let rateDisplay = "1 USDC ≈ ₹0.00";
+  if (sellPrice) {
+    const unitPrice = (1000000n * sellPrice) / 1000000n;
+    rateDisplay = `1 USDC ≈ ₹${formatUnits(unitPrice, 6)}`;
+  }
+
   if (amountUsdc > 0 && sellPrice) {
     const usdcBigInt = parseUnits(amountUsdc.toFixed(6), 6);
     const fiatBigInt = (usdcBigInt * sellPrice) / 1000000n;
@@ -192,14 +190,13 @@ export default function CashoutFlow() {
   }
 
   if (!ready || !authenticated || !wallets.length) {
-    return <div className="text-center p-4 text-sm text-gray-500">Connect wallet to cash out.</div>;
+    return <div className="text-center p-4 text-sm text-[#909097]">Connect wallet to cash out.</div>;
   }
   
-  // Validate UPI
   const isValidUpi = () => {
     try {
       const fields = PAYMENT_ID_FIELDS["INR"];
-      if (!fields || fields.length === 0) return true; // fallback
+      if (!fields || fields.length === 0) return true;
       return fields[0].validate(upiId);
     } catch (e) {
       return false;
@@ -221,7 +218,6 @@ export default function CashoutFlow() {
       const principalUsdcBigInt = parseUnits(amountUsdc.toFixed(6), 6);
       const feeUsdcBigInt = parseUnits(feeUsdc.toFixed(6), 6);
       
-      // Prepare P2P Order Calldata (no I/O sent yet)
       const orderCall = await prepareOfframpOrder({
         userAddress: wallet.address as `0x${string}`,
         currency: "INR",
@@ -230,8 +226,6 @@ export default function CashoutFlow() {
       });
 
       const calls = [];
-
-      // 1. Fee transfer to ZkPay Treasury
       if (feeUsdcBigInt > 0n) {
         calls.push({
           to: CONTRACTS.USDC,
@@ -243,7 +237,6 @@ export default function CashoutFlow() {
         });
       }
 
-      // 2. Approve P2P Diamond for the principal amount
       calls.push({
         to: CONTRACTS.USDC,
         data: encodeFunctionData({
@@ -253,13 +246,11 @@ export default function CashoutFlow() {
         })
       });
 
-      // 3. Place the SELL order
       calls.push({
         to: orderCall.to,
         data: orderCall.data
       });
 
-      // Send the batched transaction using EIP-5792
       const id = await provider.request({
         method: "wallet_sendCalls",
         params: [{
@@ -269,7 +260,6 @@ export default function CashoutFlow() {
         }]
       });
 
-      // Poll for batch status (max 2 minutes = 60 polls × 2s)
       let hash = "";
       const MAX_TX_POLLS = 60;
       for (let k = 0; k < MAX_TX_POLLS; k++) {
@@ -290,22 +280,16 @@ export default function CashoutFlow() {
         await new Promise(r => setTimeout(r, 2000));
       }
 
-      // We need a proper Viem receipt to parse the orderId from logs
       const { getPublicClient } = await import("@/lib/p2pkit");
       const p2pPublicClient = getPublicClient();
-      const receipt = await p2pPublicClient.waitForTransactionReceipt({ 
-        hash: hash as `0x${string}` 
-      });
+      const receipt = await p2pPublicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
 
-      // Parse orderId from the OrderPlaced event in the receipt logs.
-      // The OrderPlaced event signature: OrderPlaced(uint256 orderId, ...)
       const { toEventSelector } = await import("viem");
       const orderPlacedTopic0 = toEventSelector("OrderPlaced(uint256,address,uint256,bytes32,uint256,uint256,uint256)");
       
       let orderId: bigint | null = null;
       for (const log of receipt.logs) {
         if (log.topics.length >= 2 && log.topics[0] === orderPlacedTopic0) {
-          // Try to extract — orderId is the first indexed param
           try {
             const topic = log.topics[1];
             if (!topic) continue;
@@ -322,7 +306,6 @@ export default function CashoutFlow() {
         throw new Error("Failed to get orderId from receipt logs");
       }
 
-      // Save pending order to local storage for durability
       const pendingOrderData = {
         orderId: orderId.toString(),
         upiId: upiId,
@@ -334,7 +317,6 @@ export default function CashoutFlow() {
       };
       localStorage.setItem("pending_cashout_order", JSON.stringify(pendingOrderData));
       
-      // Call resumePendingOrder to continue the flow
       setStatus("matching");
       resumePendingOrder(orderId, upiId, hash, pendingOrderData);
 
@@ -359,110 +341,210 @@ export default function CashoutFlow() {
   };
 
   return (
-    <div className="w-full glass-card overflow-hidden p-6">
+    <div className="fixed inset-0 z-50 bg-[#0e0e0f] text-[#e5e2e3] font-body-md overflow-y-auto">
+      <style dangerouslySetInnerHTML={{__html: `
+        .obsidian-glass {
+            background: rgba(20, 20, 22, 0.7);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+        }
+        .silver-typography {
+            background: linear-gradient(180deg, #FFFFFF 0%, #94A3B8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .path-line {
+            width: 2px;
+            background: linear-gradient(180deg, rgba(192, 198, 222, 0.5) 0%, rgba(192, 198, 222, 0) 100%);
+            height: 40px;
+            margin: -8px auto;
+            position: relative;
+            z-index: 20;
+        }
+        .path-arrow {
+            width: 0; 
+            height: 0; 
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-top: 8px solid rgba(192, 198, 222, 0.5);
+            margin: 0 auto;
+        }
+        .monolith-shadow {
+            box-shadow: 0 40px 80px -20px rgba(0, 0, 0, 0.8);
+        }
+      `}} />
+      
+      {/* Decorative Ambient Glows */}
+      <div className="fixed -top-1/4 -right-1/4 w-[600px] h-[600px] bg-[#c0c6de]/5 rounded-full blur-[120px] pointer-events-none"></div>
+      <div className="fixed -bottom-1/4 -left-1/4 w-[400px] h-[400px] bg-[#bcc7de]/5 rounded-full blur-[100px] pointer-events-none"></div>
+
+      {/* Top Navigation Bar */}
+      <header className="w-full sticky top-0 bg-[#0e0e0f]/80 backdrop-blur-md z-50 flex items-center justify-between px-6 h-16">
+        <button onClick={onBack} aria-label="Go back" className="flex items-center text-[#c0c6de] hover:opacity-80 transition-opacity active:scale-95">
+          <span className="material-symbols-outlined text-[24px]">arrow_back</span>
+        </button>
+        <h1 className="font-label-caps text-[12px] text-[#e5e2e3] uppercase tracking-[0.3em] font-bold">Cashout</h1>
+        <div className="w-6"></div>
+      </header>
+
+      <main className="w-full max-w-lg mx-auto px-6 pt-8 pb-40 flex flex-col gap-2 relative z-10">
+        
+        {initError && (
+          <div className="bg-[#93000a]/20 text-[#ffb4ab] p-4 rounded-xl text-sm mb-4 border border-[#93000a] obsidian-glass">
+            <span className="font-bold block mb-1 uppercase tracking-widest text-[10px]">Error</span> 
+            {initError}
+          </div>
+        )}
+
+        {status === "input" && (
+          <>
+            {/* Input Block */}
+            <section className="obsidian-glass monolith-shadow p-8 rounded-xl flex flex-col items-center text-center animate-in fade-in slide-in-from-bottom-4">
+              <div className="flex justify-between w-full mb-6">
+                <p className="font-label-caps text-[10px] text-[#909097] uppercase font-bold tracking-widest">Source Amount</p>
+                {maxSellable !== null && (
+                  <p className="font-label-caps text-[10px] text-[#c0c6de] uppercase font-bold tracking-widest opacity-80">Max: {maxSellable}</p>
+                )}
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <div className="flex items-baseline group relative">
+                  <span className="font-display-xl text-[64px] font-extrabold text-[#c0c6de] opacity-50 select-none mr-1 absolute -left-12">$</span>
+                  <input 
+                    type="number"
+                    value={amountStr}
+                    onChange={(e) => setAmountStr(e.target.value)}
+                    className="bg-transparent border-none focus:ring-0 font-display-xl text-[64px] font-extrabold p-0 text-center silver-typography tracking-tighter w-48 transition-all" 
+                    placeholder="0.00" 
+                  />
+                </div>
+                <span className="font-headline-md text-[#bcc7de] tracking-widest text-lg font-light uppercase">USDC</span>
+                {maxSellable !== null && amountUsdc > maxSellable && (
+                  <p className="text-[10px] text-[#ffb4ab] mt-2 font-bold tracking-widest uppercase">Exceeds limit ({maxSellable} USDC)</p>
+                )}
+              </div>
+            </section>
+
+            {/* Vertical Path Visualization */}
+            <div className="flex flex-col items-center opacity-50">
+              <div className="path-line"></div>
+              <div className="path-arrow"></div>
+            </div>
+
+            {/* Conversion Block */}
+            <section className="obsidian-glass monolith-shadow p-8 rounded-xl relative overflow-hidden animate-in fade-in slide-in-from-bottom-8 delay-150">
+              <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+                <span className="material-symbols-outlined text-[80px]">currency_exchange</span>
+              </div>
+              <p className="font-label-caps text-[10px] text-[#909097] uppercase mb-8 text-center font-bold tracking-widest">Conversion Estimate</p>
+              <div className="flex flex-col items-center mb-8">
+                <span className="font-display-xl text-[48px] font-extrabold silver-typography tracking-tight">
+                  ₹{estimatedFiat > 0 ? estimatedFiat.toFixed(2) : "0.00"}
+                </span>
+                <span className="font-headline-md text-[#bcc7de] tracking-widest text-lg font-light uppercase">INR</span>
+              </div>
+              <div className="space-y-4 pt-4 border-t border-white/5">
+                <div className="flex justify-between items-center">
+                  <span className="font-body-md text-[#909097] text-sm">Exchange Rate</span>
+                  <span className="font-body-md text-[#e5e2e3] text-sm">{rateDisplay}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="font-body-md text-[#909097] text-sm">Protocol Fee (1%)</span>
+                  <span className="font-body-md text-[#e5e2e3] text-sm">${feeUsdc.toFixed(2)}</span>
+                </div>
+              </div>
+            </section>
+
+            {/* Vertical Path Visualization */}
+            <div className="flex flex-col items-center opacity-50">
+              <div className="path-line"></div>
+              <div className="path-arrow"></div>
+            </div>
+
+            {/* Destination Block */}
+            <section className="obsidian-glass monolith-shadow p-8 rounded-xl transition-all group animate-in fade-in slide-in-from-bottom-12 delay-300">
+              <p className="font-label-caps text-[10px] text-[#909097] uppercase mb-6 text-center font-bold tracking-widest">Settlement Account</p>
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-white/5 rounded-lg flex items-center justify-center border border-white/10 group-focus-within:border-[#c0c6de]/30 transition-colors flex-shrink-0">
+                  <span className="material-symbols-outlined text-[#bcc7de] text-3xl">account_balance</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <input
+                    type="text"
+                    value={upiId}
+                    onChange={(e) => setUpiId(e.target.value)}
+                    placeholder="name@upi"
+                    className="w-full bg-transparent border-b border-[#46464c]/50 px-0 py-2 text-lg font-body-lg text-[#e5e2e3] focus:border-[#c0c6de] focus:ring-0 outline-none transition-colors placeholder:text-[#909097]/40 truncate"
+                  />
+                  {upiId && !isValidUpi() && (
+                    <p className="text-[10px] text-[#ffb4ab] mt-1 font-bold tracking-widest uppercase truncate">Invalid format</p>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* Security Badge */}
+            <div className="mt-6 px-4 py-3 rounded-lg border border-white/5 flex gap-4 items-start bg-white/[0.02]">
+              <span className="material-symbols-outlined text-[#c0c6de] text-xl" style={{fontVariationSettings: "'FILL' 1"}}>verified_user</span>
+              <p className="font-label-caps text-[10px] leading-relaxed text-[#909097] tracking-normal normal-case font-bold">Secured by Zk-SNARK technology. Your identity and banking data remain private and encrypted.</p>
+            </div>
+          </>
+        )}
+
+        {status !== "input" && (
+          <section className="obsidian-glass monolith-shadow p-12 rounded-xl flex flex-col items-center text-center animate-in zoom-in duration-500">
+            <div className="w-16 h-16 rounded-full border-4 border-[#c0c6de]/20 border-t-[#c0c6de] animate-spin mb-8"></div>
+            
+            {status === "processing" && (
+              <>
+                <h3 className="font-headline-md text-2xl mb-2 text-[#e5e2e3]">Processing...</h3>
+                <p className="text-sm text-[#909097]">Please confirm the transactions in your wallet.</p>
+              </>
+            )}
+            
+            {status === "matching" && (
+              <>
+                <h3 className="font-headline-md text-2xl mb-2 text-[#e5e2e3]">Matching...</h3>
+                <p className="text-sm text-[#909097]">Finding the best merchant for your order. (Usually 20-90s)</p>
+              </>
+            )}
+            
+            {status === "paying" && (
+              <>
+                <h3 className="font-headline-md text-2xl mb-2 text-[#e5e2e3]">Paying out...</h3>
+                <p className="text-sm text-[#909097]">Merchant is transferring INR to your account.</p>
+              </>
+            )}
+            
+            {status === "error" && (
+              <div className="flex flex-col items-center">
+                <span className="material-symbols-outlined text-[#ffb4ab] text-5xl mb-4">error</span>
+                <h3 className="font-headline-md text-2xl mb-2 text-[#ffb4ab]">Cashout Failed</h3>
+                <p className="text-sm text-[#909097] mb-8">{error}</p>
+                <button onClick={() => setStatus("input")} className="px-8 py-3 rounded-lg border border-white/20 text-[#e5e2e3] font-label-caps tracking-widest text-[10px] uppercase hover:bg-white/5 transition-colors">
+                  Try Again
+                </button>
+              </div>
+            )}
+          </section>
+        )}
+
+      </main>
+
+      {/* Bottom Action Button */}
       {status === "input" && (
-        <div className="flex flex-col gap-5">
-          <h3 className="text-lg font-bold text-center text-[#e5e2e3]">Cash Out to UPI</h3>
-
-          {initError && (
-            <div className="bg-[#93000a]/20 text-[#ffb4ab] p-3 rounded text-sm mb-4 border border-[#93000a]">
-              <span className="font-bold">Initialization Error:</span> {initError}
-            </div>
-          )}
-
-          <div>
-            <div className="flex justify-between mb-1">
-              <label className="label-caps">Amount (USDC)</label>
-              {maxSellable !== null && (
-                <span className="text-xs font-semibold text-[#909097]">Max: {maxSellable} USDC</span>
-              )}
-            </div>
-            <div className="flex items-end border-b border-[#46464c] pb-1 focus-within:border-[#c0c6de] transition-colors">
-              <span className="text-3xl font-bold mr-1 text-[#c0c6de]">$</span>
-              <input
-                type="number"
-                value={amountStr}
-                onChange={(e) => setAmountStr(e.target.value)}
-                placeholder="0.00"
-                className="text-4xl font-bold bg-transparent outline-none w-full text-[#e5e2e3] placeholder:text-[#46464c]"
-              />
-            </div>
-            {maxSellable !== null && amountUsdc > maxSellable && (
-              <p className="text-xs text-[#ffb4ab] mt-1 font-semibold">Amount exceeds your unverified limit of {maxSellable} USDC.</p>
-            )}
+        <div className="fixed bottom-0 left-0 w-full px-6 py-8 z-50 bg-gradient-to-t from-[#0e0e0f] via-[#0e0e0f]/80 to-transparent">
+          <div className="max-w-lg mx-auto">
+            <button 
+              onClick={handleCashout}
+              disabled={!isFormValid || !sellPrice}
+              className={`w-full h-16 obsidian-glass text-[#e5e2e3] font-label-caps text-sm rounded-lg uppercase tracking-[0.3em] transition-all transform flex items-center justify-center gap-3 border border-white/20 hover:border-[#c0c6de]/50 group font-bold ${!isFormValid ? 'opacity-50 cursor-not-allowed' : 'active:scale-[0.98]'}`}
+            >
+              Confirm Cashout
+              <span className="material-symbols-outlined text-lg group-hover:translate-x-1 transition-transform">arrow_forward</span>
+            </button>
           </div>
-
-          <div>
-            <label className="label-caps mb-1 block">UPI ID</label>
-            <input
-              type="text"
-              value={upiId}
-              onChange={(e) => setUpiId(e.target.value)}
-              placeholder="yourname@upi"
-              className="w-full bg-transparent border-b border-[#46464c] px-2 py-3 text-sm outline-none focus:border-[#c0c6de] transition-colors text-[#e5e2e3] placeholder:text-[#46464c]"
-            />
-            {upiId && !isValidUpi() && (
-              <p className="text-xs text-[#ffb4ab] mt-1 font-semibold">Invalid UPI ID format.</p>
-            )}
-          </div>
-
-          <div className="bg-white/5 rounded-xl p-4 flex flex-col gap-2 text-sm">
-            <div className="flex justify-between text-[#909097]">
-              <span>You receive (est.)</span>
-              <span>₹ {estimatedFiat.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-[#909097]">
-              <span>Platform Fee (1%)</span>
-              <span>{feeUsdc.toFixed(2)} USDC</span>
-            </div>
-            <div className="border-t border-[#46464c] my-1"></div>
-            <div className="flex justify-between font-bold text-lg text-[#e5e2e3]">
-              <span>Total Deducted</span>
-              <span>{totalUsdc.toFixed(2)} USDC</span>
-            </div>
-          </div>
-
-          <button
-            onClick={handleCashout}
-            disabled={!isFormValid || !sellPrice}
-            className={`btn-primary w-full py-3 ${!isFormValid ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            Cash Out
-          </button>
-        </div>
-      )}
-
-      {status === "processing" && (
-        <div className="flex flex-col gap-3 items-center text-center py-8">
-          <div className="w-8 h-8 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
-          <p className="font-semibold text-[#e5e2e3]">Confirming Fees & Approval...</p>
-          <p className="text-xs text-[#909097]">Please confirm both transactions in your wallet</p>
-        </div>
-      )}
-
-      {status === "matching" && (
-        <div className="flex flex-col gap-3 items-center text-center py-8">
-          <div className="w-8 h-8 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
-          <p className="font-semibold text-[#e5e2e3]">Matching with Merchant...</p>
-          <p className="text-xs text-[#909097]">Usually takes 20-90 seconds.</p>
-        </div>
-      )}
-
-      {status === "paying" && (
-        <div className="flex flex-col gap-3 items-center text-center py-8">
-          <div className="w-8 h-8 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
-          <p className="font-semibold text-[#e5e2e3]">Merchant is Paying You...</p>
-          <p className="text-xs text-[#909097]">Your UPI ID was sent securely. Waiting for merchant to complete.</p>
-        </div>
-      )}
-
-      {status === "error" && (
-        <div className="flex flex-col gap-3 items-center text-center py-8">
-          <p className="font-semibold text-[#ffb4ab]">Cash Out Failed</p>
-          <p className="text-xs text-[#909097]">{error}</p>
-          <button onClick={() => setStatus("input")} className="btn-secondary mt-2">
-            Try Again
-          </button>
         </div>
       )}
     </div>

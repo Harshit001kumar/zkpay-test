@@ -2,182 +2,114 @@
 
 import { ScanLine, ArrowRightLeft, Globe, Zap, ArrowRight, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
-
-function useInView(options = { threshold: 0.5 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [isInView, setIsInView] = useState(false);
-
-  // Memoize options to prevent unnecessary re-renders in useEffect
-  const optionsMemo = useMemo(() => options, [options.threshold]);
-
-  useEffect(() => {
-    if (!ref.current) return;
-    const observer = new IntersectionObserver(([entry]) => {
-      setIsInView(entry.isIntersecting);
-    }, optionsMemo);
-    observer.observe(ref.current);
-    return () => observer.disconnect();
-  }, [optionsMemo]);
-
-  return { ref, isInView };
-}
+import Image from "next/image";
 
 export default function LandingPage({ login }: { login: () => void }) {
-  const { ref: ref1, isInView: inView1 } = useInView({ threshold: 0.5 });
-  const { ref: ref2, isInView: inView2 } = useInView({ threshold: 0.5 });
-  const { ref: ref3, isInView: inView3 } = useInView({ threshold: 0.5 });
+  // Adding the floating mouse effect logic
+  useEffect(() => {
+    if (window.matchMedia('(min-width: 1024px)').matches) {
+      const handleMouseMove = (e: MouseEvent) => {
+        const moveX = (e.clientX - window.innerWidth / 2) / 100;
+        const moveY = (e.clientY - window.innerHeight / 2) / 100;
+        const card = document.querySelector('.float-animation') as HTMLElement;
+        if (card) {
+          card.style.transform = `translateY(${moveY}px) rotateX(${10 - moveY}deg) rotateY(${moveX}deg)`;
+        }
+      };
+      document.addEventListener('mousemove', handleMouseMove);
+      return () => document.removeEventListener('mousemove', handleMouseMove);
+    }
+  }, []);
 
   return (
-    <div className="min-h-screen bg-[#131315] text-[#e5e2e3] font-sans overflow-x-hidden">
-      
-      {/* Navigation — Frosted Glass */}
-      <nav className="fixed top-0 left-0 right-0 p-6 flex justify-between items-center bg-[#131315]/80 backdrop-blur-glass z-50 border-b border-[#46464c]">
-        <div className="text-xl font-bold tracking-tighter">
-          <span className="text-[#c0c6de]">Zk</span>Pay
+    <div className="font-body-md text-body-md overflow-x-hidden min-h-screen flex flex-col bg-[#131315] text-[#e5e2e3]">
+      <style dangerouslySetInnerHTML={{__html: `
+        .float-animation {
+            animation: floating 6s ease-in-out infinite;
+        }
+        @keyframes floating {
+            0% { transform: translateY(0px) rotateX(5deg); }
+            50% { transform: translateY(-15px) rotateX(10deg); }
+            100% { transform: translateY(0px) rotateX(5deg); }
+        }
+        .mesh-bg {
+            background: radial-gradient(circle at 50% -20%, rgba(255,255,255,0.08) 0%, transparent 50%);
+        }
+      `}} />
+
+      {/* TopAppBar Shell */}
+      <header className="fixed top-0 left-0 w-full z-50 bg-[#131315]/80 backdrop-blur-md flex justify-between items-center px-5 md:px-10 py-4 transition-opacity">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-white/5 border border-white/15 flex items-center justify-center">
+            <span className="material-symbols-outlined text-[#c0c6de]">account_circle</span>
+          </div>
         </div>
-        <button 
-          onClick={login}
-          className="text-sm font-semibold text-[#c6c6cd] hover:text-[#e5e2e3] transition-colors"
-        >
-          Login
+        <h1 className="font-label-caps text-label-caps tracking-[0.15em] font-bold text-[#c0c6de]">ZKPAY</h1>
+        <button onClick={login} className="font-label-caps text-label-caps tracking-[0.15em] font-bold text-[#e5e2e3] hover:text-[#c0c6de] transition-colors">
+          LOGIN
         </button>
-      </nav>
+      </header>
 
-      {/* Hero Section */}
-      <section className="pt-40 pb-20 px-6 flex flex-col items-center text-center max-w-4xl mx-auto min-h-[80vh] justify-center">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass-card-static text-xs font-semibold mb-8 animate-fade-in-up text-[#c0c6de]">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          Live on Base
-        </div>
-        
-        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tighter leading-[1.1] mb-6 animate-fade-in-up text-[#e5e2e3]" style={{ animationDelay: '0.1s' }}>
-          Crypto to Fiat.<br />
-          <span className="text-[#c0c6de]">Seamlessly.</span>
-        </h1>
-        
-        <p className="text-[#909097] text-lg md:text-xl max-w-2xl mb-10 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-          Scan any UPI QR code and pay instantly using your crypto balance. Zero knowledge proofs ensure your transactions are private and secure.
-        </p>
-        
-        <button 
-          onClick={login}
-          className="group relative inline-flex items-center justify-center gap-2 bg-[#E2E8F0] text-[#2a3043] px-8 py-4 rounded-full font-bold text-lg hover:bg-[#cbd5e1] transition-all active:scale-95 animate-fade-in-up"
-          style={{ animationDelay: '0.3s' }}
-        >
-          Connect Wallet
-          <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
-        </button>
-      </section>
-
-      {/* Abstract Scroll Divider */}
-      <div className="w-full h-px bg-gradient-to-r from-transparent via-[#46464c] to-transparent my-10"></div>
-
-      {/* Features Showcase */}
-      <section className="py-24 px-6 max-w-5xl mx-auto">
-        
-        {/* Feature 1: Scan & Pay */}
-        <div ref={ref1} className="flex flex-col md:flex-row items-center gap-16 mb-32">
-          <div className="flex-1 space-y-6">
-            <div className="w-12 h-12 glass-card flex items-center justify-center text-[#c0c6de]">
-              <ScanLine size={24} />
-            </div>
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-[#e5e2e3]">Scan & Pay Any UPI</h2>
-            <p className="text-[#909097] leading-relaxed text-lg">
-              No need to wait for merchant adoption. Scan standard Indian UPI QR codes and pay directly with USDC. We handle the on-chain to off-chain settlement instantly.
-            </p>
-          </div>
-          <div className="flex-1 relative w-full aspect-square md:aspect-auto md:h-[400px] glass-card overflow-hidden">
-            {/* Abstract UI representation */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className={`w-48 h-48 border-[2px] border-[#c0c6de]/30 border-dashed rounded-3xl transition-transform duration-700 ease-out flex items-center justify-center ${inView1 ? 'rotate-12' : ''}`}>
-                <div className="w-32 h-1 bg-[#c0c6de]/50 rounded-full animate-pulse"></div>
+      {/* Main Canvas */}
+      <main className="flex-grow flex flex-col items-center justify-center relative mesh-bg px-5 pt-32 pb-32">
+        {/* Hero Section: Floating Card */}
+        <div className="relative w-full max-w-[400px] aspect-[1.586/1] mb-16 perspective-[1000px]">
+          <div className="float-animation w-full h-full relative group">
+            {/* Glass Credit Card Representation */}
+            <div className="w-full h-full rounded-2xl bg-white/5 backdrop-blur-[40px] border border-white/15 shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 flex flex-col justify-between overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none"></div>
+              
+              <div className="flex justify-between items-start relative z-10">
+                <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold text-[#c0c6de]">ZKPAY BLACK</span>
+                <span className="material-symbols-outlined text-white/50">contactless</span>
+              </div>
+              
+              <div className="relative z-10">
+                <div className="w-8 h-6 rounded bg-white/20 mb-4"></div>
+                <div className="font-display-xl text-3xl md:text-[40px] font-medium tracking-tight text-white mb-1">
+                  **** **** **** 4242
+                </div>
+                <div className="flex justify-between items-center text-[10px] font-label-caps tracking-widest text-[#c6c6cd]">
+                  <span>OSIDIAN</span>
+                  <span>12/28</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Feature 2: Withdraw */}
-        <div ref={ref2} className="flex flex-col md:flex-row-reverse items-center gap-16 mb-32">
-          <div className="flex-1 space-y-6">
-            <div className="w-12 h-12 glass-card flex items-center justify-center text-[#c0c6de]">
-              <ArrowRightLeft size={24} />
-            </div>
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-[#e5e2e3]">Withdraw to Bank</h2>
-            <p className="text-[#909097] leading-relaxed text-lg">
-              Convert your crypto directly to fiat and deposit into your bank account. Our liquidity network ensures you get the best rates with minimal slippage.
-            </p>
+        <div className="text-center mb-12 max-w-lg">
+          <h2 className="text-4xl md:text-5xl font-display-xl font-bold tracking-tighter mb-4 text-[#e5e2e3]">
+            Crypto to Fiat. <span className="text-[#c0c6de]">Instantly.</span>
+          </h2>
+          <p className="text-[#909097] text-lg font-body-md leading-relaxed">
+            Scan any UPI QR code and pay directly from your self-custodial wallet. Settled on Base.
+          </p>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-4 w-full max-w-sm">
+          <button onClick={login} className="flex-1 bg-[#c0c6de] text-[#2a3043] py-4 rounded-xl font-label-caps text-label-caps uppercase flex items-center justify-center gap-2 hover:opacity-90 active:scale-95 transition-all duration-200">
+            <span className="material-symbols-outlined text-[18px]">account_balance_wallet</span>
+            Connect Wallet
+          </button>
+        </div>
+
+        {/* Secondary Info (Minimalist Bento Hint) */}
+        <div className="grid grid-cols-2 gap-4 w-full max-w-sm mt-8 opacity-60">
+          <div className="bg-white/5 backdrop-blur-lg rounded-2xl p-4 border border-white/15">
+            <p className="text-[10px] font-label-caps text-[#c6c6cd] mb-1 tracking-widest">NETWORK</p>
+            <p className="font-headline-md text-[#c0c6de] text-[14px] font-medium tracking-tight">Base Mainnet</p>
           </div>
-          <div className="flex-1 relative w-full aspect-square md:aspect-auto md:h-[400px] glass-card overflow-hidden">
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-              <div className={`w-32 h-16 glass-card-elevated flex items-center justify-center font-mono font-bold text-[#c0c6de] transition-transform duration-500 ${inView2 ? '-translate-y-2' : ''}`}>
-                100 USDC
-              </div>
-              <ArrowRight size={24} className={`rotate-90 transition-colors ${inView2 ? 'text-[#c0c6de]' : 'text-[#46464c]'}`} />
-              <div className={`w-32 h-16 bg-[#E2E8F0] text-[#2a3043] rounded-2xl flex items-center justify-center font-mono font-bold transition-transform duration-500 ${inView2 ? 'translate-y-2' : ''}`}>
-                ₹8,350
-              </div>
+          <div className="bg-white/5 backdrop-blur-lg rounded-2xl p-4 border border-white/15">
+            <p className="text-[10px] font-label-caps text-[#c6c6cd] mb-1 tracking-widest">SAFETY</p>
+            <div className="flex items-center gap-1">
+              <span className="material-symbols-outlined text-[14px] text-emerald-400">shield</span>
+              <p className="font-headline-md text-[#c0c6de] text-[14px] font-medium tracking-tight">Self-Custodial</p>
             </div>
           </div>
         </div>
-
-        {/* Feature 3: Expansion */}
-        <div ref={ref3} className="flex flex-col md:flex-row items-center gap-16">
-          <div className="flex-1 space-y-6">
-            <div className="w-12 h-12 glass-card flex items-center justify-center text-[#c0c6de]">
-              <Globe size={24} />
-            </div>
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-[#e5e2e3]">Global Expansion</h2>
-            <p className="text-[#909097] leading-relaxed text-lg">
-              Starting with India&apos;s UPI, our architecture is built to scale. We are actively expanding to support regional payment networks across Southeast Asia, Europe, and LATAM.
-            </p>
-          </div>
-          <div className="flex-1 relative w-full aspect-square md:aspect-auto md:h-[400px] glass-card overflow-hidden">
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Globe size={120} strokeWidth={1} className={`transition-all duration-700 ease-out ${inView3 ? 'scale-110 text-[#c0c6de]' : 'text-[#46464c]'}`} />
-              <div className="absolute flex gap-2">
-                <div className="w-3 h-3 bg-[#c0c6de] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                <div className="w-3 h-3 bg-[#c0c6de] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                <div className="w-3 h-3 bg-[#c0c6de] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </section>
-
-      {/* Value Props */}
-      <section className="bg-[#0e0e0f] border-t border-[#46464c] py-24 px-6">
-        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12">
-          <div className="glass-card p-8 hover:border-[#c0c6de]/20 transition-colors">
-            <ShieldCheck size={32} className="mb-6 text-[#c0c6de]" />
-            <h3 className="text-xl font-bold mb-3 text-[#e5e2e3]">Self-Custodial by Design</h3>
-            <p className="text-[#909097]">
-              Your keys, your crypto. ZkPay uses embedded wallets to ensure you never give up custody of your assets until the moment you pay.
-            </p>
-          </div>
-          <div className="glass-card p-8 hover:border-[#c0c6de]/20 transition-colors">
-            <Zap size={32} className="mb-6 text-[#c0c6de]" />
-            <h3 className="text-xl font-bold mb-3 text-[#e5e2e3]">Built on Base</h3>
-            <p className="text-[#909097]">
-              Leveraging the speed and low fees of the Base L2 network to make crypto micro-transactions viable for everyday merchant payments.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Footer */}
-      <footer className="py-24 px-6 text-center flex flex-col items-center">
-        <h2 className="text-4xl font-bold tracking-tight mb-8 text-[#e5e2e3]">Ready to spend?</h2>
-        <button 
-          onClick={login}
-          className="bg-[#E2E8F0] text-[#2a3043] px-10 py-5 rounded-full font-bold text-xl hover:bg-[#cbd5e1] transition-all hover:scale-105 active:scale-95"
-        >
-          Create ZkPay Wallet
-        </button>
-        <p className="mt-12 text-sm text-[#46464c]">
-          © 2026 ZkPay. All rights reserved.
-        </p>
-      </footer>
+      </main>
     </div>
   );
 }

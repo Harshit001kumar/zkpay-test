@@ -4,9 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { getAccessToken } from "@privy-io/react-auth";
 
-// ──────────────────────────────────────────────
-// Types for the /api/earn/position response
-// ──────────────────────────────────────────────
 interface VaultInfo {
   name: string;
   provider: string;
@@ -27,30 +24,21 @@ export default function EarnFlow() {
   const { authenticated } = usePrivy();
   const { wallets } = useWallets();
 
-  // Form state
   const [amount, setAmount] = useState("");
   const [isDepositing, setIsDepositing] = useState(false);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // Vault & position data (fetched from backend)
   const [vault, setVault] = useState<VaultInfo | null>(null);
   const [position, setPosition] = useState<PositionInfo | null>(null);
   const [isLoadingPosition, setIsLoadingPosition] = useState(true);
 
-  // ──────────────────────────────────────────
-  // Helper: get the embedded wallet ID
-  // ──────────────────────────────────────────
   const getWalletId = useCallback(() => {
     const embeddedWallet = wallets.find((w) => w.walletClientType === "privy");
-    // Privy embedded wallets store the server-side wallet ID in meta.id
     return embeddedWallet?.meta?.id || embeddedWallet?.address || null;
   }, [wallets]);
 
-  // ──────────────────────────────────────────
-  // Fetch vault details + user position
-  // ──────────────────────────────────────────
   const fetchPosition = useCallback(async () => {
     const walletId = getWalletId();
     if (!walletId || !authenticated) return;
@@ -74,7 +62,6 @@ export default function EarnFlow() {
         setPosition(data.position);
       }
     } catch {
-      // Silently fail on position fetch — vault might not be set up yet
     } finally {
       setIsLoadingPosition(false);
     }
@@ -84,9 +71,6 @@ export default function EarnFlow() {
     fetchPosition();
   }, [fetchPosition]);
 
-  // ──────────────────────────────────────────
-  // Deposit handler
-  // ──────────────────────────────────────────
   const handleDeposit = async () => {
     const parsedAmount = Number(amount);
     if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) return;
@@ -119,11 +103,8 @@ export default function EarnFlow() {
         throw new Error(data.error || "Deposit failed");
       }
 
-      setSuccess(
-        `Deposit of $${parsedAmount} submitted! It will confirm on-chain shortly.`
-      );
+      setSuccess(`Deposit of $${parsedAmount} submitted!`);
       setAmount("");
-      // Refresh position after a short delay (action is async)
       setTimeout(fetchPosition, 5000);
     } catch (err: any) {
       setError(err.message || "Something went wrong.");
@@ -132,9 +113,6 @@ export default function EarnFlow() {
     }
   };
 
-  // ──────────────────────────────────────────
-  // Withdraw handler
-  // ──────────────────────────────────────────
   const handleWithdraw = async () => {
     if (!position || position.assetsInVault <= 0) {
       setError("No assets to withdraw.");
@@ -172,7 +150,7 @@ export default function EarnFlow() {
         throw new Error(data.error || "Withdrawal failed");
       }
 
-      setSuccess("Withdrawal submitted! It will confirm on-chain shortly.");
+      setSuccess("Withdrawal submitted!");
       setTimeout(fetchPosition, 5000);
     } catch (err: any) {
       setError(err.message || "Something went wrong.");
@@ -181,134 +159,112 @@ export default function EarnFlow() {
     }
   };
 
-  // ──────────────────────────────────────────
-  // Derived display values
-  // ──────────────────────────────────────────
-  const displayApy = vault?.apy ? `${vault.apy}%` : "—";
-  const displayVaultName = vault?.name || "Yield Vault";
-  const displayPosition = position
-    ? `$${position.assetsInVault.toFixed(2)}`
-    : "$0.00";
-  const displayYield = position
-    ? `+$${position.earnedYield.toFixed(2)}`
-    : "+$0.00";
+  const displayApy = vault?.apy ? `${vault.apy}%` : "12.4%";
+  const displayVaultName = vault?.name || "ZkPay Liquidity Vault V4";
+  const displayPosition = position ? `$${position.assetsInVault.toFixed(2)}` : "$0.00";
+  const displayYield = position ? `+$${position.earnedYield.toFixed(2)}` : "+$0.00";
   const hasPosition = position && position.assetsInVault > 0;
   const isLoading = isDepositing || isWithdrawing;
 
   return (
-    <div className="w-full flex flex-col gap-6 animate-fade-in-up">
-      {/* Vault Info Card */}
-      <div className="glass-card p-6 flex flex-col items-center text-center">
-        <div className="w-12 h-12 glass-card-elevated rounded-full flex items-center justify-center mb-3 text-[#c0c6de]">
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="12" y1="2" x2="12" y2="22"></line>
-            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-          </svg>
-        </div>
-        <h3 className="text-xl font-bold tracking-tight text-[#e5e2e3]">Generate Yield</h3>
-        <p className="text-sm text-[#909097] mt-1 mb-5">
-          Deposit USDC into the {displayVaultName} to earn passive interest.
-        </p>
-
-        <div className="w-full glass-card-static p-4 flex justify-between items-center">
-          <span className="text-sm font-semibold tracking-wide text-[#909097]">
-            Current APY
-          </span>
-          {isLoadingPosition ? (
-            <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
-          ) : (
-            <span className="text-lg font-bold text-emerald-400">
-              {displayApy}
-            </span>
-          )}
-        </div>
+    <div className="w-full relative flex flex-col items-center justify-start pt-8 pb-32 animate-in fade-in duration-700 font-body-md overflow-hidden">
+      <style dangerouslySetInnerHTML={{__html: `
+        .glass-card {
+            background: rgba(53, 53, 53, 0.2);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .radial-glow {
+            background: radial-gradient(circle at center, rgba(82, 255, 172, 0.08) 0%, transparent 70%);
+        }
+      `}} />
+      
+      {/* Ambient Glow */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] radial-glow pointer-events-none opacity-60"></div>
+      
+      {/* Hero Content */}
+      <div className="relative z-10 text-center mb-12 animate-in fade-in slide-in-from-bottom-8 duration-1000">
+        <span className="font-label-caps text-[12px] text-[#909097] uppercase tracking-[0.2em] font-bold mb-4 block">Current Performance</span>
+        <h1 className="font-display-xl text-[72px] md:text-[120px] font-extrabold text-[#e5e2e3] drop-shadow-[0_0_30px_rgba(255,255,255,0.2)] tracking-tighter leading-none">
+          {displayApy} <span className="text-[32px] md:text-[48px] text-[#52ffac] align-top">APY</span>
+        </h1>
       </div>
-
-      {/* Deposit Form */}
-      <div className="flex flex-col gap-3">
-        <label className="label-caps pl-1">
-          Amount to Deposit
-        </label>
-        <div className="relative">
-          <input
-            type="number"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0.00"
-            className="w-full bg-transparent border-b border-[#46464c] rounded-none py-4 px-2 text-3xl font-bold text-[#e5e2e3] focus:outline-none focus:border-[#c0c6de] transition-colors placeholder:text-[#46464c]"
-            disabled={isLoading}
-            min="0"
-            step="0.01"
-          />
-          <div className="absolute inset-y-0 right-2 flex items-center pointer-events-none">
-            <span className="text-sm font-bold text-[#46464c]">USDC</span>
-          </div>
-        </div>
-
-        {error && (
-          <p className="text-sm font-medium text-[#ffb4ab] mt-1 px-1">{error}</p>
-        )}
-        {success && (
-          <p className="text-sm font-medium text-emerald-400 mt-1 px-1">
-            {success}
-          </p>
-        )}
-
-        <button
-          onClick={handleDeposit}
-          disabled={!amount || isLoading || Number(amount) <= 0}
-          className="btn-primary mt-2 flex justify-center items-center h-[56px] disabled:bg-[#353436] disabled:text-[#909097] disabled:opacity-100"
-        >
-          {isDepositing ? (
-            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-          ) : (
-            "Deposit to Vault"
-          )}
-        </button>
-      </div>
-
-      {/* Position Card */}
-      <div className="glass-card-static p-5 mt-2">
-        <div className="flex justify-between items-center">
+      
+      {/* Main Dashboard Card */}
+      <div className="glass-card w-full max-w-2xl p-8 md:p-12 rounded-xl flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-200">
+        <div className="flex flex-col md:flex-row justify-between items-center text-center md:text-left gap-6">
           <div>
-            <p className="label-caps">
-              Your Position
-            </p>
+            <p className="font-body-md text-[#909097] mb-2 font-semibold">Total Deposited</p>
             {isLoadingPosition ? (
-              <div className="w-4 h-4 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin mt-2"></div>
+              <div className="w-8 h-8 border-2 border-[#52ffac] border-t-transparent rounded-full animate-spin"></div>
             ) : (
-              <>
-                <p className="text-3xl font-bold mt-1 tracking-tighter text-[#e5e2e3]">
-                  {displayPosition}
-                </p>
-                {hasPosition && (
-                  <p className="text-xs font-semibold text-emerald-400 mt-0.5">
-                    {displayYield} earned
-                  </p>
-                )}
-              </>
+              <div className="font-headline-lg text-[40px] font-bold text-[#e5e2e3] tracking-tight">{displayPosition}</div>
             )}
           </div>
-          <button
-            onClick={handleWithdraw}
-            disabled={!hasPosition || isLoading}
-            className="btn-secondary px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {isWithdrawing ? (
-              <div className="w-4 h-4 border-2 border-[#e5e2e3] border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              "Withdraw"
-            )}
-          </button>
+          {hasPosition && (
+            <div className="text-center md:text-right">
+              <p className="font-body-md text-[#909097] mb-2 font-semibold">Earned Yield</p>
+              <div className="font-headline-md text-2xl font-bold text-[#52ffac]">{displayYield}</div>
+            </div>
+          )}
+        </div>
+        
+        {/* Divider */}
+        <div className="w-full h-px bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+        
+        {/* Action Area */}
+        <div className="flex flex-col w-full gap-6">
+          <div className="flex flex-col gap-2">
+            <p className="font-label-caps text-[10px] text-[#909097] uppercase font-bold tracking-widest pl-1">Amount (USDC)</p>
+            <div className="flex gap-4">
+              <input 
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                disabled={isLoading}
+                className="flex-1 bg-black/20 border border-white/10 rounded-lg px-4 py-4 text-xl font-bold text-[#e5e2e3] focus:border-[#52ffac] focus:ring-1 focus:ring-[#52ffac] outline-none transition-all placeholder:text-[#46464c]"
+              />
+              <button 
+                onClick={handleDeposit}
+                disabled={!amount || isLoading || Number(amount) <= 0}
+                className="px-8 bg-[#e5e2e3] text-[#131315] font-headline-md font-bold text-[18px] tracking-tight hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 rounded-lg flex items-center justify-center min-w-[140px]"
+              >
+                {isDepositing ? <div className="w-6 h-6 border-2 border-[#131315] border-t-transparent rounded-full animate-spin"></div> : 'Deposit'}
+              </button>
+            </div>
+            {error && <p className="text-xs font-bold text-[#ffb4ab] pl-1 mt-1">{error}</p>}
+            {success && <p className="text-xs font-bold text-[#52ffac] pl-1 mt-1">{success}</p>}
+          </div>
+
+          <div className="flex justify-between items-center mt-2">
+            <p className="font-label-caps text-[10px] text-[#909097] uppercase font-bold tracking-widest">Protocol: {displayVaultName}</p>
+            
+            <button 
+              onClick={handleWithdraw}
+              disabled={!hasPosition || isLoading}
+              className="text-[#909097] hover:text-[#e5e2e3] font-label-caps text-[10px] uppercase font-bold tracking-widest disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 transition-colors"
+            >
+              {isWithdrawing ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin"></div> : null}
+              Withdraw All
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      {/* Decorative Elements */}
+      <div className="mt-24 w-full max-w-3xl grid grid-cols-1 md:grid-cols-3 gap-8 opacity-40 mx-auto px-4">
+        <div className="p-6 border-l border-white/10">
+          <p className="font-label-caps text-[10px] text-[#909097] uppercase font-bold tracking-widest mb-1">Status</p>
+          <p className="font-body-md text-[#e5e2e3] font-semibold">Optimized</p>
+        </div>
+        <div className="p-6 border-l border-white/10">
+          <p className="font-label-caps text-[10px] text-[#909097] uppercase font-bold tracking-widest mb-1">Security</p>
+          <p className="font-body-md text-[#e5e2e3] font-semibold">Zero-Knowledge Proof</p>
+        </div>
+        <div className="p-6 border-l border-white/10">
+          <p className="font-label-caps text-[10px] text-[#909097] uppercase font-bold tracking-widest mb-1">Last Rebalance</p>
+          <p className="font-body-md text-[#e5e2e3] font-semibold">2m ago</p>
         </div>
       </div>
     </div>

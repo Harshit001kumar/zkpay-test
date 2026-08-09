@@ -15,13 +15,13 @@ import { MerchantData } from "@/lib/types";
 const Scanner = dynamic(() => import("@/components/Scanner"), { ssr: false });
 const DepositFlow = dynamic(() => import("@/components/DepositFlow"), { ssr: false });
 
-type ActiveTab = "pay" | "cashout" | "deposit";
+type ActiveTab = "pay" | "cashout" | "deposit" | "vault";
 
 export default function Dashboard() {
   const { ready, authenticated } = usePrivy();
   const { wallets } = useWallets();
   
-  const [activeTab, setActiveTab] = useState<ActiveTab>("pay");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("vault");
   const [isScanning, setIsScanning] = useState(false);
   const [merchantId, setMerchantId] = useState<MerchantData | null>(null);
 
@@ -40,7 +40,6 @@ export default function Dashboard() {
     }
   });
 
-
   const balance = bal !== undefined ? formatUnits(bal as bigint, 6) : "0.00";
 
   const handleScan = useCallback((data: MerchantData) => {
@@ -49,105 +48,103 @@ export default function Dashboard() {
   }, []);
 
   const switchTab = (tab: ActiveTab) => {
-    setActiveTab(tab);
-    setMerchantId(null);
+    if (tab === "pay") {
+      setIsScanning(true);
+    } else {
+      setActiveTab(tab);
+      setMerchantId(null);
+    }
   };
 
+  if (isScanning) {
+    return <Scanner onScan={handleScan} onCancel={() => setIsScanning(false)} />;
+  }
+
+  if (merchantId) {
+    return <PaymentEntry merchantData={merchantId} onCancel={() => setMerchantId(null)} />;
+  }
+
+  // Temporary fix for routing back to dashboard from sub-flows
+  if (activeTab === "cashout") return <div className="p-8"><button onClick={() => setActiveTab("vault")} className="text-primary mb-4">&larr; Back</button><CashoutFlow /></div>;
+  if (activeTab === "deposit") return <div className="p-8"><button onClick={() => setActiveTab("vault")} className="text-primary mb-4">&larr; Back</button><DepositFlow /></div>;
+
   return (
-    <div className="flex flex-col items-center">
-      {isScanning && (
-        <Scanner onScan={handleScan} onCancel={() => setIsScanning(false)} />
-      )}
-
-      <div className="w-full max-w-md px-5 flex flex-col gap-6">
-
-        {/* Balance Card — Glass */}
-        <section
-          className="glass-card p-6 flex flex-col items-center gap-1 animate-fade-in-up animate-glow-pulse"
-          style={{ animationDelay: "0.05s" }}
-        >
-          <p className="label-caps text-[#909097]">
-            USDC Balance
-          </p>
-          <h2 className="text-4xl font-bold tracking-tighter mt-1 text-[#e5e2e3]">${balance}</h2>
-          <p className="text-xs text-[#46464c] mt-1">{CHAIN.name}</p>
-        </section>
-
-        {/* Tab Switcher — Glass Pill */}
-        <nav
-          className="flex glass-card-static p-1 gap-1 animate-fade-in-up"
-          style={{ animationDelay: "0.1s" }}
-        >
-          {([
-            { id: "pay" as ActiveTab, label: "Pay" },
-            { id: "cashout" as ActiveTab, label: "Cash Out" },
-            { id: "deposit" as ActiveTab, label: "Deposit" },
-          ]).map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => switchTab(tab.id)}
-              className={`flex-1 text-sm font-semibold py-2.5 rounded-xl transition-all ${
-                activeTab === tab.id
-                  ? "bg-white/10 text-[#c0c6de] shadow-sm"
-                  : "text-[#909097] hover:text-[#c6c6cd]"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-
-        {/* Tab Content */}
-        <div className="animate-fade-in-up" style={{ animationDelay: "0.15s" }}>
-          {/* ── Pay Tab ── */}
-          {activeTab === "pay" && !merchantId && (
-            <div className="glass-card p-8 flex flex-col items-center gap-4 text-center">
-              <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center text-[#c0c6de]">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 7V5a2 2 0 0 1 2-2h2" />
-                  <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-                  <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-                  <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-                  <rect x="7" y="7" width="10" height="10" rx="1" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-[#e5e2e3]">Scan to Pay</h3>
-                <p className="text-sm text-[#909097] mt-1">
-                  Scan a merchant QR code to pay in INR via UPI.
-                </p>
-              </div>
-              <button
-                onClick={() => setIsScanning(true)}
-                className="btn-primary w-full mt-2"
-              >
-                Open Scanner
-              </button>
+    <main className="relative z-10 max-w-[1440px] mx-auto pt-8 pb-24 px-5 md:px-8">
+      {/* Hero Section */}
+      <section className="mb-8">
+        <div className="bg-white/5 backdrop-blur-[40px] border border-white/15 rounded-xl p-8 md:p-12 relative overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)] transition-all hover:shadow-[0_30px_60px_rgba(0,0,0,1),0_0_0_1px_rgba(255,255,255,0.2)] group">
+          <div className="absolute top-0 right-0 p-6 opacity-10 pointer-events-none">
+            <span className="material-symbols-outlined text-[160px] leading-none text-white font-light">security</span>
+          </div>
+          <div className="relative z-10">
+            <div className="flex items-center gap-3 mb-8">
+              <span className="font-label-caps text-[#c0c6de] text-[10px] tracking-[0.25em] font-bold">TOTAL PORTFOLIO</span>
+              <div className="h-px w-8 bg-white/20"></div>
             </div>
-          )}
-
-          {activeTab === "pay" && merchantId && (
-            <PaymentEntry merchantData={merchantId} onCancel={() => setMerchantId(null)} />
-          )}
-
-          {/* ── Cash Out Tab ── */}
-          {activeTab === "cashout" && <CashoutFlow />}
-
-          {/* ── Deposit Tab ── */}
-          {activeTab === "deposit" && <DepositFlow />}
+            <h1 className="font-display-xl text-[#e5e2e3] text-5xl md:text-[80px] tracking-tighter mb-12 font-medium">
+              ${balance} <span className="text-[#c6c6cd]/40 font-extralight text-3xl md:text-[80px]">USDC</span>
+            </h1>
+            <div className="grid grid-cols-2 md:flex md:items-center gap-4 md:gap-16 pt-8 border-t border-white/10">
+              <div className="flex flex-col gap-1">
+                <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">NETWORK</span>
+                <span className="font-body-md font-medium tracking-tight text-[#e5e2e3]">{CHAIN.name}</span>
+              </div>
+              <div className="hidden md:block w-px h-8 bg-white/10"></div>
+              <div className="flex flex-col gap-1 text-right md:text-left">
+                <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">LAST SYNC</span>
+                <span className="font-body-md font-medium text-[#c0c6de] tracking-tight">Just now</span>
+              </div>
+            </div>
+          </div>
         </div>
+      </section>
 
-        {/* Recent Activity */}
-        {activeTab === "pay" && !merchantId && (
-          <section
-            className="animate-fade-in-up border-t border-[#46464c] pt-6"
-            style={{ animationDelay: "0.2s" }}
-          >
-            <h3 className="text-base font-bold mb-3 text-[#e5e2e3]">Recent Activity</h3>
-            <PaymentHistory />
-          </section>
-        )}
-      </div>
-    </div>
+      {/* Bento Actions */}
+      <section className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-12">
+        <div className="md:col-span-8 grid grid-cols-3 gap-4">
+          <button onClick={() => switchTab("pay")} className="bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 rounded-xl flex flex-col items-center justify-center gap-3 group hover:bg-white/10 transition-all border border-white/15 text-[#e5e2e3]">
+            <span className="material-symbols-outlined text-2xl group-hover:scale-110 transition-transform">payments</span>
+            <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">PAY</span>
+          </button>
+          <button onClick={() => switchTab("cashout")} className="bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 rounded-xl flex flex-col items-center justify-center gap-3 group hover:bg-white/10 transition-all border border-white/15 text-[#e5e2e3]">
+            <span className="material-symbols-outlined text-2xl group-hover:scale-110 transition-transform">north_east</span>
+            <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">CASH OUT</span>
+          </button>
+          <button onClick={() => switchTab("deposit")} className="bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 rounded-xl flex flex-col items-center justify-center gap-3 group hover:bg-white/10 transition-all border border-white/15 text-[#e5e2e3]">
+            <span className="material-symbols-outlined text-2xl group-hover:scale-110 transition-transform">south_west</span>
+            <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">DEPOSIT</span>
+          </button>
+        </div>
+        <div className="md:col-span-4 bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 rounded-xl flex items-center justify-between border border-white/15 text-[#e5e2e3]">
+          <div>
+            <p className="font-label-caps text-[9px] text-[#c6c6cd] mb-1 tracking-[0.25em] font-bold">TRUST SCORE</p>
+            <p className="font-headline-md text-3xl font-medium tracking-tight">98<span className="text-[#c6c6cd]/30 text-base font-light ml-1">/100</span></p>
+          </div>
+          <div className="w-12 h-12 rounded-full border border-[#c0c6de]/30 flex items-center justify-center bg-[#c0c6de]/5">
+            <span className="material-symbols-outlined text-[#c0c6de] text-xl">verified</span>
+          </div>
+        </div>
+      </section>
+
+      {/* Transaction Ledger */}
+      <section>
+        <div className="flex items-center justify-between mb-6 px-1 text-[#e5e2e3]">
+          <h2 className="font-label-caps text-[10px] text-[#c6c6cd] tracking-[0.25em] font-bold">RECENT ACTIVITY</h2>
+          <div className="flex gap-6">
+            <button className="text-[9px] font-label-caps text-[#c0c6de] border-b border-[#c0c6de] font-bold tracking-[0.25em]">ALL</button>
+            <button className="text-[9px] font-label-caps text-[#c6c6cd]/60 hover:text-[#e5e2e3] transition-colors font-bold tracking-[0.25em]">SENT</button>
+            <button className="text-[9px] font-label-caps text-[#c6c6cd]/60 hover:text-[#e5e2e3] transition-colors font-bold tracking-[0.25em]">RECEIVED</button>
+          </div>
+        </div>
+        <div className="bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] rounded-xl overflow-hidden border border-white/15">
+          <PaymentHistory />
+        </div>
+        <div className="mt-8 flex justify-center">
+          <button className="font-label-caps text-[9px] font-bold text-[#c6c6cd] hover:text-[#c0c6de] transition-all flex items-center gap-3 tracking-[0.3em]">
+             EXPORT AUDIT LOG <span className="material-symbols-outlined text-[14px]">download</span>
+          </button>
+        </div>
+      </section>
+    </main>
   );
 }
