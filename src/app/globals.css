@@ -2,15 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=Geist:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap');
 
+/* ─── Obsidian Glass Design System ─── */
 :root {
-  --color-surface: #ffffff;
-  --color-on-surface: #0a0a0b;
-  --color-on-surface-variant: #6b7280;
-  --color-outline: #e5e7eb;
-  --color-outline-variant: #f3f4f6;
-  --color-primary: #000000;
+  --color-background: #131315;
+  --color-surface: #131315;
+  --color-surface-container: #201f21;
+  --color-surface-container-high: #2a2a2b;
+  --color-surface-container-highest: #353436;
+  --color-surface-container-low: #1b1b1d;
+  --color-on-surface: #e5e2e3;
+  --color-on-surface-variant: #c6c6cd;
+  --color-outline: #909097;
+  --color-outline-variant: #46464c;
+  --color-primary: #c0c6de;
+  --color-on-primary: #2a3043;
+  --color-secondary: #bcc7de;
+  --color-error: #ffb4ab;
+  --color-silver: #E2E8F0;
+
+  /* Glass properties */
+  --glass-bg: rgba(255, 255, 255, 0.03);
+  --glass-bg-elevated: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-border-strong: rgba(255, 255, 255, 0.2);
+  --glass-blur: 40px;
+  --glass-blur-heavy: 60px;
 }
 
 * {
@@ -21,14 +39,14 @@
 
 body {
   font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
-  background-color: var(--color-surface);
+  background-color: var(--color-background);
   color: var(--color-on-surface);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: 'Hanken Grotesk', sans-serif;
   font-weight: 700;
   letter-spacing: -0.025em;
 }
@@ -44,31 +62,44 @@ input[type=number] {
 }
 
 @layer components {
+  /* ─── Glass Cards ─── */
   .glass-card {
-    background: #ffffff;
-    border: 1px solid var(--color-outline);
-    border-radius: 12px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
     transition: all 0.2s ease;
   }
 
   .glass-card:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    border-color: var(--glass-border-strong);
+  }
+
+  .glass-card-elevated {
+    background: var(--glass-bg-elevated);
+    backdrop-filter: blur(var(--glass-blur-heavy));
+    -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
+    border: 1px solid var(--glass-border-strong);
+    border-radius: 16px;
   }
 
   .glass-card-static {
-    background: #ffffff;
-    border: 1px solid var(--color-outline);
-    border-radius: 12px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
   }
 
+  /* ─── Buttons ─── */
   .btn-primary {
-    background: #000000;
-    color: #ffffff;
-    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--color-silver);
+    color: var(--color-on-primary);
+    font-family: 'Hanken Grotesk', sans-serif;
     font-weight: 600;
     border: none;
-    border-radius: 10px;
+    border-radius: 12px;
     padding: 14px 28px;
     font-size: 14px;
     cursor: pointer;
@@ -77,40 +108,46 @@ input[type=number] {
   }
 
   .btn-primary:hover {
-    background: #1a1a1a;
+    background: #cbd5e1;
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
 
   .btn-primary:active {
     transform: scale(0.98) translateY(0);
-    box-shadow: none;
+  }
+
+  .btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
   }
 
   .btn-secondary {
     background: transparent;
-    color: #000000;
-    font-family: 'Plus Jakarta Sans', sans-serif;
+    color: var(--color-on-surface);
+    font-family: 'Hanken Grotesk', sans-serif;
     font-weight: 600;
-    border: 1px solid var(--color-outline);
-    border-radius: 10px;
+    border: 1px solid var(--glass-border-strong);
+    border-radius: 12px;
     padding: 14px 28px;
     font-size: 14px;
     cursor: pointer;
     transition: all 0.15s ease;
     text-align: center;
+    backdrop-filter: blur(10px);
   }
 
   .btn-secondary:hover {
-    background: #f9fafb;
-    border-color: #d1d5db;
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--color-outline);
   }
 
+  /* ─── Typography Utilities ─── */
   .label-caps {
-    font-family: 'Geist', monospace;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
+    font-family: 'Hanken Grotesk', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--color-on-surface-variant);
   }
@@ -148,6 +185,17 @@ input[type=number] {
   }
 }
 
+@keyframes shimmer {
+  0% { opacity: 0.5; }
+  50% { opacity: 1; }
+  100% { opacity: 0.5; }
+}
+
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(192, 198, 222, 0.1); }
+  50% { box-shadow: 0 0 40px rgba(192, 198, 222, 0.2); }
+}
+
 .animate-fade-in-up {
   opacity: 0;
   animation: fadeInUp 0.5s ease-out forwards;
@@ -157,11 +205,19 @@ input[type=number] {
   animation: receiptPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
+.animate-shimmer {
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+.animate-glow-pulse {
+  animation: glowPulse 3s ease-in-out infinite;
+}
+
 /* ─── Scanner Overlay ─── */
 .scanner-overlay {
   position: fixed;
   inset: 0;
-  background: #ffffff;
+  background: var(--color-background);
   z-index: 50;
   display: flex;
   flex-direction: column;
@@ -173,6 +229,7 @@ input[type=number] {
 /* Override html5-qrcode default styles */
 #reader {
   border: none !important;
+  background: transparent !important;
 }
 
 #reader video {
@@ -183,34 +240,20 @@ input[type=number] {
   min-height: 260px;
 }
 
-/* ─── Bottom Nav ─── */
-.bottom-nav {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  border-top: 1px solid var(--color-outline);
-  padding: 8px 16px;
-  padding-bottom: max(8px, env(safe-area-inset-bottom));
-  z-index: 40;
-}
-
 /* ─── Status Chips ─── */
 .status-completed {
-  color: #000;
-  background: #f0f0f0;
+  color: var(--color-primary);
+  background: rgba(192, 198, 222, 0.1);
 }
 
 .status-pending {
-  color: #555;
-  background: #f9f9f9;
+  color: var(--color-on-surface-variant);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .status-failed {
-  color: #dc2626;
-  background: #fef2f2;
+  color: var(--color-error);
+  background: rgba(255, 180, 171, 0.1);
 }
 
 /* ─── Scrollbar ─── */
@@ -223,6 +266,12 @@ input[type=number] {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: var(--color-outline-variant);
   border-radius: 4px;
+}
+
+/* ─── Selection ─── */
+::selection {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
 }

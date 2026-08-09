@@ -34,10 +34,10 @@ export default function RootLayout({
           href="https://fonts.gstatic.com"
           crossOrigin="anonymous"
         />
-        <meta name="theme-color" content="#ffffff" />
+        <meta name="theme-color" content="#131315" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </head>
-      <body className="antialiased bg-white text-black">
+      <body className="antialiased bg-[#131315] text-[#e5e2e3]">
         <Providers>
           {children}
         </Providers>

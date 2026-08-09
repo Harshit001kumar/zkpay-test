@@ -133,9 +133,10 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         }]
       });
 
-      // Poll for batch status
+      // Poll for batch status (max 2 minutes = 60 polls × 2s)
       let txHash = "";
-      while (true) {
+      const MAX_POLLS = 60;
+      for (let i = 0; i < MAX_POLLS; i++) {
         const statusRes: any = await provider.request({
           method: "wallet_getCallsStatus",
           params: [id]
@@ -143,6 +144,12 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         if (statusRes.status === "CONFIRMED" && statusRes.receipts && statusRes.receipts.length > 0) {
           txHash = statusRes.receipts[0].transactionHash || statusRes.receipts[0].blockHash; 
           break;
+        }
+        if (statusRes.status === "FAILED" || statusRes.status === "REJECTED") {
+          throw new Error(`Transaction ${statusRes.status.toLowerCase()} by wallet`);
+        }
+        if (i === MAX_POLLS - 1) {
+          throw new Error("Transaction confirmation timed out after 2 minutes");
         }
         await new Promise(r => setTimeout(r, 2000));
       }
@@ -173,20 +180,20 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
   };
 
   return (
-    <div className="w-full bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm p-6">
+    <div className="w-full glass-card overflow-hidden p-6">
       {status === "idle" && (
         <div className="flex flex-col gap-6 items-center w-full">
-          <div className="w-full bg-gray-50 rounded-lg p-4 flex flex-col gap-2 text-sm">
-            <div className="flex justify-between text-gray-600">
+          <div className="w-full bg-white/5 rounded-xl p-4 flex flex-col gap-2 text-sm">
+            <div className="flex justify-between text-[#909097]">
               <span>Payment to Merchant</span>
               <span>₹ {amount.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-gray-600">
+            <div className="flex justify-between text-[#909097]">
               <span>ZkPay Convenience Fee (1%)</span>
               <span>₹ {fee.toFixed(2)}</span>
             </div>
-            <div className="border-t border-gray-200 my-1"></div>
-            <div className="flex justify-between font-bold text-lg">
+            <div className="border-t border-[#46464c] my-1"></div>
+            <div className="flex justify-between font-bold text-lg text-[#e5e2e3]">
               <span>Total to Pay</span>
               <span>₹ {totalAmount.toFixed(2)}</span>
             </div>
@@ -203,24 +210,24 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
       {status === "approving" && (
         <div className="flex flex-col gap-3 items-center text-center">
-          <div className="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-          <p className="font-semibold">Preparing Transaction...</p>
-          <p className="text-xs text-gray-500">Please confirm in your wallet</p>
+          <div className="w-8 h-8 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
+          <p className="font-semibold text-[#e5e2e3]">Preparing Transaction...</p>
+          <p className="text-xs text-[#909097]">Please confirm in your wallet</p>
         </div>
       )}
 
       {status === "sending" && (
         <div className="flex flex-col gap-3 items-center text-center">
-          <div className="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-          <p className="font-semibold">Sending Payment...</p>
-          <p className="text-xs text-gray-500">Processing transaction on Base Mainnet</p>
+          <div className="w-8 h-8 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
+          <p className="font-semibold text-[#e5e2e3]">Sending Payment...</p>
+          <p className="text-xs text-[#909097]">Processing transaction on Base Mainnet</p>
         </div>
       )}
 
       {status === "error" && (
         <div className="flex flex-col gap-3 items-center text-center">
-          <p className="font-semibold text-red-600">Payment Failed</p>
-          <p className="text-xs text-gray-500">{error}</p>
+          <p className="font-semibold text-[#ffb4ab]">Payment Failed</p>
+          <p className="text-xs text-[#909097]">{error}</p>
           <button onClick={() => setStatus("idle")} className="btn-secondary mt-2">
             Try Again
           </button>

@@ -196,10 +196,10 @@ export default function EarnFlow() {
   const isLoading = isDepositing || isWithdrawing;
 
   return (
-    <div className="w-full max-w-md mx-auto px-5 flex flex-col gap-6 animate-fade-in-up">
+    <div className="w-full flex flex-col gap-6 animate-fade-in-up">
       {/* Vault Info Card */}
-      <div className="border border-gray-200 rounded-xl p-6 bg-white shadow-sm flex flex-col items-center text-center">
-        <div className="w-12 h-12 bg-gray-50 border border-gray-100 rounded-full flex items-center justify-center mb-3">
+      <div className="glass-card p-6 flex flex-col items-center text-center">
+        <div className="w-12 h-12 glass-card-elevated rounded-full flex items-center justify-center mb-3 text-[#c0c6de]">
           <svg
             width="24"
             height="24"
@@ -214,19 +214,19 @@ export default function EarnFlow() {
             <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
           </svg>
         </div>
-        <h3 className="text-xl font-bold tracking-tight">Generate Yield</h3>
-        <p className="text-sm text-gray-500 mt-1 mb-5">
+        <h3 className="text-xl font-bold tracking-tight text-[#e5e2e3]">Generate Yield</h3>
+        <p className="text-sm text-[#909097] mt-1 mb-5">
           Deposit USDC into the {displayVaultName} to earn passive interest.
         </p>
 
-        <div className="w-full bg-gray-50 rounded-lg p-4 flex justify-between items-center border border-gray-100">
-          <span className="text-sm font-semibold tracking-wide text-gray-600">
+        <div className="w-full glass-card-static p-4 flex justify-between items-center">
+          <span className="text-sm font-semibold tracking-wide text-[#909097]">
             Current APY
           </span>
           {isLoadingPosition ? (
-            <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
           ) : (
-            <span className="text-lg font-bold text-green-600">
+            <span className="text-lg font-bold text-emerald-400">
               {displayApy}
             </span>
           )}
@@ -235,7 +235,7 @@ export default function EarnFlow() {
 
       {/* Deposit Form */}
       <div className="flex flex-col gap-3">
-        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider pl-1">
+        <label className="label-caps pl-1">
           Amount to Deposit
         </label>
         <div className="relative">
@@ -244,21 +244,21 @@ export default function EarnFlow() {
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
-            className="w-full bg-gray-50 border border-gray-200 rounded-lg py-4 px-4 text-xl font-medium focus:outline-none focus:ring-1 focus:ring-black focus:border-black transition-all"
+            className="w-full bg-transparent border-b border-[#46464c] rounded-none py-4 px-2 text-3xl font-bold text-[#e5e2e3] focus:outline-none focus:border-[#c0c6de] transition-colors placeholder:text-[#46464c]"
             disabled={isLoading}
             min="0"
             step="0.01"
           />
-          <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none">
-            <span className="text-sm font-bold text-gray-400">USDC</span>
+          <div className="absolute inset-y-0 right-2 flex items-center pointer-events-none">
+            <span className="text-sm font-bold text-[#46464c]">USDC</span>
           </div>
         </div>
 
         {error && (
-          <p className="text-sm font-medium text-red-500 mt-1 px-1">{error}</p>
+          <p className="text-sm font-medium text-[#ffb4ab] mt-1 px-1">{error}</p>
         )}
         {success && (
-          <p className="text-sm font-medium text-green-600 mt-1 px-1">
+          <p className="text-sm font-medium text-emerald-400 mt-1 px-1">
             {success}
           </p>
         )}
@@ -266,7 +266,7 @@ export default function EarnFlow() {
         <button
           onClick={handleDeposit}
           disabled={!amount || isLoading || Number(amount) <= 0}
-          className="w-full bg-black text-white font-bold text-base py-4 rounded-lg mt-2 hover:bg-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center h-[56px]"
+          className="btn-primary mt-2 flex justify-center items-center h-[56px] disabled:bg-[#353436] disabled:text-[#909097] disabled:opacity-100"
         >
           {isDepositing ? (
             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -277,21 +277,21 @@ export default function EarnFlow() {
       </div>
 
       {/* Position Card */}
-      <div className="border border-gray-200 rounded-xl p-5 bg-gray-50 mt-2">
+      <div className="glass-card-static p-5 mt-2">
         <div className="flex justify-between items-center">
           <div>
-            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+            <p className="label-caps">
               Your Position
             </p>
             {isLoadingPosition ? (
-              <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin mt-2"></div>
+              <div className="w-4 h-4 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin mt-2"></div>
             ) : (
               <>
-                <p className="text-2xl font-bold mt-1 tracking-tight">
+                <p className="text-3xl font-bold mt-1 tracking-tighter text-[#e5e2e3]">
                   {displayPosition}
                 </p>
                 {hasPosition && (
-                  <p className="text-xs font-semibold text-green-600 mt-0.5">
+                  <p className="text-xs font-semibold text-emerald-400 mt-0.5">
                     {displayYield} earned
                   </p>
                 )}
@@ -301,10 +301,10 @@ export default function EarnFlow() {
           <button
             onClick={handleWithdraw}
             disabled={!hasPosition || isLoading}
-            className="text-sm font-bold text-black border border-gray-300 rounded-lg px-4 py-2 bg-white hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="btn-secondary px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {isWithdrawing ? (
-              <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
+              <div className="w-4 h-4 border-2 border-[#e5e2e3] border-t-transparent rounded-full animate-spin"></div>
             ) : (
               "Withdraw"
             )}

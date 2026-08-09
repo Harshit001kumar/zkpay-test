@@ -9,44 +9,58 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        "ocean-blue": "#0077be",
-        "rich-indigo": "#4b0082",
-        "obsidian": {
-          50: "#e2e2e6",
-          100: "#c0c7d2",
-          200: "#8a919c",
-          300: "#404751",
-          400: "#333538",
-          500: "#282a2d",
-          600: "#1e2023",
-          700: "#1a1c1f",
-          800: "#111316",
-          900: "#0c0e11",
-          950: "#0a0b0d",
+        // Obsidian Glass Design System
+        background: "#131315",
+        "on-background": "#e5e2e3",
+        surface: {
+          DEFAULT: "#131315",
+          dim: "#131315",
+          bright: "#39393a",
+          container: "#201f21",
+          "container-high": "#2a2a2b",
+          "container-highest": "#353436",
+          "container-low": "#1b1b1d",
+          "container-lowest": "#0e0e0f",
+          variant: "#353436",
+          tint: "#c0c6de",
         },
-        "surface": {
-          DEFAULT: "#111316",
-          dim: "#111316",
-          bright: "#37393d",
-          container: "#1e2023",
-          "container-high": "#282a2d",
-          "container-highest": "#333538",
-          "container-low": "#1a1c1f",
-          "container-lowest": "#0c0e11",
+        "on-surface": {
+          DEFAULT: "#e5e2e3",
+          variant: "#c6c6cd",
         },
+        primary: {
+          DEFAULT: "#c0c6de",
+          container: "#020617",
+        },
+        "on-primary": {
+          DEFAULT: "#2a3043",
+          container: "#72778d",
+        },
+        secondary: {
+          DEFAULT: "#bcc7de",
+          container: "#3e495d",
+        },
+        outline: {
+          DEFAULT: "#909097",
+          variant: "#46464c",
+        },
+        error: {
+          DEFAULT: "#ffb4ab",
+          container: "#93000a",
+        },
+        "on-error": "#690005",
+        silver: "#E2E8F0",
       },
       fontFamily: {
-        sans: ["Plus Jakarta Sans", "Inter", "system-ui", "sans-serif"],
+        sans: ["Hanken Grotesk", "system-ui", "sans-serif"],
+        display: ["Hanken Grotesk", "system-ui", "sans-serif"],
       },
       backdropBlur: {
-        glass: "20px",
+        glass: "40px",
+        "glass-heavy": "60px",
       },
       borderRadius: {
         glass: "12px",
-      },
-      boxShadow: {
-        "ocean-glow": "0 0 24px rgba(0, 119, 190, 0.3)",
-        "ocean-glow-sm": "0 0 12px rgba(0, 119, 190, 0.2)",
       },
     },
   },

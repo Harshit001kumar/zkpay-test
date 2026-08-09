@@ -61,21 +61,21 @@ export default function Dashboard() {
 
       <div className="w-full max-w-md px-5 flex flex-col gap-6">
 
-        {/* Balance Card */}
+        {/* Balance Card — Glass */}
         <section
-          className="bg-black text-white rounded-2xl p-6 flex flex-col items-center gap-1 animate-fade-in-up"
+          className="glass-card p-6 flex flex-col items-center gap-1 animate-fade-in-up animate-glow-pulse"
           style={{ animationDelay: "0.05s" }}
         >
-          <p className="text-[11px] font-semibold tracking-widest uppercase text-white/50">
+          <p className="label-caps text-[#909097]">
             USDC Balance
           </p>
-          <h2 className="text-4xl font-bold tracking-tighter mt-1">${balance}</h2>
-          <p className="text-xs text-white/40 mt-1">{CHAIN.name}</p>
+          <h2 className="text-4xl font-bold tracking-tighter mt-1 text-[#e5e2e3]">${balance}</h2>
+          <p className="text-xs text-[#46464c] mt-1">{CHAIN.name}</p>
         </section>
 
-        {/* Tab Switcher */}
+        {/* Tab Switcher — Glass Pill */}
         <nav
-          className="flex bg-gray-100 rounded-lg p-1 gap-1 animate-fade-in-up"
+          className="flex glass-card-static p-1 gap-1 animate-fade-in-up"
           style={{ animationDelay: "0.1s" }}
         >
           {([
@@ -86,10 +86,10 @@ export default function Dashboard() {
             <button
               key={tab.id}
               onClick={() => switchTab(tab.id)}
-              className={`flex-1 text-sm font-semibold py-2.5 rounded-md transition-all ${
+              className={`flex-1 text-sm font-semibold py-2.5 rounded-xl transition-all ${
                 activeTab === tab.id
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-500 hover:text-black"
+                  ? "bg-white/10 text-[#c0c6de] shadow-sm"
+                  : "text-[#909097] hover:text-[#c6c6cd]"
               }`}
             >
               {tab.label}
@@ -101,8 +101,8 @@ export default function Dashboard() {
         <div className="animate-fade-in-up" style={{ animationDelay: "0.15s" }}>
           {/* ── Pay Tab ── */}
           {activeTab === "pay" && !merchantId && (
-            <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 flex flex-col items-center gap-4 text-center">
-              <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
+            <div className="glass-card p-8 flex flex-col items-center gap-4 text-center">
+              <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center text-[#c0c6de]">
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M3 7V5a2 2 0 0 1 2-2h2" />
                   <path d="M17 3h2a2 2 0 0 1 2 2v2" />
@@ -112,8 +112,8 @@ export default function Dashboard() {
                 </svg>
               </div>
               <div>
-                <h3 className="text-base font-bold">Scan to Pay</h3>
-                <p className="text-sm text-gray-500 mt-1">
+                <h3 className="text-base font-bold text-[#e5e2e3]">Scan to Pay</h3>
+                <p className="text-sm text-[#909097] mt-1">
                   Scan a merchant QR code to pay in INR via UPI.
                 </p>
               </div>
@@ -140,10 +140,10 @@ export default function Dashboard() {
         {/* Recent Activity */}
         {activeTab === "pay" && !merchantId && (
           <section
-            className="animate-fade-in-up border-t border-gray-100 pt-6"
+            className="animate-fade-in-up border-t border-[#46464c] pt-6"
             style={{ animationDelay: "0.2s" }}
           >
-            <h3 className="text-base font-bold mb-3">Recent Activity</h3>
+            <h3 className="text-base font-bold mb-3 text-[#e5e2e3]">Recent Activity</h3>
             <PaymentHistory />
           </section>
         )}

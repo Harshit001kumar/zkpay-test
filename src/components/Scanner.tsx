@@ -107,38 +107,38 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
       <div className="w-full max-w-sm px-6 flex flex-col items-center gap-6 overflow-y-auto max-h-screen py-8">
         
         <div className="text-center">
-          <h2 className="text-2xl font-bold">Scan to Pay</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Point your camera at the merchant's QR code
+          <h2 className="text-2xl font-bold text-[#e5e2e3]">Scan to Pay</h2>
+          <p className="text-sm text-[#909097] mt-1">
+            Point your camera at the merchant&apos;s QR code
           </p>
         </div>
 
-        {/* QR Scanner */}
-        <div className="w-full rounded-2xl overflow-hidden border-2 border-gray-100 bg-white shadow-sm">
+        {/* QR Scanner — Glass HUD */}
+        <div className="w-full rounded-2xl overflow-hidden glass-card p-1">
           <div id="reader" className="w-full min-h-[300px]"></div>
         </div>
 
         <div className="flex items-center gap-4 w-full opacity-50">
-          <div className="h-px bg-gray-400 flex-1"></div>
-          <span className="text-xs font-semibold uppercase tracking-widest">OR</span>
-          <div className="h-px bg-gray-400 flex-1"></div>
+          <div className="h-px bg-[#46464c] flex-1"></div>
+          <span className="text-xs font-semibold uppercase tracking-widest text-[#909097]">OR</span>
+          <div className="h-px bg-[#46464c] flex-1"></div>
         </div>
 
         {/* Manual Input Fallback */}
         <form onSubmit={handleManualSubmit} className="w-full flex flex-col gap-3">
-          <p className="text-sm font-semibold text-center">Camera not working?</p>
+          <p className="text-sm font-semibold text-center text-[#c6c6cd]">Camera not working?</p>
           <div className="flex gap-2">
             <input
               type="text"
               placeholder="Enter Merchant ID"
               value={manualId}
               onChange={(e) => setManualId(e.target.value)}
-              className="flex-1 border border-gray-300 rounded-lg px-4 py-3 text-sm outline-none focus:border-black transition-colors"
+              className="flex-1 bg-transparent border-b border-[#46464c] px-2 py-3 text-sm outline-none focus:border-[#c0c6de] transition-colors text-[#e5e2e3] placeholder:text-[#46464c]"
             />
             <button 
               type="submit"
               disabled={!manualId.trim()}
-              className="bg-black text-white px-6 font-semibold rounded-lg text-sm disabled:opacity-50"
+              className="btn-primary px-6 font-semibold text-sm disabled:opacity-50"
             >
               Go
             </button>

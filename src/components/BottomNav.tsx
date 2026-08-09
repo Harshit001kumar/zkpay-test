@@ -9,7 +9,7 @@ interface BottomNavProps {
 
 export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-6 py-4 flex justify-between items-center z-50 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+    <nav className="fixed bottom-0 left-0 right-0 bg-[#131315]/90 backdrop-blur-glass border-t border-[#46464c] px-6 py-4 flex justify-between items-center z-50 pb-[calc(1rem+env(safe-area-inset-bottom))]">
       <NavItem 
         id="home" 
         label="Home" 
@@ -46,7 +46,9 @@ function NavItem({ id, label, isActive, onClick, icon }: { id: string; label: st
   return (
     <button 
       onClick={onClick}
-      className={`flex flex-col items-center justify-center gap-1 min-w-[64px] ${isActive ? 'text-black' : 'text-gray-400 hover:text-gray-600'} transition-colors`}
+      className={`flex flex-col items-center justify-center gap-1 min-w-[64px] transition-colors ${
+        isActive ? 'text-[#c0c6de]' : 'text-[#909097] hover:text-[#c6c6cd]'
+      }`}
     >
       <div className={`w-6 h-6 flex items-center justify-center ${isActive ? 'fill-current stroke-current' : 'fill-none stroke-current'}`}>
         {icon}

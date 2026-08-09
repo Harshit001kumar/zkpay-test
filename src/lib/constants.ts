@@ -1,12 +1,21 @@
+// ─── Security: Fail loudly if critical addresses are missing ───
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`[ZkPay] Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
 export const CONTRACTS = {
   // The P2P Diamond — the core protocol contract
-  DIAMOND: (process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0x4cad6eC90e65baBec9335cAd728DDC610c316368") as `0x${string}`,
+  DIAMOND: requireEnv("NEXT_PUBLIC_DIAMOND_ADDRESS") as `0x${string}`,
 
   // Native USDC on Base Mainnet
-  USDC: (process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913") as `0x${string}`,
+  USDC: requireEnv("NEXT_PUBLIC_USDC_ADDRESS") as `0x${string}`,
   
   // ZkPay Treasury (receives 1% platform fee)
-  TREASURY: (process.env.NEXT_PUBLIC_TREASURY_ADDRESS || "0x4747883abdf84ad96565415514de298e3a3fd3e1") as `0x${string}`,
+  TREASURY: requireEnv("NEXT_PUBLIC_TREASURY_ADDRESS") as `0x${string}`,
 } as const;
 
 export const CHAIN = {
@@ -19,13 +28,6 @@ export const CHAIN = {
 export const SUBGRAPH_URL =
   process.env.NEXT_PUBLIC_SUBGRAPH_URL ||
   "https://api.goldsky.com/api/public/project_cmq7kbyqt81p501xi7h0wdeuh/subgraphs/p2pme-subgraph/prod/gn";
-
-// Demo products available for testing
-export const DEMO_PRODUCTS = [
-  { id: 1, name: "Common", price: 5, currency: "USDC" },
-  { id: 2, name: "Rare", price: 10, currency: "USDC" },
-  { id: 3, name: "Legendary", price: 25, currency: "USDC" },
-] as const;
 
 // Supported fiat currencies
 export const CURRENCIES = [

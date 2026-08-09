@@ -97,9 +97,10 @@ export default function CashoutFlow() {
 
   const resumePendingOrder = async (orderId: bigint, savedUpiId: string, hash: string, pending: any) => {
     try {
-      // 1. Wait for merchant to accept
+      // 1. Wait for merchant to accept (max 10 minutes = 200 polls × 3s)
       let acceptedOrder: any = null;
-      while (true) {
+      const MAX_ACCEPT_POLLS = 200;
+      for (let i = 0; i < MAX_ACCEPT_POLLS; i++) {
         const currentOrder = await getOrderStatus(orderId);
         if (currentOrder.status === "accepted") {
           acceptedOrder = currentOrder;
@@ -113,6 +114,9 @@ export default function CashoutFlow() {
         }
         if (currentOrder.status === "cancelled") {
           throw new Error("Order was cancelled by the protocol.");
+        }
+        if (i === MAX_ACCEPT_POLLS - 1) {
+          throw new Error("Merchant matching timed out after 10 minutes. Please try again.");
         }
         await new Promise(r => setTimeout(r, 3000));
       }
@@ -135,9 +139,10 @@ export default function CashoutFlow() {
         merchantPublicKey: acceptedOrder.pubkey,
       });
 
-      // 3. Wait for merchant to pay
+      // 3. Wait for merchant to pay (max 15 minutes = 300 polls × 3s)
       setStatus("paying");
-      while (true) {
+      const MAX_PAY_POLLS = 300;
+      for (let j = 0; j < MAX_PAY_POLLS; j++) {
         const currentOrder = await getOrderStatus(orderId);
         if (currentOrder.status === "completed") {
           localStorage.removeItem("pending_cashout_order");
@@ -160,6 +165,9 @@ export default function CashoutFlow() {
         }
         if (currentOrder.status === "cancelled") {
           throw new Error("Order was cancelled.");
+        }
+        if (j === MAX_PAY_POLLS - 1) {
+          throw new Error("Merchant payment timed out after 15 minutes. Please contact support.");
         }
         await new Promise(r => setTimeout(r, 3000));
       }
@@ -261,17 +269,23 @@ export default function CashoutFlow() {
         }]
       });
 
-      // Poll for batch status
+      // Poll for batch status (max 2 minutes = 60 polls × 2s)
       let hash = "";
-      while (true) {
+      const MAX_TX_POLLS = 60;
+      for (let k = 0; k < MAX_TX_POLLS; k++) {
         const statusRes: any = await provider.request({
           method: "wallet_getCallsStatus",
           params: [id]
         });
         if (statusRes.status === "CONFIRMED" && statusRes.receipts && statusRes.receipts.length > 0) {
-          // Depending on wallet, transactionHash might be here or we might just use the first receipt
           hash = statusRes.receipts[0].transactionHash || statusRes.receipts[0].blockHash; 
           break;
+        }
+        if (statusRes.status === "FAILED" || statusRes.status === "REJECTED") {
+          throw new Error(`Transaction ${statusRes.status.toLowerCase()} by wallet`);
+        }
+        if (k === MAX_TX_POLLS - 1) {
+          throw new Error("Transaction confirmation timed out after 2 minutes");
         }
         await new Promise(r => setTimeout(r, 2000));
       }
@@ -345,13 +359,13 @@ export default function CashoutFlow() {
   };
 
   return (
-    <div className="w-full bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm p-6">
+    <div className="w-full glass-card overflow-hidden p-6">
       {status === "input" && (
         <div className="flex flex-col gap-5">
-          <h3 className="text-lg font-bold text-center">Cash Out to UPI</h3>
+          <h3 className="text-lg font-bold text-center text-[#e5e2e3]">Cash Out to UPI</h3>
 
           {initError && (
-            <div className="bg-red-50 text-red-500 p-3 rounded text-sm mb-4 border border-red-100">
+            <div className="bg-[#93000a]/20 text-[#ffb4ab] p-3 rounded text-sm mb-4 border border-[#93000a]">
               <span className="font-bold">Initialization Error:</span> {initError}
             </div>
           )}
@@ -360,21 +374,21 @@ export default function CashoutFlow() {
             <div className="flex justify-between mb-1">
               <label className="label-caps">Amount (USDC)</label>
               {maxSellable !== null && (
-                <span className="text-xs font-semibold text-gray-500">Max: {maxSellable} USDC</span>
+                <span className="text-xs font-semibold text-[#909097]">Max: {maxSellable} USDC</span>
               )}
             </div>
-            <div className="flex items-center border-b-2 border-black pb-1">
-              <span className="text-2xl font-bold mr-1">$</span>
+            <div className="flex items-end border-b border-[#46464c] pb-1 focus-within:border-[#c0c6de] transition-colors">
+              <span className="text-3xl font-bold mr-1 text-[#c0c6de]">$</span>
               <input
                 type="number"
                 value={amountStr}
                 onChange={(e) => setAmountStr(e.target.value)}
                 placeholder="0.00"
-                className="text-3xl font-bold bg-transparent outline-none w-full"
+                className="text-4xl font-bold bg-transparent outline-none w-full text-[#e5e2e3] placeholder:text-[#46464c]"
               />
             </div>
             {maxSellable !== null && amountUsdc > maxSellable && (
-              <p className="text-xs text-red-500 mt-1 font-semibold">Amount exceeds your unverified limit of {maxSellable} USDC.</p>
+              <p className="text-xs text-[#ffb4ab] mt-1 font-semibold">Amount exceeds your unverified limit of {maxSellable} USDC.</p>
             )}
           </div>
 
@@ -385,24 +399,24 @@ export default function CashoutFlow() {
               value={upiId}
               onChange={(e) => setUpiId(e.target.value)}
               placeholder="yourname@upi"
-              className="w-full border border-gray-200 rounded-lg px-4 py-3 text-sm outline-none focus:border-black transition-colors"
+              className="w-full bg-transparent border-b border-[#46464c] px-2 py-3 text-sm outline-none focus:border-[#c0c6de] transition-colors text-[#e5e2e3] placeholder:text-[#46464c]"
             />
             {upiId && !isValidUpi() && (
-              <p className="text-xs text-red-500 mt-1 font-semibold">Invalid UPI ID format.</p>
+              <p className="text-xs text-[#ffb4ab] mt-1 font-semibold">Invalid UPI ID format.</p>
             )}
           </div>
 
-          <div className="bg-gray-50 rounded-lg p-4 flex flex-col gap-2 text-sm">
-            <div className="flex justify-between text-gray-600">
+          <div className="bg-white/5 rounded-xl p-4 flex flex-col gap-2 text-sm">
+            <div className="flex justify-between text-[#909097]">
               <span>You receive (est.)</span>
               <span>₹ {estimatedFiat.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-gray-600">
+            <div className="flex justify-between text-[#909097]">
               <span>Platform Fee (1%)</span>
               <span>{feeUsdc.toFixed(2)} USDC</span>
             </div>
-            <div className="border-t border-gray-200 my-1"></div>
-            <div className="flex justify-between font-bold text-lg">
+            <div className="border-t border-[#46464c] my-1"></div>
+            <div className="flex justify-between font-bold text-lg text-[#e5e2e3]">
               <span>Total Deducted</span>
               <span>{totalUsdc.toFixed(2)} USDC</span>
             </div>
@@ -420,32 +434,32 @@ export default function CashoutFlow() {
 
       {status === "processing" && (
         <div className="flex flex-col gap-3 items-center text-center py-8">
-          <div className="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-          <p className="font-semibold">Confirming Fees & Approval...</p>
-          <p className="text-xs text-gray-500">Please confirm both transactions in your wallet</p>
+          <div className="w-8 h-8 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
+          <p className="font-semibold text-[#e5e2e3]">Confirming Fees & Approval...</p>
+          <p className="text-xs text-[#909097]">Please confirm both transactions in your wallet</p>
         </div>
       )}
 
       {status === "matching" && (
         <div className="flex flex-col gap-3 items-center text-center py-8">
-          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="font-semibold">Matching with Merchant...</p>
-          <p className="text-xs text-gray-500">Usually takes 20-90 seconds.</p>
+          <div className="w-8 h-8 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
+          <p className="font-semibold text-[#e5e2e3]">Matching with Merchant...</p>
+          <p className="text-xs text-[#909097]">Usually takes 20-90 seconds.</p>
         </div>
       )}
 
       {status === "paying" && (
         <div className="flex flex-col gap-3 items-center text-center py-8">
-          <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="font-semibold">Merchant is Paying You...</p>
-          <p className="text-xs text-gray-500">Your UPI ID was sent securely. Waiting for merchant to complete.</p>
+          <div className="w-8 h-8 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
+          <p className="font-semibold text-[#e5e2e3]">Merchant is Paying You...</p>
+          <p className="text-xs text-[#909097]">Your UPI ID was sent securely. Waiting for merchant to complete.</p>
         </div>
       )}
 
       {status === "error" && (
         <div className="flex flex-col gap-3 items-center text-center py-8">
-          <p className="font-semibold text-red-600">Cash Out Failed</p>
-          <p className="text-xs text-gray-500">{error}</p>
+          <p className="font-semibold text-[#ffb4ab]">Cash Out Failed</p>
+          <p className="text-xs text-[#909097]">{error}</p>
           <button onClick={() => setStatus("input")} className="btn-secondary mt-2">
             Try Again
           </button>

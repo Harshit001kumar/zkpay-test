@@ -15,7 +15,7 @@ export async function GET(req: Request) {
     const depositAmount = searchParams.get("depositAmount");
 
     if (!SIDESHIFT_AFFILIATE_ID) {
-      return NextResponse.json({ error: "API key is missing. Set SIDESHIFT_AFFILIATE_ID in .env" }, { status: 500 });
+      return NextResponse.json({ error: "Exchange service is not configured" }, { status: 500 });
     }
 
     if (!depositCoin || !depositNetwork || !settleCoin || !settleNetwork || !depositAmount) {
