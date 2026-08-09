@@ -1,21 +1,20 @@
-// ─── Security: Fail loudly if critical addresses are missing ───
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`[ZkPay] Missing required environment variable: ${name}`);
-  }
-  return value;
-}
+const DIAMOND = process.env.NEXT_PUBLIC_DIAMOND_ADDRESS;
+const USDC = process.env.NEXT_PUBLIC_USDC_ADDRESS;
+const TREASURY = process.env.NEXT_PUBLIC_TREASURY_ADDRESS;
+
+if (!DIAMOND) throw new Error("[ZkPay] Missing required environment variable: NEXT_PUBLIC_DIAMOND_ADDRESS");
+if (!USDC) throw new Error("[ZkPay] Missing required environment variable: NEXT_PUBLIC_USDC_ADDRESS");
+if (!TREASURY) throw new Error("[ZkPay] Missing required environment variable: NEXT_PUBLIC_TREASURY_ADDRESS");
 
 export const CONTRACTS = {
   // The P2P Diamond — the core protocol contract
-  DIAMOND: requireEnv("NEXT_PUBLIC_DIAMOND_ADDRESS") as `0x${string}`,
+  DIAMOND: DIAMOND as `0x${string}`,
 
   // Native USDC on Base Mainnet
-  USDC: requireEnv("NEXT_PUBLIC_USDC_ADDRESS") as `0x${string}`,
+  USDC: USDC as `0x${string}`,
   
   // ZkPay Treasury (receives 1% platform fee)
-  TREASURY: requireEnv("NEXT_PUBLIC_TREASURY_ADDRESS") as `0x${string}`,
+  TREASURY: TREASURY as `0x${string}`,
 } as const;
 
 export const CHAIN = {
