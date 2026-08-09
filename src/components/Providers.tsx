@@ -1,5 +1,5 @@
 "use client";
-
+import React from "react";
 import { PrivyProvider } from "@privy-io/react-auth";
 import { base } from "viem/chains";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

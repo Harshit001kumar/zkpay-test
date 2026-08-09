@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallets } from "@privy-io/react-auth";
 

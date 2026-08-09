@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 
 export default function CardsWaitlist() {
   const [email, setEmail] = useState("");
@@ -34,7 +34,7 @@ export default function CardsWaitlist() {
           </div>
         ) : (
           <form 
-            onSubmit={(e) => { e.preventDefault(); setSubmitted(true); }}
+            onSubmit={(e: React.FormEvent) => { e.preventDefault(); setSubmitted(true); }}
             className="flex flex-col gap-4"
           >
             <h3 className="text-lg font-bold text-[#e5e2e3] mb-2">Join the waitlist</h3>
