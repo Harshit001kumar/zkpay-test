@@ -58,7 +58,7 @@ export default function PaymentHistory() {
     }
   };
 
-  const getStatusColor = (type: string, status: string) => {
+  const getStatusColor = (type: string, status?: string) => {
     if (status === "pending") return "bg-amber-500";
     if (status === "failed") return "bg-red-500";
     return "bg-emerald-500";

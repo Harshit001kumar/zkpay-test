@@ -12,6 +12,7 @@ export interface TransactionRecord {
   recipient: string; // UPI ID or wallet address
   network: string;
   timestamp: number; // Unix ms
+  status?: "pending" | "settled" | "failed";
 }
 
 const STORAGE_KEY = "zkpay_transactions";
