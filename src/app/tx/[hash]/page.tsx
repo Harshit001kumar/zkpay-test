@@ -39,7 +39,7 @@ export default function TransactionReceipt() {
     window.addEventListener('resize', syncSize);
     syncSize();
 
-    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    const gl = (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')) as WebGLRenderingContext | null;
     if (!gl) return;
 
     const vs = `attribute vec2 a_position;
@@ -77,9 +77,9 @@ export default function TransactionReceipt() {
     }`;
 
     const cs = (type: number, src: string) => {
-      const s = (gl as WebGLRenderingContext).createShader(type)!;
-      (gl as WebGLRenderingContext).shaderSource(s, src);
-      (gl as WebGLRenderingContext).compileShader(s);
+      const s = gl.createShader(type)!;
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
       return s;
     };
 
