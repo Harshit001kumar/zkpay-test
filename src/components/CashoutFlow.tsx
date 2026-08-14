@@ -341,7 +341,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0e0e0f] text-[#e5e2e3] font-body-md overflow-y-auto">
+    <div className="fixed inset-0 z-[60] bg-[#0e0e0f] text-[#e5e2e3] font-body-md overflow-y-auto">
       <style dangerouslySetInnerHTML={{__html: `
         .obsidian-glass {
             background: rgba(20, 20, 22, 0.7);
@@ -383,13 +383,13 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       {/* Top Navigation Bar */}
       <header className="w-full sticky top-0 bg-[#0e0e0f]/80 backdrop-blur-md z-50 flex items-center justify-between px-6 h-16">
         <button onClick={onBack} aria-label="Go back" className="flex items-center text-[#c0c6de] hover:opacity-80 transition-opacity active:scale-95">
-          <span className="material-symbols-outlined text-[24px]">arrow_back</span>
+          <span className="material-symbols-outlined text-2xl">arrow_back</span>
         </button>
-        <h1 className="font-label-caps text-[12px] text-[#e5e2e3] uppercase tracking-[0.3em] font-bold">Cashout</h1>
+        <span className="font-label-caps text-[10px] text-[#c6c6cd] tracking-[0.25em] font-bold">CASHOUT FLOW</span>
         <div className="w-6"></div>
       </header>
 
-      <main className="w-full max-w-lg mx-auto px-6 pt-8 pb-40 flex flex-col gap-2 relative z-10">
+      <main className="w-full max-w-lg mx-auto px-6 pt-8 pb-44 flex flex-col gap-2 relative z-10">
         
         {initError && (
           <div className="bg-[#93000a]/20 text-[#ffb4ab] p-4 rounded-xl text-sm mb-4 border border-[#93000a] obsidian-glass">
@@ -534,7 +534,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
 
       {/* Bottom Action Button */}
       {status === "input" && (
-        <div className="fixed bottom-0 left-0 w-full px-6 py-8 z-50 bg-gradient-to-t from-[#0e0e0f] via-[#0e0e0f]/80 to-transparent">
+        <div className="fixed bottom-0 left-0 w-full px-6 py-8 z-[60] bg-gradient-to-t from-[#0e0e0f] via-[#0e0e0f]/95 to-transparent">
           <div className="max-w-lg mx-auto">
             <button 
               onClick={handleCashout}

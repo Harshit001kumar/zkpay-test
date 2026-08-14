@@ -37,7 +37,7 @@ export default function PaymentEntry({ merchantData, onCancel }: PaymentEntryPro
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#131315] text-[#e5e2e3] font-body-md overflow-hidden flex flex-col min-h-[100dvh]">
+    <div className="fixed inset-0 z-[60] bg-[#131315] text-[#e5e2e3] font-body-md overflow-hidden flex flex-col min-h-[100dvh]">
       <style dangerouslySetInnerHTML={{__html: `
         .glass-pane {
           background: rgba(255, 255, 255, 0.03);
@@ -76,7 +76,7 @@ export default function PaymentEntry({ merchantData, onCancel }: PaymentEntryPro
         </button>
       </nav>
 
-      <main className="flex-grow pt-32 pb-36 px-6 md:px-16 max-w-[1440px] mx-auto w-full relative overflow-y-auto">
+      <main className="flex-grow pt-32 pb-44 px-6 md:px-16 max-w-[1440px] mx-auto w-full relative overflow-y-auto">
         <div className="max-w-3xl mr-auto lg:ml-[120px] space-y-12">
           
           {/* Recipient Card */}
@@ -161,7 +161,7 @@ export default function PaymentEntry({ merchantData, onCancel }: PaymentEntryPro
       </main>
 
       {/* Primary Action Container */}
-      <footer className="fixed bottom-0 left-0 w-full p-6 md:p-8 z-40 bg-gradient-to-t from-[#131315] via-[#131315]/90 to-transparent">
+      <footer className="fixed bottom-0 left-0 w-full p-6 md:p-8 z-[60] bg-gradient-to-t from-[#131315] via-[#131315]/95 to-transparent">
         <div className="max-w-3xl mx-auto md:ml-[120px] md:mr-auto">
           <button 
             onClick={handleConfirm}

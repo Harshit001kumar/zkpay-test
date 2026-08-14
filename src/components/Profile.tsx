@@ -24,7 +24,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
   };
 
   return (
-    <div className="bg-[#020408] text-[#e5e2e3] font-body-md selection:bg-[#c0c6de]/30 min-h-[100dvh] relative flex flex-col z-50 fixed inset-0 overflow-y-auto">
+    <div className="bg-[#020408] text-[#e5e2e3] font-body-md selection:bg-[#c0c6de]/30 min-h-screen relative flex flex-col pb-36 overflow-y-auto w-full">
       <style dangerouslySetInnerHTML={{__html: `
         .monolith-card {
             background: rgba(255, 255, 255, 0.04);

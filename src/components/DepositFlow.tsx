@@ -127,7 +127,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
   };
 
   return (
-    <div className="bg-[#0e0e0f] text-[#e5e2e3] font-body-md selection:bg-[#c0c6de]/30 min-h-[100dvh] relative flex flex-col z-50 fixed inset-0 overflow-y-auto">
+    <div className="bg-[#0e0e0f] text-[#e5e2e3] font-body-md selection:bg-[#c0c6de]/30 min-h-[100dvh] relative flex flex-col z-[60] fixed inset-0 overflow-y-auto">
       <style dangerouslySetInnerHTML={{__html: `
         .obsidian-glass {
             background: rgba(255, 255, 255, 0.02);
@@ -203,7 +203,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
         {/* Subtle Gradient Background Glow */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-[radial-gradient(circle_at_50%_0%,rgba(192,198,222,0.08)_0%,transparent_60%)] pointer-events-none"></div>
         
-        <div className="w-full max-w-sm flex flex-col items-center space-y-12 relative z-10 pb-32">
+        <div className="w-full max-w-sm flex flex-col items-center space-y-12 relative z-10 pb-44">
           
           {!depositAddress ? (
             // STEP 1 CONTENT
