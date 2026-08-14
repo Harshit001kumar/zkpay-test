@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = 'force-dynamic';
+
 const API_BASE_URL = "https://sideshift.ai/api/v2";
 
 export async function POST(req: Request) {
