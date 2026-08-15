@@ -14,8 +14,12 @@ export async function GET(req: Request) {
     const settleNetwork = searchParams.get("settleNetwork");
     const depositAmount = searchParams.get("depositAmount");
 
+    console.log("[SideShift Estimate] SIDESHIFT_AFFILIATE_ID present:", !!SIDESHIFT_AFFILIATE_ID, "value length:", SIDESHIFT_AFFILIATE_ID?.length || 0);
+
     if (!SIDESHIFT_AFFILIATE_ID) {
-      return NextResponse.json({ error: "Exchange service is not configured" }, { status: 500 });
+      return NextResponse.json({ 
+        error: "Exchange service is not configured — SIDESHIFT_AFFILIATE_ID env var is missing on server" 
+      }, { status: 500 });
     }
 
     if (!depositCoin || !depositNetwork || !settleCoin || !settleNetwork || !depositAmount) {
