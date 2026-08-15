@@ -3,7 +3,7 @@ const require = createRequire(import.meta.url);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  webpack: (config, { webpack }) => {
+  webpack: (config, { webpack, isServer }) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,
       "accounts": false,
@@ -17,9 +17,13 @@ const nextConfig = {
       "@bigmi/react": false,
       "fs": false,
       "buffer": require.resolve("buffer/"),
-      "process": false,
       "stream": false,
     };
+
+    // Only polyfill process on the client — server needs real process.env for runtime env vars
+    if (!isServer) {
+      config.resolve.fallback["process"] = false;
+    }
 
     config.resolve.alias = {
       ...config.resolve.alias,
@@ -33,15 +37,16 @@ const nextConfig = {
       "@noble/hashes/pbkdf2.js": "@noble/hashes/pbkdf2"
     };
 
-    config.plugins.push(
+    const plugins = [
       new webpack.ProvidePlugin({
         Buffer: ['buffer', 'Buffer'],
-        process: 'process/browser',
+        ...(isServer ? {} : { process: 'process/browser' }),
       }),
       new webpack.DefinePlugin({
         global: "globalThis",
       })
-    );
+    ];
+    config.plugins.push(...plugins);
     
     return config;
   }
