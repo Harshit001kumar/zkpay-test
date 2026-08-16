@@ -27,11 +27,23 @@ export async function POST(req: Request) {
       affiliateId: SIDESHIFT_AFFILIATE_ID,
     };
 
+    const userIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
+                   req.headers.get("cf-connecting-ip")?.trim() || 
+                   req.headers.get("x-real-ip")?.trim() || "";
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (userIp) {
+      headers["x-user-ip"] = userIp;
+    }
+    if (process.env.SIDESHIFT_SECRET) {
+      headers["x-sideshift-secret"] = process.env.SIDESHIFT_SECRET;
+    }
+
     const response = await fetch(`${API_BASE_URL}/shifts/variable`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(payload),
     });
 

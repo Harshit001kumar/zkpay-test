@@ -18,10 +18,21 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing exchange ID" }, { status: 400 });
     }
 
+    const userIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
+                   req.headers.get("cf-connecting-ip")?.trim() || 
+                   req.headers.get("x-real-ip")?.trim() || "";
+
+    const headers: Record<string, string> = {};
+    if (userIp) {
+      headers["x-user-ip"] = userIp;
+    }
+    if (process.env.SIDESHIFT_SECRET) {
+      headers["x-sideshift-secret"] = process.env.SIDESHIFT_SECRET;
+    }
+
     const response = await fetch(`${API_BASE_URL}/shifts/${id}`, {
       method: "GET",
-      // SideShift public endpoints might not strictly require affiliateId in header,
-      // but we do not need custom headers like x-changenow-api-key here.
+      headers,
     });
 
     const data = await response.json();
