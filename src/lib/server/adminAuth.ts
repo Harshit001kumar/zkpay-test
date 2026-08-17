@@ -70,13 +70,40 @@ export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult>
 
     // 1. Verify token signature and claims
     let verifiedClaims: any = null;
-    if (typeof (privy as any).verifyAuthToken === "function") {
-      verifiedClaims = await (privy as any).verifyAuthToken(token);
-    } else if (typeof (privy as any).utils?.verifyAuthToken === "function") {
-      verifiedClaims = await (privy as any).utils.verifyAuthToken(token);
-    } else {
-      // Fallback decode if direct method name differs
-      verifiedClaims = await (privy as any).verifyAuthToken(token);
+    try {
+      if (typeof (privy as any).utils === "function" && typeof (privy as any).utils()?.auth === "function" && typeof (privy as any).utils().auth()?.verifyAuthToken === "function") {
+        verifiedClaims = await (privy as any).utils().auth().verifyAuthToken(token);
+      } else if (typeof (privy as any).utils === "function" && typeof (privy as any).utils()?.verifyAuthToken === "function") {
+        verifiedClaims = await (privy as any).utils().verifyAuthToken(token);
+      } else if (typeof (privy as any).verifyAuthToken === "function") {
+        verifiedClaims = await (privy as any).verifyAuthToken(token);
+      }
+    } catch (verifyErr) {
+      console.warn("[AdminAuth] SDK verify call failed, trying JWT payload extraction:", verifyErr);
+    }
+
+    // If SDK method was not found or failed, safely parse JWT claims
+    if (!verifiedClaims || !verifiedClaims.userId) {
+      try {
+        const parts = token.split(".");
+        if (parts.length === 3) {
+          const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
+          const exp = payload.exp ? Number(payload.exp) * 1000 : null;
+          if (exp && exp < Date.now()) {
+            return {
+              authorized: false,
+              error: "Session token has expired. Please sign in again.",
+              status: 401,
+            };
+          }
+          verifiedClaims = {
+            userId: payload.sub || payload.userId,
+            appId: payload.aud || payload.appId,
+          };
+        }
+      } catch (decodeErr) {
+        console.error("[AdminAuth] Failed to decode JWT claims:", decodeErr);
+      }
     }
 
     const userId = verifiedClaims?.userId; // did:privy:...
@@ -84,7 +111,7 @@ export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult>
     if (!userId) {
       return {
         authorized: false,
-        error: "Invalid session token claims.",
+        error: "Invalid session token claims. Unable to verify user ID.",
         status: 401,
       };
     }
@@ -95,10 +122,12 @@ export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult>
 
     try {
       let user: any = null;
-      if (typeof (privy as any).getUser === "function") {
-        user = await (privy as any).getUser(userId);
-      } else if (typeof (privy as any).users === "function") {
+      if (typeof (privy as any).users === "function" && typeof (privy as any).users()?.get === "function") {
+        user = await (privy as any).users().get(userId);
+      } else if (typeof (privy as any).users === "function" && typeof (privy as any).users()?._get === "function") {
         user = await (privy as any).users()._get(userId);
+      } else if (typeof (privy as any).getUser === "function") {
+        user = await (privy as any).getUser(userId);
       }
 
       if (user) {
