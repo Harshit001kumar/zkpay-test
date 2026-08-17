@@ -123,35 +123,66 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
       setStatus("sending");
 
-      // Send the batched transaction using EIP-5792
-      const id = await provider.request({
-        method: "wallet_sendCalls",
-        params: [{
-          version: "1.0",
-          from: wallet.address,
-          calls: calls
-        }]
-      });
-
-      // Poll for batch status (max 2 minutes = 60 polls × 2s)
       let txHash = "";
-      const MAX_POLLS = 60;
-      for (let i = 0; i < MAX_POLLS; i++) {
-        const statusRes: any = await provider.request({
-          method: "wallet_getCallsStatus",
-          params: [id]
+
+      try {
+        // Try batched call first (Smart Wallets / EIP-5792)
+        const id = await provider.request({
+          method: "wallet_sendCalls",
+          params: [{
+            version: "1.0",
+            from: wallet.address,
+            calls: calls
+          }]
         });
-        if (statusRes.status === "CONFIRMED" && statusRes.receipts && statusRes.receipts.length > 0) {
-          txHash = statusRes.receipts[0].transactionHash || statusRes.receipts[0].blockHash; 
-          break;
+
+        // Poll for batch status (max 2 minutes = 60 polls × 2s)
+        const MAX_POLLS = 60;
+        for (let i = 0; i < MAX_POLLS; i++) {
+          const statusRes: any = await provider.request({
+            method: "wallet_getCallsStatus",
+            params: [id]
+          });
+          if (statusRes.status === "CONFIRMED" && statusRes.receipts && statusRes.receipts.length > 0) {
+            txHash = statusRes.receipts[0].transactionHash || statusRes.receipts[0].blockHash; 
+            break;
+          }
+          if (statusRes.status === "FAILED" || statusRes.status === "REJECTED") {
+            throw new Error(`Transaction ${statusRes.status.toLowerCase()} by wallet`);
+          }
+          if (i === MAX_POLLS - 1) {
+            throw new Error("Transaction confirmation timed out after 2 minutes");
+          }
+          await new Promise(r => setTimeout(r, 2000));
         }
-        if (statusRes.status === "FAILED" || statusRes.status === "REJECTED") {
-          throw new Error(`Transaction ${statusRes.status.toLowerCase()} by wallet`);
+      } catch (batchErr: any) {
+        const isUnsupported = 
+          batchErr?.message?.toLowerCase().includes("method") ||
+          batchErr?.message?.toLowerCase().includes("unsupported") ||
+          batchErr?.message?.toLowerCase().includes("does not support") ||
+          batchErr?.code === -32601;
+
+        if (isUnsupported) {
+          console.log("[CheckoutFlow] wallet_sendCalls not supported. Executing sequential transactions via EOA...");
+          const { getPublicClient } = await import("@/lib/p2pkit");
+          const publicClient = getPublicClient();
+
+          for (let i = 0; i < calls.length; i++) {
+            const call = calls[i];
+            const hash = await provider.request({
+              method: "eth_sendTransaction",
+              params: [{
+                from: wallet.address,
+                to: call.to,
+                data: call.data,
+              }]
+            });
+            await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
+            txHash = hash as string;
+          }
+        } else {
+          throw batchErr;
         }
-        if (i === MAX_POLLS - 1) {
-          throw new Error("Transaction confirmation timed out after 2 minutes");
-        }
-        await new Promise(r => setTimeout(r, 2000));
       }
 
       const usdcFloat = Number(usdcPrincipalBigInt) / 1_000_000;
@@ -174,7 +205,15 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       
     } catch (e: any) {
       console.error("Payment failed", e);
-      setError(e?.message || "Transaction failed");
+      let errMsg = e?.message || "Transaction failed";
+      try {
+        const { parseP2PError } = await import("@/lib/p2pkit");
+        const parsed = await parseP2PError(e);
+        if (parsed.message) {
+          errMsg = parsed.message;
+        }
+      } catch {}
+      setError(errMsg);
       setStatus("error");
     }
   };

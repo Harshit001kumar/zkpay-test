@@ -251,33 +251,64 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         data: orderCall.data
       });
 
-      const id = await provider.request({
-        method: "wallet_sendCalls",
-        params: [{
-          version: "1.0",
-          from: wallet.address,
-          calls: calls
-        }]
-      });
-
       let hash = "";
-      const MAX_TX_POLLS = 60;
-      for (let k = 0; k < MAX_TX_POLLS; k++) {
-        const statusRes: any = await provider.request({
-          method: "wallet_getCallsStatus",
-          params: [id]
+
+      try {
+        const id = await provider.request({
+          method: "wallet_sendCalls",
+          params: [{
+            version: "1.0",
+            from: wallet.address,
+            calls: calls
+          }]
         });
-        if (statusRes.status === "CONFIRMED" && statusRes.receipts && statusRes.receipts.length > 0) {
-          hash = statusRes.receipts[0].transactionHash || statusRes.receipts[0].blockHash; 
-          break;
+
+        const MAX_TX_POLLS = 60;
+        for (let k = 0; k < MAX_TX_POLLS; k++) {
+          const statusRes: any = await provider.request({
+            method: "wallet_getCallsStatus",
+            params: [id]
+          });
+          if (statusRes.status === "CONFIRMED" && statusRes.receipts && statusRes.receipts.length > 0) {
+            hash = statusRes.receipts[0].transactionHash || statusRes.receipts[0].blockHash; 
+            break;
+          }
+          if (statusRes.status === "FAILED" || statusRes.status === "REJECTED") {
+            throw new Error(`Transaction ${statusRes.status.toLowerCase()} by wallet`);
+          }
+          if (k === MAX_TX_POLLS - 1) {
+            throw new Error("Transaction confirmation timed out after 2 minutes");
+          }
+          await new Promise(r => setTimeout(r, 2000));
         }
-        if (statusRes.status === "FAILED" || statusRes.status === "REJECTED") {
-          throw new Error(`Transaction ${statusRes.status.toLowerCase()} by wallet`);
+      } catch (batchErr: any) {
+        const isUnsupported = 
+          batchErr?.message?.toLowerCase().includes("method") ||
+          batchErr?.message?.toLowerCase().includes("unsupported") ||
+          batchErr?.message?.toLowerCase().includes("does not support") ||
+          batchErr?.code === -32601;
+
+        if (isUnsupported) {
+          console.log("[CashoutFlow] wallet_sendCalls not supported. Executing sequential transactions via EOA...");
+          const { getPublicClient } = await import("@/lib/p2pkit");
+          const publicClient = getPublicClient();
+
+          for (let i = 0; i < calls.length; i++) {
+            const call = calls[i];
+            const txH = await provider.request({
+              method: "eth_sendTransaction",
+              params: [{
+                from: wallet.address,
+                to: call.to,
+                data: call.data,
+              }]
+            });
+            await publicClient.waitForTransactionReceipt({ hash: txH as `0x${string}` });
+            hash = txH as string;
+          }
+        } else {
+          throw batchErr;
         }
-        if (k === MAX_TX_POLLS - 1) {
-          throw new Error("Transaction confirmation timed out after 2 minutes");
-        }
-        await new Promise(r => setTimeout(r, 2000));
       }
 
       const { getPublicClient } = await import("@/lib/p2pkit");
