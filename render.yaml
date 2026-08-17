@@ -24,3 +24,7 @@ services:
         sync: false
       - key: PRIVY_AUTH_PRIVATE_KEY
         sync: false
+      - key: ADMIN_WALLETS
+        sync: false
+      - key: ADMIN_PRIVY_DIDS
+        sync: false
