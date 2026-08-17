@@ -12,7 +12,10 @@ function getPrivyClient(): PrivyClient | null {
   }
 
   if (!_privyClient) {
-    _privyClient = new PrivyClient(appId, appSecret);
+    _privyClient = new PrivyClient({
+      appId,
+      appSecret,
+    });
   }
 
   return _privyClient;
@@ -77,16 +80,31 @@ export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult>
       };
     }
 
-    // 2. Fetch full user to inspect all linked wallets and accounts
-    const user = await privy.getUser(userId);
-    const linkedWallets = user.linkedAccounts
-      ?.filter((acc: any) => acc.type === "wallet")
-      .map((acc: any) => acc.address?.toLowerCase())
-      .filter(Boolean) || [];
+    // 2. Fetch user to inspect linked accounts
+    let linkedWallets: string[] = [];
+    let primaryWallet: string | undefined;
 
-    const primaryWallet = user.wallet?.address?.toLowerCase();
-    if (primaryWallet && !linkedWallets.includes(primaryWallet)) {
-      linkedWallets.push(primaryWallet);
+    try {
+      let user: any = null;
+      if (typeof (privy as any).getUser === "function") {
+        user = await (privy as any).getUser(userId);
+      } else if (typeof (privy as any).users === "function") {
+        user = await (privy as any).users()._get(userId);
+      }
+
+      if (user) {
+        linkedWallets = user.linkedAccounts
+          ?.filter((acc: any) => acc.type === "wallet")
+          .map((acc: any) => acc.address?.toLowerCase())
+          .filter(Boolean) || [];
+
+        primaryWallet = user.wallet?.address?.toLowerCase();
+        if (primaryWallet && !linkedWallets.includes(primaryWallet)) {
+          linkedWallets.push(primaryWallet);
+        }
+      }
+    } catch (fetchErr) {
+      console.warn("[AdminAuth] Note: could not fetch detailed user object, verifying via claims & DIDs", fetchErr);
     }
 
     // 3. Check against whitelist
