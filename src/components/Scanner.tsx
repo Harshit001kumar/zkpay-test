@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useCallback, useState } from "react";
-import { Html5QrcodeScanner } from "html5-qrcode";
+import { useEffect, useCallback, useState, useRef } from "react";
+import { Html5Qrcode } from "html5-qrcode";
 import { MerchantData } from "@/lib/types";
+import { Loader2, CameraOff } from "lucide-react";
 
 interface ScannerProps {
   onScan: (data: MerchantData) => void;
@@ -11,6 +12,9 @@ interface ScannerProps {
 
 export default function Scanner({ onScan, onCancel }: ScannerProps) {
   const [manualId, setManualId] = useState("");
+  const [cameraLoading, setCameraLoading] = useState(true);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
   
   const processScanData = useCallback((text: string) => {
     if (text.toLowerCase().startsWith("upi://pay")) {
@@ -43,46 +47,100 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
   const stableOnScan = useCallback(processScanData, [processScanData]);
 
   useEffect(() => {
-    let scanner: Html5QrcodeScanner | null = null;
     let isMounted = true;
+    const scannerId = "reader";
 
-    const timer = setTimeout(() => {
-      if (!isMounted) return;
-      
-      const el = document.getElementById("reader");
-      if (!el) return;
+    const startScanner = async () => {
+      try {
+        setCameraLoading(true);
+        setCameraError(null);
 
-      el.innerHTML = '';
+        // Small delay to ensure DOM element is mounted
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        if (!isMounted) return;
 
-      scanner = new Html5QrcodeScanner(
-        "reader",
-        {
-          fps: 10,
-          rememberLastUsedCamera: true,
-          supportedScanTypes: [0], // 0 = QR_CODE
-          videoConstraints: {
-            facingMode: "environment"
+        const el = document.getElementById(scannerId);
+        if (!el) return;
+
+        const html5QrCode = new Html5Qrcode(scannerId);
+        scannerRef.current = html5QrCode;
+
+        const scanConfig = {
+          fps: 15,
+          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+            return {
+              width: Math.floor(minEdge * 0.85),
+              height: Math.floor(minEdge * 0.85),
+            };
+          },
+          aspectRatio: 1.0,
+        };
+
+        const handleSuccess = async (decodedText: string) => {
+          try {
+            if (scannerRef.current && scannerRef.current.isScanning) {
+              await scannerRef.current.stop();
+            }
+          } catch (e) {
+            console.warn("Error stopping scanner on success:", e);
           }
-        },
-        false
-      );
+          stableOnScan(decodedText);
+        };
 
-      scanner.render(
-        (text) => {
-          if (scanner) {
-            scanner.clear().catch(() => {});
-          }
-          stableOnScan(text);
-        },
-        (error) => {}
-      );
-    }, 150);
+        // Try back camera first
+        try {
+          await html5QrCode.start(
+            { facingMode: "environment" },
+            scanConfig,
+            handleSuccess,
+            () => {}
+          );
+        } catch (envError) {
+          console.warn("Back camera failed, trying default user camera:", envError);
+          if (!isMounted) return;
+          // Fallback to any available camera
+          await html5QrCode.start(
+            { facingMode: "user" },
+            scanConfig,
+            handleSuccess,
+            () => {}
+          );
+        }
+
+        if (isMounted) {
+          setCameraLoading(false);
+        }
+      } catch (err: any) {
+        console.error("Failed to start camera scanner:", err);
+        if (isMounted) {
+          setCameraLoading(false);
+          setCameraError(
+            err?.message?.includes("Permission") || err?.name === "NotAllowedError"
+              ? "Camera permission denied. Please allow camera access in your browser settings."
+              : "Unable to access camera feed. You can also enter the UPI ID / Address manually below."
+          );
+        }
+      }
+    };
+
+    startScanner();
 
     return () => {
       isMounted = false;
-      clearTimeout(timer);
-      if (scanner) {
-        scanner.clear().catch((e) => console.error("Failed to clear scanner", e));
+      if (scannerRef.current) {
+        if (scannerRef.current.isScanning) {
+          scannerRef.current
+            .stop()
+            .then(() => {
+              scannerRef.current?.clear();
+            })
+            .catch((e) => console.warn("Error stopping camera on unmount:", e));
+        } else {
+          try {
+            scannerRef.current.clear();
+          } catch {}
+        }
       }
     };
   }, [stableOnScan]);
@@ -122,15 +180,37 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
         .ch-h { width: 24px; height: 1px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
         .ch-v { height: 24px; width: 1px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
         
-        #reader { border: none !important; }
-        #reader video { object-fit: cover; width: 100%; height: 100%; border-radius: 50%; }
+        #reader { 
+          width: 100% !important; 
+          height: 100% !important; 
+          border: none !important; 
+          position: relative;
+          overflow: hidden;
+          background: transparent !important;
+        }
+        #reader video { 
+          width: 100% !important; 
+          height: 100% !important; 
+          object-fit: cover !important; 
+          border-radius: 9999px !important; 
+        }
+        #reader__scan_region {
+          width: 100% !important;
+          height: 100% !important;
+          background: transparent !important;
+        }
+        #reader__scan_region video {
+          width: 100% !important;
+          height: 100% !important;
+          object-fit: cover !important;
+          border-radius: 9999px !important;
+        }
         #reader__dashboard_section_csr span { display: none !important; }
-        #reader__dashboard_section_swaplink { color: #c0c6de !important; text-decoration: none !important; }
       `}} />
 
       {/* Top Navigation */}
       <header className="w-full flex justify-between items-center px-6 py-6 absolute top-0 z-50">
-        <button onClick={onCancel} className="text-[#e5e2e3] hover:opacity-80 transition-opacity flex items-center gap-2">
+        <button onClick={onCancel} className="text-[#e5e2e3] hover:opacity-80 transition-opacity flex items-center gap-2 active:scale-95">
           <span className="material-symbols-outlined">arrow_back</span>
           <span className="font-label-caps tracking-[0.15em] font-bold">BACK</span>
         </button>
@@ -140,7 +220,9 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
       <div className="absolute top-8 left-1/2 -translate-x-1/2 z-50">
         <div className="bg-white/[0.08] backdrop-blur-[60px] rounded-full px-6 py-2 flex items-center gap-3 border border-white/20 shadow-lg">
           <div className="w-1.5 h-1.5 rounded-full bg-[#c0c6de] animate-pulse"></div>
-          <span className="font-label-caps text-[10px] text-[#c6c6cd] uppercase tracking-tighter mr-1 font-bold">SCANNING</span>
+          <span className="font-label-caps text-[10px] text-[#c6c6cd] uppercase tracking-tighter mr-1 font-bold">
+            {cameraLoading ? "INITIALIZING CAMERA" : cameraError ? "CAMERA OFF" : "SCANNING"}
+          </span>
         </div>
       </div>
 
@@ -149,21 +231,37 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] h-[80vw] bg-[#c0c6de]/10 blur-[150px] rounded-full pointer-events-none"></div>
         
         {/* Centered Circular Viewfinder */}
-        <div className="relative w-full max-w-[340px] aspect-square group">
+        <div className="relative w-full max-w-[320px] aspect-square group">
           {/* Thick Frosted Border */}
           <div className="absolute inset-0 rounded-full border-[12px] border-white/5 bg-white/[0.03] backdrop-blur-[40px] shadow-2xl z-0 pointer-events-none"></div>
           
           {/* Inner Viewfinder Container */}
           <div className="absolute inset-[12px] rounded-full overflow-hidden bg-black flex items-center justify-center z-10">
-            <div className="scan-line pointer-events-none"></div>
+            {!cameraError && <div className="scan-line pointer-events-none"></div>}
             <div className="crosshair ch-h pointer-events-none"></div>
             <div className="crosshair ch-v pointer-events-none"></div>
             
             {/* The actual camera output */}
-            <div id="reader" className="w-full h-full scale-[1.3]"></div>
+            <div id="reader" className="w-full h-full"></div>
+
+            {/* Camera Loading Overlay */}
+            {cameraLoading && (
+              <div className="absolute inset-0 bg-[#0e0e0f]/80 flex flex-col items-center justify-center gap-3 z-20">
+                <Loader2 className="w-8 h-8 text-[#c0c6de] animate-spin" />
+                <span className="text-xs text-[#909097] font-mono">Opening camera...</span>
+              </div>
+            )}
+
+            {/* Camera Error Overlay */}
+            {cameraError && (
+              <div className="absolute inset-0 bg-[#0e0e0f]/90 flex flex-col items-center justify-center p-6 text-center z-20">
+                <CameraOff className="w-10 h-10 text-[#ffb4ab] mb-2" />
+                <p className="text-xs text-[#ffb4ab] leading-relaxed">{cameraError}</p>
+              </div>
+            )}
             
-            <div className="absolute bottom-12 w-full text-center pointer-events-none">
-              <p className="font-label-caps text-[10px] text-white/60 tracking-[0.2em] font-bold">PRECISION FOCUS REQUIRED</p>
+            <div className="absolute bottom-6 w-full text-center pointer-events-none z-20">
+              <p className="font-label-caps text-[9px] text-white/70 tracking-[0.2em] font-bold">PRECISION SCAN</p>
             </div>
           </div>
           
@@ -175,27 +273,34 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
         </div>
 
         {/* Status Message */}
-        <div className="mt-12 text-center max-w-[280px] relative z-20">
-          <h3 className="font-headline-md text-xl font-bold tracking-tight text-[#e5e2e3] mb-2">Awaiting Scan</h3>
-          <p className="text-sm text-[#c6c6cd] font-light">Position the recipient&apos;s QR code within the glass optics for instant verification.</p>
+        <div className="mt-8 text-center max-w-[280px] relative z-20">
+          <h3 className="font-headline-md text-lg font-bold tracking-tight text-[#e5e2e3] mb-1">
+            {cameraError ? "Scan Unavailable" : "Awaiting Scan"}
+          </h3>
+          <p className="text-xs text-[#c6c6cd] font-light">
+            {cameraError 
+              ? "Use the manual input field below to continue."
+              : "Point your camera at any UPI QR code or Ethereum address to scan instantly."
+            }
+          </p>
         </div>
 
         {/* Manual Input Fallback */}
-        <div className="w-full max-w-sm mt-12 relative z-20">
-          <form onSubmit={handleManualSubmit} className="bg-white/5 backdrop-blur-[60px] rounded-2xl p-4 flex gap-2 border border-white/10 shadow-xl">
+        <div className="w-full max-w-sm mt-6 relative z-20">
+          <form onSubmit={handleManualSubmit} className="bg-white/5 backdrop-blur-[60px] rounded-2xl p-3 flex gap-2 border border-white/10 shadow-xl">
              <input
               type="text"
-              placeholder="Or enter Merchant ID / Address"
+              placeholder="Or enter UPI ID / Merchant Address"
               value={manualId}
               onChange={(e) => setManualId(e.target.value)}
-              className="flex-1 bg-transparent border-b border-white/10 px-3 py-2 text-sm outline-none focus:border-[#c0c6de] transition-colors text-[#e5e2e3] placeholder:text-[#909097] font-medium"
+              className="flex-1 bg-transparent px-3 py-2 text-sm outline-none text-[#e5e2e3] placeholder:text-[#909097] font-medium"
             />
             <button 
               type="submit"
               disabled={!manualId.trim()}
-              className="bg-white/10 hover:bg-white/20 text-[#c0c6de] rounded-xl px-4 font-bold text-[10px] tracking-widest disabled:opacity-50 transition-colors"
+              className="bg-white/10 hover:bg-white/20 text-[#c0c6de] rounded-xl px-4 font-bold text-[10px] tracking-widest disabled:opacity-40 transition-colors active:scale-95"
             >
-              GO
+              PAY
             </button>
           </form>
         </div>
@@ -203,3 +308,4 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
     </div>
   );
 }
+
