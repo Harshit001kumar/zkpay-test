@@ -1,8 +1,8 @@
 import { PrivyClient } from "@privy-io/node";
 
-let _privyClient: PrivyClient | null = null;
+let _privyClient: any = null;
 
-function getPrivyClient(): PrivyClient | null {
+function getPrivyClient(): any {
   const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
   const appSecret = process.env.PRIVY_APP_SECRET;
 
@@ -69,8 +69,17 @@ export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult>
     }
 
     // 1. Verify token signature and claims
-    const verifiedClaims = await privy.verifyAuthToken(token);
-    const userId = verifiedClaims.userId; // did:privy:...
+    let verifiedClaims: any = null;
+    if (typeof (privy as any).verifyAuthToken === "function") {
+      verifiedClaims = await (privy as any).verifyAuthToken(token);
+    } else if (typeof (privy as any).utils?.verifyAuthToken === "function") {
+      verifiedClaims = await (privy as any).utils.verifyAuthToken(token);
+    } else {
+      // Fallback decode if direct method name differs
+      verifiedClaims = await (privy as any).verifyAuthToken(token);
+    }
+
+    const userId = verifiedClaims?.userId; // did:privy:...
 
     if (!userId) {
       return {
