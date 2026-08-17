@@ -49,7 +49,7 @@ export const DEPOSIT_ASSETS = [
   { symbol: "SOL", name: "Solana", coin: "SOL", network: "solana" },
   { symbol: "USDT", name: "Tether (TRC20)", coin: "USDT", network: "tron" },
   { symbol: "USDC", name: "USDC (ERC20)", coin: "USDC", network: "ethereum" },
-  { symbol: "MATIC", name: "Polygon", coin: "MATIC", network: "polygon" },
+  { symbol: "USDC", name: "USDC (Polygon)", coin: "USDC", network: "polygon" },
   { symbol: "BNB", name: "BNB (BSC)", coin: "BNB", network: "bsc" }
 ] as const;
 

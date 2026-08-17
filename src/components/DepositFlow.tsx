@@ -183,7 +183,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
           <div className="absolute top-full left-6 right-6 max-w-sm mx-auto mt-2 obsidian-glass silver-rim rounded-2xl overflow-hidden z-40 bg-[#0e0e0f]/90">
             {DEPOSIT_ASSETS.map(asset => (
               <button 
-                key={asset.symbol}
+                key={`${asset.coin}-${asset.network}`}
                 onClick={() => { setSourceAsset(asset); setIsAssetSelectOpen(false); }}
                 className="w-full p-4 flex items-center gap-4 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 text-left"
               >
