@@ -99,10 +99,15 @@ export default function AdminPage() {
         return;
       }
 
+      const reqHeaders: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+      };
+      if (user?.wallet?.address) {
+        reqHeaders["x-admin-wallet"] = user.wallet.address;
+      }
+
       const res = await fetch("/api/admin/auth/verify", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: reqHeaders,
       });
 
       const data = await res.json();
@@ -118,7 +123,7 @@ export default function AdminPage() {
     } finally {
       setIsVerifying(false);
     }
-  }, [ready, authenticated, getAccessToken]);
+  }, [ready, authenticated, user, getAccessToken]);
 
   const loadAdminData = useCallback(async () => {
     if (!isAuthorized) return;
@@ -128,9 +133,16 @@ export default function AdminPage() {
       const token = await getAccessToken();
       if (!token) return;
 
+      const reqHeaders: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+      };
+      if (user?.wallet?.address) {
+        reqHeaders["x-admin-wallet"] = user.wallet.address;
+      }
+
       // 1. Fetch Stats
       const statsRes = await fetch("/api/admin/stats", {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: reqHeaders,
       });
       if (statsRes.ok) {
         const statsJson = await statsRes.json();
@@ -139,7 +151,7 @@ export default function AdminPage() {
 
       // 2. Fetch Orders
       const ordersRes = await fetch(`/api/admin/orders?limit=30${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ""}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: reqHeaders,
       });
       if (ordersRes.ok) {
         const ordersJson = await ordersRes.json();

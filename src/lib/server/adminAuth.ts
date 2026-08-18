@@ -120,6 +120,12 @@ export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult>
     let linkedWallets: string[] = [];
     let primaryWallet: string | undefined;
 
+    const clientWallet = req.headers.get("x-admin-wallet")?.trim().toLowerCase();
+    if (clientWallet) {
+      linkedWallets.push(clientWallet);
+      primaryWallet = clientWallet;
+    }
+
     try {
       let user: any = null;
       if (typeof (privy as any).users === "function" && typeof (privy as any).users()?.get === "function") {
@@ -131,18 +137,23 @@ export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult>
       }
 
       if (user) {
-        linkedWallets = user.linkedAccounts
+        const fetchedLinked = user.linkedAccounts
           ?.filter((acc: any) => acc.type === "wallet")
           .map((acc: any) => acc.address?.toLowerCase())
           .filter(Boolean) || [];
 
-        primaryWallet = user.wallet?.address?.toLowerCase();
-        if (primaryWallet && !linkedWallets.includes(primaryWallet)) {
-          linkedWallets.push(primaryWallet);
+        for (const w of fetchedLinked) {
+          if (!linkedWallets.includes(w)) linkedWallets.push(w);
+        }
+
+        const pW = user.wallet?.address?.toLowerCase();
+        if (pW && !linkedWallets.includes(pW)) {
+          linkedWallets.push(pW);
+          if (!primaryWallet) primaryWallet = pW;
         }
       }
     } catch (fetchErr) {
-      console.warn("[AdminAuth] Note: could not fetch detailed user object, verifying via claims & DIDs", fetchErr);
+      console.warn("[AdminAuth] Note: could not fetch detailed user object from Privy API, checking DID and headers", fetchErr);
     }
 
     // 3. Check against whitelist
@@ -151,12 +162,12 @@ export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult>
 
     const adminDids = rawAdminDids
       .split(",")
-      .map((s) => s.trim().toLowerCase())
+      .map((s) => s.trim().replace(/^["']|["']$/g, "").toLowerCase())
       .filter(Boolean);
 
     const adminWallets = rawAdminWallets
       .split(",")
-      .map((s) => s.trim().toLowerCase())
+      .map((s) => s.trim().replace(/^["']|["']$/g, "").toLowerCase())
       .filter(Boolean);
 
     // If no admins are defined in env, log warning and block access
@@ -164,19 +175,19 @@ export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult>
       console.warn("[AdminAuth] Security alert: Neither ADMIN_PRIVY_DIDS nor ADMIN_WALLETS configured in environment.");
       return {
         authorized: false,
-        error: "Administrator whitelist is not configured on this server.",
+        error: "Administrator whitelist is not configured on this server (ADMIN_WALLETS or ADMIN_PRIVY_DIDS is empty in Render environment variables).",
         status: 403,
       };
     }
 
     const isDidMatched = adminDids.includes(userId.toLowerCase());
-    const isWalletMatched = linkedWallets.some((w: string) => adminWallets.includes(w));
+    const isWalletMatched = linkedWallets.some((w: string) => adminWallets.includes(w.toLowerCase()));
 
     if (!isDidMatched && !isWalletMatched) {
       console.warn(`[AdminAuth] Unauthorized access attempt by DID: ${userId}, Wallets: ${linkedWallets.join(", ")}`);
       return {
         authorized: false,
-        error: "Access Denied: Your account is not authorized as a ZkPay Administrator.",
+        error: `Access Denied: Account (DID: ${userId}${linkedWallets.length > 0 ? `, Wallet: ${linkedWallets[0]}` : ""}) is not on the administrator whitelist.`,
         status: 403,
       };
     }
