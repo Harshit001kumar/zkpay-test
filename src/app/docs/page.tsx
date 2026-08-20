@@ -407,7 +407,7 @@ bot.command('pay', async (ctx) => {
               </p>
               <div className="rounded-xl bg-black/40 border border-white/5 p-3 font-mono text-xs text-gray-400">
                 <code>
-                  const hmac = crypto.createHmac(&apos;sha256&apos;, secret).update(`${"$"}{timestamp}.${"$"}{rawBody}`).digest(&apos;hex&apos;);
+                  {"const hmac = crypto.createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');"}
                 </code>
               </div>
             </div>
