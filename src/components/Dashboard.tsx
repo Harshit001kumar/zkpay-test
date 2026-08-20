@@ -12,6 +12,8 @@ import { formatUnits, erc20Abi } from "viem";
 import { CONTRACTS, CHAIN } from "@/lib/constants";
 import { MerchantData } from "@/lib/types";
 
+import PayLinkModal from "@/components/PayLinkModal";
+
 const Scanner = dynamic(() => import("@/components/Scanner"), { ssr: false });
 const DepositFlow = dynamic(() => import("@/components/DepositFlow"), { ssr: false });
 
@@ -24,6 +26,7 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("vault");
   const [isScanning, setIsScanning] = useState(false);
   const [merchantId, setMerchantId] = useState<MerchantData | null>(null);
+  const [isPayLinkOpen, setIsPayLinkOpen] = useState(false);
 
   // Fetch USDC balance automatically via Wagmi useReadContract
   const walletAddress = wallets?.[0]?.address as `0x${string}` | undefined;
@@ -101,30 +104,39 @@ export default function Dashboard() {
 
       {/* Bento Actions */}
       <section className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-12">
-        <div className="md:col-span-8 grid grid-cols-3 gap-4">
-          <button onClick={() => switchTab("pay")} className="bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 rounded-xl flex flex-col items-center justify-center gap-3 group hover:bg-white/10 transition-all border border-white/15 text-[#e5e2e3]">
-            <span className="material-symbols-outlined text-2xl group-hover:scale-110 transition-transform">payments</span>
-            <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">PAY</span>
+        <div className="md:col-span-8 grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
+          <button onClick={() => switchTab("pay")} className="bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-white/10 transition-all border border-white/15 text-[#e5e2e3]">
+            <span className="material-symbols-outlined text-2xl group-hover:scale-110 transition-transform">qr_code_scanner</span>
+            <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">SCAN & PAY</span>
           </button>
-          <button onClick={() => switchTab("cashout")} className="bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 rounded-xl flex flex-col items-center justify-center gap-3 group hover:bg-white/10 transition-all border border-white/15 text-[#e5e2e3]">
+          <button onClick={() => switchTab("cashout")} className="bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-white/10 transition-all border border-white/15 text-[#e5e2e3]">
             <span className="material-symbols-outlined text-2xl group-hover:scale-110 transition-transform">north_east</span>
             <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">CASH OUT</span>
           </button>
-          <button onClick={() => switchTab("deposit")} className="bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 rounded-xl flex flex-col items-center justify-center gap-3 group hover:bg-white/10 transition-all border border-white/15 text-[#e5e2e3]">
+          <button onClick={() => switchTab("deposit")} className="bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-white/10 transition-all border border-white/15 text-[#e5e2e3]">
             <span className="material-symbols-outlined text-2xl group-hover:scale-110 transition-transform">south_west</span>
             <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">DEPOSIT</span>
+          </button>
+          <button onClick={() => setIsPayLinkOpen(true)} className="bg-gradient-to-b from-purple-950/40 to-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-purple-900/30 transition-all border border-purple-500/30 text-purple-200">
+            <span className="material-symbols-outlined text-2xl text-purple-400 group-hover:scale-110 transition-transform">link</span>
+            <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">PAY LINK</span>
           </button>
         </div>
         <div className="md:col-span-4 bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 rounded-xl flex items-center justify-between border border-white/15 text-[#e5e2e3]">
           <div>
-            <p className="font-label-caps text-[9px] text-[#c6c6cd] mb-1 tracking-[0.25em] font-bold">TRUST SCORE</p>
-            <p className="font-headline-md text-3xl font-medium tracking-tight">98<span className="text-[#c6c6cd]/30 text-base font-light ml-1">/100</span></p>
+            <p className="font-label-caps text-[9px] text-[#c6c6cd] mb-1 tracking-[0.25em] font-bold">DEVELOPER API</p>
+            <a href="/docs" target="_blank" className="font-headline-md text-base text-purple-400 hover:text-purple-300 font-semibold tracking-tight flex items-center gap-1.5 transition-colors">
+              Docs & Bots <span className="material-symbols-outlined text-sm">open_in_new</span>
+            </a>
           </div>
-          <div className="w-12 h-12 rounded-full border border-[#c0c6de]/30 flex items-center justify-center bg-[#c0c6de]/5">
-            <span className="material-symbols-outlined text-[#c0c6de] text-xl">verified</span>
+          <div className="w-12 h-12 rounded-full border border-purple-500/30 flex items-center justify-center bg-purple-500/10">
+            <span className="material-symbols-outlined text-purple-400 text-xl">terminal</span>
           </div>
         </div>
       </section>
+
+      {/* Pay Link Modal */}
+      <PayLinkModal isOpen={isPayLinkOpen} onClose={() => setIsPayLinkOpen(false)} />
 
       {/* Transaction Ledger */}
       <section>
