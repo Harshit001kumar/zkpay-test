@@ -33,6 +33,9 @@ interface PayLinkData {
   createdAt: number;
   paidAt?: number;
   txHash?: string;
+  redirectUrl?: string;
+  webhookUrl?: string;
+  p2pOrderId?: string;
 }
 
 type PayStep = "loading" | "details" | "wallet" | "qr" | "processing" | "success" | "error" | "expired";

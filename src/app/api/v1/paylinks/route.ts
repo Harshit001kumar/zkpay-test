@@ -168,6 +168,7 @@ export async function GET(req: Request) {
       paidAt: link.paidAt,
       txHash: link.txHash,
       p2pOrderId: link.p2pOrderId,
+      redirectUrl: link.redirectUrl,
     });
   } catch (err: any) {
     console.error("[PayLinks] GET Error:", err);
