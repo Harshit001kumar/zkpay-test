@@ -2,22 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { encodeFunctionData, parseUnits, formatUnits } from "viem";
+import { encodeFunctionData, parseUnits } from "viem";
 import { motion, AnimatePresence } from "framer-motion";
-import { useParams, useRouter } from "next/navigation";
-import {
-  ArrowLeft,
-  CheckCircle,
-  Copy,
-  ExternalLink,
-  Loader2,
-  QrCode,
-  Shield,
-  Wallet,
-  XCircle,
-  Clock,
-} from "lucide-react";
-import { CONTRACTS } from "@/lib/constants";
+import { useParams } from "next/navigation";
+import { CONTRACTS, CHAIN } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
 
 interface PayLinkData {
@@ -38,11 +26,10 @@ interface PayLinkData {
   p2pOrderId?: string;
 }
 
-type PayStep = "loading" | "details" | "wallet" | "qr" | "processing" | "success" | "error" | "expired";
+type PayStep = "loading" | "details" | "qr" | "processing" | "success" | "error" | "expired";
 
 export default function PayPage() {
   const params = useParams();
-  const router = useRouter();
   const { ready, authenticated, login } = usePrivy();
   const { wallets } = useWallets();
   const linkId = params.id as string;
@@ -92,7 +79,6 @@ export default function PayPage() {
     fetchLink();
   }, [linkId]);
 
-  // Copy to clipboard
   const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -159,8 +145,6 @@ export default function PayPage() {
         }],
       });
 
-      // TODO: Step 3 would call placeOrder via P2P SDK
-      // For now, mark as success with the fee tx hash
       setTxHash(feeTxHash as string);
       setStep("success");
     } catch (err: any) {
@@ -170,220 +154,237 @@ export default function PayPage() {
     }
   };
 
-  // ──────────────────── Render ────────────────────
-
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white flex items-center justify-center p-4">
-      <motion.div
-        className="w-full max-w-md"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
-        {/* Glass Card */}
-        <div className="relative rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur-xl shadow-2xl overflow-hidden">
-          {/* Gradient glow */}
-          <div className="absolute -top-32 -right-32 w-64 h-64 bg-purple-500/20 rounded-full blur-[100px]" />
-          <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-blue-500/15 rounded-full blur-[100px]" />
+    <div className="min-h-screen bg-[#131315] text-[#e5e2e3] flex flex-col justify-between p-4 md:p-8">
+      {/* Top Header */}
+      <header className="max-w-[480px] w-full mx-auto flex items-center justify-between py-4">
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-bold tracking-tight text-[#e5e2e3]">
+            <span className="text-[#c0c6de]">Zk</span>Pay
+          </h1>
+          <div className="h-4 w-px bg-white/15 mx-1" />
+          <span className="font-label-caps text-[9px] text-[#c0c6de] tracking-[0.25em] font-bold uppercase">
+            CHECKOUT
+          </span>
+        </div>
 
-          {/* Header */}
-          <div className="relative z-10 px-6 pt-6 pb-4 border-b border-white/5">
-            <div className="flex items-center gap-3">
-              <Shield className="w-5 h-5 text-emerald-400" />
-              <span className="text-xs font-medium text-emerald-400 tracking-wider uppercase">
-                ZkPay Secure Payment
-              </span>
-            </div>
-          </div>
+        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-label-caps text-[#c6c6cd] tracking-[0.15em]">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#c0c6de] animate-pulse" />
+          <span>{CHAIN.name}</span>
+        </div>
+      </header>
 
-          {/* Content */}
-          <div className="relative z-10 px-6 py-6">
+      {/* Main Glass Card */}
+      <main className="max-w-[480px] w-full mx-auto my-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="bg-white/5 backdrop-blur-[40px] border border-white/15 rounded-xl p-6 md:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.8)] relative overflow-hidden"
+        >
+          <div className="relative z-10">
             <AnimatePresence mode="wait">
-              {/* ─── Loading ─── */}
+              {/* ─── Loading State ─── */}
               {step === "loading" && (
                 <motion.div
                   key="loading"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="flex flex-col items-center gap-4 py-12"
+                  className="flex flex-col items-center justify-center gap-4 py-16"
                 >
-                  <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
-                  <p className="text-sm text-gray-400">Loading payment details...</p>
+                  <div className="w-8 h-8 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin" />
+                  <p className="font-label-caps text-[10px] text-[#c6c6cd] tracking-[0.25em]">
+                    FETCHING INVOICE...
+                  </p>
                 </motion.div>
               )}
 
-              {/* ─── Payment Details ─── */}
+              {/* ─── Payment Details View ─── */}
               {step === "details" && linkData && (
                 <motion.div
                   key="details"
-                  initial={{ opacity: 0, y: 10 }}
+                  initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
+                  exit={{ opacity: 0, y: -8 }}
                 >
+                  {/* Category / Label */}
+                  <div className="flex items-center justify-between mb-6">
+                    <span className="font-label-caps text-[#c0c6de] text-[10px] tracking-[0.25em] font-bold">
+                      INVOICE DETAILS
+                    </span>
+                    <span className="font-label-caps text-[9px] text-[#c6c6cd]/60 tracking-[0.2em]">
+                      # {linkData.linkId}
+                    </span>
+                  </div>
+
                   {/* Title */}
-                  <h2 className="text-lg font-semibold text-white/90 mb-1">
+                  <h2 className="text-xl font-semibold text-[#e5e2e3] tracking-tight mb-1">
                     {linkData.title}
                   </h2>
-                  <p className="text-xs text-gray-500 mb-6">
-                    Payment to {linkData.recipientUpi}
+                  <p className="text-xs text-[#c6c6cd]/70 mb-6 font-mono">
+                    Payee: {linkData.recipientUpi}
                   </p>
 
-                  {/* Amount Card */}
-                  <div className="rounded-2xl bg-white/[0.04] border border-white/5 p-5 mb-6">
-                    <p className="text-xs text-gray-500 mb-1">Amount Due</p>
-                    <p className="text-3xl font-bold bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">
+                  {/* Amount Display */}
+                  <div className="p-5 rounded-xl bg-white/[0.03] border border-white/10 mb-6">
+                    <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold block mb-2">
+                      AMOUNT TO PAY
+                    </span>
+                    <div className="text-4xl md:text-5xl font-medium tracking-tighter text-[#e5e2e3] mb-3">
                       {linkData.amountINR}
-                    </p>
-                    <div className="flex items-center gap-2 mt-3">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                      <p className="text-sm text-emerald-400">
+                    </div>
+                    <div className="flex items-center justify-between pt-3 border-t border-white/10 text-xs">
+                      <span className="text-[#c0c6de] font-medium font-mono">
                         ≈ {linkData.estimatedUsdc}
-                      </p>
-                      <span className="text-xs text-gray-600">
-                        @ ₹{linkData.rate}/USDC
+                      </span>
+                      <span className="text-[#909097] text-[11px]">
+                        Rate: ₹{linkData.rate}/USDC
                       </span>
                     </div>
                   </div>
 
                   {error && (
-                    <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 mb-4">
-                      <p className="text-xs text-red-400">{error}</p>
+                    <div className="p-3 rounded-xl bg-red-950/40 border border-red-500/30 text-xs text-[#ffb4ab] mb-4">
+                      {error}
                     </div>
                   )}
 
-                  {/* Payment Options */}
+                  {/* Actions */}
                   <div className="space-y-3">
-                    {/* Option 1: Connect Wallet */}
+                    {/* 1-Click Pay with Wallet */}
                     <button
                       onClick={authenticated ? handleWalletPay : () => login()}
-                      className="w-full flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-purple-500/20 hover:border-purple-400/40 transition-all group"
+                      className="w-full py-4 rounded-xl bg-[#e5e2e3] hover:bg-white text-[#131315] font-bold text-xs tracking-[0.25em] font-label-caps uppercase transition-all shadow-lg hover:shadow-white/10 flex items-center justify-center gap-2"
                     >
-                      <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center group-hover:bg-purple-500/30 transition-colors">
-                        <Wallet className="w-5 h-5 text-purple-400" />
-                      </div>
-                      <div className="text-left">
-                        <p className="text-sm font-medium text-white">
-                          {authenticated ? "Pay with Wallet" : "Connect Wallet & Pay"}
-                        </p>
-                        <p className="text-xs text-gray-500">MetaMask, Coinbase, Phantom</p>
-                      </div>
+                      <span className="material-symbols-outlined text-base">account_balance_wallet</span>
+                      <span>{authenticated ? "PAY WITH CONNECTED WALLET" : "CONNECT WALLET & PAY"}</span>
                     </button>
 
-                    {/* Option 2: Pay by QR / Address */}
+                    {/* Pay via Direct Transfer / QR */}
                     <button
                       onClick={() => setStep("qr")}
-                      className="w-full flex items-center gap-3 p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:border-white/15 transition-all group"
+                      className="w-full py-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-[#e5e2e3] font-bold text-xs tracking-[0.25em] font-label-caps uppercase transition-all flex items-center justify-center gap-2"
                     >
-                      <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-colors">
-                        <QrCode className="w-5 h-5 text-gray-400" />
-                      </div>
-                      <div className="text-left">
-                        <p className="text-sm font-medium text-white">Pay by Transfer</p>
-                        <p className="text-xs text-gray-500">Send from Binance, Bybit, or any wallet</p>
-                      </div>
+                      <span className="material-symbols-outlined text-base">qr_code_2</span>
+                      <span>PAY VIA QR / TRANSFER</span>
                     </button>
                   </div>
 
-                  {/* Security badge */}
-                  <div className="flex items-center justify-center gap-2 mt-6 pt-4 border-t border-white/5">
-                    <Shield className="w-3 h-3 text-gray-600" />
-                    <span className="text-[10px] text-gray-600 tracking-wider uppercase">
-                      Secured by ZkPay on Base Mainnet
+                  {/* Trust Footer */}
+                  <div className="flex items-center justify-center gap-2 mt-8 pt-4 border-t border-white/10">
+                    <span className="material-symbols-outlined text-sm text-[#c0c6de]">verified_user</span>
+                    <span className="font-label-caps text-[9px] text-[#909097] tracking-[0.25em]">
+                      SECURED BY ZKPAY ON BASE
                     </span>
                   </div>
                 </motion.div>
               )}
 
-              {/* ─── QR / Address View ─── */}
+              {/* ─── QR / Transfer View ─── */}
               {step === "qr" && linkData && (
                 <motion.div
                   key="qr"
-                  initial={{ opacity: 0, y: 10 }}
+                  initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
+                  exit={{ opacity: 0, y: -8 }}
                 >
                   <button
                     onClick={() => setStep("details")}
-                    className="flex items-center gap-1 text-xs text-gray-500 hover:text-white transition-colors mb-4"
+                    className="flex items-center gap-2 text-xs font-label-caps text-[#c6c6cd] hover:text-[#e5e2e3] tracking-[0.2em] mb-6 transition-colors"
                   >
-                    <ArrowLeft className="w-3 h-3" /> Back
+                    <span className="material-symbols-outlined text-sm">arrow_back</span>
+                    <span>BACK TO INVOICE</span>
                   </button>
 
-                  <h3 className="text-base font-semibold mb-1">Send USDC on Base</h3>
-                  <p className="text-xs text-gray-500 mb-5">
-                    Transfer exactly <span className="text-emerald-400 font-medium">{linkData.estimatedUsdc}</span> to the address below
-                  </p>
+                  <div className="text-center mb-6">
+                    <span className="font-label-caps text-[#c0c6de] text-[10px] tracking-[0.25em] font-bold block mb-1">
+                      SCAN & TRANSFER
+                    </span>
+                    <p className="text-xs text-[#c6c6cd]">
+                      Send <strong className="text-[#e5e2e3]">{linkData.estimatedUsdc}</strong> on Base Mainnet
+                    </p>
+                  </div>
 
-                  {/* QR Code */}
-                  <div className="flex justify-center mb-5">
-                    <div className="p-3 bg-white rounded-2xl">
+                  {/* QR Container */}
+                  <div className="flex justify-center mb-6">
+                    <div className="p-4 bg-white rounded-xl shadow-2xl">
                       <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(linkData.payUrl)}`}
-                        alt="Payment QR Code"
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(linkData.payUrl)}`}
+                        alt="Payment QR"
                         className="w-48 h-48"
                       />
                     </div>
                   </div>
 
-                  {/* Info */}
-                  <div className="rounded-xl bg-white/[0.04] border border-white/5 p-4 space-y-3">
-                    <div>
-                      <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Network</p>
-                      <p className="text-sm text-white font-medium">Base Mainnet (Chain ID: 8453)</p>
+                  {/* Metadata Specs */}
+                  <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-2 text-xs font-mono mb-6">
+                    <div className="flex justify-between">
+                      <span className="text-[#909097]">Network</span>
+                      <span className="text-[#e5e2e3]">Base Mainnet (8453)</span>
                     </div>
-                    <div>
-                      <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Asset</p>
-                      <p className="text-sm text-white font-medium">USDC</p>
+                    <div className="flex justify-between">
+                      <span className="text-[#909097]">Asset</span>
+                      <span className="text-[#e5e2e3]">USDC</span>
                     </div>
-                    <div>
-                      <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Amount</p>
-                      <p className="text-sm text-emerald-400 font-medium">{linkData.estimatedUsdc}</p>
+                    <div className="flex justify-between">
+                      <span className="text-[#909097]">Amount</span>
+                      <span className="text-[#c0c6de] font-bold">{linkData.estimatedUsdc}</span>
                     </div>
                   </div>
 
-                  <div className="mt-4 rounded-xl bg-amber-500/10 border border-amber-500/20 p-3">
-                    <p className="text-xs text-amber-400">
-                      <Clock className="w-3 h-3 inline mr-1" />
-                      This rate is locked for 5 minutes. Only send USDC on Base network.
-                    </p>
-                  </div>
+                  <button
+                    onClick={() => copyToClipboard(linkData.payUrl)}
+                    className="w-full py-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-[#e5e2e3] font-bold text-xs tracking-[0.2em] font-label-caps uppercase transition-all flex items-center justify-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-sm">content_copy</span>
+                    <span>{copied ? "COPIED TO CLIPBOARD" : "COPY PAYMENT LINK"}</span>
+                  </button>
                 </motion.div>
               )}
 
-              {/* ─── Processing ─── */}
+              {/* ─── Processing State ─── */}
               {step === "processing" && (
                 <motion.div
                   key="processing"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="flex flex-col items-center gap-4 py-12"
+                  className="flex flex-col items-center justify-center gap-4 py-16 text-center"
                 >
-                  <div className="relative">
-                    <Loader2 className="w-12 h-12 text-purple-400 animate-spin" />
-                    <div className="absolute inset-0 w-12 h-12 rounded-full bg-purple-400/20 animate-ping" />
+                  <div className="w-10 h-10 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin" />
+                  <div>
+                    <p className="font-label-caps text-xs text-[#e5e2e3] tracking-[0.25em] font-bold mb-1">
+                      CONFIRMING ON BASE
+                    </p>
+                    <p className="text-xs text-[#909097]">
+                      Please confirm the transaction in your wallet
+                    </p>
                   </div>
-                  <p className="text-sm text-gray-400">Processing payment...</p>
-                  <p className="text-xs text-gray-600">Please confirm in your wallet</p>
                 </motion.div>
               )}
 
-              {/* ─── Success ─── */}
+              {/* ─── Success Receipt ─── */}
               {step === "success" && (
                 <motion.div
                   key="success"
-                  initial={{ opacity: 0, scale: 0.95 }}
+                  initial={{ opacity: 0, scale: 0.96 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0 }}
-                  className="flex flex-col items-center gap-4 py-8"
+                  className="text-center py-6"
                 >
-                  <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                    <CheckCircle className="w-8 h-8 text-emerald-400" />
+                  <div className="w-16 h-16 rounded-full bg-[#c0c6de]/10 border border-[#c0c6de]/30 flex items-center justify-center mx-auto mb-4">
+                    <span className="material-symbols-outlined text-3xl text-[#c0c6de]">check_circle</span>
                   </div>
-                  <h3 className="text-lg font-bold text-white">Payment Successful!</h3>
-                  <p className="text-sm text-gray-400 text-center">
-                    {linkData?.amountINR} will be delivered via UPI
+
+                  <span className="font-label-caps text-[10px] text-[#c0c6de] tracking-[0.25em] font-bold block mb-1">
+                    TRANSACTION SETTLED
+                  </span>
+                  <h3 className="text-2xl font-bold text-[#e5e2e3] mb-2">
+                    Payment Successful
+                  </h3>
+                  <p className="text-xs text-[#909097] mb-6">
+                    {linkData?.amountINR} delivered to {linkData?.recipientUpi} via UPI
                   </p>
 
                   {txHash && (
@@ -391,67 +392,76 @@ export default function PayPage() {
                       href={`https://basescan.org/tx/${txHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 transition-colors"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-mono text-[#c0c6de] hover:text-white transition-colors mb-6"
                     >
-                      View on Basescan <ExternalLink className="w-3 h-3" />
+                      <span>View on Basescan</span>
+                      <span className="material-symbols-outlined text-sm">open_in_new</span>
                     </a>
                   )}
 
                   {linkData?.redirectUrl && (
                     <a
                       href={linkData.redirectUrl}
-                      className="mt-4 w-full py-3 rounded-xl bg-purple-600 text-center text-sm font-medium hover:bg-purple-500 transition-colors"
+                      className="block w-full py-4 rounded-xl bg-[#e5e2e3] hover:bg-white text-[#131315] font-bold text-xs tracking-[0.25em] font-label-caps uppercase transition-all"
                     >
-                      Return to Merchant
+                      RETURN TO MERCHANT
                     </a>
                   )}
                 </motion.div>
               )}
 
-              {/* ─── Error ─── */}
+              {/* ─── Error State ─── */}
               {step === "error" && (
                 <motion.div
                   key="error"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="flex flex-col items-center gap-4 py-12"
+                  className="text-center py-10"
                 >
-                  <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center">
-                    <XCircle className="w-8 h-8 text-red-400" />
+                  <div className="w-16 h-16 rounded-full bg-red-950/40 border border-red-500/30 flex items-center justify-center mx-auto mb-4">
+                    <span className="material-symbols-outlined text-3xl text-[#ffb4ab]">error</span>
                   </div>
-                  <h3 className="text-lg font-bold text-white">Payment Not Found</h3>
-                  <p className="text-sm text-gray-400 text-center">{error}</p>
+                  <h3 className="text-lg font-bold text-[#e5e2e3] mb-2">
+                    Payment Error
+                  </h3>
+                  <p className="text-xs text-[#c6c6cd] max-w-xs mx-auto">
+                    {error || "We could not locate this payment invoice."}
+                  </p>
                 </motion.div>
               )}
 
-              {/* ─── Expired ─── */}
+              {/* ─── Expired State ─── */}
               {step === "expired" && (
                 <motion.div
                   key="expired"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="flex flex-col items-center gap-4 py-12"
+                  className="text-center py-10"
                 >
-                  <div className="w-16 h-16 rounded-full bg-amber-500/20 flex items-center justify-center">
-                    <Clock className="w-8 h-8 text-amber-400" />
+                  <div className="w-16 h-16 rounded-full bg-white/5 border border-white/15 flex items-center justify-center mx-auto mb-4">
+                    <span className="material-symbols-outlined text-3xl text-[#c6c6cd]">schedule</span>
                   </div>
-                  <h3 className="text-lg font-bold text-white">Payment Expired</h3>
-                  <p className="text-sm text-gray-400 text-center">This payment link has expired. Please request a new one.</p>
+                  <h3 className="text-lg font-bold text-[#e5e2e3] mb-2">
+                    Invoice Expired
+                  </h3>
+                  <p className="text-xs text-[#909097] max-w-xs mx-auto">
+                    This one-time payment link has expired. Please request a new invoice.
+                  </p>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
-        </div>
+        </motion.div>
+      </main>
 
-        {/* Footer */}
-        <div className="mt-4 text-center">
-          <p className="text-[10px] text-gray-700">
-            Powered by <span className="text-gray-500 font-medium">ZkPay</span> • Base Mainnet
-          </p>
-        </div>
-      </motion.div>
+      {/* Footer */}
+      <footer className="max-w-[480px] w-full mx-auto py-4 text-center">
+        <p className="font-label-caps text-[9px] text-[#909097] tracking-[0.25em]">
+          POWERED BY <span className="text-[#c0c6de]">ZKPAY</span> • LUXURY EDITORIAL CRYPTO
+        </p>
+      </footer>
     </div>
   );
 }

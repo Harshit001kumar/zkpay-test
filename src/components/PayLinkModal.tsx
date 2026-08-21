@@ -2,17 +2,6 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  Link as LinkIcon,
-  Copy,
-  Check,
-  Share2,
-  X,
-  Loader2,
-  ExternalLink,
-  QrCode,
-  Sparkles,
-} from "lucide-react";
 
 interface PayLinkModalProps {
   isOpen: boolean;
@@ -56,7 +45,7 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: title || "Payment",
+          title: title || "Payment Invoice",
           amountINR: Number(amountINR),
           recipientUpi: recipientUpi.trim(),
           type,
@@ -99,7 +88,7 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* Backdrop */}
+          {/* Obsidian Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -108,28 +97,25 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
               onClose();
               resetForm();
             }}
-            className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            className="absolute inset-0 bg-[#0e0e0f]/80 backdrop-blur-[60px]"
           />
 
-          {/* Modal Container */}
+          {/* Obsidian Glass Modal */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            initial={{ opacity: 0, scale: 0.96, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-md rounded-3xl bg-[#121216] border border-white/10 p-6 shadow-2xl z-10 overflow-hidden"
+            exit={{ opacity: 0, scale: 0.96, y: 16 }}
+            className="relative w-full max-w-md rounded-xl bg-white/5 backdrop-blur-[40px] border border-white/15 p-6 md:p-8 shadow-[0_30px_60px_rgba(0,0,0,0.9)] z-10 overflow-hidden text-[#e5e2e3]"
           >
-            {/* Ambient background glow */}
-            <div className="absolute -top-24 -right-24 w-48 h-48 bg-purple-600/20 rounded-full blur-[80px] pointer-events-none" />
-
             {/* Header */}
-            <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center justify-between pb-6 mb-6 border-b border-white/10">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center">
-                  <LinkIcon className="w-4 h-4 text-purple-400" />
-                </div>
+                <span className="material-symbols-outlined text-xl text-[#c0c6de]">link</span>
                 <div>
-                  <h3 className="text-base font-bold text-white">Create Pay Link</h3>
-                  <p className="text-[11px] text-gray-500">Receive crypto directly as UPI INR</p>
+                  <span className="font-label-caps text-[10px] text-[#c0c6de] tracking-[0.25em] font-bold block">
+                    CREATE PAY LINK
+                  </span>
+                  <p className="text-xs text-[#c6c6cd]">Crypto to UPI Settlement</p>
                 </div>
               </div>
               <button
@@ -137,36 +123,36 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
                   onClose();
                   resetForm();
                 }}
-                className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white flex items-center justify-center transition-colors"
+                className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-[#c6c6cd] hover:text-white flex items-center justify-center transition-colors"
               >
-                <X className="w-4 h-4" />
+                <span className="material-symbols-outlined text-base">close</span>
               </button>
             </div>
 
-            {/* Content: Form vs Result */}
+            {/* Content: Form vs Success Link View */}
             {!generatedLink ? (
-              <form onSubmit={handleCreate} className="space-y-4">
+              <form onSubmit={handleCreate} className="space-y-5">
                 {/* Title */}
                 <div>
-                  <label className="block text-[11px] font-mono uppercase tracking-wider text-gray-400 mb-1">
-                    Purpose / Title (Optional)
+                  <label className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold block mb-2">
+                    INVOICE TITLE (OPTIONAL)
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Freelance Web Design Invoice #42"
+                    placeholder="e.g. Freelance Web Development"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-purple-500/50 transition-colors"
+                    className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/15 text-[#e5e2e3] text-sm placeholder-[#909097] focus:outline-none focus:border-[#c0c6de] transition-colors font-body-md"
                   />
                 </div>
 
                 {/* Amount in INR */}
                 <div>
-                  <label className="block text-[11px] font-mono uppercase tracking-wider text-gray-400 mb-1">
-                    Amount (₹ INR) <span className="text-purple-400">*</span>
+                  <label className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold block mb-2">
+                    AMOUNT IN INR (₹)
                   </label>
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-semibold text-sm">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#c0c6de] font-bold text-sm">
                       ₹
                     </span>
                     <input
@@ -177,67 +163,68 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
                       required
                       min="10"
                       max="8500"
-                      className="w-full pl-8 pr-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white text-sm font-semibold placeholder-gray-600 focus:outline-none focus:border-purple-500/50 transition-colors"
+                      className="w-full pl-8 pr-4 py-3 rounded-xl bg-white/[0.04] border border-white/15 text-[#e5e2e3] text-sm font-semibold placeholder-[#909097] focus:outline-none focus:border-[#c0c6de] transition-colors"
                     />
                   </div>
-                  <p className="text-[10px] text-gray-500 mt-1">
+                  <p className="font-label-caps text-[9px] text-[#909097] tracking-[0.15em] mt-1.5">
                     Limit: Up to ₹8,500 (~100 USDC) with zero KYC.
                   </p>
                 </div>
 
                 {/* Recipient UPI ID */}
                 <div>
-                  <label className="block text-[11px] font-mono uppercase tracking-wider text-gray-400 mb-1">
-                    Your UPI ID (For Settlement) <span className="text-purple-400">*</span>
+                  <label className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold block mb-2">
+                    YOUR UPI ID (DELIVERY DESTINATION)
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. yourname@okaxis"
+                    placeholder="yourname@okaxis"
                     value={recipientUpi}
                     onChange={(e) => setRecipientUpi(e.target.value)}
                     required
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-purple-500/50 transition-colors"
+                    className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/15 text-[#e5e2e3] text-sm font-mono placeholder-[#909097] focus:outline-none focus:border-[#c0c6de] transition-colors"
                   />
                 </div>
 
                 {error && (
-                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400">
+                  <div className="p-3 rounded-xl bg-red-950/40 border border-red-500/30 text-xs text-[#ffb4ab]">
                     {error}
                   </div>
                 )}
 
-                {/* Submit Button */}
+                {/* Submit Action */}
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white text-sm font-bold shadow-lg shadow-purple-600/30 flex items-center justify-center gap-2 transition-all disabled:opacity-50 mt-2"
+                  className="w-full py-4 rounded-xl bg-[#e5e2e3] hover:bg-white text-[#131315] font-bold text-xs tracking-[0.25em] font-label-caps uppercase transition-all shadow-lg hover:shadow-white/10 flex items-center justify-center gap-2 disabled:opacity-40"
                 >
                   {isLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Generating Link...</span>
-                    </>
+                    <div className="w-5 h-5 border-2 border-[#131315] border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <>
-                      <Sparkles className="w-4 h-4" />
-                      <span>Generate Pay Link</span>
+                      <span className="material-symbols-outlined text-base">bolt</span>
+                      <span>GENERATE SHAREABLE LINK</span>
                     </>
                   )}
                 </button>
               </form>
             ) : (
               /* Success Result View */
-              <div className="space-y-4">
-                <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 text-center">
-                  <p className="text-xs text-gray-400 mb-1">Shareable Payment Link</p>
-                  <p className="text-lg font-bold text-white mb-2">{generatedLink.amountINR}</p>
-                  <div className="flex items-center justify-center gap-1.5 text-xs text-emerald-400 font-mono mb-3">
-                    <span>≈ {generatedLink.estimatedUsdc}</span>
+              <div className="space-y-5">
+                <div className="p-5 rounded-xl bg-white/[0.03] border border-white/10 text-center">
+                  <span className="font-label-caps text-[9px] text-[#c0c6de] tracking-[0.25em] font-bold block mb-1">
+                    READY TO SHARE
+                  </span>
+                  <div className="text-3xl font-medium text-[#e5e2e3] tracking-tight mb-1">
+                    {generatedLink.amountINR}
                   </div>
+                  <p className="text-xs text-[#c0c6de] font-mono mb-4">
+                    ≈ {generatedLink.estimatedUsdc} on Base Mainnet
+                  </p>
 
                   {/* QR Code */}
-                  <div className="flex justify-center mb-3">
-                    <div className="p-2.5 bg-white rounded-xl">
+                  <div className="flex justify-center mb-4">
+                    <div className="p-3 bg-white rounded-xl shadow-lg">
                       <img
                         src={generatedLink.qrCodeUrl}
                         alt="QR Code"
@@ -247,52 +234,56 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
                   </div>
 
                   {/* Link Box */}
-                  <div className="flex items-center gap-2 p-2 rounded-xl bg-black/50 border border-white/10 text-xs font-mono text-purple-300 break-all text-left">
+                  <div className="flex items-center gap-2 p-3 rounded-xl bg-black/40 border border-white/10 text-xs font-mono text-[#c0c6de] text-left">
                     <span className="truncate flex-1">{generatedLink.payUrl}</span>
                     <button
                       onClick={() => copyToClipboard(generatedLink.payUrl)}
-                      className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white shrink-0 transition-colors"
+                      className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-[#e5e2e3] shrink-0 transition-colors"
                       title="Copy URL"
                     >
-                      {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span className="material-symbols-outlined text-sm">
+                        {copied ? "check" : "content_copy"}
+                      </span>
                     </button>
                   </div>
                 </div>
 
-                {/* Action Buttons */}
-                <div className="grid grid-cols-2 gap-2">
+                {/* Actions */}
+                <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={() => copyToClipboard(generatedLink.payUrl)}
-                    className="py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
+                    className="py-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-[#e5e2e3] text-xs font-bold font-label-caps tracking-[0.2em] uppercase flex items-center justify-center gap-2 transition-colors"
                   >
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>{copied ? "Copied!" : "Copy Link"}</span>
+                    <span className="material-symbols-outlined text-sm">
+                      {copied ? "check" : "content_copy"}
+                    </span>
+                    <span>{copied ? "COPIED" : "COPY LINK"}</span>
                   </button>
 
                   <button
                     onClick={() => shareWhatsApp(generatedLink.payUrl, generatedLink.amountINR)}
-                    className="py-2.5 rounded-xl bg-emerald-600/30 border border-emerald-500/30 hover:bg-emerald-600/40 text-emerald-300 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
+                    className="py-3.5 rounded-xl bg-[#c0c6de]/10 hover:bg-[#c0c6de]/20 border border-[#c0c6de]/30 text-[#c0c6de] text-xs font-bold font-label-caps tracking-[0.2em] uppercase flex items-center justify-center gap-2 transition-colors"
                   >
-                    <Share2 className="w-3.5 h-3.5" />
-                    <span>Share WhatsApp</span>
+                    <span className="material-symbols-outlined text-sm">share</span>
+                    <span>WHATSAPP</span>
                   </button>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-3">
                   <a
                     href={generatedLink.payUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex-1 py-2.5 rounded-xl bg-purple-600/20 border border-purple-500/30 hover:bg-purple-600/30 text-purple-300 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
+                    className="flex-1 py-3.5 rounded-xl bg-[#e5e2e3] hover:bg-white text-[#131315] text-xs font-bold font-label-caps tracking-[0.2em] uppercase flex items-center justify-center gap-2 transition-colors text-center"
                   >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span>Preview Pay Page</span>
+                    <span>PREVIEW INVOICE</span>
+                    <span className="material-symbols-outlined text-sm">open_in_new</span>
                   </a>
                   <button
                     onClick={resetForm}
-                    className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 text-xs font-medium transition-colors"
+                    className="px-4 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 text-[#c6c6cd] text-xs font-label-caps tracking-[0.15em] transition-colors"
                   >
-                    Create Another
+                    RESET
                   </button>
                 </div>
               </div>
