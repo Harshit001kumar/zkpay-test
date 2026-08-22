@@ -42,6 +42,7 @@ export const APP_DESCRIPTION = "Crypto to Fiat — Scan and Pay";
 export const DEPOSIT_ASSETS = [
   { symbol: "BTC", name: "Bitcoin", coin: "BTC", network: "bitcoin" },
   { symbol: "ETH", name: "Ethereum", coin: "ETH", network: "ethereum" },
+  { symbol: "LTC", name: "Litecoin", coin: "LTC", network: "litecoin" },
   { symbol: "SOL", name: "Solana", coin: "SOL", network: "solana" },
   { symbol: "USDT", name: "Tether (TRC20)", coin: "USDT", network: "tron" },
   { symbol: "USDC", name: "USDC (ERC20)", coin: "USDC", network: "ethereum" },
