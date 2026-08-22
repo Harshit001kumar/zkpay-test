@@ -17,16 +17,20 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   
   const processScanData = useCallback((text: string) => {
-    if (text.toLowerCase().startsWith("upi://pay")) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    // 1. Standard UPI intent URI (upi://pay?pa=...&pn=...)
+    if (trimmed.toLowerCase().startsWith("upi://pay")) {
       try {
-        const url = new URL(text);
+        const url = new URL(trimmed);
         const upiId = url.searchParams.get("pa") || undefined;
         const name = url.searchParams.get("pn") || undefined;
         const defaultAmount = url.searchParams.get("am") || undefined;
         
         onScan({
           type: "upi",
-          raw: text,
+          raw: trimmed,
           upiId,
           name,
           defaultAmount
@@ -36,15 +40,58 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
         console.error("Failed to parse UPI URL", e);
       }
     }
+
+    // 2. Web URLs containing UPI query parameters (e.g. https://.../?pa=...)
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      try {
+        const url = new URL(trimmed);
+        const upiId = url.searchParams.get("pa");
+        if (upiId) {
+          const name = url.searchParams.get("pn") || undefined;
+          const defaultAmount = url.searchParams.get("am") || undefined;
+          onScan({
+            type: "upi",
+            raw: trimmed,
+            upiId,
+            name,
+            defaultAmount
+          });
+          return;
+        }
+      } catch {}
+    }
+
+    // 3. Raw UPI ID (e.g. merchant@okaxis, 9876543210@paytm)
+    if (trimmed.includes("@") && !trimmed.includes(" ") && !trimmed.startsWith("0x")) {
+      onScan({
+        type: "upi",
+        raw: trimmed,
+        upiId: trimmed,
+        name: trimmed.split("@")[0],
+      });
+      return;
+    }
     
+    // 4. Crypto Ethereum Address
     onScan({
       type: "eth",
-      raw: text,
-      address: text
+      raw: trimmed,
+      address: trimmed
     });
   }, [onScan]);
 
   const stableOnScan = useCallback(processScanData, [processScanData]);
+
+  const handleManualSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualId.trim()) return;
+
+    if (scannerRef.current && scannerRef.current.isScanning) {
+      scannerRef.current.stop().catch(() => {});
+    }
+
+    stableOnScan(manualId.trim());
+  };
 
   useEffect(() => {
     let isMounted = true;

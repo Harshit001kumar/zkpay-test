@@ -23,6 +23,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
   const [exchangeStatus, setExchangeStatus] = useState<string>("waiting");
   const [isCreating, setIsCreating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [depositError, setDepositError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchEstimate = async () => {
@@ -80,6 +81,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
 
   const handleCreateDeposit = async () => {
     setIsCreating(true);
+    setDepositError(null);
     try {
       const res = await fetch("/api/exchange", {
         method: "POST",
@@ -98,10 +100,10 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
         setDepositAddress(data.payinAddress);
         setExchangeStatus("pending");
       } else {
-        alert("Failed to create deposit: " + (data.error || "Unknown error"));
+        setDepositError(data.error || "Failed to create deposit address. Please try again.");
       }
     } catch (error) {
-      alert("Error creating deposit.");
+      setDepositError("Network error — could not reach exchange service.");
     }
     setIsCreating(false);
   };
@@ -234,6 +236,12 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
                   )}
                 </div>
               </div>
+
+              {depositError && (
+                <div className="bg-[#93000a]/20 text-[#ffb4ab] p-3 rounded-xl text-xs border border-[#93000a]/40 text-center">
+                  {depositError}
+                </div>
+              )}
 
               <button
                 onClick={handleCreateDeposit}

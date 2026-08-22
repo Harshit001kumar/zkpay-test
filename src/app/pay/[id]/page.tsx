@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useParams } from "next/navigation";
 import { CONTRACTS, CHAIN } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
+import { saveTransaction } from "@/lib/history";
 
 interface PayLinkData {
   linkId: string;
@@ -145,7 +146,38 @@ export default function PayPage() {
         }],
       });
 
-      setTxHash(feeTxHash as string);
+      const txH = (feeTxHash as string) || "";
+      setTxHash(txH);
+
+      // Record transaction in user history
+      const parsedInr = parseFloat(linkData.amountINR.replace(/[^0-9.]/g, "")) || 0;
+      saveTransaction({
+        hash: txH,
+        type: "payment",
+        title: linkData.title || `Payment to ${linkData.recipientUpi}`,
+        amountINR: parsedInr,
+        amountUSDC: usdcAmount,
+        fee: usdcAmount * 0.01,
+        recipient: linkData.recipientUpi,
+        network: "Base Mainnet",
+        timestamp: Date.now(),
+      });
+
+      // Update backend pay link status & trigger webhook
+      try {
+        await fetch("/api/v1/paylinks", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: linkData.linkId,
+            status: "PAID",
+            txHash: txH,
+          }),
+        });
+      } catch (patchErr) {
+        console.warn("[PayPage] Failed to update backend status:", patchErr);
+      }
+
       setStep("success");
     } catch (err: any) {
       console.error("[PayPage] Payment error:", err);

@@ -1,5 +1,6 @@
 import { corsJson, corsOptions } from "@/lib/server/cors";
-import { createPayLink, getPayLink } from "@/lib/server/payStore";
+import { createPayLink, getPayLink, updatePayLink } from "@/lib/server/payStore";
+import { dispatchWebhook } from "@/lib/server/webhooks";
 import { createPublicClient, http } from "viem";
 import { base } from "viem/chains";
 
@@ -173,6 +174,59 @@ export async function GET(req: Request) {
   } catch (err: any) {
     console.error("[PayLinks] GET Error:", err);
     return corsJson({ error: err.message || "Failed to fetch pay link" }, { status: 500 });
+  }
+}
+
+/**
+ * PATCH /api/v1/paylinks
+ *
+ * Update pay link state (e.g. mark as PAID after on-chain transaction)
+ */
+export async function PATCH(req: Request) {
+  try {
+    const body = await req.json();
+    const { id, status, txHash, p2pOrderId } = body;
+
+    if (!id) {
+      return corsJson({ error: "Missing 'id' parameter in request body." }, { status: 400 });
+    }
+
+    const existing = getPayLink(id);
+    if (!existing) {
+      return corsJson({ error: "Pay link not found." }, { status: 404 });
+    }
+
+    const updates: any = {};
+    if (status) updates.status = status;
+    if (txHash) {
+      updates.txHash = txHash;
+      updates.paidAt = Date.now();
+      updates.status = "PAID";
+    }
+    if (p2pOrderId) updates.p2pOrderId = p2pOrderId;
+
+    const updated = updatePayLink(id, updates);
+
+    // Dispatch webhook if configured
+    if (existing.webhookUrl && updates.status === "PAID") {
+      dispatchWebhook(existing.webhookUrl, {
+        event: "paylink.paid",
+        linkId: id,
+        amountINR: existing.amountINR,
+        recipientUpi: existing.recipientUpi,
+        txHash: txHash || existing.txHash,
+        paidAt: updates.paidAt || Date.now(),
+        timestamp: Date.now(),
+      }).catch((err) => console.warn("[Webhook] PayLink dispatch error:", err));
+    }
+
+    return corsJson({
+      success: true,
+      link: updated,
+    });
+  } catch (err: any) {
+    console.error("[PayLinks] PATCH Error:", err);
+    return corsJson({ error: err.message || "Failed to update pay link" }, { status: 500 });
   }
 }
 

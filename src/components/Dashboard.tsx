@@ -67,9 +67,8 @@ export default function Dashboard() {
     return <PaymentEntry merchantData={merchantId} onCancel={() => setMerchantId(null)} />;
   }
 
-  // Temporary fix for routing back to dashboard from sub-flows
-  if (activeTab === "cashout") return <div className="p-8"><button onClick={() => setActiveTab("vault")} className="text-primary mb-4">&larr; Back</button><CashoutFlow /></div>;
-  if (activeTab === "deposit") return <div className="p-8"><button onClick={() => setActiveTab("vault")} className="text-primary mb-4">&larr; Back</button><DepositFlow /></div>;
+  if (activeTab === "cashout") return <CashoutFlow onBack={() => setActiveTab("vault")} />;
+  if (activeTab === "deposit") return <DepositFlow onBack={() => setActiveTab("vault")} />;
 
   return (
     <main className="relative z-10 max-w-[1440px] mx-auto pt-8 pb-24 px-5 md:px-8">
@@ -117,21 +116,21 @@ export default function Dashboard() {
             <span className="material-symbols-outlined text-2xl group-hover:scale-110 transition-transform">south_west</span>
             <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">DEPOSIT</span>
           </button>
-          <button onClick={() => setIsPayLinkOpen(true)} className="bg-gradient-to-b from-purple-950/40 to-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-purple-900/30 transition-all border border-purple-500/30 text-purple-200">
-            <span className="material-symbols-outlined text-2xl text-purple-400 group-hover:scale-110 transition-transform">link</span>
+          <button onClick={() => setIsPayLinkOpen(true)} className="bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-white/10 transition-all border border-white/15 text-[#e5e2e3]">
+            <span className="material-symbols-outlined text-2xl text-[#c0c6de] group-hover:scale-110 transition-transform">link</span>
             <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">PAY LINK</span>
           </button>
         </div>
-        <div className="md:col-span-4 bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 rounded-xl flex items-center justify-between border border-white/15 text-[#e5e2e3]">
+        <div className="md:col-span-4 bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 rounded-xl flex items-center justify-between border border-white/15 text-[#e5e2e3] group hover:bg-white/[0.08] transition-all">
           <div>
             <p className="font-label-caps text-[9px] text-[#c6c6cd] mb-1 tracking-[0.25em] font-bold">DEVELOPER API</p>
-            <a href="/docs" target="_blank" className="font-headline-md text-base text-purple-400 hover:text-purple-300 font-semibold tracking-tight flex items-center gap-1.5 transition-colors">
-              Docs & Bots <span className="material-symbols-outlined text-sm">open_in_new</span>
+            <a href="/docs" target="_blank" className="font-headline-md text-base text-[#e5e2e3] hover:text-white font-semibold tracking-tight flex items-center gap-1.5 transition-colors">
+              Docs & Bots <span className="material-symbols-outlined text-sm text-[#c0c6de]">open_in_new</span>
             </a>
           </div>
-          <div className="w-12 h-12 rounded-full border border-purple-500/30 flex items-center justify-center bg-purple-500/10">
-            <span className="material-symbols-outlined text-purple-400 text-xl">terminal</span>
-          </div>
+          <a href="/docs" target="_blank" className="w-12 h-12 rounded-xl border border-white/15 flex items-center justify-center bg-white/5 group-hover:bg-white/10 transition-colors">
+            <span className="material-symbols-outlined text-[#c0c6de] text-xl">terminal</span>
+          </a>
         </div>
       </section>
 

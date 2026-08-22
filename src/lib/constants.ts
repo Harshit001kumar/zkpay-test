@@ -1,10 +1,6 @@
-const DIAMOND = process.env.NEXT_PUBLIC_DIAMOND_ADDRESS;
-const USDC = process.env.NEXT_PUBLIC_USDC_ADDRESS;
-const TREASURY = process.env.NEXT_PUBLIC_TREASURY_ADDRESS;
-
-if (!DIAMOND) throw new Error("[ZkPay] Missing required environment variable: NEXT_PUBLIC_DIAMOND_ADDRESS");
-if (!USDC) throw new Error("[ZkPay] Missing required environment variable: NEXT_PUBLIC_USDC_ADDRESS");
-if (!TREASURY) throw new Error("[ZkPay] Missing required environment variable: NEXT_PUBLIC_TREASURY_ADDRESS");
+const DIAMOND = process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0x4cad6eC90e65baBec9335cAd728DDC610c316368";
+const USDC = process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const TREASURY = process.env.NEXT_PUBLIC_TREASURY_ADDRESS || "0x4747883abdf84ad96565415514de298e3a3fd3e1";
 
 export const CONTRACTS = {
   // The P2P Diamond — the core protocol contract

@@ -2,12 +2,18 @@ import { NextResponse } from "next/server";
 import { PrivyClient } from "@privy-io/node";
 
 // ──────────────────────────────────────────────
-// Server-side Privy client (Node SDK)
+// Lazy-init Privy client to avoid crashes if env vars are missing at build time
 // ──────────────────────────────────────────────
-const privy = new PrivyClient({
-  appId: process.env.NEXT_PUBLIC_PRIVY_APP_ID!,
-  appSecret: process.env.PRIVY_APP_SECRET!,
-});
+let _privy: InstanceType<typeof PrivyClient> | null = null;
+function getPrivy() {
+  if (!_privy) {
+    const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+    const appSecret = process.env.PRIVY_APP_SECRET;
+    if (!appId || !appSecret) throw new Error("Privy credentials not configured");
+    _privy = new PrivyClient({ appId, appSecret });
+  }
+  return _privy;
+}
 
 const VAULT_ID = process.env.PRIVY_EARN_VAULT_ID;
 
@@ -31,7 +37,7 @@ export async function POST(request: Request) {
 
     let verifiedClaims;
     try {
-      verifiedClaims = await privy.utils().auth().verifyAccessToken(accessToken);
+      verifiedClaims = await getPrivy().utils().auth().verifyAccessToken(accessToken);
     } catch {
       return NextResponse.json(
         { error: "Unauthorized — invalid or expired token" },
@@ -100,7 +106,7 @@ export async function POST(request: Request) {
       };
     }
 
-    const earnResponse = await privy
+    const earnResponse = await getPrivy()
       .wallets()
       .earn()
       .ethereum()

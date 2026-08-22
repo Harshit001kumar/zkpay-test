@@ -15,6 +15,11 @@ export default function TransactionReceipt() {
   useEffect(() => {
     const hash = params.hash as string;
     if (hash) {
+      // Validate hash format: must be 0x-prefixed hex, 66 chars
+      if (!/^0x[a-fA-F0-9]{64}$/.test(hash)) {
+        setLoading(false);
+        return; // invalid hash — tx will be null, shows "not found"
+      }
       const record = getTransactionByHash(hash);
       setTx(record);
     }

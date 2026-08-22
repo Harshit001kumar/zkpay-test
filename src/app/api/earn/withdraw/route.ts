@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 import { PrivyClient } from "@privy-io/node";
 
-const privy = new PrivyClient({
-  appId: process.env.NEXT_PUBLIC_PRIVY_APP_ID!,
-  appSecret: process.env.PRIVY_APP_SECRET!,
-});
+let _privy: InstanceType<typeof PrivyClient> | null = null;
+function getPrivy() {
+  if (!_privy) {
+    const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+    const appSecret = process.env.PRIVY_APP_SECRET;
+    if (!appId || !appSecret) throw new Error("Privy credentials not configured");
+    _privy = new PrivyClient({ appId, appSecret });
+  }
+  return _privy;
+}
 
 const VAULT_ID = process.env.PRIVY_EARN_VAULT_ID;
 
@@ -26,7 +32,7 @@ export async function POST(request: Request) {
     }
 
     try {
-      await privy.utils().auth().verifyAccessToken(accessToken);
+      await getPrivy().utils().auth().verifyAccessToken(accessToken);
     } catch {
       return NextResponse.json(
         { error: "Unauthorized — invalid or expired token" },
@@ -73,7 +79,7 @@ export async function POST(request: Request) {
       };
     }
 
-    const response = await privy
+    const response = await getPrivy()
       .wallets()
       .earn()
       .ethereum()

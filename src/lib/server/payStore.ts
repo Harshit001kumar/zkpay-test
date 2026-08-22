@@ -44,14 +44,11 @@ export interface PayInSession {
 const payLinks = new Map<string, PayLink>();
 const payInSessions = new Map<string, PayInSession>();
 
-// Generates a short unique ID with prefix
+// Generates a cryptographically-secure unique ID with prefix
 function generateId(prefix: string): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  let result = "";
-  for (let i = 0; i < 10; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return `${prefix}_${result}`;
+  // crypto.randomUUID() is available in Node 19+ and all modern runtimes
+  const uuid = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+  return `${prefix}_${uuid}`;
 }
 
 // ────────────────── Pay Links ──────────────────

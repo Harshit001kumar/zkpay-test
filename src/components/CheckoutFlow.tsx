@@ -8,54 +8,71 @@ import { CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
 import { MerchantData } from "@/lib/types";
 import { saveTransaction } from "@/lib/history";
-import { getOfframpPrice, preparePayOrder } from "@/lib/p2pkit";
+import {
+  getOfframpPrice,
+  prepareOfframpOrder,
+  getOrderStatus,
+  sendPayoutAddress,
+} from "@/lib/p2pkit";
 
 interface CheckoutFlowProps {
-  amount: number; // total INR amount including fee
+  amount: number; // total INR amount
   merchantData: MerchantData;
 }
 
-type TxStatus = "idle" | "approving" | "sending" | "error";
+type TxStatus = "idle" | "approving" | "matching" | "paying" | "completed" | "error";
 
 export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps) {
-  const { ready, authenticated } = usePrivy();
+  const { ready, authenticated, login } = usePrivy();
   const { wallets } = useWallets();
   const router = useRouter();
   
   const [status, setStatus] = useState<TxStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [sellPrice, setSellPrice] = useState<bigint | null>(null);
+  const [orderId, setOrderId] = useState<bigint | null>(null);
+
+  const fee = amount * 0.01;
+  const totalAmount = amount + fee;
+  const targetUpi = merchantData.upiId || merchantData.raw || "Merchant";
 
   useEffect(() => {
     if (!ready || !authenticated || !wallets.length) return;
     
     let isMounted = true;
-    
     const fetchConfig = async () => {
       try {
         const priceCfg = await getOfframpPrice("INR");
-        if (isMounted) {
+        if (isMounted && priceCfg?.sellPrice) {
           setSellPrice(priceCfg.sellPrice);
         }
       } catch (err: any) {
-        console.error("Failed to fetch P2P price", err);
+        console.error("[CheckoutFlow] Failed to fetch P2P price", err);
       }
     };
     
     fetchConfig();
-    return () => { isMounted = false; };
+    const interval = setInterval(fetchConfig, 30000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [ready, authenticated, wallets]);
 
   if (!ready || !authenticated || !wallets.length) {
-    return <div className="text-center p-4 text-sm text-gray-500">Please connect wallet to continue.</div>;
+    return (
+      <div className="text-center p-6 bg-white/5 rounded-xl border border-white/10">
+        <p className="text-sm text-[#909097] mb-4">Please connect your wallet to confirm payment.</p>
+        <button onClick={() => login()} className="btn-primary">
+          Connect Wallet
+        </button>
+      </div>
+    );
   }
-
-  const fee = amount * 0.01;
-  const totalAmount = amount + fee;
 
   const handlePay = async () => {
     if (!sellPrice) {
-      setError("Waiting for price feed...");
+      setError("Waiting for live on-chain exchange rate...");
       return;
     }
     
@@ -67,61 +84,55 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       const provider = await wallet.getEthereumProvider();
 
       // Convert INR amount to USDC using real price
-      // price is 6 decimals. fiatAmount = (usdcAmount * sellPrice) / 1e6
-      // usdcAmount = (fiatAmount * 1e6) / sellPrice
-      
-      const principalFloat = amount;
-      const feeFloat = fee;
-      
-      // We need to pass usdcAmount. Since it's rough, we'll do:
-      const fiatPrincipal1e6 = BigInt(Math.floor(principalFloat * 1_000_000));
+      // price is 6 decimals: fiatAmount = (usdcAmount * sellPrice) / 1e6
+      const fiatPrincipal1e6 = BigInt(Math.floor(amount * 1_000_000));
       const usdcPrincipalBigInt = (fiatPrincipal1e6 * 1_000_000n) / sellPrice;
       
-      const fiatFee1e6 = BigInt(Math.floor(feeFloat * 1_000_000));
+      const fiatFee1e6 = BigInt(Math.floor(fee * 1_000_000));
       const usdcFeeBigInt = (fiatFee1e6 * 1_000_000n) / sellPrice;
+
+      // Validate against 100 USDC no-KYC tier
+      const usdcFloat = Number(usdcPrincipalBigInt) / 1_000_000;
+      if (usdcFloat > 100) {
+        throw new Error("Amount exceeds maximum single transaction limit of 100 USDC (~₹8,500).");
+      }
+
+      const orderCall = await prepareOfframpOrder({
+        userAddress: wallet.address as `0x${string}`,
+        currency: "INR",
+        usdcAmount: usdcPrincipalBigInt,
+        sellPrice: sellPrice,
+      });
 
       const calls = [];
 
-      // 1. Send fee to ZkPay Treasury
+      // 1. Send 1% platform fee to ZkPay Treasury
       if (usdcFeeBigInt > 0n) {
         calls.push({
           to: CONTRACTS.USDC,
           data: encodeFunctionData({
             abi: ERC20_ABI,
             functionName: "transfer",
-            args: [(CONTRACTS as any).TREASURY as `0x${string}`, usdcFeeBigInt],
-          })
+            args: [CONTRACTS.TREASURY, usdcFeeBigInt],
+          }),
         });
       }
 
-      // 2. Approve P2P Diamond for principal
+      // 2. Approve P2P Diamond for principal USDC
       calls.push({
         to: CONTRACTS.USDC,
         data: encodeFunctionData({
           abi: ERC20_ABI,
           functionName: "approve",
-          args: [CONTRACTS.DIAMOND as `0x${string}`, usdcPrincipalBigInt],
-        })
+          args: [CONTRACTS.DIAMOND, usdcPrincipalBigInt],
+        }),
       });
 
-      // 3. Prepare PAY order via P2PKit
-      // For now, if no merchant address is provided, fallback to zeroAddress
-      const recipient = (merchantData.address || "0x0000000000000000000000000000000000000000") as `0x${string}`;
-      
-      const orderCall = await preparePayOrder({
-        userAddress: wallet.address as `0x${string}`,
-        currency: "INR",
-        usdcAmount: usdcPrincipalBigInt,
-        sellPrice: sellPrice,
-        recipientAddr: recipient,
-      });
-
+      // 3. Place offramp order
       calls.push({
         to: orderCall.to,
-        data: orderCall.data
+        data: orderCall.data,
       });
-
-      setStatus("sending");
 
       let txHash = "";
 
@@ -132,16 +143,15 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
           params: [{
             version: "1.0",
             from: wallet.address,
-            calls: calls
-          }]
+            calls: calls,
+          }],
         });
 
-        // Poll for batch status (max 2 minutes = 60 polls × 2s)
         const MAX_POLLS = 60;
         for (let i = 0; i < MAX_POLLS; i++) {
           const statusRes: any = await provider.request({
             method: "wallet_getCallsStatus",
-            params: [id]
+            params: [id],
           });
           if (statusRes.status === "CONFIRMED" && statusRes.receipts && statusRes.receipts.length > 0) {
             txHash = statusRes.receipts[0].transactionHash || statusRes.receipts[0].blockHash; 
@@ -175,7 +185,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
                 from: wallet.address,
                 to: call.to,
                 data: call.data,
-              }]
+              }],
             });
             await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
             txHash = hash as string;
@@ -185,26 +195,102 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         }
       }
 
-      const usdcFloat = Number(usdcPrincipalBigInt) / 1_000_000;
+      // Parse orderId from receipt
+      const { getPublicClient } = await import("@/lib/p2pkit");
+      const p2pPublicClient = getPublicClient();
+      const receipt = await p2pPublicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+
+      const { toEventSelector } = await import("viem");
+      const orderPlacedTopic0 = toEventSelector("OrderPlaced(uint256,address,uint256,bytes32,uint256,uint256,uint256)");
       
+      let parsedOrderId: bigint | null = null;
+      for (const log of receipt.logs) {
+        if (log.topics.length >= 2 && log.topics[0] === orderPlacedTopic0) {
+          try {
+            const topic = log.topics[1];
+            if (!topic) continue;
+            const possibleOrderId = BigInt(topic);
+            if (possibleOrderId > 0n) {
+              parsedOrderId = possibleOrderId;
+              break;
+            }
+          } catch {}
+        }
+      }
+
+      if (!parsedOrderId) {
+        // Even if event extraction failed, save transaction
+        saveTransaction({
+          hash: txHash,
+          type: "payment",
+          title: `Paid to ${merchantData.name || targetUpi}`,
+          amountINR: amount,
+          amountUSDC: usdcFloat,
+          fee: fee,
+          recipient: targetUpi,
+          network: "Base Mainnet",
+          timestamp: Date.now(),
+        });
+        router.push(`/tx/${txHash}`);
+        return;
+      }
+
+      setOrderId(parsedOrderId);
+      setStatus("matching");
+
+      // Poll until merchant accepts order (max 5 minutes)
+      let acceptedOrder: any = null;
+      const MAX_ACCEPT_POLLS = 100;
+      for (let i = 0; i < MAX_ACCEPT_POLLS; i++) {
+        const currentOrder = await getOrderStatus(parsedOrderId);
+        if (currentOrder.status === "accepted") {
+          acceptedOrder = currentOrder;
+          break;
+        }
+        if (currentOrder.status === "completed") {
+          break;
+        }
+        if (currentOrder.status === "cancelled") {
+          throw new Error("Order was cancelled by the network.");
+        }
+        await new Promise(r => setTimeout(r, 3000));
+      }
+
+      // Deliver encrypted UPI to the matched merchant
+      if (acceptedOrder && acceptedOrder.pubkey) {
+        const { createWalletClient, custom } = await import("viem");
+        const { base } = await import("viem/chains");
+        const walletClient = createWalletClient({
+          account: wallet.address as `0x${string}`,
+          chain: base,
+          transport: custom(provider),
+        });
+
+        await sendPayoutAddress(walletClient, {
+          orderId: parsedOrderId,
+          paymentAddress: targetUpi,
+          merchantPublicKey: acceptedOrder.pubkey,
+        });
+      }
+
       // Save transaction to local history
       saveTransaction({
         hash: txHash,
         type: "payment",
-        title: `Paid to ${merchantData.name || merchantData.upiId || "Merchant"}`,
+        title: `Paid to ${merchantData.name || targetUpi}`,
         amountINR: amount,
         amountUSDC: usdcFloat,
         fee: fee,
-        recipient: merchantData.upiId || merchantData.name || "Merchant",
+        recipient: targetUpi,
         network: "Base Mainnet",
         timestamp: Date.now(),
       });
 
-      // Redirect to receipt
+      setStatus("completed");
       router.push(`/tx/${txHash}`);
       
     } catch (e: any) {
-      console.error("Payment failed", e);
+      console.error("[CheckoutFlow] Payment error:", e);
       let errMsg = e?.message || "Transaction failed";
       try {
         const { parseP2PError } = await import("@/lib/p2pkit");
@@ -219,56 +305,79 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
   };
 
   return (
-    <div className="w-full glass-card overflow-hidden p-6">
+    <div className="w-full bg-white/5 backdrop-blur-[40px] border border-white/15 rounded-xl p-6 shadow-[0_20px_50px_rgba(0,0,0,0.8)] text-[#e5e2e3]">
       {status === "idle" && (
         <div className="flex flex-col gap-6 items-center w-full">
-          <div className="w-full bg-white/5 rounded-xl p-4 flex flex-col gap-2 text-sm">
-            <div className="flex justify-between text-[#909097]">
-              <span>Payment to Merchant</span>
-              <span>₹ {amount.toFixed(2)}</span>
+          <div className="w-full bg-white/[0.03] border border-white/10 rounded-xl p-5 flex flex-col gap-3 text-sm">
+            <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
+              <span>RECIPIENT UPI</span>
+              <span className="text-[#e5e2e3] font-mono font-semibold">{targetUpi}</span>
             </div>
-            <div className="flex justify-between text-[#909097]">
-              <span>ZkPay Convenience Fee (1%)</span>
-              <span>₹ {fee.toFixed(2)}</span>
+            <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
+              <span>PAYMENT AMOUNT</span>
+              <span className="text-[#e5e2e3] font-semibold">₹ {amount.toFixed(2)}</span>
             </div>
-            <div className="border-t border-[#46464c] my-1"></div>
+            <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
+              <span>ZKPAY CONVENIENCE FEE (1%)</span>
+              <span className="text-[#e5e2e3]">₹ {fee.toFixed(2)}</span>
+            </div>
+            <div className="border-t border-white/10 my-1"></div>
             <div className="flex justify-between font-bold text-lg text-[#e5e2e3]">
-              <span>Total to Pay</span>
-              <span>₹ {totalAmount.toFixed(2)}</span>
+              <span className="font-label-caps text-xs tracking-[0.15em] text-[#c0c6de]">TOTAL PAYABLE</span>
+              <span className="tracking-tight">₹ {totalAmount.toFixed(2)}</span>
             </div>
           </div>
+
           <button 
             onClick={handlePay} 
             disabled={!sellPrice}
-            className={`btn-primary w-full ${!sellPrice ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className="w-full py-4 rounded-xl bg-[#e5e2e3] hover:bg-white text-[#131315] font-bold text-xs tracking-[0.25em] font-label-caps uppercase transition-all shadow-lg hover:shadow-white/10 disabled:opacity-40"
           >
-            {sellPrice ? "Confirm & Pay" : "Loading Price..."}
+            {sellPrice ? "CONFIRM & PAY NOW" : "FETCHING LIVE PRICE..."}
           </button>
         </div>
       )}
 
       {status === "approving" && (
-        <div className="flex flex-col gap-3 items-center text-center">
-          <div className="w-8 h-8 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
-          <p className="font-semibold text-[#e5e2e3]">Preparing Transaction...</p>
-          <p className="text-xs text-[#909097]">Please confirm in your wallet</p>
+        <div className="flex flex-col gap-4 items-center text-center py-8">
+          <div className="w-10 h-10 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
+          <div>
+            <p className="font-label-caps text-xs text-[#e5e2e3] tracking-[0.25em] font-bold mb-1">
+              AUTHORIZING ON BASE
+            </p>
+            <p className="text-xs text-[#909097]">Please confirm the transaction in your wallet</p>
+          </div>
         </div>
       )}
 
-      {status === "sending" && (
-        <div className="flex flex-col gap-3 items-center text-center">
-          <div className="w-8 h-8 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
-          <p className="font-semibold text-[#e5e2e3]">Sending Payment...</p>
-          <p className="text-xs text-[#909097]">Processing transaction on Base Mainnet</p>
+      {status === "matching" && (
+        <div className="flex flex-col gap-4 items-center text-center py-8">
+          <div className="w-10 h-10 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
+          <div>
+            <p className="font-label-caps text-xs text-[#c0c6de] tracking-[0.25em] font-bold mb-1">
+              MATCHING P2P LIQUIDITY
+            </p>
+            <p className="text-xs text-[#909097]">Connecting with verified liquidity provider...</p>
+          </div>
         </div>
       )}
 
       {status === "error" && (
-        <div className="flex flex-col gap-3 items-center text-center">
-          <p className="font-semibold text-[#ffb4ab]">Payment Failed</p>
-          <p className="text-xs text-[#909097]">{error}</p>
-          <button onClick={() => setStatus("idle")} className="btn-secondary mt-2">
-            Try Again
+        <div className="flex flex-col gap-4 items-center text-center py-6">
+          <div className="w-12 h-12 rounded-full bg-red-950/40 border border-red-500/30 flex items-center justify-center">
+            <span className="material-symbols-outlined text-2xl text-[#ffb4ab]">error</span>
+          </div>
+          <div>
+            <p className="font-label-caps text-xs text-[#ffb4ab] tracking-[0.2em] font-bold mb-1">
+              PAYMENT COULD NOT BE COMPLETED
+            </p>
+            <p className="text-xs text-[#909097] max-w-xs">{error}</p>
+          </div>
+          <button 
+            onClick={() => setStatus("idle")} 
+            className="px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-xs font-label-caps tracking-[0.2em] text-[#e5e2e3] uppercase transition-colors mt-2"
+          >
+            TRY AGAIN
           </button>
         </div>
       )}
