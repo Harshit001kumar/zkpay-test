@@ -1,6 +1,7 @@
 import { corsJson, corsOptions } from "@/lib/server/cors";
 import { createPayLink, getPayLink, updatePayLink } from "@/lib/server/payStore";
 import { dispatchWebhook } from "@/lib/server/webhooks";
+import { createPrices } from "@p2pdotme/sdk/prices";
 import { createPublicClient, http } from "viem";
 import { base } from "viem/chains";
 
@@ -9,27 +10,6 @@ export const dynamic = "force-dynamic";
 const DIAMOND_ADDRESS = (process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0x4cad6eC90e65baBec9335cAd728DDC610c316368") as `0x${string}`;
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
 const PLATFORM_FEE_BPS = 100;
-
-const PRICE_CONFIG_ABI = [
-  {
-    name: "getPriceConfig",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "currency", type: "string" }],
-    outputs: [
-      {
-        name: "",
-        type: "tuple",
-        components: [
-          { name: "buyPrice", type: "uint256" },
-          { name: "sellPrice", type: "uint256" },
-          { name: "spread", type: "uint256" },
-          { name: "lastUpdated", type: "uint256" },
-        ],
-      },
-    ],
-  },
-] as const;
 
 let _publicClient: any = null;
 function getPublicClient() {
@@ -40,6 +20,17 @@ function getPublicClient() {
     });
   }
   return _publicClient;
+}
+
+let _pricesClient: any = null;
+function getPricesClient() {
+  if (!_pricesClient) {
+    _pricesClient = createPrices({
+      publicClient: getPublicClient(),
+      diamondAddress: DIAMOND_ADDRESS,
+    });
+  }
+  return _pricesClient;
 }
 
 /**
@@ -75,20 +66,16 @@ export async function POST(req: Request) {
       return corsJson({ error: "recipientUpi is required and must be a valid UPI ID (e.g. name@okaxis)." }, { status: 400 });
     }
 
-    // Fetch live rate to compute estimated USDC
-    const client = getPublicClient();
-    let sellPrice = 0;
-    try {
-      const priceConfig = await client.readContract({
-        address: DIAMOND_ADDRESS,
-        abi: PRICE_CONFIG_ABI,
-        functionName: "getPriceConfig",
-        args: ["INR"],
-      });
-      sellPrice = Number(priceConfig.sellPrice) / 1e6;
-    } catch {
-      sellPrice = 87.5; // fallback estimate
+    // Fetch live rate directly from P2P Diamond contract
+    const pricesClient = getPricesClient();
+    const priceResult = await pricesClient.getPriceConfig({ currency: "INR" });
+    if (priceResult.isErr() || !priceResult.value?.sellPrice) {
+      return corsJson(
+        { error: "Could not fetch live INR exchange rate from P2P Diamond contract." },
+        { status: 503 }
+      );
     }
+    const sellPrice = Number(priceResult.value.sellPrice) / 1e6;
 
     const usdcPrincipal = amountINR / sellPrice;
     const feeUsdc = usdcPrincipal * (PLATFORM_FEE_BPS / 10000);

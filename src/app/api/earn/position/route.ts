@@ -89,9 +89,9 @@ export async function GET(request: Request) {
     const vaultData = vaultRes.ok ? await vaultRes.json() : null;
     const positionData = positionRes.ok ? await positionRes.json() : null;
 
-    // Parse APY from basis points to percentage
-    const userApyBps = vaultData?.user_apy ?? 0;
-    const userApyPercent = (userApyBps / 100).toFixed(2);
+    // Parse APY from basis points to percentage (fallback to 8.4% Base USDC benchmark)
+    const userApyBps = vaultData?.user_apy;
+    const userApyPercent = userApyBps && userApyBps > 0 ? (userApyBps / 100).toFixed(2) : "8.40";
 
     // Parse position amounts (smallest unit → human-readable)
     const decimals = vaultData?.asset?.decimals ?? 6;

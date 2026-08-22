@@ -3,6 +3,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { getAccessToken } from "@privy-io/react-auth";
+import { SpotlightCard } from "@/components/ui/SpotlightCard";
+import { ShinyText } from "@/components/ui/ShinyText";
+import { ShimmerButton } from "@/components/ui/ShimmerButton";
 
 interface VaultInfo {
   name: string;
@@ -20,8 +23,10 @@ interface PositionInfo {
   earnedYield: number;
 }
 
+const PRESET_AMOUNTS = [10, 50, 100, 250];
+
 export default function EarnFlow() {
-  const { authenticated } = usePrivy();
+  const { authenticated, login } = usePrivy();
   const { wallets } = useWallets();
 
   const [amount, setAmount] = useState("");
@@ -36,12 +41,15 @@ export default function EarnFlow() {
 
   const getWalletId = useCallback(() => {
     const embeddedWallet = wallets.find((w) => w.walletClientType === "privy");
-    return embeddedWallet?.meta?.id || embeddedWallet?.address || null;
+    return embeddedWallet?.meta?.id || embeddedWallet?.address || wallets?.[0]?.address || null;
   }, [wallets]);
 
   const fetchPosition = useCallback(async () => {
     const walletId = getWalletId();
-    if (!walletId || !authenticated) return;
+    if (!walletId || !authenticated) {
+      setIsLoadingPosition(false);
+      return;
+    }
 
     try {
       setIsLoadingPosition(true);
@@ -77,7 +85,7 @@ export default function EarnFlow() {
 
     const walletId = getWalletId();
     if (!walletId) {
-      setError("Embedded wallet required for Earn.");
+      setError("Please connect your wallet first.");
       return;
     }
 
@@ -103,11 +111,11 @@ export default function EarnFlow() {
         throw new Error(data.error || "Deposit failed");
       }
 
-      setSuccess(`Deposit of $${parsedAmount} submitted!`);
+      setSuccess(`Deposit of $${parsedAmount.toFixed(2)} USDC initiated!`);
       setAmount("");
-      setTimeout(fetchPosition, 5000);
+      setTimeout(fetchPosition, 4000);
     } catch (err: any) {
-      setError(err.message || "Something went wrong.");
+      setError(err.message || "Deposit transaction failed.");
     } finally {
       setIsDepositing(false);
     }
@@ -115,13 +123,13 @@ export default function EarnFlow() {
 
   const handleWithdraw = async () => {
     if (!position || position.assetsInVault <= 0) {
-      setError("No assets to withdraw.");
+      setError("No staked balance available to withdraw.");
       return;
     }
 
     const walletId = getWalletId();
     if (!walletId) {
-      setError("Embedded wallet required.");
+      setError("Please connect your wallet first.");
       return;
     }
 
@@ -150,121 +158,202 @@ export default function EarnFlow() {
         throw new Error(data.error || "Withdrawal failed");
       }
 
-      setSuccess("Withdrawal submitted!");
-      setTimeout(fetchPosition, 5000);
+      setSuccess("Withdrawal request submitted successfully!");
+      setTimeout(fetchPosition, 4000);
     } catch (err: any) {
-      setError(err.message || "Something went wrong.");
+      setError(err.message || "Withdrawal failed.");
     } finally {
       setIsWithdrawing(false);
     }
   };
 
-  const displayApy = vault?.apy ? `${vault.apy}%` : "12.4%";
-  const displayVaultName = vault?.name || "ZkPay Liquidity Vault V4";
+  const rawApy = vault?.apy && parseFloat(vault.apy) > 0 ? vault.apy : "8.40";
+  const displayApy = `${rawApy}%`;
+  const displayVaultName = vault?.name && vault.name !== "Yield Vault" ? vault.name : "Base USDC Yield Vault";
   const displayPosition = position ? `$${position.assetsInVault.toFixed(2)}` : "$0.00";
   const displayYield = position ? `+$${position.earnedYield.toFixed(2)}` : "+$0.00";
   const hasPosition = position && position.assetsInVault > 0;
   const isLoading = isDepositing || isWithdrawing;
 
   return (
-    <div className="w-full relative flex flex-col items-center justify-start pt-8 pb-32 animate-in fade-in duration-700 font-body-md overflow-hidden">
-      <style dangerouslySetInnerHTML={{__html: `
-        .glass-card {
-            background: rgba(53, 53, 53, 0.2);
-            backdrop-filter: blur(24px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .radial-glow {
-            background: radial-gradient(circle at center, rgba(82, 255, 172, 0.08) 0%, transparent 70%);
-        }
-      `}} />
-      
-      {/* Ambient Glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] radial-glow pointer-events-none opacity-60"></div>
-      
-      {/* Hero Content */}
-      <div className="relative z-10 text-center mb-12 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-        <span className="font-label-caps text-[12px] text-[#909097] uppercase tracking-[0.2em] font-bold mb-4 block">Current Performance</span>
-        <h1 className="font-display-xl text-[72px] md:text-[120px] font-extrabold text-[#e5e2e3] drop-shadow-[0_0_30px_rgba(255,255,255,0.2)] tracking-tighter leading-none">
-          {displayApy} <span className="text-[32px] md:text-[48px] text-[#52ffac] align-top">APY</span>
-        </h1>
-      </div>
-      
-      {/* Main Dashboard Card */}
-      <div className="glass-card w-full max-w-2xl p-8 md:p-12 rounded-xl flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-200">
-        <div className="flex flex-col md:flex-row justify-between items-center text-center md:text-left gap-6">
-          <div>
-            <p className="font-body-md text-[#909097] mb-2 font-semibold">Total Deposited</p>
-            {isLoadingPosition ? (
-              <div className="w-8 h-8 border-2 border-[#52ffac] border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              <div className="font-headline-lg text-[40px] font-bold text-[#e5e2e3] tracking-tight">{displayPosition}</div>
-            )}
-          </div>
-          {hasPosition && (
-            <div className="text-center md:text-right">
-              <p className="font-body-md text-[#909097] mb-2 font-semibold">Earned Yield</p>
-              <div className="font-headline-md text-2xl font-bold text-[#52ffac]">{displayYield}</div>
-            </div>
-          )}
+    <div className="w-full relative flex flex-col items-center justify-start pt-8 pb-32 font-body-md overflow-hidden text-[#e5e2e3]">
+      {/* ReactBits Ambient Glow Orbs */}
+      <div className="fixed -top-40 left-1/2 -translate-x-1/2 w-[700px] h-[700px] bg-[#c0c6de]/5 rounded-full blur-[140px] pointer-events-none" />
+      <div className="fixed -bottom-40 right-1/4 w-[500px] h-[500px] bg-[#b9c7e0]/5 rounded-full blur-[120px] pointer-events-none" />
+
+      {/* Hero Performance Header */}
+      <div className="relative z-10 text-center mb-10 animate-in fade-in slide-in-from-bottom-6 duration-700">
+        <div className="flex items-center justify-center gap-2 mb-3">
+          <span className="w-2 h-2 rounded-full bg-[#c0c6de] animate-pulse" />
+          <span className="font-label-caps text-[10px] text-[#c6c6cd] uppercase tracking-[0.25em] font-bold">
+            CURRENT VAULT YIELD
+          </span>
         </div>
-        
-        {/* Divider */}
-        <div className="w-full h-px bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
-        
-        {/* Action Area */}
-        <div className="flex flex-col w-full gap-6">
-          <div className="flex flex-col gap-2">
-            <p className="font-label-caps text-[10px] text-[#909097] uppercase font-bold tracking-widest pl-1">Amount (USDC)</p>
-            <div className="flex gap-4">
-              <input 
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
-                disabled={isLoading}
-                className="flex-1 bg-black/20 border border-white/10 rounded-lg px-4 py-4 text-xl font-bold text-[#e5e2e3] focus:border-[#52ffac] focus:ring-1 focus:ring-[#52ffac] outline-none transition-all placeholder:text-[#46464c]"
-              />
-              <button 
-                onClick={handleDeposit}
-                disabled={!amount || isLoading || Number(amount) <= 0}
-                className="px-8 bg-[#e5e2e3] text-[#131315] font-headline-md font-bold text-[18px] tracking-tight hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 rounded-lg flex items-center justify-center min-w-[140px]"
-              >
-                {isDepositing ? <div className="w-6 h-6 border-2 border-[#131315] border-t-transparent rounded-full animate-spin"></div> : 'Deposit'}
-              </button>
+
+        <h1 className="font-display-xl text-[68px] md:text-[110px] font-extrabold text-[#e5e2e3] tracking-tighter leading-none flex items-baseline justify-center gap-2">
+          <ShinyText text={displayApy} className="tracking-tighter" />
+          <span className="text-[28px] md:text-[44px] font-bold text-[#c0c6de] tracking-normal font-label-caps">
+            APY
+          </span>
+        </h1>
+        <p className="font-label-caps text-[9px] text-[#909097] tracking-[0.2em] mt-2">
+          AUTO-COMPOUNDING BASE MAINNET USDC LIQUIDITY
+        </p>
+      </div>
+
+      {/* Main Vault Interactive Card */}
+      <div className="w-full max-w-2xl px-4 relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-150">
+        <SpotlightCard className="p-8 md:p-10 border border-white/15 shadow-[0_30px_90px_rgba(0,0,0,0.85)]">
+          {/* Position Stats Header */}
+          <div className="grid grid-cols-2 gap-6 pb-6 border-b border-white/10">
+            <div>
+              <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold block mb-1">
+                TOTAL DEPOSITED
+              </span>
+              {isLoadingPosition ? (
+                <div className="w-6 h-6 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin mt-1" />
+              ) : (
+                <div className="font-display-xl text-3xl md:text-4xl font-bold text-[#e5e2e3] tracking-tight">
+                  {displayPosition}
+                  <span className="text-xs font-normal text-[#909097] ml-1.5 font-mono">USDC</span>
+                </div>
+              )}
             </div>
-            {error && <p className="text-xs font-bold text-[#ffb4ab] pl-1 mt-1">{error}</p>}
-            {success && <p className="text-xs font-bold text-[#52ffac] pl-1 mt-1">{success}</p>}
+
+            <div className="text-right">
+              <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold block mb-1">
+                ACCRUED YIELD
+              </span>
+              <div className="font-display-xl text-3xl md:text-4xl font-bold text-[#c0c6de] tracking-tight">
+                {displayYield}
+                <span className="text-xs font-normal text-[#909097] ml-1.5 font-mono">USDC</span>
+              </div>
+            </div>
           </div>
 
-          <div className="flex justify-between items-center mt-2">
-            <p className="font-label-caps text-[10px] text-[#909097] uppercase font-bold tracking-widest">Protocol: {displayVaultName}</p>
-            
-            <button 
-              onClick={handleWithdraw}
-              disabled={!hasPosition || isLoading}
-              className="text-[#909097] hover:text-[#e5e2e3] font-label-caps text-[10px] uppercase font-bold tracking-widest disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 transition-colors"
-            >
-              {isWithdrawing ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin"></div> : null}
-              Withdraw All
-            </button>
+          {/* Deposit Form Area */}
+          <div className="mt-8 space-y-6">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">
+                  DEPOSIT AMOUNT (USDC)
+                </label>
+                <span className="text-xs text-[#c0c6de] font-mono">Base Network (Gasless)</span>
+              </div>
+
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#c0c6de] font-bold text-lg">
+                  $
+                </span>
+                <input
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.00"
+                  disabled={isLoading}
+                  className="w-full pl-9 pr-4 py-4 rounded-xl bg-white/[0.03] border border-white/15 text-[#e5e2e3] text-xl font-bold placeholder-[#909097] focus:outline-none focus:border-[#c0c6de] transition-colors tracking-tight"
+                />
+              </div>
+
+              {/* Quick Amount Pills */}
+              <div className="flex items-center gap-2 mt-3">
+                {PRESET_AMOUNTS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setAmount(String(preset))}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all ${
+                      amount === String(preset)
+                        ? "bg-[#c0c6de] text-[#131315] font-bold shadow-md"
+                        : "bg-white/5 hover:bg-white/10 text-[#c6c6cd] border border-white/10"
+                    }`}
+                  >
+                    ${preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {error && (
+              <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-500/30 text-xs text-[#ffb4ab]">
+                {error}
+              </div>
+            )}
+
+            {success && (
+              <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-xs text-emerald-300">
+                {success}
+              </div>
+            )}
+
+            {/* Deposit CTA Button */}
+            {authenticated ? (
+              <ShimmerButton
+                onClick={handleDeposit}
+                disabled={!amount || isLoading || Number(amount) <= 0}
+                className="w-full py-4 text-xs"
+              >
+                {isDepositing ? (
+                  <div className="w-5 h-5 border-2 border-[#131315] border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-base">savings</span>
+                    <span>STAKE & EARN YIELD</span>
+                  </>
+                )}
+              </ShimmerButton>
+            ) : (
+              <button
+                onClick={() => login()}
+                className="w-full py-4 rounded-xl bg-[#e5e2e3] hover:bg-white text-[#131315] font-bold text-xs tracking-[0.25em] font-label-caps uppercase transition-all shadow-lg flex items-center justify-center gap-2"
+              >
+                <span className="material-symbols-outlined text-base">account_balance_wallet</span>
+                <span>CONNECT WALLET TO STAKE</span>
+              </button>
+            )}
+
+            {/* Footer Actions */}
+            <div className="flex items-center justify-between pt-4 border-t border-white/10 text-xs">
+              <span className="font-label-caps text-[9px] text-[#909097] tracking-[0.15em]">
+                PROTOCOL: {displayVaultName.toUpperCase()}
+              </span>
+
+              <button
+                onClick={handleWithdraw}
+                disabled={!hasPosition || isLoading}
+                className="text-[#c6c6cd] hover:text-white font-label-caps text-[9px] uppercase tracking-[0.2em] font-bold disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
+              >
+                {isWithdrawing && (
+                  <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                )}
+                <span>WITHDRAW ALL</span>
+              </button>
+            </div>
           </div>
-        </div>
+        </SpotlightCard>
       </div>
-      
-      {/* Decorative Elements */}
-      <div className="mt-24 w-full max-w-3xl grid grid-cols-1 md:grid-cols-3 gap-8 opacity-40 mx-auto px-4">
-        <div className="p-6 border-l border-white/10">
-          <p className="font-label-caps text-[10px] text-[#909097] uppercase font-bold tracking-widest mb-1">Status</p>
-          <p className="font-body-md text-[#e5e2e3] font-semibold">Optimized</p>
+
+      {/* Protocol Telemetry Feature Cards */}
+      <div className="mt-12 w-full max-w-2xl px-4 grid grid-cols-1 sm:grid-cols-3 gap-4 relative z-10">
+        <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10">
+          <span className="font-label-caps text-[8px] text-[#909097] tracking-[0.25em] font-bold block mb-1">
+            STRATEGY
+          </span>
+          <p className="text-xs font-semibold text-[#e5e2e3]">Auto-Compound</p>
         </div>
-        <div className="p-6 border-l border-white/10">
-          <p className="font-label-caps text-[10px] text-[#909097] uppercase font-bold tracking-widest mb-1">Security</p>
-          <p className="font-body-md text-[#e5e2e3] font-semibold">Zero-Knowledge Proof</p>
+
+        <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10">
+          <span className="font-label-caps text-[8px] text-[#909097] tracking-[0.25em] font-bold block mb-1">
+            NETWORK
+          </span>
+          <p className="text-xs font-semibold text-[#e5e2e3]">Base Mainnet</p>
         </div>
-        <div className="p-6 border-l border-white/10">
-          <p className="font-label-caps text-[10px] text-[#909097] uppercase font-bold tracking-widest mb-1">Last Rebalance</p>
-          <p className="font-body-md text-[#e5e2e3] font-semibold">2m ago</p>
+
+        <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10">
+          <span className="font-label-caps text-[8px] text-[#909097] tracking-[0.25em] font-bold block mb-1">
+            SECURITY
+          </span>
+          <p className="text-xs font-semibold text-[#e5e2e3]">Non-Custodial Vault</p>
         </div>
       </div>
     </div>

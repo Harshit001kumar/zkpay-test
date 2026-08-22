@@ -1,4 +1,5 @@
 import { corsJson, corsOptions } from "@/lib/server/cors";
+import { createPrices } from "@p2pdotme/sdk/prices";
 import { createPublicClient, http } from "viem";
 import { base } from "viem/chains";
 
@@ -7,28 +8,6 @@ export const dynamic = "force-dynamic";
 const DIAMOND_ADDRESS = (process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0x4cad6eC90e65baBec9335cAd728DDC610c316368") as `0x${string}`;
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
 const PLATFORM_FEE_BPS = 100; // 1%
-
-// ABI fragment for getPriceConfig
-const PRICE_CONFIG_ABI = [
-  {
-    name: "getPriceConfig",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "currency", type: "string" }],
-    outputs: [
-      {
-        name: "",
-        type: "tuple",
-        components: [
-          { name: "buyPrice", type: "uint256" },
-          { name: "sellPrice", type: "uint256" },
-          { name: "spread", type: "uint256" },
-          { name: "lastUpdated", type: "uint256" },
-        ],
-      },
-    ],
-  },
-] as const;
 
 let _publicClient: any = null;
 function getPublicClient() {
@@ -41,28 +20,22 @@ function getPublicClient() {
   return _publicClient;
 }
 
+let _pricesClient: any = null;
+function getPricesClient() {
+  if (!_pricesClient) {
+    _pricesClient = createPrices({
+      publicClient: getPublicClient(),
+      diamondAddress: DIAMOND_ADDRESS,
+    });
+  }
+  return _pricesClient;
+}
+
 /**
  * POST /api/v1/quotes
  * 
  * Computes exact payout breakdown: USDC principal, 1% ZkPay fee, total USDC needed,
- * fiat payout amount, and rate used.
- *
- * Body:
- *   { "amount": 1000, "currency": "INR" }
- *   - amount: The fiat amount the user wants the recipient to receive.
- *   - currency: Supported fiat currency code (default: "INR").
- *
- * Response:
- *   {
- *     "fiatAmount": "₹ 1,000.00",
- *     "usdcPrincipal": "11.43",
- *     "feeUsdc": "0.11",
- *     "totalUsdc": "11.54",
- *     "rate": "87.50",
- *     "feeBps": 100,
- *     "currency": "INR",
- *     "expiresAt": 1755500000
- *   }
+ * fiat payout amount, and on-chain rate directly from the P2P Diamond contract.
  */
 export async function POST(req: Request) {
   try {
@@ -84,28 +57,22 @@ export async function POST(req: Request) {
       );
     }
 
-    // Fetch live rate from on-chain
-    const client = getPublicClient();
-    let priceConfig: any;
-    try {
-      priceConfig = await client.readContract({
-        address: DIAMOND_ADDRESS,
-        abi: PRICE_CONFIG_ABI,
-        functionName: "getPriceConfig",
-        args: [currency],
-      });
-    } catch (err: any) {
+    // Fetch live rate directly from P2P contract
+    const pricesClient = getPricesClient();
+    const priceResult = await pricesClient.getPriceConfig({ currency });
+
+    if (priceResult.isErr() || !priceResult.value?.sellPrice) {
       return corsJson(
-        { error: `Currency "${currency}" is not available on the P2P network.` },
+        { error: `Currency "${currency}" is not available on the P2P Diamond contract.` },
         { status: 404 }
       );
     }
 
-    const sellPrice = Number(priceConfig.sellPrice) / 1e6; // e.g. 87.50
+    const sellPrice = Number(priceResult.value.sellPrice) / 1e6;
 
     if (sellPrice <= 0) {
       return corsJson(
-        { error: `No active sell price available for ${currency}.` },
+        { error: `Invalid price configuration on-chain for ${currency}.` },
         { status: 503 }
       );
     }
@@ -148,7 +115,7 @@ export async function POST(req: Request) {
   } catch (err: any) {
     console.error("[Quotes] Error:", err);
     return corsJson(
-      { error: err.message || "Failed to generate quote" },
+      { error: err.message || "Failed to generate on-chain quote" },
       { status: 500 }
     );
   }

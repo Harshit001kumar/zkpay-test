@@ -2,13 +2,12 @@ import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/lib/server/adminAuth";
 import { CONTRACTS, CHAIN } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
+import { createPrices } from "@p2pdotme/sdk/prices";
 import { createPublicClient, http } from "viem";
 import { base } from "viem/chains";
 
 export const dynamic = "force-dynamic";
 
-// Server-safe public client — avoids importing from p2pkit which
-// pulls in browser-only P2P SDK modules (createLocalStorageRelayStore)
 let _publicClient: any = null;
 function getServerPublicClient() {
   if (!_publicClient) {
@@ -20,26 +19,16 @@ function getServerPublicClient() {
   return _publicClient;
 }
 
-const PRICE_CONFIG_ABI = [
-  {
-    name: "getPriceConfig",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "currency", type: "string" }],
-    outputs: [
-      {
-        name: "",
-        type: "tuple",
-        components: [
-          { name: "buyPrice", type: "uint256" },
-          { name: "sellPrice", type: "uint256" },
-          { name: "spread", type: "uint256" },
-          { name: "lastUpdated", type: "uint256" },
-        ],
-      },
-    ],
-  },
-] as const;
+let _pricesClient: any = null;
+function getPricesClient() {
+  if (!_pricesClient) {
+    _pricesClient = createPrices({
+      publicClient: getServerPublicClient(),
+      diamondAddress: CONTRACTS.DIAMOND as `0x${string}`,
+    });
+  }
+  return _pricesClient;
+}
 
 export async function GET(req: Request) {
   const auth = await verifyAdminRequest(req);
@@ -81,16 +70,12 @@ export async function GET(req: Request) {
     }
 
     // 3. Fetch Live INR/USDC P2P Price Feed Rate
-    let inrSellPrice = "0";
+    let inrSellPrice = "N/A";
     try {
-      const priceConfig = await publicClient.readContract({
-        address: CONTRACTS.DIAMOND,
-        abi: PRICE_CONFIG_ABI,
-        functionName: "getPriceConfig",
-        args: ["INR"],
-      });
-      if (priceConfig?.sellPrice) {
-        inrSellPrice = (Number(priceConfig.sellPrice) / 1_000_000).toFixed(2);
+      const pricesClient = getPricesClient();
+      const priceResult = await pricesClient.getPriceConfig({ currency: "INR" });
+      if (priceResult.isOk() && priceResult.value?.sellPrice) {
+        inrSellPrice = (Number(priceResult.value.sellPrice) / 1_000_000).toFixed(2);
       }
     } catch (err) {
       console.warn("[Admin Stats] Failed to read P2P INR price feed:", err);
