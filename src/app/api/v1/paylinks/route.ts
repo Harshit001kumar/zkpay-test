@@ -212,10 +212,12 @@ export async function PATCH(req: Request) {
       dispatchWebhook(existing.webhookUrl, {
         event: "paylink.paid",
         linkId: id,
-        amountINR: existing.amountINR,
+        fiatAmount: existing.amountINR,
+        currency: "INR",
+        amountUsdc: existing.estimatedUsdc,
         recipientUpi: existing.recipientUpi,
         txHash: txHash || existing.txHash,
-        paidAt: updates.paidAt || Date.now(),
+        p2pOrderId: p2pOrderId || existing.p2pOrderId,
         timestamp: Date.now(),
       }).catch((err) => console.warn("[Webhook] PayLink dispatch error:", err));
     }
