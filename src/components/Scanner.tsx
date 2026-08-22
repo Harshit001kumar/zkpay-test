@@ -192,13 +192,6 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
     };
   }, [stableOnScan]);
 
-  const handleManualSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (manualId.trim()) {
-      stableOnScan(manualId.trim());
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-[100] bg-[#0e0e0f] text-[#e5e2e3] font-body-md overflow-hidden flex flex-col">
       <style dangerouslySetInnerHTML={{__html: `
