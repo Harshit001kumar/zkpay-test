@@ -240,9 +240,89 @@ export async function getOrderStatus(orderId: bigint) {
 }
 
 export async function parseP2PError(error: any) {
-  // @p2pdotme/sdk provides these utils
-  const { parseContractError, getContractErrorMessage } = await import("@p2pdotme/sdk/orders");
-  const code = parseContractError(error.cause || error);
-  const message = getContractErrorMessage(code);
-  return { code, message };
+  try {
+    const errorCode = error?.code || "";
+    
+    if (errorCode === "CIRCLE_SELECTION_FAILED") {
+      return {
+        code: "CIRCLE_SELECTION_FAILED",
+        message: "No merchant liquidity available right now for this amount. Please try again shortly.",
+      };
+    }
+    
+    if (errorCode === "RECEIPT_TIMEOUT") {
+      return {
+        code: "RECEIPT_TIMEOUT",
+        message: "Transaction is taking longer than usual to confirm on-chain. Please check your activity history.",
+      };
+    }
+    
+    if (errorCode === "ENCRYPTION_FAILED") {
+      return {
+        code: "ENCRYPTION_FAILED",
+        message: "Encryption failed — waiting for merchant to publish acceptance key.",
+      };
+    }
+
+    if (errorCode === "RELAY_IDENTITY_CORRUPT") {
+      return {
+        code: "RELAY_IDENTITY_CORRUPT",
+        message: "Relay identity session error. Please reconnect your wallet.",
+      };
+    }
+
+    // Attempt contract revert decoding
+    const { parseContractError, getContractErrorMessage } = await import("@p2pdotme/sdk/orders");
+    const code = parseContractError(error.cause || error);
+    
+    if (code === "SELL_ORDER_AMOUNT_EXCEEDS_LIMIT") {
+      return {
+        code,
+        message: "Amount exceeds your current per-transaction limit (100 USDC baseline for India).",
+      };
+    }
+
+    if (code === "SELL_ORDER_AMOUNT_LIMIT_EXCEEDED") {
+      return {
+        code,
+        message: "Daily offramp limit exceeded. Please try again tomorrow.",
+      };
+    }
+
+    if (code === "USER_YEARLY_VOLUME_LIMIT_EXCEEDED") {
+      return {
+        code,
+        message: "Yearly protocol volume limit reached.",
+      };
+    }
+
+    if (code === "SLIPPAGE_EXCEEDED") {
+      return {
+        code,
+        message: "Exchange rate updated on-chain. Please review and confirm again.",
+      };
+    }
+
+    if (code === "INSUFFICIENT_ALLOWANCE") {
+      return {
+        code,
+        message: "USDC allowance is insufficient for this transaction.",
+      };
+    }
+
+    if (code === "EXCHANGE_NOT_OPERATIONAL") {
+      return {
+        code,
+        message: "The P2P protocol is temporarily paused for maintenance.",
+      };
+    }
+
+    const message = getContractErrorMessage(code) || error?.message || "Transaction failed";
+    return { code, message };
+  } catch {
+    return {
+      code: "UNKNOWN",
+      message: error?.message || "An unexpected error occurred",
+    };
+  }
 }
