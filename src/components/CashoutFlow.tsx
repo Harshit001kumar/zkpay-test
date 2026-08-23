@@ -214,9 +214,28 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
 
       const wallet = wallets[0];
       const provider = await wallet.getEthereumProvider();
+      const { getPublicClient } = await import("@/lib/p2pkit");
+      const publicClient = getPublicClient();
       
       const principalUsdcBigInt = parseUnits(amountUsdc.toFixed(6), 6);
       const feeUsdcBigInt = parseUnits(feeUsdc.toFixed(6), 6);
+      const totalRequiredUsdc = principalUsdcBigInt + feeUsdcBigInt;
+
+      // Verify on-chain USDC balance before submitting
+      const onChainBalance = (await publicClient.readContract({
+        address: CONTRACTS.USDC,
+        abi: ERC20_ABI,
+        functionName: "balanceOf",
+        args: [wallet.address as `0x${string}`],
+      })) as bigint;
+
+      if (onChainBalance < totalRequiredUsdc) {
+        const balFloat = Number(onChainBalance) / 1_000_000;
+        const reqFloat = Number(totalRequiredUsdc) / 1_000_000;
+        throw new Error(
+          `Insufficient USDC balance on Base. You have $${balFloat.toFixed(2)} USDC, but this cashout requires $${reqFloat.toFixed(2)} USDC ($${amountUsdc.toFixed(2)} + $${feeUsdc.toFixed(2)} fee).`
+        );
+      }
       
       const orderCall = await prepareOfframpOrder({
         userAddress: wallet.address as `0x${string}`,
@@ -237,14 +256,24 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         });
       }
 
-      calls.push({
-        to: CONTRACTS.USDC,
-        data: encodeFunctionData({
-          abi: ERC20_ABI,
-          functionName: "approve",
-          args: [CONTRACTS.DIAMOND as `0x${string}`, principalUsdcBigInt],
-        })
-      });
+      // Check allowance; only add approve if current allowance < required
+      const currentAllowance = (await publicClient.readContract({
+        address: CONTRACTS.USDC,
+        abi: ERC20_ABI,
+        functionName: "allowance",
+        args: [wallet.address as `0x${string}`, CONTRACTS.DIAMOND],
+      })) as bigint;
+
+      if (currentAllowance < principalUsdcBigInt) {
+        calls.push({
+          to: CONTRACTS.USDC,
+          data: encodeFunctionData({
+            abi: ERC20_ABI,
+            functionName: "approve",
+            args: [CONTRACTS.DIAMOND as `0x${string}`, principalUsdcBigInt],
+          })
+        });
+      }
 
       calls.push({
         to: orderCall.to,

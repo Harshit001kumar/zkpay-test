@@ -16,6 +16,7 @@ import {
   getOrderStatus,
   sendPayoutAddress,
   parseP2PError,
+  getPublicClient,
 } from "@/lib/p2pkit";
 
 interface CheckoutFlowProps {
@@ -35,6 +36,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
   const [sellPrice, setSellPrice] = useState<bigint | null>(null);
   const [maxSellable, setMaxSellable] = useState<number | null>(null);
   const [orderId, setOrderId] = useState<bigint | null>(null);
+  const [usdcBalance, setUsdcBalance] = useState<bigint | null>(null);
 
   const fee = amount * 0.01;
   const totalAmount = amount + fee;
@@ -55,15 +57,27 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
     if (!wallets.length) return;
     try {
       const userAddr = wallets[0].address as `0x${string}`;
-      const [priceCfg, limits] = await Promise.all([
+      const publicClient = getPublicClient();
+
+      const [priceCfg, limits, balance] = await Promise.all([
         getOfframpPrice("INR"),
         getOfframpLimits(userAddr, "INR").catch(() => ({ sellLimit: 100n })),
+        publicClient.readContract({
+          address: CONTRACTS.USDC,
+          abi: ERC20_ABI,
+          functionName: "balanceOf",
+          args: [userAddr],
+        }).catch(() => null),
       ]);
+
       if (priceCfg?.sellPrice) {
         setSellPrice(priceCfg.sellPrice);
       }
       if (limits?.sellLimit) {
         setMaxSellable(Number(limits.sellLimit));
+      }
+      if (balance !== null) {
+        setUsdcBalance(balance as bigint);
       }
     } catch (err: any) {
       console.error("[CheckoutFlow] Failed to fetch live P2P price / limits", err);
@@ -187,6 +201,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
       const wallet = wallets[0];
       const provider = await wallet.getEthereumProvider();
+      const publicClient = getPublicClient();
 
       // Convert INR amount to USDC using real price
       // price is 6 decimals: fiatAmount = (usdcAmount * sellPrice) / 1e6
@@ -195,6 +210,23 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       
       const fiatFee1e6 = BigInt(Math.floor(fee * 1_000_000));
       const usdcFeeBigInt = (fiatFee1e6 * 1_000_000n) / sellPrice;
+      const totalRequiredUsdc = usdcPrincipalBigInt + usdcFeeBigInt;
+
+      // Check on-chain balance before initiating any transactions
+      const onChainBalance = (await publicClient.readContract({
+        address: CONTRACTS.USDC,
+        abi: ERC20_ABI,
+        functionName: "balanceOf",
+        args: [wallet.address as `0x${string}`],
+      })) as bigint;
+
+      if (onChainBalance < totalRequiredUsdc) {
+        const balFloat = Number(onChainBalance) / 1_000_000;
+        const reqFloat = Number(totalRequiredUsdc) / 1_000_000;
+        throw new Error(
+          `Insufficient USDC balance on Base. You have $${balFloat.toFixed(2)} USDC, but this payment requires $${reqFloat.toFixed(2)} USDC ($${(Number(usdcPrincipalBigInt) / 1e6).toFixed(2)} payment + $${(Number(usdcFeeBigInt) / 1e6).toFixed(2)} fee).`
+        );
+      }
 
       // Validate against dynamic runtime limit (or 100 USDC baseline)
       const usdcFloat = Number(usdcPrincipalBigInt) / 1_000_000;
@@ -226,15 +258,24 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         });
       }
 
-      // 2. Approve P2P Diamond for principal USDC
-      calls.push({
-        to: CONTRACTS.USDC,
-        data: encodeFunctionData({
-          abi: ERC20_ABI,
-          functionName: "approve",
-          args: [CONTRACTS.DIAMOND, usdcPrincipalBigInt],
-        }),
-      });
+      // 2. Check allowance; only add approve if current allowance < required
+      const currentAllowance = (await publicClient.readContract({
+        address: CONTRACTS.USDC,
+        abi: ERC20_ABI,
+        functionName: "allowance",
+        args: [wallet.address as `0x${string}`, CONTRACTS.DIAMOND],
+      })) as bigint;
+
+      if (currentAllowance < usdcPrincipalBigInt) {
+        calls.push({
+          to: CONTRACTS.USDC,
+          data: encodeFunctionData({
+            abi: ERC20_ABI,
+            functionName: "approve",
+            args: [CONTRACTS.DIAMOND, usdcPrincipalBigInt],
+          }),
+        });
+      }
 
       // 3. Place offramp order
       calls.push({
@@ -282,8 +323,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
         if (isUnsupported) {
           console.log("[CheckoutFlow] wallet_sendCalls not supported. Executing sequential transactions via EOA...");
-          const { getPublicClient } = await import("@/lib/p2pkit");
-          const publicClient = getPublicClient();
+          const pClient = getPublicClient();
 
           for (let i = 0; i < calls.length; i++) {
             const call = calls[i];
@@ -295,7 +335,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
                 data: call.data,
               }],
             });
-            await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
+            await pClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
             txHash = hash as string;
           }
         } else {
@@ -304,7 +344,6 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       }
 
       // Parse orderId from receipt
-      const { getPublicClient } = await import("@/lib/p2pkit");
       const p2pPublicClient = getPublicClient();
       const receipt = await p2pPublicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
 
