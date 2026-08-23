@@ -323,7 +323,6 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
         if (isUnsupported) {
           console.log("[CheckoutFlow] wallet_sendCalls not supported. Executing sequential transactions via EOA...");
-          const pClient = getPublicClient();
 
           for (let i = 0; i < calls.length; i++) {
             const call = calls[i];
@@ -335,7 +334,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
                 data: call.data,
               }],
             });
-            await pClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
+            await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
             txHash = hash as string;
           }
         } else {
@@ -344,8 +343,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       }
 
       // Parse orderId from receipt
-      const p2pPublicClient = getPublicClient();
-      const receipt = await p2pPublicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
 
       const { toEventSelector } = await import("viem");
       const orderPlacedTopic0 = toEventSelector("OrderPlaced(uint256,address,uint256,bytes32,uint256,uint256,uint256)");

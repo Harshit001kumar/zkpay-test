@@ -14,7 +14,8 @@ import {
   prepareOfframpOrder, 
   sendPayoutAddress, 
   getOrderStatus,
-  parseP2PError
+  parseP2PError,
+  getPublicClient,
 } from "@/lib/p2pkit";
 
 type CashoutStatus = "input" | "processing" | "matching" | "paying" | "completed" | "error";
@@ -214,7 +215,6 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
 
       const wallet = wallets[0];
       const provider = await wallet.getEthereumProvider();
-      const { getPublicClient } = await import("@/lib/p2pkit");
       const publicClient = getPublicClient();
       
       const principalUsdcBigInt = parseUnits(amountUsdc.toFixed(6), 6);
@@ -319,8 +319,6 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
 
         if (isUnsupported) {
           console.log("[CashoutFlow] wallet_sendCalls not supported. Executing sequential transactions via EOA...");
-          const { getPublicClient } = await import("@/lib/p2pkit");
-          const publicClient = getPublicClient();
 
           for (let i = 0; i < calls.length; i++) {
             const call = calls[i];
@@ -340,9 +338,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         }
       }
 
-      const { getPublicClient } = await import("@/lib/p2pkit");
-      const p2pPublicClient = getPublicClient();
-      const receipt = await p2pPublicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
 
       const { toEventSelector } = await import("viem");
       const orderPlacedTopic0 = toEventSelector("OrderPlaced(uint256,address,uint256,bytes32,uint256,uint256,uint256)");
