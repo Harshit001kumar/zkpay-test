@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, useRef, MouseEvent } from "react";
 import { 
   QrCode, 
@@ -447,10 +448,11 @@ export default function LandingPage({ login }: { login: () => void }) {
             <span>• Powered by Base Chain & P2PKit</span>
           </div>
 
-          <div className="flex gap-6">
-            <a href="https://basescan.org/address/0x5610D5f587F9cEEBb11C2920D15aC54175b40b2f" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">BASE CONTRACT</a>
-            <a href="#privacy" className="hover:text-white transition-colors">PRIVACY</a>
-            <a href="#terms" className="hover:text-white transition-colors">TERMS</a>
+          <div className="flex flex-wrap gap-6 items-center">
+            <a href="https://basescan.org/address/0x4cad6eC90e65baBec9335cAd728DDC610c316368" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">BASE CONTRACT</a>
+            <Link href="/docs" className="hover:text-white transition-colors">DEVELOPERS</Link>
+            <Link href="/privacy" className="hover:text-white transition-colors">PRIVACY</Link>
+            <Link href="/terms" className="hover:text-white transition-colors">TERMS</Link>
           </div>
 
           <p>© {new Date().getFullYear()} ZkPay Protocol. All rights reserved.</p>

@@ -424,10 +424,21 @@ bot.command('pay', async (ctx) => {
         </section>
 
         {/* Footer */}
-        <footer className="mt-16 pt-8 border-t border-white/10 text-center">
-          <p className="font-label-caps text-[9px] text-[#909097] tracking-[0.25em]">
-            ZKPAY DEVELOPER PLATFORM • OBSIDIAN GLASS LUXURY FINANCIAL EDITORIAL
+        <footer className="mt-16 pt-8 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-4 text-xs font-mono text-[#909097]">
+          <p className="font-label-caps text-[9px] tracking-[0.25em]">
+            ZKPAY DEVELOPER PLATFORM • BASE MAINNET
           </p>
+          <div className="flex gap-6">
+            <a href="/privacy" className="hover:text-white transition-colors">
+              PRIVACY POLICY
+            </a>
+            <a href="/terms" className="hover:text-white transition-colors">
+              TERMS OF SERVICE
+            </a>
+            <a href="https://basescan.org/address/0x4cad6eC90e65baBec9335cAd728DDC610c316368" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+              DIAMOND CONTRACT
+            </a>
+          </div>
         </footer>
       </div>
     </div>

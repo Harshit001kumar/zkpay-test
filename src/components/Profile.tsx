@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallets } from "@privy-io/react-auth";
-import { Copy, Check, ChevronRight, Key, Fingerprint, FileText, DollarSign, Globe, Network, LogOut } from "lucide-react";
+import { Copy, Check, ChevronRight, Key, Fingerprint, FileText, DollarSign, Globe, Network, LogOut, Shield, Scale, Code2, ExternalLink } from "lucide-react";
 
 export default function Profile({ onBack }: { onBack?: () => void }) {
   const { logout, user } = usePrivy();
@@ -204,6 +205,73 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
               <span className="status-dot"></span>
               <span className="font-label-caps text-[#e5e2e3] tracking-widest text-[10px] font-bold">CONNECTED</span>
             </div>
+          </div>
+        </section>
+
+        {/* Legal & Protocol Standards Monolith */}
+        <section className="monolith-card rounded-[32px] p-6 md:p-8 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-400">
+          <div className="flex items-center gap-3 mb-6 ml-2">
+            <span className="material-symbols-outlined text-[#c0c6de]">policy</span>
+            <h3 className="font-label-caps text-[11px] font-bold text-[#c6c6cd] tracking-[0.2em] uppercase">Protocol & Legal</h3>
+          </div>
+          <div className="space-y-3">
+            <Link 
+              href="/privacy" 
+              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-white/5 hover:border-white/20 transition-all block"
+            >
+              <div className="flex items-center gap-4">
+                <Shield className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />
+                <div>
+                  <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px] block">Privacy Policy</span>
+                  <span className="text-xs text-[#909097]">Zero-knowledge & ECIES encryption standards</span>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
+            </Link>
+
+            <Link 
+              href="/terms" 
+              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-white/5 hover:border-white/20 transition-all block"
+            >
+              <div className="flex items-center gap-4">
+                <Scale className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />
+                <div>
+                  <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px] block">Terms of Service</span>
+                  <span className="text-xs text-[#909097]">Protocol rules & non-custodial terms</span>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
+            </Link>
+
+            <Link 
+              href="/docs" 
+              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-white/5 hover:border-white/20 transition-all block"
+            >
+              <div className="flex items-center gap-4">
+                <Code2 className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />
+                <div>
+                  <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px] block">Developer APIs</span>
+                  <span className="text-xs text-[#909097]">Pay Links, Quotes & Rates endpoints</span>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
+            </Link>
+
+            <a 
+              href="https://basescan.org/address/0x4cad6eC90e65baBec9335cAd728DDC610c316368" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-white/5 hover:border-white/20 transition-all block"
+            >
+              <div className="flex items-center gap-4">
+                <ExternalLink className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />
+                <div>
+                  <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px] block">P2P Diamond Contract</span>
+                  <span className="text-xs font-mono text-[#909097]">0x4cad...6368 (Base Mainnet)</span>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
+            </a>
           </div>
         </section>
 
