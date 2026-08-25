@@ -76,7 +76,7 @@ export default function WalletModal({ isOpen, onClose, onOpenDeposit }: WalletMo
   });
 
   const usdcBalance = usdcBalRaw !== undefined ? Number(formatUnits(usdcBalRaw as bigint, 6)) : 0;
-  const ethBalance = ethBalRaw ? Number(ethBalRaw.formatted).toFixed(4) : "0.0000";
+  const ethBalance = ethBalRaw ? Number(formatUnits(ethBalRaw.value, ethBalRaw.decimals)).toFixed(4) : "0.0000";
 
   useEffect(() => {
     if (isOpen) {
