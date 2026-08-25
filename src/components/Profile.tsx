@@ -6,6 +6,8 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useWallets } from "@privy-io/react-auth";
 import { Copy, Check, ChevronRight, Key, Fingerprint, FileText, DollarSign, Globe, Network, LogOut, Shield, Scale, Code2, ExternalLink } from "lucide-react";
 
+import WalletModal from "@/components/WalletModal";
+
 export default function Profile({ onBack }: { onBack?: () => void }) {
   const { logout, user } = usePrivy();
   const { wallets } = useWallets();
@@ -15,8 +17,10 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
   const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Not connected";
   const [copied, setCopied] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(true);
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
 
-  const handleCopy = () => {
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (address) {
       navigator.clipboard.writeText(address);
       setCopied(true);
@@ -106,9 +110,14 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
             {address ? "ZkPay User" : "Guest"}
           </h2>
           
-          <div className="flex items-center gap-3 text-[#c6c6cd] bg-black/30 px-5 py-2 rounded-full border border-white/10 mb-8">
-            <span className="font-body-md text-[#bcc7de] font-mono tracking-tight">{shortAddress}</span>
-            <button onClick={handleCopy} className="hover:text-[#c0c6de] transition-colors flex items-center justify-center">
+          <div 
+            onClick={() => setIsWalletModalOpen(true)}
+            className="flex items-center gap-3 text-[#c6c6cd] bg-black/30 hover:bg-black/50 px-5 py-2 rounded-full border border-white/10 hover:border-[#c0c6de]/30 mb-8 cursor-pointer transition-all active:scale-95 group"
+            title="Click to view Base address & deposit/send USDC"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="font-body-md text-[#bcc7de] font-mono tracking-tight group-hover:text-white transition-colors">{shortAddress}</span>
+            <button onClick={handleCopy} className="hover:text-[#c0c6de] transition-colors flex items-center justify-center p-1 rounded-md hover:bg-white/10" title="Copy Address">
               {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
             </button>
           </div>
@@ -286,6 +295,11 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
           </button>
         </footer>
 
+        {/* Base USDC Wallet Modal */}
+        <WalletModal 
+          isOpen={isWalletModalOpen} 
+          onClose={() => setIsWalletModalOpen(false)} 
+        />
       </main>
     </div>
   );
