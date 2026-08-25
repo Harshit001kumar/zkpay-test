@@ -24,6 +24,12 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           theme: "dark",
           accentColor: "#c0c6de",
           logo: undefined,
+          termsAndConditionsUrl: "/terms",
+          privacyPolicyUrl: "/privacy",
+        },
+        legal: {
+          termsAndConditionsUrl: "/terms",
+          privacyPolicyUrl: "/privacy",
         },
         embeddedWallets: {
           createOnLogin: "users-without-wallets"

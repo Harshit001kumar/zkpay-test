@@ -175,11 +175,21 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
   if (!ready || !authenticated || !wallets.length) {
     return (
-      <div className="text-center p-6 bg-white/5 rounded-xl border border-white/10">
-        <p className="text-sm text-[#909097] mb-4">Please connect your wallet to confirm payment.</p>
-        <button onClick={() => login()} className="btn-primary">
+      <div className="text-center p-6 bg-white/5 rounded-xl border border-white/10 space-y-4">
+        <p className="text-sm text-[#909097]">Please connect your wallet to confirm payment.</p>
+        <button onClick={() => login()} className="btn-primary w-full">
           Connect Wallet
         </button>
+        <p className="text-[11px] text-[#909097] leading-relaxed">
+          By connecting, you agree to ZkPay&apos;s{" "}
+          <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-[#c0c6de] hover:underline">
+            Terms of Service
+          </a>{" "}
+          and{" "}
+          <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[#c0c6de] hover:underline">
+            Privacy Policy
+          </a>.
+        </p>
       </div>
     );
   }

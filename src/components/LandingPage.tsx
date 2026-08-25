@@ -194,7 +194,7 @@ export default function LandingPage({ login }: { login: () => void }) {
               </p>
 
               {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md mb-8">
+              <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md mb-3">
                 <button 
                   onClick={login}
                   className="star-border-btn py-4 px-8 font-label-caps text-[13px] font-bold uppercase tracking-[0.1em] flex items-center justify-center gap-2 shadow-2xl active:scale-95"
@@ -211,6 +211,18 @@ export default function LandingPage({ login }: { login: () => void }) {
                   Connect Wallet
                 </button>
               </div>
+
+              {/* Legal Agreement Consent Notice */}
+              <p className="text-[11px] text-[#909097] mb-6 leading-relaxed">
+                By connecting, you agree to ZkPay&apos;s{" "}
+                <Link href="/terms" className="text-[#c0c6de] hover:underline underline-offset-2">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link href="/privacy" className="text-[#c0c6de] hover:underline underline-offset-2">
+                  Privacy Policy
+                </Link>.
+              </p>
 
               {/* Quick Feature Chips */}
               <div className="flex flex-wrap gap-4 text-xs text-[#909097] font-label-caps tracking-wider">
