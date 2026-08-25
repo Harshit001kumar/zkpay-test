@@ -151,12 +151,12 @@ export default function WalletModal({ isOpen, onClose, onOpenDeposit }: WalletMo
   if (!isOpen) return null;
 
   const qrCodeUrl = address 
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(address)}&color=e5e2e3&bgcolor=131315&margin=10`
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(address)}&color=131315&bgcolor=ffffff&margin=8`
     : "";
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
         {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -171,8 +171,8 @@ export default function WalletModal({ isOpen, onClose, onOpenDeposit }: WalletMo
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          transition={{ type: "spring", duration: 0.4, bounce: 0.1 }}
-          className="relative w-full max-w-lg z-10 my-8"
+          transition={{ type: "spring", duration: 0.35, bounce: 0.1 }}
+          className="relative w-full max-w-lg z-10 my-auto"
         >
           <SpotlightCard className="p-6 md:p-8 bg-[#131315] border border-white/15 rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.9)] overflow-hidden">
             
@@ -259,16 +259,16 @@ export default function WalletModal({ isOpen, onClose, onOpenDeposit }: WalletMo
                 {/* QR Code Card */}
                 <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-black/40 border border-white/10 relative">
                   {address && qrCodeUrl ? (
-                    <div className="w-48 h-48 rounded-xl overflow-hidden bg-white/5 border border-white/10 p-2 relative flex items-center justify-center">
+                    <div className="w-48 h-48 rounded-2xl overflow-hidden bg-white p-3 shadow-2xl flex items-center justify-center">
                       <img
                         src={qrCodeUrl}
                         alt="Base USDC Wallet QR"
-                        className="w-full h-full object-contain rounded-lg"
+                        className="w-full h-full object-contain"
                         onLoad={() => setQrLoaded(true)}
                       />
                     </div>
                   ) : (
-                    <div className="w-48 h-48 rounded-xl bg-white/5 animate-pulse flex items-center justify-center text-[#909097] text-xs font-mono">
+                    <div className="w-48 h-48 rounded-2xl bg-white/5 animate-pulse flex items-center justify-center text-[#909097] text-xs font-mono">
                       Generating QR...
                     </div>
                   )}
