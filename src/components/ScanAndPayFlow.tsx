@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useWallets, usePrivy } from "@privy-io/react-auth";
 import { formatUnits, encodeFunctionData, createWalletClient, custom } from "viem";
@@ -25,14 +25,8 @@ import {
   Loader2, 
   CheckCircle2, 
   AlertTriangle, 
-  ShieldCheck, 
   ExternalLink, 
-  CameraOff, 
-  Sparkles,
-  Store,
-  Wallet,
-  RefreshCw,
-  Send
+  CameraOff
 } from "lucide-react";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
 
@@ -42,13 +36,13 @@ const PRESET_AMOUNTS = [100, 250, 500, 1000, 2000];
 
 export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   const router = useRouter();
-  const { login, authenticated } = usePrivy();
+  const { login } = usePrivy();
   const { wallets } = useWallets();
   const wallet = wallets?.[0];
 
   // Flow State
   const [step, setStep] = useState<FlowStep>("amount");
-  const [amountInr, setAmountInr] = useState<string>("150");
+  const [amountInr, setAmountInr] = useState<string>("150.00");
   const [sellPrice, setSellPrice] = useState<bigint | null>(null);
   const [rateLoading, setRateLoading] = useState(true);
   const [maxSellable, setMaxSellable] = useState<number | null>(null);
@@ -300,7 +294,8 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
       setStep("scanning_matching");
     } catch (err: any) {
       console.error("[ScanAndPayFlow] Order placement failed:", err);
-      setError(parseP2PError(err));
+      const parsed = await parseP2PError(err);
+      setError(parsed.message || "Failed to place order.");
       setStep("amount");
     }
   };
@@ -436,12 +431,12 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
       try {
         setStep("delivering");
-        const wallet = wallets?.[0];
-        if (!wallet) throw new Error("Wallet not connected");
+        const userWallet = wallets?.[0];
+        if (!userWallet) throw new Error("Wallet not connected");
 
-        const provider = await wallet.getEthereumProvider();
+        const provider = await userWallet.getEthereumProvider();
         const client = createWalletClient({
-          account: wallet.address as `0x${string}`,
+          account: userWallet.address as `0x${string}`,
           chain: base,
           transport: custom(provider),
         });
@@ -480,7 +475,8 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
         }
       } catch (err: any) {
         console.error("[ScanAndPayFlow] Failed to deliver encrypted UPI:", err);
-        setError(parseP2PError(err));
+        const parsed = await parseP2PError(err);
+        setError(parsed.message || "Failed to deliver payout address.");
       }
     };
 
@@ -502,7 +498,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
         <button
           onClick={onBack}
           disabled={step === "authorizing" || step === "delivering"}
-          className="inline-flex items-center gap-2 text-xs font-mono font-bold tracking-wider text-[#909097] hover:text-[#e5e2e3] transition-colors disabled:opacity-30"
+          className="inline-flex items-center gap-2 text-xs font-mono font-bold tracking-wider text-[#909097] hover:text-[#e5e2e3] transition-colors disabled:opacity-30 cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>BACK</span>
@@ -609,7 +605,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
               disabled={numericInr <= 0 || rateLoading}
               className="w-full py-4 rounded-2xl bg-[#e5e2e3] hover:bg-white text-[#131315] font-bold text-xs tracking-[0.2em] font-label-caps uppercase transition-all shadow-lg hover:shadow-white/10 disabled:opacity-40 flex items-center justify-center gap-2 cursor-pointer"
             >
-              <span>Authorize & Place Order (₹{numericInr || 0})</span>
+              <span>Authorize & Place Order (₹{numericInr > 0 ? numericInr.toFixed(2) : "0.00"})</span>
             </button>
           </SpotlightCard>
         )}
@@ -641,7 +637,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                 <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping shrink-0" />
                 <div>
                   <p className="text-xs font-bold text-emerald-400 font-mono uppercase">
-                    {orderId ? `Order #${orderId.toString()} Escrowed (₹${numericInr})` : `₹${numericInr} In Escrow`}
+                    {orderId ? `Order #${orderId.toString()} Escrowed (₹${numericInr.toFixed(2)})` : `₹${numericInr.toFixed(2)} In Escrow`}
                   </p>
                   <p className="text-[11px] text-[#c6c6cd] font-mono">
                     {merchantAcceptedOrder ? "✅ P2P Merchant Ready!" : "Matching liquidity in background..."}
@@ -715,7 +711,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                       type="button"
                       onClick={() => handleScanSuccess(manualUpiInput)}
                       disabled={!manualUpiInput.trim()}
-                      className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-mono font-bold transition-all disabled:opacity-40"
+                      className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-mono font-bold transition-all disabled:opacity-40 cursor-pointer"
                     >
                       Set
                     </button>
@@ -739,7 +735,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
               <p className="text-xs text-[#909097] font-mono mt-1">
                 {step === "delivering" 
                   ? `Delivering ${scannedUpi} encrypted via ECIES to matched merchant`
-                  : `Merchant is transferring ₹${numericInr} via UPI instant rails`}
+                  : `Merchant is transferring ₹${numericInr.toFixed(2)} via UPI instant rails`}
               </p>
             </div>
             <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 text-xs font-mono text-[#c0c6de]">

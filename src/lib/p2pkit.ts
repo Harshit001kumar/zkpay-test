@@ -94,6 +94,11 @@ export async function getOfframpPrice(currency: string) {
   return cfg.value;
 }
 
+export async function getSellRate(currency: string = "INR"): Promise<bigint> {
+  const cfg = await getOfframpPrice(currency);
+  return cfg.sellPrice;
+}
+
 /**
  * Prepare a SELL order calldata for batching (Smart Wallets).
  */

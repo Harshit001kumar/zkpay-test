@@ -1,7 +1,7 @@
 "use client";
 
+import React, { useState, useEffect } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { encodeFunctionData, parseUnits, formatUnits } from "viem";
 import { CONTRACTS } from "@/lib/constants";
@@ -193,7 +193,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
 
   if (amountUsdc > 0 && sellPrice) {
     const usdcBigInt = parseUnits(amountUsdc.toFixed(6), 6);
-    const fiatBigInt = (usdcBigInt * sellPrice) / 1000000n;
+    const fiatBigInt = (usdcBigInt * BigInt(sellPrice)) / 1000000n;
     estimatedFiat = Number(formatUnits(fiatBigInt, 6));
   }
 
