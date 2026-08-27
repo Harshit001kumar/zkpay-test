@@ -17,7 +17,7 @@ import {
   getOfframpLimits, 
   parseP2PError 
 } from "@/lib/p2pkit";
-import { saveTransaction } from "@/lib/storage";
+import { saveTransaction } from "@/lib/history";
 import { 
   ArrowLeft, 
   QrCode, 

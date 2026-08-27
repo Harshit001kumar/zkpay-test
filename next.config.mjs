@@ -15,6 +15,9 @@ const nextConfig = {
       "@stripe/crypto": false,
       "@stripe/stripe-js": false,
       "@bigmi/react": false,
+      "viem/tempo/zones": false,
+      "viem/tempo": false,
+      "@wagmi/core/tempo": false,
       "fs": false,
       "buffer": require.resolve("buffer/"),
       "stream": false,
@@ -27,6 +30,8 @@ const nextConfig = {
 
     config.resolve.alias = {
       ...config.resolve.alias,
+      "viem/tempo/zones": false,
+      "viem/tempo": false,
       // Fix the strict ESM export errors without breaking runtime cryptography
       // by aliasing the explicit `.js` imports to their extensionless equivalents
       "@noble/hashes/hmac.js": "@noble/hashes/hmac",
