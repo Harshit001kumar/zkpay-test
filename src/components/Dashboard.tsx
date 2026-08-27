@@ -1,20 +1,18 @@
 "use client";
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useReadContract } from "wagmi";
-import PaymentEntry from "@/components/PaymentEntry";
 import CashoutFlow from "@/components/CashoutFlow";
 import PaymentHistory from "@/components/PaymentHistory";
 import dynamic from "next/dynamic";
 import { base } from "viem/chains";
 import { formatUnits, erc20Abi } from "viem";
 import { CONTRACTS, CHAIN } from "@/lib/constants";
-import { MerchantData } from "@/lib/types";
 
 import PayLinkModal from "@/components/PayLinkModal";
 
-const Scanner = dynamic(() => import("@/components/Scanner"), { ssr: false });
+const ScanAndPayFlow = dynamic(() => import("@/components/ScanAndPayFlow"), { ssr: false });
 const DepositFlow = dynamic(() => import("@/components/DepositFlow"), { ssr: false });
 
 type ActiveTab = "pay" | "cashout" | "deposit" | "vault";
@@ -24,8 +22,6 @@ export default function Dashboard() {
   const { wallets } = useWallets();
   
   const [activeTab, setActiveTab] = useState<ActiveTab>("vault");
-  const [isScanning, setIsScanning] = useState(false);
-  const [merchantId, setMerchantId] = useState<MerchantData | null>(null);
   const [isPayLinkOpen, setIsPayLinkOpen] = useState(false);
 
   // Fetch USDC balance automatically via Wagmi useReadContract
@@ -45,28 +41,11 @@ export default function Dashboard() {
 
   const balance = bal !== undefined ? formatUnits(bal as bigint, 6) : "0.00";
 
-  const handleScan = useCallback((data: MerchantData) => {
-    setIsScanning(false);
-    setMerchantId(data);
-  }, []);
-
   const switchTab = (tab: ActiveTab) => {
-    if (tab === "pay") {
-      setIsScanning(true);
-    } else {
-      setActiveTab(tab);
-      setMerchantId(null);
-    }
+    setActiveTab(tab);
   };
 
-  if (isScanning) {
-    return <Scanner onScan={handleScan} onCancel={() => setIsScanning(false)} />;
-  }
-
-  if (merchantId) {
-    return <PaymentEntry merchantData={merchantId} onCancel={() => setMerchantId(null)} />;
-  }
-
+  if (activeTab === "pay") return <ScanAndPayFlow onBack={() => setActiveTab("vault")} />;
   if (activeTab === "cashout") return <CashoutFlow onBack={() => setActiveTab("vault")} />;
   if (activeTab === "deposit") return <DepositFlow onBack={() => setActiveTab("vault")} />;
 
