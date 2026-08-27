@@ -4,11 +4,12 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useWallets } from "@privy-io/react-auth";
-import { createWalletClient, custom, parseUnits, formatUnits, isAddress } from "viem";
+import { createWalletClient, custom, parseUnits, formatUnits, isAddress, encodeFunctionData } from "viem";
 import { base } from "viem/chains";
 import { useReadContract, useBalance } from "wagmi";
 import { CONTRACTS, CHAIN } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
+import { parseP2PError, getPublicClient } from "@/lib/p2pkit";
 import { 
   ArrowLeft, 
   Copy, 
@@ -121,19 +122,61 @@ export default function WalletAddressPage() {
     try {
       setIsSending(true);
       const provider = await connectedWallet.getEthereumProvider();
-      const client = createWalletClient({
-        account: connectedAddress,
-        chain: base,
-        transport: custom(provider),
-      });
-
+      const publicClient = getPublicClient();
       const amountUnits = parseUnits(numAmount.toFixed(6), 6);
-      const hash = await client.writeContract({
-        address: CONTRACTS.USDC as `0x${string}`,
+      
+      const transferData = encodeFunctionData({
         abi: ERC20_ABI,
         functionName: "transfer",
         args: [trimmedRecipient as `0x${string}`, amountUnits],
       });
+
+      let hash = "";
+
+      try {
+        // 1. Try wallet_sendCalls (Privy Smart Wallet / Paymaster to pay gas in USDC)
+        const id = await provider.request({
+          method: "wallet_sendCalls",
+          params: [{
+            version: "1.0",
+            from: connectedAddress,
+            calls: [{
+              to: CONTRACTS.USDC,
+              data: transferData,
+            }],
+          }],
+        });
+
+        const MAX_POLLS = 60;
+        for (let i = 0; i < MAX_POLLS; i++) {
+          const statusRes: any = await provider.request({
+            method: "wallet_getCallsStatus",
+            params: [id],
+          });
+          if (statusRes.status === "CONFIRMED" && statusRes.receipts && statusRes.receipts.length > 0) {
+            hash = statusRes.receipts[0].transactionHash || statusRes.receipts[0].blockHash;
+            break;
+          }
+          if (statusRes.status === "FAILED" || statusRes.status === "REJECTED") {
+            throw new Error(`Transaction ${statusRes.status.toLowerCase()} by wallet`);
+          }
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      } catch (batchErr: any) {
+        // 2. Fallback to standard Viem writeContract
+        const client = createWalletClient({
+          account: connectedAddress,
+          chain: base,
+          transport: custom(provider),
+        });
+
+        hash = await client.writeContract({
+          address: CONTRACTS.USDC as `0x${string}`,
+          abi: ERC20_ABI,
+          functionName: "transfer",
+          args: [trimmedRecipient as `0x${string}`, amountUnits],
+        });
+      }
 
       setSendTxHash(hash);
       setIsSending(false);
@@ -141,7 +184,8 @@ export default function WalletAddressPage() {
     } catch (err: any) {
       console.error("[WalletPage] Transfer failed:", err);
       setIsSending(false);
-      setSendError(err?.message || "Transaction rejected or failed.");
+      const parsed = await parseP2PError(err);
+      setSendError(parsed.message || "Transaction rejected or failed.");
     }
   };
 

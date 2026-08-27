@@ -242,7 +242,15 @@ export async function getOrderStatus(orderId: bigint) {
 export async function parseP2PError(error: any) {
   try {
     const errorCode = error?.code || "";
+    const errorString = String(error?.message || error?.details || error?.shortMessage || error || "").toLowerCase();
     
+    if (errorString.includes("insufficient funds for gas") || errorString.includes("exceeds the balance of the account")) {
+      return {
+        code: "INSUFFICIENT_GAS_ETH",
+        message: "Insufficient ETH for Base network gas. Your wallet currently has 0 ETH. Please send a tiny amount of ETH (~$0.10) to your Base address to execute transactions.",
+      };
+    }
+
     if (errorCode === "CIRCLE_SELECTION_FAILED") {
       return {
         code: "CIRCLE_SELECTION_FAILED",
