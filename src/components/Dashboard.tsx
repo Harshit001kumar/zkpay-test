@@ -39,7 +39,7 @@ export default function Dashboard() {
     }
   });
 
-  const balance = bal !== undefined ? formatUnits(bal as bigint, 6) : "0.00";
+  const balance = bal !== undefined ? Number(formatUnits(bal as bigint, 6)).toFixed(2) : "0.00";
 
   const switchTab = (tab: ActiveTab) => {
     setActiveTab(tab);

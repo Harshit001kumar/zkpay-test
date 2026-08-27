@@ -34,6 +34,13 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
   const [sellPrice, setSellPrice] = useState<bigint | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
 
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (val === "" || /^\d*\.?\d{0,2}$/.test(val)) {
+      setAmountStr(val);
+    }
+  };
+
   useEffect(() => {
     if (!ready || !authenticated || !wallets.length) return;
     
@@ -469,8 +476,9 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
                   <span className="font-display-xl text-[64px] font-extrabold text-[#c0c6de] opacity-50 select-none mr-1 absolute -left-12">$</span>
                   <input 
                     type="number"
+                    step="0.01"
                     value={amountStr}
-                    onChange={(e) => setAmountStr(e.target.value)}
+                    onChange={handleAmountChange}
                     className="bg-transparent border-none focus:ring-0 font-display-xl text-[64px] font-extrabold p-0 text-center silver-typography tracking-tighter w-48 transition-all" 
                     placeholder="0.00" 
                   />

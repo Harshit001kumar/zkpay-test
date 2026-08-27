@@ -58,6 +58,13 @@ export default function WalletAddressPage() {
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendTxHash, setSendTxHash] = useState<string | null>(null);
 
+  const handleSendAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (val === "" || /^\d*\.?\d{0,2}$/.test(val)) {
+      setSendAmount(val);
+    }
+  };
+
   // 1. Fetch USDC balance on Base for the target address
   const { data: usdcBalRaw, refetch: refetchUsdc } = useReadContract({
     address: CONTRACTS.USDC as `0x${string}`,
@@ -413,7 +420,7 @@ export default function WalletAddressPage() {
                   </label>
                   <button
                     type="button"
-                    onClick={() => setSendAmount(usdcBalance.toString())}
+                    onClick={() => setSendAmount(usdcBalance.toFixed(2))}
                     className="text-[11px] font-mono text-[#c0c6de] hover:underline"
                   >
                     MAX (${usdcBalance.toFixed(2)})
@@ -422,10 +429,10 @@ export default function WalletAddressPage() {
                 <div className="relative">
                   <input
                     type="number"
-                    step="any"
+                    step="0.01"
                     placeholder="0.00"
                     value={sendAmount}
-                    onChange={(e) => setSendAmount(e.target.value)}
+                    onChange={handleSendAmountChange}
                     className="w-full p-4 pr-16 rounded-2xl bg-black/40 border border-white/10 text-white placeholder:text-[#909097]/40 text-base font-mono focus:border-[#c0c6de] focus:outline-none transition-colors"
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-[#909097]">
@@ -440,7 +447,7 @@ export default function WalletAddressPage() {
                   <button
                     key={amt}
                     type="button"
-                    onClick={() => setSendAmount(amt.toString())}
+                    onClick={() => setSendAmount(amt.toFixed(2))}
                     className="flex-1 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-[#c6c6cd] transition-colors"
                   >
                     ${amt}

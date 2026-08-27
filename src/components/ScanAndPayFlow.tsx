@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useWallets, usePrivy } from "@privy-io/react-auth";
 import { formatUnits, encodeFunctionData, createWalletClient, custom } from "viem";
 import { base } from "viem/chains";
+import { useReadContract } from "wagmi";
 import { Html5Qrcode } from "html5-qrcode";
 import { CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
@@ -52,6 +53,28 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   const [rateLoading, setRateLoading] = useState(true);
   const [maxSellable, setMaxSellable] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Available Base USDC balance (formatted to 2 decimal places)
+  const { data: rawBal } = useReadContract({
+    address: CONTRACTS.USDC as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: [wallet?.address as `0x${string}` ?? "0x0000000000000000000000000000000000000000"],
+    chainId: base.id,
+    query: {
+      enabled: !!wallet?.address,
+      refetchInterval: 5000,
+    },
+  });
+
+  const availableUsdc = rawBal !== undefined ? Number(formatUnits(rawBal as bigint, 6)) : 0;
+
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (val === "" || /^\d*\.?\d{0,2}$/.test(val)) {
+      setAmountInr(val);
+    }
+  };
 
   // Order & P2P State
   const [orderId, setOrderId] = useState<bigint | null>(null);
@@ -512,18 +535,24 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
             {/* INR Input Field */}
             <div className="space-y-3">
-              <label className="text-[10px] font-label-caps text-[#909097] tracking-widest uppercase font-bold">
-                PAYMENT AMOUNT (INR)
-              </label>
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] font-label-caps text-[#909097] tracking-widest uppercase font-bold">
+                  PAYMENT AMOUNT (INR)
+                </label>
+                <span className="text-[11px] font-mono text-[#c0c6de]">
+                  Balance: ${availableUsdc.toFixed(2)} USDC
+                </span>
+              </div>
               <div className="flex items-center p-4 rounded-2xl bg-black/40 border border-white/10 focus-within:border-[#c0c6de] transition-colors">
                 <span className="text-3xl md:text-4xl font-extrabold text-[#c0c6de] font-mono mr-2">
                   ₹
                 </span>
                 <input
                   type="number"
-                  placeholder="0"
+                  step="0.01"
+                  placeholder="0.00"
                   value={amountInr}
-                  onChange={(e) => setAmountInr(e.target.value)}
+                  onChange={handleAmountChange}
                   autoFocus
                   className="bg-transparent border-none p-0 text-3xl md:text-4xl font-extrabold text-white focus:outline-none w-full font-mono tracking-tight"
                 />
@@ -535,7 +564,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                   <button
                     key={amt}
                     type="button"
-                    onClick={() => setAmountInr(amt.toString())}
+                    onClick={() => setAmountInr(amt.toFixed(2))}
                     className="flex-1 py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-[#c6c6cd] hover:text-white transition-colors shrink-0"
                   >
                     ₹{amt}
