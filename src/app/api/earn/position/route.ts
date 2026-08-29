@@ -7,7 +7,7 @@ function getPrivy() {
     const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
     const appSecret = process.env.PRIVY_APP_SECRET;
     if (!appId || !appSecret) throw new Error("Privy credentials not configured");
-    _privy = new PrivyClient(appId, appSecret);
+    _privy = new PrivyClient({ appId, appSecret });
   }
   return _privy;
 }
