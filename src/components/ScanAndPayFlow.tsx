@@ -249,12 +249,9 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
       let placedTxHash = "";
 
-      // Use Privy Smart Wallet client (routes through paymaster for USDC gas)
-      if (smartClient) {
-        placedTxHash = await smartClient.sendTransaction({ calls });
-      } else {
-        // Fallback to sequential EOA calls
-        const provider = await wallet!.getEthereumProvider();
+      // Use embedded EOA wallet directly (funds live here)
+      if (wallet) {
+        const provider = await wallet.getEthereumProvider();
         for (let i = 0; i < calls.length; i++) {
           const call = calls[i];
           const hash = await provider.request({
@@ -268,6 +265,9 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
           await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
           placedTxHash = hash as string;
         }
+      } else if (smartClient) {
+        // Fallback to Smart Wallet client
+        placedTxHash = await smartClient.sendTransaction({ calls });
       }
 
       setTxHash(placedTxHash);

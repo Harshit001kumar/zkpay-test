@@ -313,11 +313,8 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
 
       let hash = "";
 
-      // Use Privy Smart Wallet client (routes through paymaster for USDC gas)
-      if (smartClient) {
-        hash = await smartClient.sendTransaction({ calls });
-      } else {
-        // Fallback to sequential EOA calls
+      // Use embedded EOA wallet directly (funds live here)
+      if (wallet) {
         const provider = await wallet.getEthereumProvider();
         for (let i = 0; i < calls.length; i++) {
           const call = calls[i];
@@ -332,6 +329,9 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
           await publicClient.waitForTransactionReceipt({ hash: txH as `0x${string}` });
           hash = txH as string;
         }
+      } else if (smartClient) {
+        // Fallback to Smart Wallet client
+        hash = await smartClient.sendTransaction({ calls });
       }
 
       const receipt = await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });

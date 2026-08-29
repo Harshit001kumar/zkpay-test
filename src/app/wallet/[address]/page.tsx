@@ -140,18 +140,8 @@ export default function WalletAddressPage() {
 
       let hash = "";
 
-      // Use Privy Smart Wallet client (routes through paymaster for USDC gas)
-      if (smartClient) {
-        const txHash = await smartClient.sendTransaction({
-          calls: [{
-            to: CONTRACTS.USDC as `0x${string}`,
-            data: transferData,
-            value: 0n,
-          }],
-        });
-        hash = txHash;
-      } else if (connectedWallet) {
-        // Fallback to standard EOA writeContract
+      // Use embedded EOA wallet directly (funds live here)
+      if (connectedWallet) {
         const provider = await connectedWallet.getEthereumProvider();
         const client = createWalletClient({
           account: connectedAddress!,
@@ -164,6 +154,16 @@ export default function WalletAddressPage() {
           functionName: "transfer",
           args: [trimmedRecipient as `0x${string}`, amountUnits],
         });
+      } else if (smartClient) {
+        // Fallback to Smart Wallet client
+        const txHash = await smartClient.sendTransaction({
+          calls: [{
+            to: CONTRACTS.USDC as `0x${string}`,
+            data: transferData,
+            value: 0n,
+          }],
+        });
+        hash = txHash;
       } else {
         throw new Error("No wallet available.");
       }

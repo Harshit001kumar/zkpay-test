@@ -300,11 +300,8 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
       let txHash = "";
 
-      // Use Privy Smart Wallet client (routes through paymaster for USDC gas)
-      if (smartClient) {
-        txHash = await smartClient.sendTransaction({ calls });
-      } else {
-        // Fallback to sequential EOA calls
+      // Use embedded EOA wallet directly (funds live here)
+      if (wallet) {
         const provider = await wallet.getEthereumProvider();
         for (let i = 0; i < calls.length; i++) {
           const call = calls[i];
@@ -319,6 +316,9 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
           await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
           txHash = hash as string;
         }
+      } else if (smartClient) {
+        // Fallback to Smart Wallet client
+        txHash = await smartClient.sendTransaction({ calls });
       }
 
       // Parse orderId from receipt
