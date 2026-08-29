@@ -792,6 +792,12 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
             </div>
 
             <div className="p-5 rounded-2xl bg-black/40 border border-white/10 space-y-3 text-xs font-mono text-left">
+              {orderId && (
+                <div className="flex justify-between">
+                  <span className="text-[#909097]">Order ID</span>
+                  <span className="text-[#c0c6de] font-bold">#{orderId.toString()}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-[#909097]">Amount Paid</span>
                 <span className="text-white font-bold text-sm">₹{numericInr.toFixed(2)}</span>

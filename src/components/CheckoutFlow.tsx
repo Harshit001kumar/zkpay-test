@@ -393,10 +393,11 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       // Deliver encrypted UPI to the matched merchant
       if (acceptedOrder && acceptedOrder.pubkey) {
         setStatus("paying");
+        const provider = await wallet.getEthereumProvider();
         const { createWalletClient, custom } = await import("viem");
         const { base } = await import("viem/chains");
         const walletClient = createWalletClient({
-          account: wallet.address as `0x${string}`,
+          account: (smartClient?.account?.address || wallet.address) as `0x${string}`,
           chain: base,
           transport: custom(provider),
         });
