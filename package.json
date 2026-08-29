@@ -21,6 +21,7 @@
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.378.0",
     "next": "14.2.3",
+    "permissionless": "latest",
     "react": "^18",
     "react-dom": "^18",
     "tailwind-merge": "^2.3.0",
