@@ -27,9 +27,14 @@ import {
   CheckCircle2, 
   AlertTriangle, 
   ExternalLink, 
-  CameraOff
+  CameraOff,
+  Coins,
+  Sparkles,
+  Info
 } from "lucide-react";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
+import { NumericKeypad } from "@/components/ui/NumericKeypad";
+import { ShimmerButton } from "@/components/ui/ShimmerButton";
 
 type FlowStep = "amount" | "authorizing" | "scanning_matching" | "delivering" | "settling" | "completed";
 
@@ -66,11 +71,31 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
   const availableUsdc = rawBal !== undefined ? Number(formatUnits(rawBal as bigint, 6)) : 0;
 
-  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    if (val === "" || /^\d*\.?\d{0,2}$/.test(val)) {
-      setAmountInr(val);
-    }
+  // Keypad Handlers
+  const handleKeypadChange = (newVal: string) => {
+    setAmountInr(newVal);
+  };
+
+  const handleQuickAdd = (addInr: number) => {
+    const curr = parseFloat(amountInr) || 0;
+    const next = (curr + addInr).toFixed(2);
+    setAmountInr(next);
+  };
+
+  const handleSetMax = () => {
+    if (!sellPrice || availableUsdc <= 0) return;
+    const rate = Number(sellPrice) / 1_000_000;
+    // maxAffordable = availableUsdc / 1.01 (accounting for 1% fee)
+    const maxAffordableUsdc = availableUsdc / 1.01;
+    const maxInr = maxAffordableUsdc * rate;
+    // Also consider maxSellable
+    const effectiveMaxUsdc = maxSellable ? Math.min(maxAffordableUsdc, maxSellable) : maxAffordableUsdc;
+    const finalInr = Math.max(0, effectiveMaxUsdc * rate);
+    setAmountInr(finalInr.toFixed(2));
+  };
+
+  const handleClear = () => {
+    setAmountInr("0");
   };
 
   // Order & P2P State
@@ -497,101 +522,125 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
       {/* Main Container */}
       <main className="flex-1 max-w-xl mx-auto w-full px-5 py-6 md:py-8">
         
-        {/* STEP 1: ENTER INR AMOUNT FIRST */}
+        {/* STEP 1: ENTER INR AMOUNT FIRST (WITH IN-APP NUMERIC KEYPAD) */}
         {step === "amount" && (
-          <SpotlightCard className="p-6 md:p-8 bg-[#1b1b1d] border border-white/15 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] space-y-6">
-            <div className="flex items-center gap-3 pb-5 border-b border-white/10">
-              <div className="w-12 h-12 rounded-2xl bg-[#c0c6de]/10 border border-[#c0c6de]/30 flex items-center justify-center text-[#c0c6de]">
-                <QrCode className="w-6 h-6" />
+          <SpotlightCard className="p-5 sm:p-7 bg-[#1b1b1d] border border-white/15 rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.85)] space-y-5">
+            {/* Header / Subheader */}
+            <div className="flex items-center justify-between pb-4 border-b border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#c0c6de]/10 border border-[#c0c6de]/30 flex items-center justify-center text-[#c0c6de] shrink-0">
+                  <QrCode className="w-5 h-5" />
+                </div>
+                <div>
+                  <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                    <span>Scan & Pay</span>
+                  </h1>
+                  <p className="text-[11px] text-[#909097] font-mono">
+                    Enter Amount ➔ Escrow ➔ Scan QR
+                  </p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-xl md:text-2xl font-bold text-white tracking-tight">
-                  Scan & Pay
-                </h1>
-                <p className="text-xs text-[#909097] font-mono">
-                  1. Enter Amount ➔ 2. Place Escrow ➔ 3. Scan QR
-                </p>
+              <div className="text-right">
+                <span className="text-[9px] font-label-caps text-[#909097] uppercase tracking-wider block">Balance</span>
+                <span className="text-xs font-mono font-bold text-[#c0c6de]">
+                  ${availableUsdc.toFixed(2)} USDC
+                </span>
               </div>
             </div>
 
-            {/* INR Input Field */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <label className="text-[10px] font-label-caps text-[#909097] tracking-widest uppercase font-bold">
-                  PAYMENT AMOUNT (INR)
-                </label>
-                <span className="text-[11px] font-mono text-[#c0c6de]">
-                  Balance: ${availableUsdc.toFixed(2)} USDC
-                </span>
+            {/* Hero Amount Display (In-App Keypad Target) */}
+            <div className="flex flex-col items-center justify-center py-3 px-4 rounded-3xl bg-black/40 border border-white/10 relative overflow-hidden">
+              <div className="absolute top-2 left-4 text-[10px] font-label-caps text-[#909097] tracking-widest uppercase font-bold">
+                PAYMENT AMOUNT
               </div>
-              <div className="flex items-center p-4 rounded-2xl bg-black/40 border border-white/10 focus-within:border-[#c0c6de] transition-colors">
-                <span className="text-3xl md:text-4xl font-extrabold text-[#c0c6de] font-mono mr-2">
+
+              {/* Amount Display */}
+              <div className="flex items-baseline justify-center mt-4 mb-1">
+                <span className="text-3xl sm:text-4xl font-extrabold text-[#c0c6de] font-mono mr-1.5 opacity-80">
                   ₹
                 </span>
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={amountInr}
-                  onChange={handleAmountChange}
-                  autoFocus
-                  className="bg-transparent border-none p-0 text-3xl md:text-4xl font-extrabold text-white focus:outline-none w-full font-mono tracking-tight"
-                />
+                <span className="text-5xl sm:text-6xl font-black font-mono tracking-tight text-white select-none">
+                  {amountInr || "0"}
+                </span>
+                <span className="w-0.5 h-9 sm:h-11 bg-[#c0c6de] inline-block animate-pulse ml-1 rounded-full opacity-80" />
               </div>
 
-              {/* Preset Chips */}
-              <div className="flex gap-2 pt-1 overflow-x-auto pb-1">
-                {PRESET_AMOUNTS.map((amt) => (
-                  <button
-                    key={amt}
-                    type="button"
-                    onClick={() => setAmountInr(amt.toFixed(2))}
-                    className="flex-1 py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-[#c6c6cd] hover:text-white transition-colors shrink-0"
-                  >
-                    ₹{amt}
-                  </button>
-                ))}
+              {/* Live USD/USDC Conversion Subtext */}
+              <div className="flex items-center gap-2 text-xs font-mono text-[#909097] mt-1">
+                <span>≈ ${totalUsdcRequired.toFixed(2)} USDC</span>
+                <span className="text-[#46464c]">•</span>
+                <span className="text-[11px] text-[#c0c6de]">
+                  {rateLoading ? "Rate loading..." : `1 USDC = ₹${rateInrPerUsdc.toFixed(2)}`}
+                </span>
               </div>
             </div>
 
-            {/* Live Exchange & Fee Breakdown Card */}
-            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2.5 text-xs font-mono">
-              <div className="flex justify-between items-center text-[#909097]">
-                <span>On-Chain Rate</span>
-                <span className="text-white font-bold">
-                  {rateLoading ? "Fetching..." : `1 USDC ≈ ₹${rateInrPerUsdc.toFixed(2)}`}
-                </span>
+            {/* Quick Action Chips (+100, +500, +1000, Max, Clear) */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+              <button
+                type="button"
+                onClick={handleSetMax}
+                disabled={availableUsdc <= 0}
+                className="py-1.5 px-3 rounded-xl bg-[#c0c6de]/15 hover:bg-[#c0c6de]/25 border border-[#c0c6de]/30 text-xs font-mono font-bold text-[#c0c6de] transition-colors shrink-0 disabled:opacity-40"
+              >
+                MAX
+              </button>
+              {[100, 250, 500, 1000].map((amt) => (
+                <button
+                  key={amt}
+                  type="button"
+                  onClick={() => handleQuickAdd(amt)}
+                  className="py-1.5 px-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.09] border border-white/10 text-xs font-mono text-[#c6c6cd] hover:text-white transition-colors shrink-0"
+                >
+                  +₹{amt}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={handleClear}
+                className="py-1.5 px-2.5 rounded-xl bg-red-950/20 hover:bg-red-950/40 border border-red-500/20 text-xs font-mono text-[#ffb4ab] transition-colors shrink-0 ml-auto"
+              >
+                CLEAR
+              </button>
+            </div>
+
+            {/* IN-APP NUMERIC KEYPAD */}
+            <NumericKeypad
+              value={amountInr}
+              onChange={handleKeypadChange}
+              onClear={handleClear}
+              maxDecimals={2}
+              maxDigits={7}
+              className="py-1"
+            />
+
+            {/* Fee & Escrow Info Pill */}
+            <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/10 flex items-center justify-between text-xs font-mono text-[#909097]">
+              <div className="flex items-center gap-2">
+                <Info className="w-3.5 h-3.5 text-[#c0c6de]" />
+                <span>Protocol Fee (1%)</span>
               </div>
-              <div className="flex justify-between items-center text-[#909097]">
-                <span>Principal Amount</span>
-                <span className="text-white">${baseUsdcPrincipal.toFixed(2)} USDC</span>
-              </div>
-              <div className="flex justify-between items-center text-[#909097]">
-                <span>Platform Fee (1%)</span>
-                <span className="text-[#c0c6de]">${platformFeeUsdc.toFixed(2)} USDC</span>
-              </div>
-              <div className="h-px bg-white/10 my-1" />
-              <div className="flex justify-between items-center text-sm font-bold">
-                <span className="text-white">Total Required</span>
-                <span className="text-white text-base">${totalUsdcRequired.toFixed(2)} USDC</span>
-              </div>
+              <span className="text-[#e5e2e3] font-bold">
+                ${platformFeeUsdc.toFixed(2)} USDC
+              </span>
             </div>
 
             {/* Error Message */}
             {error && (
-              <div className="p-4 rounded-2xl bg-red-950/30 border border-red-500/30 text-xs text-[#ffb4ab]">
+              <div className="p-3.5 rounded-2xl bg-red-950/40 border border-red-500/30 text-xs font-mono text-[#ffb4ab]">
                 {error}
               </div>
             )}
 
             {/* Action Button */}
-            <button
+            <ShimmerButton
               onClick={handlePlaceOrder}
               disabled={numericInr <= 0 || rateLoading}
-              className="w-full py-4 rounded-2xl bg-[#e5e2e3] hover:bg-white text-[#131315] font-bold text-xs tracking-[0.2em] font-label-caps uppercase transition-all shadow-lg hover:shadow-white/10 disabled:opacity-40 flex items-center justify-center gap-2 cursor-pointer"
+              shimmerColor="#ffffff"
+              className="w-full py-4 rounded-2xl text-[#131315] font-bold text-xs tracking-[0.2em] font-label-caps uppercase"
             >
               <span>Authorize & Place Order (₹{numericInr > 0 ? numericInr.toFixed(2) : "0.00"})</span>
-            </button>
+            </ShimmerButton>
           </SpotlightCard>
         )}
 
