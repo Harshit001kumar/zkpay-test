@@ -10,7 +10,7 @@ function getPrivy() {
     const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
     const appSecret = process.env.PRIVY_APP_SECRET;
     if (!appId || !appSecret) throw new Error("Privy credentials not configured");
-    _privy = new PrivyClient({ appId, appSecret });
+    _privy = new PrivyClient(appId, appSecret);
   }
   return _privy;
 }
@@ -38,7 +38,8 @@ export async function POST(request: Request) {
     let verifiedClaims;
     try {
       verifiedClaims = await getPrivy().utils().auth().verifyAccessToken(accessToken);
-    } catch {
+    } catch (authErr: any) {
+      console.error("[Earn Deposit] Token verification failed:", authErr?.message);
       return NextResponse.json(
         { error: "Unauthorized — invalid or expired token" },
         { status: 401 }
@@ -49,23 +50,16 @@ export async function POST(request: Request) {
 
     // ── 2. Validate environment is configured ──
     if (!VAULT_ID) {
-      console.error("PRIVY_EARN_VAULT_ID is not set");
+      console.error("[Earn Deposit] PRIVY_EARN_VAULT_ID is not configured");
       return NextResponse.json(
-        { error: "Earn feature is not configured" },
-        { status: 503 }
+        { error: "Privy Earn Vault ID is not configured on the server (missing PRIVY_EARN_VAULT_ID)." },
+        { status: 400 }
       );
     }
 
     // ── 3. Parse and validate input ──
     const body = await request.json();
-    const { amount, walletId } = body;
-
-    if (!walletId || typeof walletId !== "string") {
-      return NextResponse.json(
-        { error: "Missing or invalid walletId" },
-        { status: 400 }
-      );
-    }
+    const { amount, walletId: rawWalletId } = body;
 
     const parsedAmount = Number(amount);
     if (
@@ -90,9 +84,39 @@ export async function POST(request: Request) {
       );
     }
 
-    // ── 4. Call Privy Earn deposit API ──
+    // ── 4. Resolve Target Privy Embedded Wallet ID ──
+    // Privy Earn API requires the Privy Wallet ID (e.g. clx...), NOT the 0x EVM address.
+    let targetWalletId = rawWalletId;
+
+    if (!targetWalletId || targetWalletId.startsWith("0x")) {
+      try {
+        const privyUser = await getPrivy().getUser(userId);
+        const embeddedWallet = privyUser.linkedAccounts?.find(
+          (acc: any) =>
+            acc.type === "wallet" &&
+            (acc.walletClientType === "privy" || acc.connectorType === "embedded")
+        ) as any;
+
+        if (embeddedWallet?.id) {
+          targetWalletId = embeddedWallet.id;
+        }
+      } catch (userErr: any) {
+        console.error("[Earn Deposit] Failed to fetch user for wallet lookup:", userErr?.message);
+      }
+    }
+
+    if (!targetWalletId || targetWalletId.startsWith("0x")) {
+      return NextResponse.json(
+        {
+          error:
+            "No Privy embedded wallet ID found. Privy Earn requires a Privy-managed embedded wallet.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // ── 5. Call Privy Earn deposit API ──
     // The SDK handles ERC-20 approval + deposit in a single call.
-    // The deposit is asynchronous — it returns a "pending" wallet action.
     const depositParams: Record<string, unknown> = {
       vault_id: VAULT_ID,
       amount: String(parsedAmount),
@@ -110,7 +134,7 @@ export async function POST(request: Request) {
       .wallets()
       .earn()
       .ethereum()
-      .deposit(walletId, depositParams as any);
+      .deposit(targetWalletId, depositParams as any);
 
     return NextResponse.json(
       {
@@ -121,10 +145,14 @@ export async function POST(request: Request) {
       { status: 200 }
     );
   } catch (error: any) {
-    console.error("Privy Earn Deposit Error:", error?.message || error);
+    console.error("[Earn Deposit Error]:", error?.message || error);
+    const detailedMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      "Deposit transaction failed. Please ensure your wallet has sufficient USDC on Base.";
     return NextResponse.json(
-      { error: "Deposit failed. Please try again." },
-      { status: 500 }
+      { error: detailedMessage },
+      { status: 400 }
     );
   }
 }

@@ -1,8 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { getAccessToken } from "@privy-io/react-auth";
+import { usePrivy, useWallets, getAccessToken } from "@privy-io/react-auth";
+import { formatUnits, parseUnits } from "viem";
+import { base } from "viem/chains";
+import { useReadContract } from "wagmi";
+import { CONTRACTS } from "@/lib/constants";
+import { ERC20_ABI } from "@/lib/abi";
+import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
 import { ShinyText } from "@/components/ui/ShinyText";
 import { ShimmerButton } from "@/components/ui/ShimmerButton";
@@ -26,8 +31,9 @@ interface PositionInfo {
 const PRESET_AMOUNTS = [10, 50, 100, 250];
 
 export default function EarnFlow() {
-  const { authenticated, login } = usePrivy();
+  const { authenticated, login, user } = usePrivy();
   const { wallets } = useWallets();
+  const { address: activeAddress } = useActiveAccount();
 
   const [amount, setAmount] = useState("");
   const [isDepositing, setIsDepositing] = useState(false);
@@ -39,10 +45,33 @@ export default function EarnFlow() {
   const [position, setPosition] = useState<PositionInfo | null>(null);
   const [isLoadingPosition, setIsLoadingPosition] = useState(true);
 
+  // Available Base USDC balance
+  const { data: rawBal, refetch: refetchBal } = useReadContract({
+    address: CONTRACTS.USDC as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: [activeAddress ?? "0x0000000000000000000000000000000000000000"],
+    chainId: base.id,
+    query: {
+      enabled: !!activeAddress,
+      refetchInterval: 5000,
+    },
+  });
+
+  const availableUsdc = rawBal !== undefined ? Number(formatUnits(rawBal as bigint, 6)) : 0;
+
+  // Resolve target wallet ID: Prefer the Privy embedded wallet ID from linkedAccounts
   const getWalletId = useCallback(() => {
-    const embeddedWallet = wallets.find((w) => w.walletClientType === "privy");
-    return embeddedWallet?.meta?.id || embeddedWallet?.address || wallets?.[0]?.address || null;
-  }, [wallets]);
+    const embeddedWallet = user?.linkedAccounts?.find(
+      (acc: any) =>
+        acc.type === "wallet" &&
+        (acc.walletClientType === "privy" || acc.connectorType === "embedded")
+    ) as any;
+
+    if (embeddedWallet?.id) return embeddedWallet.id;
+    if (embeddedWallet?.address) return embeddedWallet.address;
+    return activeAddress || wallets?.[0]?.address || null;
+  }, [user, activeAddress, wallets]);
 
   const fetchPosition = useCallback(async () => {
     const walletId = getWalletId();
@@ -69,7 +98,8 @@ export default function EarnFlow() {
         setVault(data.vault);
         setPosition(data.position);
       }
-    } catch {
+    } catch (err: any) {
+      console.error("[EarnFlow] Failed to fetch position:", err);
     } finally {
       setIsLoadingPosition(false);
     }
@@ -79,9 +109,32 @@ export default function EarnFlow() {
     fetchPosition();
   }, [fetchPosition]);
 
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (val === "" || /^\d*\.?\d{0,2}$/.test(val)) {
+      setAmount(val);
+      setError("");
+    }
+  };
+
+  const handleSetMax = () => {
+    if (availableUsdc > 0) {
+      setAmount(availableUsdc.toFixed(2));
+      setError("");
+    }
+  };
+
   const handleDeposit = async () => {
     const parsedAmount = Number(amount);
-    if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) return;
+    if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
+      setError("Please enter a valid deposit amount.");
+      return;
+    }
+
+    if (parsedAmount > availableUsdc) {
+      setError(`Insufficient USDC balance. You have $${availableUsdc.toFixed(2)} USDC.`);
+      return;
+    }
 
     const walletId = getWalletId();
     if (!walletId) {
@@ -113,7 +166,11 @@ export default function EarnFlow() {
 
       setSuccess(`Deposit of $${parsedAmount.toFixed(2)} USDC initiated!`);
       setAmount("");
-      setTimeout(fetchPosition, 4000);
+      refetchBal?.();
+      setTimeout(() => {
+        fetchPosition();
+        refetchBal?.();
+      }, 4000);
     } catch (err: any) {
       setError(err.message || "Deposit transaction failed.");
     } finally {
@@ -159,7 +216,11 @@ export default function EarnFlow() {
       }
 
       setSuccess("Withdrawal request submitted successfully!");
-      setTimeout(fetchPosition, 4000);
+      refetchBal?.();
+      setTimeout(() => {
+        fetchPosition();
+        refetchBal?.();
+      }, 4000);
     } catch (err: any) {
       setError(err.message || "Withdrawal failed.");
     } finally {
@@ -177,7 +238,7 @@ export default function EarnFlow() {
 
   return (
     <div className="w-full relative flex flex-col items-center justify-start pt-8 pb-32 font-body-md overflow-hidden text-[#e5e2e3]">
-      {/* ReactBits Ambient Glow Orbs */}
+      {/* Ambient Glow Orbs */}
       <div className="fixed -top-40 left-1/2 -translate-x-1/2 w-[700px] h-[700px] bg-[#c0c6de]/5 rounded-full blur-[140px] pointer-events-none" />
       <div className="fixed -bottom-40 right-1/4 w-[500px] h-[500px] bg-[#b9c7e0]/5 rounded-full blur-[120px] pointer-events-none" />
 
@@ -203,7 +264,7 @@ export default function EarnFlow() {
 
       {/* Main Vault Interactive Card */}
       <div className="w-full max-w-2xl px-4 relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-150">
-        <SpotlightCard className="p-8 md:p-10 border border-white/15 shadow-[0_30px_90px_rgba(0,0,0,0.85)]">
+        <SpotlightCard className="p-6 md:p-10 border border-white/15 shadow-[0_30px_90px_rgba(0,0,0,0.85)]">
           {/* Position Stats Header */}
           <div className="grid grid-cols-2 gap-6 pb-6 border-b border-white/10">
             <div>
@@ -213,7 +274,7 @@ export default function EarnFlow() {
               {isLoadingPosition ? (
                 <div className="w-6 h-6 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin mt-1" />
               ) : (
-                <div className="font-display-xl text-3xl md:text-4xl font-bold text-[#e5e2e3] tracking-tight">
+                <div className="font-display-xl text-2xl sm:text-4xl font-bold text-[#e5e2e3] tracking-tight">
                   {displayPosition}
                   <span className="text-xs font-normal text-[#909097] ml-1.5 font-mono">USDC</span>
                 </div>
@@ -224,7 +285,7 @@ export default function EarnFlow() {
               <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold block mb-1">
                 ACCRUED YIELD
               </span>
-              <div className="font-display-xl text-3xl md:text-4xl font-bold text-[#c0c6de] tracking-tight">
+              <div className="font-display-xl text-2xl sm:text-4xl font-bold text-[#c0c6de] tracking-tight">
                 {displayYield}
                 <span className="text-xs font-normal text-[#909097] ml-1.5 font-mono">USDC</span>
               </div>
@@ -232,13 +293,25 @@ export default function EarnFlow() {
           </div>
 
           {/* Deposit Form Area */}
-          <div className="mt-8 space-y-6">
+          <div className="mt-7 space-y-6">
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">
                   DEPOSIT AMOUNT (USDC)
                 </label>
-                <span className="text-xs text-[#c0c6de] font-mono">Base Network (Gasless)</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#909097] font-mono">
+                    Balance: <span className="text-[#c0c6de] font-bold">${availableUsdc.toFixed(2)}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleSetMax}
+                    disabled={availableUsdc <= 0}
+                    className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-[#c0c6de]/15 hover:bg-[#c0c6de]/25 text-[#c0c6de] transition-colors disabled:opacity-40"
+                  >
+                    MAX
+                  </button>
+                </div>
               </div>
 
               <div className="relative">
@@ -247,8 +320,9 @@ export default function EarnFlow() {
                 </span>
                 <input
                   type="number"
+                  step="0.01"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
+                  onChange={handleAmountChange}
                   placeholder="0.00"
                   disabled={isLoading}
                   className="w-full pl-9 pr-4 py-4 rounded-xl bg-white/[0.03] border border-white/15 text-[#e5e2e3] text-xl font-bold placeholder-[#909097] focus:outline-none focus:border-[#c0c6de] transition-colors tracking-tight"
@@ -256,7 +330,7 @@ export default function EarnFlow() {
               </div>
 
               {/* Quick Amount Pills */}
-              <div className="flex items-center gap-2 mt-3">
+              <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1">
                 {PRESET_AMOUNTS.map((preset) => (
                   <button
                     key={preset}

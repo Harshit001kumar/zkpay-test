@@ -7,7 +7,7 @@ function getPrivy() {
     const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
     const appSecret = process.env.PRIVY_APP_SECRET;
     if (!appId || !appSecret) throw new Error("Privy credentials not configured");
-    _privy = new PrivyClient({ appId, appSecret });
+    _privy = new PrivyClient(appId, appSecret);
   }
   return _privy;
 }
@@ -26,13 +26,14 @@ export async function POST(request: Request) {
 
     if (!accessToken) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: "Unauthorized — no access token provided" },
         { status: 401 }
       );
     }
 
+    let verifiedClaims;
     try {
-      await getPrivy().utils().auth().verifyAccessToken(accessToken);
+      verifiedClaims = await getPrivy().utils().auth().verifyAccessToken(accessToken);
     } catch {
       return NextResponse.json(
         { error: "Unauthorized — invalid or expired token" },
@@ -40,23 +41,18 @@ export async function POST(request: Request) {
       );
     }
 
+    const userId = verifiedClaims.user_id;
+
     if (!VAULT_ID) {
       return NextResponse.json(
-        { error: "Earn feature is not configured" },
-        { status: 503 }
+        { error: "Privy Earn Vault ID is not configured on the server (missing PRIVY_EARN_VAULT_ID)." },
+        { status: 400 }
       );
     }
 
     // ── 2. Validate input ──
     const body = await request.json();
-    const { amount, walletId } = body;
-
-    if (!walletId || typeof walletId !== "string") {
-      return NextResponse.json(
-        { error: "Missing or invalid walletId" },
-        { status: 400 }
-      );
-    }
+    const { amount, walletId: rawWalletId } = body;
 
     const parsedAmount = Number(amount);
     if (!amount || isNaN(parsedAmount) || !isFinite(parsedAmount) || parsedAmount <= 0) {
@@ -66,7 +62,37 @@ export async function POST(request: Request) {
       );
     }
 
-    // ── 3. Call Privy Earn withdraw API ──
+    // ── 3. Resolve Target Privy Embedded Wallet ID ──
+    let targetWalletId = rawWalletId;
+
+    if (!targetWalletId || targetWalletId.startsWith("0x")) {
+      try {
+        const privyUser = await getPrivy().getUser(userId);
+        const embeddedWallet = privyUser.linkedAccounts?.find(
+          (acc: any) =>
+            acc.type === "wallet" &&
+            (acc.walletClientType === "privy" || acc.connectorType === "embedded")
+        ) as any;
+
+        if (embeddedWallet?.id) {
+          targetWalletId = embeddedWallet.id;
+        }
+      } catch (userErr: any) {
+        console.error("[Earn Withdraw] Failed to fetch user for wallet lookup:", userErr?.message);
+      }
+    }
+
+    if (!targetWalletId || targetWalletId.startsWith("0x")) {
+      return NextResponse.json(
+        {
+          error:
+            "No Privy embedded wallet ID found. Privy Earn requires a Privy-managed embedded wallet.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // ── 4. Call Privy Earn withdraw API ──
     const withdrawParams: Record<string, unknown> = {
       vault_id: VAULT_ID,
       amount: String(parsedAmount),
@@ -83,7 +109,7 @@ export async function POST(request: Request) {
       .wallets()
       .earn()
       .ethereum()
-      .withdraw(walletId, withdrawParams as any);
+      .withdraw(targetWalletId, withdrawParams as any);
 
     return NextResponse.json(
       {
@@ -94,10 +120,14 @@ export async function POST(request: Request) {
       { status: 200 }
     );
   } catch (error: any) {
-    console.error("Privy Earn Withdraw Error:", error?.message || error);
+    console.error("[Earn Withdraw Error]:", error?.message || error);
+    const detailedMessage =
+      error?.response?.data?.message ||
+      error?.message ||
+      "Withdrawal request failed. Please try again.";
     return NextResponse.json(
-      { error: "Withdrawal failed. Please try again." },
-      { status: 500 }
+      { error: detailedMessage },
+      { status: 400 }
     );
   }
 }
