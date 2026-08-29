@@ -3,17 +3,13 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { usePrivy } from "@privy-io/react-auth";
-import { useWallets } from "@privy-io/react-auth";
+import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { Copy, Check, ChevronRight, Key, Fingerprint, FileText, DollarSign, Globe, Network, LogOut, Shield, Scale, Code2, ExternalLink } from "lucide-react";
 
 export default function Profile({ onBack }: { onBack?: () => void }) {
   const router = useRouter();
-  const { logout, user } = usePrivy();
-  const { wallets } = useWallets();
-  const wallet = wallets[0];
+  const { logout, address, isSmartWallet } = useActiveAccount();
 
-  const address = wallet?.address || user?.wallet?.address;
   const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Not connected";
   const [copied, setCopied] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(true);

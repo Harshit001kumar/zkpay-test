@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
+import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
 import { useRouter } from "next/navigation";
 import { encodeFunctionData, parseUnits, formatUnits } from "viem";
 import { CONTRACTS } from "@/lib/constants";
@@ -23,6 +24,7 @@ type CashoutStatus = "input" | "processing" | "matching" | "paying" | "completed
 export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
   const { ready, authenticated } = usePrivy();
   const { wallets } = useWallets();
+  const { client: smartClient } = useSmartWallets();
   const router = useRouter();
   
   const [amountStr, setAmountStr] = useState("");
@@ -125,21 +127,40 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       }
 
       const wallet = wallets[0];
-      const provider = await wallet.getEthereumProvider();
       
-      const { createWalletClient, custom } = await import("viem");
-      const { base } = await import("viem/chains");
-      const walletClient = createWalletClient({
-        account: wallet.address as `0x${string}`,
-        chain: base,
-        transport: custom(provider)
-      });
-      
-      await sendPayoutAddress(walletClient, {
-        orderId,
-        paymentAddress: savedUpiId,
-        merchantPublicKey: acceptedOrder.pubkey,
-      });
+      // Use Privy Smart Wallet client for sendPayoutAddress if available
+      if (smartClient) {
+        // sendPayoutAddress expects a walletClient - create one from smartClient
+        const provider = await wallet.getEthereumProvider();
+        const { createWalletClient, custom } = await import("viem");
+        const { base } = await import("viem/chains");
+        const walletClient = createWalletClient({
+          account: (smartClient.account?.address || wallet.address) as `0x${string}`,
+          chain: base,
+          transport: custom(provider)
+        });
+        
+        await sendPayoutAddress(walletClient, {
+          orderId,
+          paymentAddress: savedUpiId,
+          merchantPublicKey: acceptedOrder.pubkey,
+        });
+      } else {
+        const provider = await wallet.getEthereumProvider();
+        const { createWalletClient, custom } = await import("viem");
+        const { base } = await import("viem/chains");
+        const walletClient = createWalletClient({
+          account: wallet.address as `0x${string}`,
+          chain: base,
+          transport: custom(provider)
+        });
+        
+        await sendPayoutAddress(walletClient, {
+          orderId,
+          paymentAddress: savedUpiId,
+          merchantPublicKey: acceptedOrder.pubkey,
+        });
+      }
 
       setStatus("paying");
       const MAX_PAY_POLLS = 300;
@@ -221,7 +242,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       setError(null);
 
       const wallet = wallets[0];
-      const provider = await wallet.getEthereumProvider();
+      const activeAddr = (smartClient?.account?.address || wallet.address) as `0x${string}`;
       const publicClient = getPublicClient();
       
       const principalUsdcBigInt = parseUnits(amountUsdc.toFixed(6), 6);
@@ -233,7 +254,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         address: CONTRACTS.USDC,
         abi: ERC20_ABI,
         functionName: "balanceOf",
-        args: [wallet.address as `0x${string}`],
+        args: [activeAddr],
       })) as bigint;
 
       if (onChainBalance < totalRequiredUsdc) {
@@ -245,21 +266,22 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       }
       
       const orderCall = await prepareOfframpOrder({
-        userAddress: wallet.address as `0x${string}`,
+        userAddress: activeAddr,
         currency: "INR",
         usdcAmount: principalUsdcBigInt,
         sellPrice: sellPrice,
       });
 
-      const calls = [];
+      const calls: { to: `0x${string}`; data: `0x${string}`; value: bigint }[] = [];
       if (feeUsdcBigInt > 0n) {
         calls.push({
-          to: CONTRACTS.USDC,
+          to: CONTRACTS.USDC as `0x${string}`,
           data: encodeFunctionData({
             abi: ERC20_ABI,
             functionName: "transfer",
             args: [(CONTRACTS as any).TREASURY as `0x${string}`, feeUsdcBigInt],
-          })
+          }),
+          value: 0n,
         });
       }
 
@@ -268,80 +290,47 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         address: CONTRACTS.USDC,
         abi: ERC20_ABI,
         functionName: "allowance",
-        args: [wallet.address as `0x${string}`, CONTRACTS.DIAMOND],
+        args: [activeAddr, CONTRACTS.DIAMOND],
       })) as bigint;
 
       if (currentAllowance < principalUsdcBigInt) {
         calls.push({
-          to: CONTRACTS.USDC,
+          to: CONTRACTS.USDC as `0x${string}`,
           data: encodeFunctionData({
             abi: ERC20_ABI,
             functionName: "approve",
             args: [CONTRACTS.DIAMOND as `0x${string}`, principalUsdcBigInt],
-          })
+          }),
+          value: 0n,
         });
       }
 
       calls.push({
-        to: orderCall.to,
-        data: orderCall.data
+        to: orderCall.to as `0x${string}`,
+        data: orderCall.data as `0x${string}`,
+        value: 0n,
       });
 
       let hash = "";
 
-      try {
-        const id = await provider.request({
-          method: "wallet_sendCalls",
-          params: [{
-            version: "1.0",
-            from: wallet.address,
-            calls: calls
-          }]
-        });
-
-        const MAX_TX_POLLS = 60;
-        for (let k = 0; k < MAX_TX_POLLS; k++) {
-          const statusRes: any = await provider.request({
-            method: "wallet_getCallsStatus",
-            params: [id]
+      // Use Privy Smart Wallet client (routes through paymaster for USDC gas)
+      if (smartClient) {
+        hash = await smartClient.sendTransaction({ calls });
+      } else {
+        // Fallback to sequential EOA calls
+        const provider = await wallet.getEthereumProvider();
+        for (let i = 0; i < calls.length; i++) {
+          const call = calls[i];
+          const txH = await provider.request({
+            method: "eth_sendTransaction",
+            params: [{
+              from: activeAddr,
+              to: call.to,
+              data: call.data,
+            }]
           });
-          if (statusRes.status === "CONFIRMED" && statusRes.receipts && statusRes.receipts.length > 0) {
-            hash = statusRes.receipts[0].transactionHash || statusRes.receipts[0].blockHash; 
-            break;
-          }
-          if (statusRes.status === "FAILED" || statusRes.status === "REJECTED") {
-            throw new Error(`Transaction ${statusRes.status.toLowerCase()} by wallet`);
-          }
-          if (k === MAX_TX_POLLS - 1) {
-            throw new Error("Transaction confirmation timed out after 2 minutes");
-          }
-          await new Promise(r => setTimeout(r, 2000));
-        }
-      } catch (batchErr: any) {
-        const isUnsupported = 
-          batchErr?.message?.toLowerCase().includes("method") ||
-          batchErr?.message?.toLowerCase().includes("unsupported") ||
-          batchErr?.message?.toLowerCase().includes("does not support") ||
-          batchErr?.code === -32601;
-
-        if (isUnsupported) {
-          console.log("[CashoutFlow] wallet_sendCalls not supported. Executing sequential transactions via EOA...");
-
-          for (let i = 0; i < calls.length; i++) {
-            const call = calls[i];
-            const txH = await provider.request({
-              method: "eth_sendTransaction",
-              params: [{
-                from: wallet.address,
-                to: call.to,
-                data: call.data,
-              }]
-            });
-            await publicClient.waitForTransactionReceipt({ hash: txH as `0x${string}` });
-            hash = txH as string;
-          }
-        } else {
-          throw batchErr;
+          await publicClient.waitForTransactionReceipt({ hash: txH as `0x${string}` });
+          hash = txH as string;
         }
       }
 

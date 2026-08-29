@@ -1,6 +1,6 @@
 "use client";
 
-import { usePrivy, useWallets } from "@privy-io/react-auth";
+import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { useState } from "react";
 import { useReadContract } from "wagmi";
 import CashoutFlow from "@/components/CashoutFlow";
@@ -18,14 +18,13 @@ const DepositFlow = dynamic(() => import("@/components/DepositFlow"), { ssr: fal
 type ActiveTab = "pay" | "cashout" | "deposit" | "vault";
 
 export default function Dashboard() {
-  const { ready, authenticated } = usePrivy();
-  const { wallets } = useWallets();
+  const { ready, authenticated, address } = useActiveAccount();
   
   const [activeTab, setActiveTab] = useState<ActiveTab>("vault");
   const [isPayLinkOpen, setIsPayLinkOpen] = useState(false);
 
-  // Fetch USDC balance automatically via Wagmi useReadContract
-  const walletAddress = wallets?.[0]?.address as `0x${string}` | undefined;
+  // Fetch USDC balance automatically via Wagmi useReadContract for the resolved smart account
+  const walletAddress = address as `0x${string}` | undefined;
   
   const { data: bal } = useReadContract({
     address: CONTRACTS.USDC as `0x${string}`,

@@ -1,12 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { usePrivy } from "@privy-io/react-auth";
+import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { LogOut, ChevronRight } from "lucide-react";
 
 export default function WalletConnect() {
   const router = useRouter();
-  const { login, logout, authenticated, user, ready } = usePrivy();
+  const { login, logout, authenticated, ready, address, isSmartWallet } = useActiveAccount();
 
   if (!ready) {
     return (
@@ -14,11 +14,8 @@ export default function WalletConnect() {
     );
   }
 
-  if (authenticated && user) {
-    const address = user.wallet?.address;
-    const shortAddress = address
-      ? `${address.slice(0, 6)}...${address.slice(-4)}`
-      : "Connected";
+  if (authenticated && address) {
+    const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
 
     const handleNavigateToWallet = () => {
       if (address) {

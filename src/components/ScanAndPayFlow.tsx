@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useWallets, usePrivy } from "@privy-io/react-auth";
+import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
 import { formatUnits, encodeFunctionData, createWalletClient, custom } from "viem";
 import { base } from "viem/chains";
 import { useReadContract } from "wagmi";
@@ -38,7 +39,9 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   const router = useRouter();
   const { login } = usePrivy();
   const { wallets } = useWallets();
+  const { client: smartClient } = useSmartWallets();
   const wallet = wallets?.[0];
+  const activeAddress = (smartClient?.account?.address || wallet?.address) as `0x${string}` | undefined;
 
   // Flow State
   const [step, setStep] = useState<FlowStep>("amount");
@@ -53,10 +56,10 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
     address: CONTRACTS.USDC as `0x${string}`,
     abi: ERC20_ABI,
     functionName: "balanceOf",
-    args: [wallet?.address as `0x${string}` ?? "0x0000000000000000000000000000000000000000"],
+    args: [activeAddress ?? "0x0000000000000000000000000000000000000000"],
     chainId: base.id,
     query: {
-      enabled: !!wallet?.address,
+      enabled: !!activeAddress,
       refetchInterval: 5000,
     },
   });
@@ -137,8 +140,8 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
       setError(null);
       setStep("authorizing");
 
-      const provider = await wallet.getEthereumProvider();
       const publicClient = getPublicClient();
+      const senderAddress = activeAddress || wallet!.address as `0x${string}`;
 
       const fiatPrincipal1e6 = BigInt(Math.floor(numericInr * 1_000_000));
       const usdcPrincipalBigInt = (fiatPrincipal1e6 * 1_000_000n) / sellPrice;
@@ -153,7 +156,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
         address: CONTRACTS.USDC,
         abi: ERC20_ABI,
         functionName: "balanceOf",
-        args: [wallet.address as `0x${string}`],
+        args: [senderAddress],
       })) as bigint;
 
       if (onChainBalance < totalRequiredUsdcBigInt) {
@@ -171,23 +174,24 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
       }
 
       const orderCall = await prepareOfframpOrder({
-        userAddress: wallet.address as `0x${string}`,
+        userAddress: senderAddress,
         currency: "INR",
         usdcAmount: usdcPrincipalBigInt,
         sellPrice: sellPrice,
       });
 
-      const calls = [];
+      const calls: { to: `0x${string}`; data: `0x${string}`; value: bigint }[] = [];
 
       // 1. Send 1% platform fee to Treasury
       if (usdcFeeBigInt > 0n) {
         calls.push({
-          to: CONTRACTS.USDC,
+          to: CONTRACTS.USDC as `0x${string}`,
           data: encodeFunctionData({
             abi: ERC20_ABI,
             functionName: "transfer",
-            args: [CONTRACTS.TREASURY, usdcFeeBigInt],
+            args: [CONTRACTS.TREASURY as `0x${string}`, usdcFeeBigInt],
           }),
+          value: 0n,
         });
       }
 
@@ -196,61 +200,42 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
         address: CONTRACTS.USDC,
         abi: ERC20_ABI,
         functionName: "allowance",
-        args: [wallet.address as `0x${string}`, CONTRACTS.DIAMOND],
+        args: [senderAddress, CONTRACTS.DIAMOND],
       })) as bigint;
 
       if (currentAllowance < usdcPrincipalBigInt) {
         calls.push({
-          to: CONTRACTS.USDC,
+          to: CONTRACTS.USDC as `0x${string}`,
           data: encodeFunctionData({
             abi: ERC20_ABI,
             functionName: "approve",
-            args: [CONTRACTS.DIAMOND, usdcPrincipalBigInt],
+            args: [CONTRACTS.DIAMOND as `0x${string}`, usdcPrincipalBigInt],
           }),
+          value: 0n,
         });
       }
 
       // 3. Place order into escrow
       calls.push({
-        to: orderCall.to,
-        data: orderCall.data,
+        to: orderCall.to as `0x${string}`,
+        data: orderCall.data as `0x${string}`,
+        value: 0n,
       });
 
       let placedTxHash = "";
 
-      try {
-        const id = await provider.request({
-          method: "wallet_sendCalls",
-          params: [{
-            version: "1.0",
-            from: wallet.address,
-            calls: calls,
-          }],
-        });
-
-        const MAX_POLLS = 60;
-        for (let i = 0; i < MAX_POLLS; i++) {
-          const statusRes: any = await provider.request({
-            method: "wallet_getCallsStatus",
-            params: [id],
-          });
-          if (statusRes.status === "CONFIRMED" && statusRes.receipts && statusRes.receipts.length > 0) {
-            placedTxHash = statusRes.receipts[0].transactionHash || statusRes.receipts[0].blockHash;
-            break;
-          }
-          if (statusRes.status === "FAILED" || statusRes.status === "REJECTED") {
-            throw new Error(`Transaction ${statusRes.status.toLowerCase()} by wallet`);
-          }
-          await new Promise(r => setTimeout(r, 2000));
-        }
-      } catch (batchErr: any) {
+      // Use Privy Smart Wallet client (routes through paymaster for USDC gas)
+      if (smartClient) {
+        placedTxHash = await smartClient.sendTransaction({ calls });
+      } else {
         // Fallback to sequential EOA calls
+        const provider = await wallet!.getEthereumProvider();
         for (let i = 0; i < calls.length; i++) {
           const call = calls[i];
           const hash = await provider.request({
             method: "eth_sendTransaction",
             params: [{
-              from: wallet.address,
+              from: senderAddress,
               to: call.to,
               data: call.data,
             }],

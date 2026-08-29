@@ -1,6 +1,7 @@
 "use client";
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
+import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { encodeFunctionData, parseUnits, formatUnits } from "viem";
@@ -29,6 +30,7 @@ type TxStatus = "idle" | "approving" | "matching" | "paying" | "completed" | "er
 export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps) {
   const { ready, authenticated, login } = usePrivy();
   const { wallets } = useWallets();
+  const { client: smartClient } = useSmartWallets();
   const router = useRouter();
   
   const [status, setStatus] = useState<TxStatus>("idle");
@@ -210,7 +212,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       setError(null);
 
       const wallet = wallets[0];
-      const provider = await wallet.getEthereumProvider();
+      const activeAddr = (smartClient?.account?.address || wallet.address) as `0x${string}`;
       const publicClient = getPublicClient();
 
       // Convert INR amount to USDC using real price
@@ -227,7 +229,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         address: CONTRACTS.USDC,
         abi: ERC20_ABI,
         functionName: "balanceOf",
-        args: [wallet.address as `0x${string}`],
+        args: [activeAddr],
       })) as bigint;
 
       if (onChainBalance < totalRequiredUsdc) {
@@ -248,23 +250,24 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       }
 
       const orderCall = await prepareOfframpOrder({
-        userAddress: wallet.address as `0x${string}`,
+        userAddress: activeAddr,
         currency: "INR",
         usdcAmount: usdcPrincipalBigInt,
         sellPrice: sellPrice,
       });
 
-      const calls = [];
+      const calls: { to: `0x${string}`; data: `0x${string}`; value: bigint }[] = [];
 
       // 1. Send 1% platform fee to ZkPay Treasury
       if (usdcFeeBigInt > 0n) {
         calls.push({
-          to: CONTRACTS.USDC,
+          to: CONTRACTS.USDC as `0x${string}`,
           data: encodeFunctionData({
             abi: ERC20_ABI,
             functionName: "transfer",
-            args: [CONTRACTS.TREASURY, usdcFeeBigInt],
+            args: [CONTRACTS.TREASURY as `0x${string}`, usdcFeeBigInt],
           }),
+          value: 0n,
         });
       }
 
@@ -273,82 +276,48 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         address: CONTRACTS.USDC,
         abi: ERC20_ABI,
         functionName: "allowance",
-        args: [wallet.address as `0x${string}`, CONTRACTS.DIAMOND],
+        args: [activeAddr, CONTRACTS.DIAMOND],
       })) as bigint;
 
       if (currentAllowance < usdcPrincipalBigInt) {
         calls.push({
-          to: CONTRACTS.USDC,
+          to: CONTRACTS.USDC as `0x${string}`,
           data: encodeFunctionData({
             abi: ERC20_ABI,
             functionName: "approve",
-            args: [CONTRACTS.DIAMOND, usdcPrincipalBigInt],
+            args: [CONTRACTS.DIAMOND as `0x${string}`, usdcPrincipalBigInt],
           }),
+          value: 0n,
         });
       }
 
       // 3. Place offramp order
       calls.push({
-        to: orderCall.to,
-        data: orderCall.data,
+        to: orderCall.to as `0x${string}`,
+        data: orderCall.data as `0x${string}`,
+        value: 0n,
       });
 
       let txHash = "";
 
-      try {
-        // Try batched call first (Smart Wallets / EIP-5792)
-        const id = await provider.request({
-          method: "wallet_sendCalls",
-          params: [{
-            version: "1.0",
-            from: wallet.address,
-            calls: calls,
-          }],
-        });
-
-        const MAX_POLLS = 60;
-        for (let i = 0; i < MAX_POLLS; i++) {
-          const statusRes: any = await provider.request({
-            method: "wallet_getCallsStatus",
-            params: [id],
+      // Use Privy Smart Wallet client (routes through paymaster for USDC gas)
+      if (smartClient) {
+        txHash = await smartClient.sendTransaction({ calls });
+      } else {
+        // Fallback to sequential EOA calls
+        const provider = await wallet.getEthereumProvider();
+        for (let i = 0; i < calls.length; i++) {
+          const call = calls[i];
+          const hash = await provider.request({
+            method: "eth_sendTransaction",
+            params: [{
+              from: activeAddr,
+              to: call.to,
+              data: call.data,
+            }],
           });
-          if (statusRes.status === "CONFIRMED" && statusRes.receipts && statusRes.receipts.length > 0) {
-            txHash = statusRes.receipts[0].transactionHash || statusRes.receipts[0].blockHash; 
-            break;
-          }
-          if (statusRes.status === "FAILED" || statusRes.status === "REJECTED") {
-            throw new Error(`Transaction ${statusRes.status.toLowerCase()} by wallet`);
-          }
-          if (i === MAX_POLLS - 1) {
-            throw new Error("Transaction confirmation timed out after 2 minutes");
-          }
-          await new Promise(r => setTimeout(r, 2000));
-        }
-      } catch (batchErr: any) {
-        const isUnsupported = 
-          batchErr?.message?.toLowerCase().includes("method") ||
-          batchErr?.message?.toLowerCase().includes("unsupported") ||
-          batchErr?.message?.toLowerCase().includes("does not support") ||
-          batchErr?.code === -32601;
-
-        if (isUnsupported) {
-          console.log("[CheckoutFlow] wallet_sendCalls not supported. Executing sequential transactions via EOA...");
-
-          for (let i = 0; i < calls.length; i++) {
-            const call = calls[i];
-            const hash = await provider.request({
-              method: "eth_sendTransaction",
-              params: [{
-                from: wallet.address,
-                to: call.to,
-                data: call.data,
-              }],
-            });
-            await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
-            txHash = hash as string;
-          }
-        } else {
-          throw batchErr;
+          await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
+          txHash = hash as string;
         }
       }
 
