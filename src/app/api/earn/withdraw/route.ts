@@ -67,8 +67,17 @@ export async function POST(request: Request) {
 
     if (!targetWalletId || targetWalletId.startsWith("0x")) {
       try {
-        const privyUser = await getPrivy().getUser(userId);
-        const embeddedWallet = privyUser.linkedAccounts?.find(
+        const privy = getPrivy() as any;
+        let privyUser: any = null;
+        if (typeof privy.users === "function" && typeof privy.users()?.get === "function") {
+          privyUser = await privy.users().get(userId);
+        } else if (typeof privy.users?.get === "function") {
+          privyUser = await privy.users.get({ id: userId });
+        } else if (typeof privy.getUser === "function") {
+          privyUser = await privy.getUser(userId);
+        }
+
+        const embeddedWallet = privyUser?.linkedAccounts?.find(
           (acc: any) =>
             acc.type === "wallet" &&
             (acc.walletClientType === "privy" || acc.connectorType === "embedded")
