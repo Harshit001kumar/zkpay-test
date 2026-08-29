@@ -50,7 +50,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
   // Flow State
   const [step, setStep] = useState<FlowStep>("amount");
-  const [amountInr, setAmountInr] = useState<string>("150.00");
+  const [amountInr, setAmountInr] = useState<string>("0");
   const [sellPrice, setSellPrice] = useState<bigint | null>(null);
   const [rateLoading, setRateLoading] = useState(true);
   const [maxSellable, setMaxSellable] = useState<number | null>(null);
