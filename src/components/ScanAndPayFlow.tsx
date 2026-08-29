@@ -46,7 +46,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   const { wallets } = useWallets();
   const { client: smartClient } = useSmartWallets();
   const wallet = wallets?.[0];
-  const activeAddress = (smartClient?.account?.address || wallet?.address) as `0x${string}` | undefined;
+  const activeAddress = (wallet?.address || smartClient?.account?.address) as `0x${string}` | undefined;
 
   // Flow State
   const [step, setStep] = useState<FlowStep>("amount");

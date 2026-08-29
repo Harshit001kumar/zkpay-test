@@ -242,7 +242,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       setError(null);
 
       const wallet = wallets[0];
-      const activeAddr = (smartClient?.account?.address || wallet.address) as `0x${string}`;
+      const activeAddr = (wallet.address || smartClient?.account?.address) as `0x${string}`;
       const publicClient = getPublicClient();
       
       const principalUsdcBigInt = parseUnits(amountUsdc.toFixed(6), 6);

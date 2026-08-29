@@ -40,7 +40,7 @@ export default function WalletAddressPage() {
   const { wallets } = useWallets();
   const { client: smartClient } = useSmartWallets();
   const connectedWallet = wallets?.[0];
-  const connectedAddress = (smartClient?.account?.address || connectedWallet?.address) as `0x${string}` | undefined;
+  const connectedAddress = (connectedWallet?.address || smartClient?.account?.address) as `0x${string}` | undefined;
 
   // Use route address if valid, otherwise fallback to connected wallet
   const targetAddress = (rawAddressParam && isAddress(rawAddressParam) 

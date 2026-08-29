@@ -212,7 +212,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       setError(null);
 
       const wallet = wallets[0];
-      const activeAddr = (smartClient?.account?.address || wallet.address) as `0x${string}`;
+      const activeAddr = (wallet.address || smartClient?.account?.address) as `0x${string}`;
       const publicClient = getPublicClient();
 
       // Convert INR amount to USDC using real price
@@ -397,7 +397,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         const { createWalletClient, custom } = await import("viem");
         const { base } = await import("viem/chains");
         const walletClient = createWalletClient({
-          account: (smartClient?.account?.address || wallet.address) as `0x${string}`,
+          account: (wallet.address || smartClient?.account?.address) as `0x${string}`,
           chain: base,
           transport: custom(provider),
         });
