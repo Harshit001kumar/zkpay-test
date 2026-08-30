@@ -150,7 +150,10 @@ export default function PayPage() {
               value: 0n,
             },
           ],
-        });
+          paymasterContext: {
+            token: CONTRACTS.USDC,
+          },
+        } as any);
       } else {
         const provider = await wallet.getEthereumProvider();
         const feeTxHash = await provider.request({

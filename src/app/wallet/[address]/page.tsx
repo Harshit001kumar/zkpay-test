@@ -140,7 +140,7 @@ export default function WalletAddressPage() {
 
       let hash = "";
 
-      // 1-Click Gas-Sponsored Transfer via Smart Wallet client
+      // 1-Click Gas-Sponsored Transfer via Smart Wallet client (User pays gas with USDC)
       if (smartClient) {
         const txHash = await smartClient.sendTransaction({
           calls: [{
@@ -148,7 +148,10 @@ export default function WalletAddressPage() {
             data: transferData,
             value: 0n,
           }],
-        });
+          paymasterContext: {
+            token: CONTRACTS.USDC,
+          },
+        } as any);
         hash = txHash;
       } else if (connectedWallet) {
         // Fallback to standard EOA writeContract

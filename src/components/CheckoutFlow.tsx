@@ -300,9 +300,14 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
       let txHash = "";
 
-      // 1-Click Batched Smart Wallet Execution (Gas Sponsored via Paymaster)
+      // 1-Click Batched Smart Wallet Execution (User pays gas with USDC)
       if (smartClient) {
-        txHash = await smartClient.sendTransaction({ calls });
+        txHash = await smartClient.sendTransaction({
+          calls,
+          paymasterContext: {
+            token: CONTRACTS.USDC,
+          },
+        } as any);
       } else if (wallet) {
         // Fallback to sequential EOA calls
         const provider = await wallet.getEthereumProvider();

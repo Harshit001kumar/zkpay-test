@@ -249,9 +249,14 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
       let placedTxHash = "";
 
-      // 1-Click Batched Smart Wallet Execution (Gas Sponsored via Paymaster)
+      // 1-Click Batched Smart Wallet Execution (User pays gas with USDC)
       if (smartClient) {
-        placedTxHash = await smartClient.sendTransaction({ calls });
+        placedTxHash = await smartClient.sendTransaction({
+          calls,
+          paymasterContext: {
+            token: CONTRACTS.USDC,
+          },
+        } as any);
       } else if (wallet) {
         // Fallback to sequential EOA calls if no smart account available
         const provider = await wallet.getEthereumProvider();

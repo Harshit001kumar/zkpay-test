@@ -313,9 +313,14 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
 
       let hash = "";
 
-      // 1-Click Batched Smart Wallet Execution (Gas Sponsored via Paymaster)
+      // 1-Click Batched Smart Wallet Execution (User pays gas with USDC)
       if (smartClient) {
-        hash = await smartClient.sendTransaction({ calls });
+        hash = await smartClient.sendTransaction({
+          calls,
+          paymasterContext: {
+            token: CONTRACTS.USDC,
+          },
+        } as any);
       } else if (wallet) {
         // Fallback to sequential EOA calls
         const provider = await wallet.getEthereumProvider();
