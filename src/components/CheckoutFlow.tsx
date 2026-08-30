@@ -212,7 +212,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       setError(null);
 
       const wallet = wallets[0];
-      const activeAddr = (wallet.address || smartClient?.account?.address) as `0x${string}`;
+      const activeAddr = (smartClient?.account?.address || wallet.address) as `0x${string}`;
       const publicClient = getPublicClient();
 
       // Convert INR amount to USDC using real price
@@ -300,8 +300,11 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
       let txHash = "";
 
-      // Use embedded EOA wallet directly (funds live here)
-      if (wallet) {
+      // 1-Click Batched Smart Wallet Execution (Gas Sponsored via Paymaster)
+      if (smartClient) {
+        txHash = await smartClient.sendTransaction({ calls });
+      } else if (wallet) {
+        // Fallback to sequential EOA calls
         const provider = await wallet.getEthereumProvider();
         for (let i = 0; i < calls.length; i++) {
           const call = calls[i];
@@ -316,9 +319,6 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
           await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
           txHash = hash as string;
         }
-      } else if (smartClient) {
-        // Fallback to Smart Wallet client
-        txHash = await smartClient.sendTransaction({ calls });
       }
 
       // Parse orderId from receipt
@@ -397,7 +397,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         const { createWalletClient, custom } = await import("viem");
         const { base } = await import("viem/chains");
         const walletClient = createWalletClient({
-          account: (wallet.address || smartClient?.account?.address) as `0x${string}`,
+          account: (smartClient?.account?.address || wallet.address) as `0x${string}`,
           chain: base,
           transport: custom(provider),
         });

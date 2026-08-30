@@ -242,7 +242,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       setError(null);
 
       const wallet = wallets[0];
-      const activeAddr = (wallet.address || smartClient?.account?.address) as `0x${string}`;
+      const activeAddr = (smartClient?.account?.address || wallet.address) as `0x${string}`;
       const publicClient = getPublicClient();
       
       const principalUsdcBigInt = parseUnits(amountUsdc.toFixed(6), 6);
@@ -313,8 +313,11 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
 
       let hash = "";
 
-      // Use embedded EOA wallet directly (funds live here)
-      if (wallet) {
+      // 1-Click Batched Smart Wallet Execution (Gas Sponsored via Paymaster)
+      if (smartClient) {
+        hash = await smartClient.sendTransaction({ calls });
+      } else if (wallet) {
+        // Fallback to sequential EOA calls
         const provider = await wallet.getEthereumProvider();
         for (let i = 0; i < calls.length; i++) {
           const call = calls[i];
@@ -329,9 +332,6 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
           await publicClient.waitForTransactionReceipt({ hash: txH as `0x${string}` });
           hash = txH as string;
         }
-      } else if (smartClient) {
-        // Fallback to Smart Wallet client
-        hash = await smartClient.sendTransaction({ calls });
       }
 
       const receipt = await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });

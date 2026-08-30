@@ -46,7 +46,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   const { wallets } = useWallets();
   const { client: smartClient } = useSmartWallets();
   const wallet = wallets?.[0];
-  const activeAddress = (wallet?.address || smartClient?.account?.address) as `0x${string}` | undefined;
+  const activeAddress = (smartClient?.account?.address || wallet?.address) as `0x${string}` | undefined;
 
   // Flow State
   const [step, setStep] = useState<FlowStep>("amount");
@@ -249,8 +249,11 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
       let placedTxHash = "";
 
-      // Use embedded EOA wallet directly (funds live here)
-      if (wallet) {
+      // 1-Click Batched Smart Wallet Execution (Gas Sponsored via Paymaster)
+      if (smartClient) {
+        placedTxHash = await smartClient.sendTransaction({ calls });
+      } else if (wallet) {
+        // Fallback to sequential EOA calls if no smart account available
         const provider = await wallet.getEthereumProvider();
         for (let i = 0; i < calls.length; i++) {
           const call = calls[i];
@@ -265,9 +268,6 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
           await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
           placedTxHash = hash as string;
         }
-      } else if (smartClient) {
-        // Fallback to Smart Wallet client
-        placedTxHash = await smartClient.sendTransaction({ calls });
       }
 
       setTxHash(placedTxHash);

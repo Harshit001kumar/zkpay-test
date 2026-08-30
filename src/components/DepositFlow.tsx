@@ -1,12 +1,13 @@
 "use client";
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
+import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { useState, useEffect } from "react";
 import { DEPOSIT_ASSETS, TARGET_ASSET } from "@/lib/constants";
 import { Copy, Check, Loader2, RefreshCw, ChevronDown } from "lucide-react";
 
 export default function DepositFlow({ onBack }: { onBack?: () => void }) {
-  const { ready, authenticated } = usePrivy();
+  const { ready, authenticated, address } = useActiveAccount();
   const { wallets } = useWallets();
 
   // Step 1: Input state
@@ -73,11 +74,11 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
     return () => clearInterval(interval);
   }, [exchangeId, exchangeStatus]);
 
-  if (!ready || !authenticated || !wallets.length) {
+  if (!ready || !authenticated || !address) {
     return <div className="text-center p-4 text-[#909097] text-sm">Please connect wallet to continue.</div>;
   }
 
-  const baseAddress = wallets[0].address;
+  const baseAddress = address;
 
   const handleCreateDeposit = async () => {
     setIsCreating(true);

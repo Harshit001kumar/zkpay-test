@@ -16,8 +16,8 @@ export function useActiveAccount() {
   const smartAccountAddress = (client?.account?.address || smartAccount?.address || null) as `0x${string}` | null;
   const eoaAddress = (user?.wallet?.address || wallets?.[0]?.address || null) as `0x${string}` | null;
 
-  // Active address priority: Primary embedded wallet EOA first (holds user funds), then smart account
-  const address = (eoaAddress || smartAccountAddress || null) as `0x${string}` | null;
+  // Active address priority: Smart Account first (1-click batched txs & gas sponsorship), then EOA fallback
+  const address = (smartAccountAddress || eoaAddress || null) as `0x${string}` | null;
 
   return {
     address,

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
+import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
 import { encodeFunctionData, parseUnits } from "viem";
 import { motion, AnimatePresence } from "framer-motion";
 import { useParams } from "next/navigation";
@@ -36,6 +37,7 @@ export default function PayPage() {
   const params = useParams();
   const { ready, authenticated, login } = usePrivy();
   const { wallets } = useWallets();
+  const { client: smartClient } = useSmartWallets();
   const linkId = params.id as string;
 
   const [step, setStep] = useState<PayStep>("loading");
@@ -125,32 +127,45 @@ export default function PayPage() {
         args: [CONTRACTS.TREASURY, feeWei],
       });
 
-      const feeTxHash = await provider.request({
-        method: "eth_sendTransaction",
-        params: [{
-          from: wallet.address,
-          to: CONTRACTS.USDC,
-          data: feeData,
-        }],
-      });
+      let txH = "";
 
-      // Step 2: Approve P2P Diamond for principal amount
-      const approveData = encodeFunctionData({
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [CONTRACTS.DIAMOND, principalWei],
-      });
+      if (smartClient) {
+        txH = await smartClient.sendTransaction({
+          calls: [
+            {
+              to: CONTRACTS.USDC as `0x${string}`,
+              data: feeData,
+              value: 0n,
+            },
+            {
+              to: CONTRACTS.USDC as `0x${string}`,
+              data: approveData,
+              value: 0n,
+            },
+          ],
+        });
+      } else {
+        const provider = await wallet.getEthereumProvider();
+        const feeTxHash = await provider.request({
+          method: "eth_sendTransaction",
+          params: [{
+            from: wallet.address,
+            to: CONTRACTS.USDC,
+            data: feeData,
+          }],
+        });
 
-      await provider.request({
-        method: "eth_sendTransaction",
-        params: [{
-          from: wallet.address,
-          to: CONTRACTS.USDC,
-          data: approveData,
-        }],
-      });
+        await provider.request({
+          method: "eth_sendTransaction",
+          params: [{
+            from: wallet.address,
+            to: CONTRACTS.USDC,
+            data: approveData,
+          }],
+        });
+        txH = (feeTxHash as string) || "";
+      }
 
-      const txH = (feeTxHash as string) || "";
       setTxHash(txH);
 
       // Record transaction in user history

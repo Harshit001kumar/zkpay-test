@@ -40,7 +40,7 @@ export default function WalletAddressPage() {
   const { wallets } = useWallets();
   const { client: smartClient } = useSmartWallets();
   const connectedWallet = wallets?.[0];
-  const connectedAddress = (connectedWallet?.address || smartClient?.account?.address) as `0x${string}` | undefined;
+  const connectedAddress = (smartClient?.account?.address || connectedWallet?.address) as `0x${string}` | undefined;
 
   // Use route address if valid, otherwise fallback to connected wallet
   const targetAddress = (rawAddressParam && isAddress(rawAddressParam) 
@@ -140,8 +140,18 @@ export default function WalletAddressPage() {
 
       let hash = "";
 
-      // Use embedded EOA wallet directly (funds live here)
-      if (connectedWallet) {
+      // 1-Click Gas-Sponsored Transfer via Smart Wallet client
+      if (smartClient) {
+        const txHash = await smartClient.sendTransaction({
+          calls: [{
+            to: CONTRACTS.USDC as `0x${string}`,
+            data: transferData,
+            value: 0n,
+          }],
+        });
+        hash = txHash;
+      } else if (connectedWallet) {
+        // Fallback to standard EOA writeContract
         const provider = await connectedWallet.getEthereumProvider();
         const client = createWalletClient({
           account: connectedAddress!,
@@ -154,16 +164,6 @@ export default function WalletAddressPage() {
           functionName: "transfer",
           args: [trimmedRecipient as `0x${string}`, amountUnits],
         });
-      } else if (smartClient) {
-        // Fallback to Smart Wallet client
-        const txHash = await smartClient.sendTransaction({
-          calls: [{
-            to: CONTRACTS.USDC as `0x${string}`,
-            data: transferData,
-            value: 0n,
-          }],
-        });
-        hash = txHash;
       } else {
         throw new Error("No wallet available.");
       }
