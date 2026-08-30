@@ -1,19 +1,10 @@
 import { NextResponse } from "next/server";
-import { PrivyClient } from "@privy-io/node";
-
-// ──────────────────────────────────────────────
-// Lazy-init Privy client to avoid crashes if env vars are missing at build time
-// ──────────────────────────────────────────────
-let _privy: InstanceType<typeof PrivyClient> | null = null;
-function getPrivy() {
-  if (!_privy) {
-    const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
-    const appSecret = process.env.PRIVY_APP_SECRET;
-    if (!appId || !appSecret) throw new Error("Privy credentials not configured");
-    _privy = new PrivyClient({ appId, appSecret });
-  }
-  return _privy;
-}
+import {
+  getPrivyClient,
+  getPrivyAuthPrivateKey,
+  resolveEmbeddedWalletId,
+  parsePrivyEarnError,
+} from "@/lib/server/privyEarn";
 
 const VAULT_ID = process.env.PRIVY_EARN_VAULT_ID;
 
@@ -37,7 +28,7 @@ export async function POST(request: Request) {
 
     let verifiedClaims;
     try {
-      verifiedClaims = await getPrivy().utils().auth().verifyAccessToken(accessToken);
+      verifiedClaims = await getPrivyClient().utils().auth().verifyAccessToken(accessToken);
     } catch (authErr: any) {
       console.error("[Earn Deposit] Token verification failed:", authErr?.message);
       return NextResponse.json(
@@ -53,6 +44,17 @@ export async function POST(request: Request) {
       console.error("[Earn Deposit] PRIVY_EARN_VAULT_ID is not configured");
       return NextResponse.json(
         { error: "Privy Earn Vault ID is not configured on the server (missing PRIVY_EARN_VAULT_ID)." },
+        { status: 400 }
+      );
+    }
+
+    const authPrivateKey = getPrivyAuthPrivateKey();
+    if (!authPrivateKey) {
+      return NextResponse.json(
+        {
+          error:
+            "Privy Authorization Key is not configured on the server. Please generate an Authorization Key in Privy Dashboard (Settings > Authorization Keys) and add PRIVY_AUTH_PRIVATE_KEY to your Render environment variables.",
+        },
         { status: 400 }
       );
     }
@@ -85,33 +87,9 @@ export async function POST(request: Request) {
     }
 
     // ── 4. Resolve Target Privy Embedded Wallet ID ──
-    // Privy Earn API requires the Privy Wallet ID (e.g. clx...), NOT the 0x EVM address.
     let targetWalletId = rawWalletId;
-
     if (!targetWalletId || targetWalletId.startsWith("0x")) {
-      try {
-        const privy = getPrivy() as any;
-        let privyUser: any = null;
-        if (typeof privy.users === "function" && typeof privy.users()?.get === "function") {
-          privyUser = await privy.users().get(userId);
-        } else if (typeof privy.users?.get === "function") {
-          privyUser = await privy.users.get({ id: userId });
-        } else if (typeof privy.getUser === "function") {
-          privyUser = await privy.getUser(userId);
-        }
-
-        const embeddedWallet = privyUser?.linkedAccounts?.find(
-          (acc: any) =>
-            acc.type === "wallet" &&
-            (acc.walletClientType === "privy" || acc.connectorType === "embedded")
-        ) as any;
-
-        if (embeddedWallet?.id) {
-          targetWalletId = embeddedWallet.id;
-        }
-      } catch (userErr: any) {
-        console.error("[Earn Deposit] Failed to fetch user for wallet lookup:", userErr?.message);
-      }
+      targetWalletId = await resolveEmbeddedWalletId(userId);
     }
 
     if (!targetWalletId || targetWalletId.startsWith("0x")) {
@@ -125,21 +103,15 @@ export async function POST(request: Request) {
     }
 
     // ── 5. Call Privy Earn deposit API ──
-    // The SDK handles ERC-20 approval + deposit in a single call.
     const depositParams: Record<string, unknown> = {
       vault_id: VAULT_ID,
       amount: String(parsedAmount),
+      authorization_context: {
+        authorization_private_keys: [authPrivateKey],
+      },
     };
 
-    // Only include authorization_context if an auth private key is configured
-    const authPrivateKey = process.env.PRIVY_AUTH_PRIVATE_KEY;
-    if (authPrivateKey) {
-      depositParams.authorization_context = {
-        authorization_private_keys: [authPrivateKey],
-      };
-    }
-
-    const earnResponse = await getPrivy()
+    const earnResponse = await getPrivyClient()
       .wallets()
       .earn()
       .ethereum()
@@ -155,10 +127,7 @@ export async function POST(request: Request) {
     );
   } catch (error: any) {
     console.error("[Earn Deposit Error]:", error?.message || error);
-    const detailedMessage =
-      error?.response?.data?.message ||
-      error?.message ||
-      "Deposit transaction failed. Please ensure your wallet has sufficient USDC on Base.";
+    const detailedMessage = parsePrivyEarnError(error);
     return NextResponse.json(
       { error: detailedMessage },
       { status: 400 }

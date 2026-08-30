@@ -1,16 +1,5 @@
 import { NextResponse } from "next/server";
-import { PrivyClient } from "@privy-io/node";
-
-let _privy: InstanceType<typeof PrivyClient> | null = null;
-function getPrivy() {
-  if (!_privy) {
-    const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
-    const appSecret = process.env.PRIVY_APP_SECRET;
-    if (!appId || !appSecret) throw new Error("Privy credentials not configured");
-    _privy = new PrivyClient({ appId, appSecret });
-  }
-  return _privy;
-}
+import { getPrivyClient, resolveEmbeddedWalletId } from "@/lib/server/privyEarn";
 
 const VAULT_ID = process.env.PRIVY_EARN_VAULT_ID;
 
@@ -34,7 +23,7 @@ export async function GET(request: Request) {
 
     let verifiedClaims;
     try {
-      verifiedClaims = await getPrivy().utils().auth().verifyAccessToken(accessToken);
+      verifiedClaims = await getPrivyClient().utils().auth().verifyAccessToken(accessToken);
     } catch {
       return NextResponse.json(
         { error: "Unauthorized — invalid or expired token" },
@@ -49,29 +38,7 @@ export async function GET(request: Request) {
     let targetWalletId = searchParams.get("walletId");
 
     if (!targetWalletId || targetWalletId.startsWith("0x")) {
-      try {
-        const privy = getPrivy() as any;
-        let privyUser: any = null;
-        if (typeof privy.users === "function" && typeof privy.users()?.get === "function") {
-          privyUser = await privy.users().get(userId);
-        } else if (typeof privy.users?.get === "function") {
-          privyUser = await privy.users.get({ id: userId });
-        } else if (typeof privy.getUser === "function") {
-          privyUser = await privy.getUser(userId);
-        }
-
-        const embeddedWallet = privyUser?.linkedAccounts?.find(
-          (acc: any) =>
-            acc.type === "wallet" &&
-            (acc.walletClientType === "privy" || acc.connectorType === "embedded")
-        ) as any;
-
-        if (embeddedWallet?.id) {
-          targetWalletId = embeddedWallet.id;
-        }
-      } catch (userErr: any) {
-        console.error("[Earn Position] Failed to fetch user for wallet lookup:", userErr?.message);
-      }
+      targetWalletId = await resolveEmbeddedWalletId(userId);
     }
 
     if (!VAULT_ID) {
