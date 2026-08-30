@@ -127,6 +127,13 @@ export default function PayPage() {
         args: [CONTRACTS.TREASURY, feeWei],
       });
 
+      // Step 2: Approve P2P Diamond for principal amount
+      const approveData = encodeFunctionData({
+        abi: ERC20_ABI,
+        functionName: "approve",
+        args: [CONTRACTS.DIAMOND, principalWei],
+      });
+
       let txH = "";
 
       if (smartClient) {
