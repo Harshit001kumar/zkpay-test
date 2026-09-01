@@ -31,9 +31,9 @@ export interface AdminAuthResult {
 
 /**
  * Cryptographically verifies that an incoming request is from an authorized Admin.
- * 1. Checks Authorization: Bearer <privy-access-token> header or privy-token cookie.
- * 2. Uses PrivyClient.verifyAuthToken() to decode and verify claims.
- * 3. Compares Privy DID and linked Ethereum wallets against ADMIN_PRIVY_DIDS and ADMIN_WALLETS env vars.
+ * 1. Checks Authorization: Bearer <privy-access-token> header.
+ * 2. Uses PrivyClient cryptographic token verification.
+ * 3. Inspects server-verified linked accounts against ADMIN_PRIVY_DIDS and ADMIN_WALLETS.
  */
 export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult> {
   try {
@@ -43,7 +43,6 @@ export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult>
     if (authHeader && authHeader.startsWith("Bearer ")) {
       token = authHeader.replace("Bearer ", "").trim();
     } else {
-      // Check cookies for fallback
       const cookieHeader = req.headers.get("cookie") || "";
       const match = cookieHeader.match(/privy-token=([^;]+)/);
       if (match) {
@@ -68,45 +67,26 @@ export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult>
       };
     }
 
-    // 1. Verify token signature and claims
+    // 1. Strict cryptographic token verification
     let verifiedClaims: any = null;
     try {
-      if (typeof (privy as any).utils === "function" && typeof (privy as any).utils()?.auth === "function" && typeof (privy as any).utils().auth()?.verifyAuthToken === "function") {
-        verifiedClaims = await (privy as any).utils().auth().verifyAuthToken(token);
-      } else if (typeof (privy as any).utils === "function" && typeof (privy as any).utils()?.verifyAuthToken === "function") {
-        verifiedClaims = await (privy as any).utils().verifyAuthToken(token);
-      } else if (typeof (privy as any).verifyAuthToken === "function") {
-        verifiedClaims = await (privy as any).verifyAuthToken(token);
+      if (typeof privy.utils === "function" && typeof privy.utils()?.auth === "function") {
+        verifiedClaims = await privy.utils().auth().verifyAccessToken(token);
+      } else if (typeof privy.verifyAccessToken === "function") {
+        verifiedClaims = await privy.verifyAccessToken(token);
+      } else if (typeof privy.verifyAuthToken === "function") {
+        verifiedClaims = await privy.verifyAuthToken(token);
       }
-    } catch (verifyErr) {
-      console.warn("[AdminAuth] SDK verify call failed, trying JWT payload extraction:", verifyErr);
+    } catch (verifyErr: any) {
+      console.warn("[AdminAuth] Token signature verification failed:", verifyErr?.message || verifyErr);
+      return {
+        authorized: false,
+        error: "Invalid or expired session token. Signature verification failed.",
+        status: 401,
+      };
     }
 
-    // If SDK method was not found or failed, safely parse JWT claims
-    if (!verifiedClaims || !verifiedClaims.userId) {
-      try {
-        const parts = token.split(".");
-        if (parts.length === 3) {
-          const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
-          const exp = payload.exp ? Number(payload.exp) * 1000 : null;
-          if (exp && exp < Date.now()) {
-            return {
-              authorized: false,
-              error: "Session token has expired. Please sign in again.",
-              status: 401,
-            };
-          }
-          verifiedClaims = {
-            userId: payload.sub || payload.userId,
-            appId: payload.aud || payload.appId,
-          };
-        }
-      } catch (decodeErr) {
-        console.error("[AdminAuth] Failed to decode JWT claims:", decodeErr);
-      }
-    }
-
-    const userId = verifiedClaims?.userId; // did:privy:...
+    const userId = verifiedClaims?.user_id || verifiedClaims?.userId;
 
     if (!userId) {
       return {
@@ -116,44 +96,35 @@ export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult>
       };
     }
 
-    // 2. Fetch user to inspect linked accounts
+    // 2. Fetch user to inspect server-verified linked accounts
     let linkedWallets: string[] = [];
     let primaryWallet: string | undefined;
 
-    const clientWallet = req.headers.get("x-admin-wallet")?.trim().toLowerCase();
-    if (clientWallet) {
-      linkedWallets.push(clientWallet);
-      primaryWallet = clientWallet;
-    }
-
     try {
       let user: any = null;
-      if (typeof (privy as any).users === "function" && typeof (privy as any).users()?.get === "function") {
-        user = await (privy as any).users().get(userId);
-      } else if (typeof (privy as any).users === "function" && typeof (privy as any).users()?._get === "function") {
-        user = await (privy as any).users()._get(userId);
-      } else if (typeof (privy as any).getUser === "function") {
-        user = await (privy as any).getUser(userId);
+      if (typeof privy.users === "function" && typeof privy.users()?.get === "function") {
+        user = await privy.users().get(userId);
+      } else if (typeof privy.getUser === "function") {
+        user = await privy.getUser(userId);
       }
 
       if (user) {
-        const fetchedLinked = user.linkedAccounts
-          ?.filter((acc: any) => acc.type === "wallet")
-          .map((acc: any) => acc.address?.toLowerCase())
-          .filter(Boolean) || [];
+        const fetchedLinked =
+          user.linkedAccounts
+            ?.filter((acc: any) => acc.type === "wallet" || acc.type === "smart_wallet")
+            .map((acc: any) => acc.address?.toLowerCase())
+            .filter(Boolean) || [];
 
-        for (const w of fetchedLinked) {
-          if (!linkedWallets.includes(w)) linkedWallets.push(w);
-        }
+        linkedWallets = Array.from(new Set(fetchedLinked));
 
         const pW = user.wallet?.address?.toLowerCase();
-        if (pW && !linkedWallets.includes(pW)) {
-          linkedWallets.push(pW);
-          if (!primaryWallet) primaryWallet = pW;
+        if (pW) {
+          primaryWallet = pW;
+          if (!linkedWallets.includes(pW)) linkedWallets.push(pW);
         }
       }
-    } catch (fetchErr) {
-      console.warn("[AdminAuth] Note: could not fetch detailed user object from Privy API, checking DID and headers", fetchErr);
+    } catch (fetchErr: any) {
+      console.warn("[AdminAuth] User lookup warning:", fetchErr?.message);
     }
 
     // 3. Check against whitelist
@@ -170,7 +141,6 @@ export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult>
       .map((s) => s.trim().replace(/^["']|["']$/g, "").toLowerCase())
       .filter(Boolean);
 
-    // If no admins are defined in env, log warning and block access
     if (adminDids.length === 0 && adminWallets.length === 0) {
       console.warn("[AdminAuth] Security alert: Neither ADMIN_PRIVY_DIDS nor ADMIN_WALLETS configured in environment.");
       return {
@@ -187,7 +157,7 @@ export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult>
       console.warn(`[AdminAuth] Unauthorized access attempt by DID: ${userId}, Wallets: ${linkedWallets.join(", ")}`);
       return {
         authorized: false,
-        error: `Access Denied: Account (DID: ${userId}${linkedWallets.length > 0 ? `, Wallet: ${linkedWallets[0]}` : ""}) is not on the administrator whitelist.`,
+        error: `Access Denied: Account (DID: ${userId}) is not on the administrator whitelist.`,
         status: 403,
       };
     }

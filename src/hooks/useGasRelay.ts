@@ -6,12 +6,11 @@ import { usePrivy } from "@privy-io/react-auth";
 /**
  * Client-side hook for the Backend Gas Relayer.
  *
- * Exclusively pre-funds Privy Smart Accounts and Embedded Wallets.
- * External connected wallets (MetaMask, Phantom, etc.) are skipped
- * since they pay their own gas.
+ * Pre-funds the user's Smart Account or Embedded Wallet with micro ETH
+ * on Base so they can execute transactions without AA21 errors.
  */
 export function useGasRelay() {
-  const { user, getAccessToken } = usePrivy();
+  const { getAccessToken } = usePrivy();
 
   // Track in-flight prefund requests to avoid duplicate calls
   const inflightRef = useRef<Map<string, Promise<void>>>(new Map());
@@ -21,31 +20,6 @@ export function useGasRelay() {
       if (!address) return;
 
       const key = address.toLowerCase();
-
-      // Check if target is an external wallet (MetaMask, Phantom, etc.)
-      // Skip prefund if not a Privy Smart Account or Embedded Wallet
-      if (user?.linkedAccounts) {
-        const isPrivyManaged = user.linkedAccounts.some(
-          (acc: any) =>
-            (acc.type === "smart_wallet" ||
-              (acc.type === "wallet" &&
-                (acc.walletClientType === "privy" || acc.connectorType === "embedded"))) &&
-            (acc.address || "").toLowerCase() === key
-        );
-
-        const isExternalWallet = user.linkedAccounts.some(
-          (acc: any) =>
-            acc.type === "wallet" &&
-            acc.walletClientType !== "privy" &&
-            acc.connectorType !== "embedded" &&
-            (acc.address || "").toLowerCase() === key
-        );
-
-        if (isExternalWallet && !isPrivyManaged) {
-          // External wallet pays their own gas — skip prefund
-          return;
-        }
-      }
 
       // If there's already an in-flight prefund for this address, wait for it
       const existing = inflightRef.current.get(key);
@@ -58,6 +32,7 @@ export function useGasRelay() {
         try {
           const accessToken = await getAccessToken();
           if (!accessToken) {
+            console.warn("[GasRelay] No access token available");
             return;
           }
 
@@ -82,7 +57,7 @@ export function useGasRelay() {
           }
 
           if (data.txHash) {
-            console.log("[GasRelay] Pre-funded smart account with tx:", data.txHash);
+            console.log("[GasRelay] Pre-funded account with tx:", data.txHash);
           }
         } catch (err) {
           console.warn("[GasRelay] Prefund failed (non-blocking):", err);
@@ -94,7 +69,7 @@ export function useGasRelay() {
       inflightRef.current.set(key, prefundPromise);
       await prefundPromise;
     },
-    [user, getAccessToken]
+    [getAccessToken]
   );
 
   return { ensureGas };

@@ -16,7 +16,7 @@ import { getPrivyClient } from "@/lib/server/privyEarn";
 // ──────────────────────────────────────────────
 export async function POST(request: Request) {
   try {
-    // ── 1. Security Check: Authenticate Caller ──
+    // ── 1. Security Check: Authenticate Caller via Privy JWT ──
     const authHeader = request.headers.get("authorization");
     const accessToken = authHeader?.replace("Bearer ", "");
 
@@ -27,17 +27,14 @@ export async function POST(request: Request) {
       );
     }
 
-    let verifiedClaims;
     try {
-      verifiedClaims = await getPrivyClient().utils().auth().verifyAccessToken(accessToken);
+      await getPrivyClient().utils().auth().verifyAccessToken(accessToken);
     } catch {
       return NextResponse.json(
         { error: "Unauthorized — invalid or expired token" },
         { status: 401 }
       );
     }
-
-    const userId = verifiedClaims.user_id;
 
     // ── 2. Security Check: Parse & Validate Target Address ──
     const body = await request.json();
@@ -50,57 +47,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const normalizedTarget = address.toLowerCase();
-
-    // ── 3. Security Check: Restrict Exclusively to Privy Embedded & Smart Accounts ──
-    try {
-      const privy = getPrivyClient() as any;
-      let privyUser: any = null;
-
-      if (typeof privy.users === "function" && typeof privy.users()?.get === "function") {
-        privyUser = await privy.users().get(userId);
-      } else if (typeof privy.users?.get === "function") {
-        privyUser = await privy.users.get({ id: userId });
-      } else if (typeof privy.getUser === "function") {
-        privyUser = await privy.getUser(userId);
-      }
-
-      if (privyUser?.linkedAccounts) {
-        // Find valid Privy-managed smart wallets or embedded wallets
-        const privyManagedWallets = privyUser.linkedAccounts
-          .filter(
-            (acc: any) =>
-              acc.type === "smart_wallet" ||
-              (acc.type === "wallet" &&
-                (acc.walletClientType === "privy" || acc.connectorType === "embedded"))
-          )
-          .map((acc: any) => (acc.address || "").toLowerCase());
-
-        const isPrivyManaged = privyManagedWallets.some(
-          (w: string) => w === normalizedTarget
-        );
-
-        if (!isPrivyManaged) {
-          console.warn(
-            `[Relayer Security] Rejected prefund: ${address} is an external wallet or unlinked account.`
-          );
-          return NextResponse.json(
-            {
-              error:
-                "Gas subsidy is exclusively for Privy Smart Accounts and Embedded Wallets. External connected wallets (e.g. MetaMask, Phantom) must pay their own gas.",
-            },
-            { status: 403 }
-          );
-        }
-      }
-    } catch (lookupErr: any) {
-      console.warn("[Relayer Security] User wallet lookup error:", lookupErr?.message);
-    }
-
-    // ── 4. Security Check: Sybil & Bot-Farm Filter (USDC Activity) ──
+    // ── 3. Security Check: Sybil & Bot-Farm Filter (USDC Activity) ──
+    // Target address must hold at least $0.01 USDC to prevent empty burner account drain
     const hasActivity = await checkUsdcActivity(address as `0x${string}`);
     if (!hasActivity) {
-      console.log(`[Relayer Security] Wallet ${address} has < $0.01 USDC (skipping prefund until deposit)`);
+      console.log(`[Relayer Security] Wallet ${address} has < $0.01 USDC (skipping prefund)`);
       return NextResponse.json({
         success: false,
         alreadyFunded: false,
@@ -108,7 +59,7 @@ export async function POST(request: Request) {
       });
     }
 
-    // ── 5. Execute Pre-fund with Circuit Breaker & Rate Limits ──
+    // ── 4. Execute Pre-fund with Circuit Breaker & Rate Limits ──
     const result = await prefundAccount(address as `0x${string}`);
 
     if (result.error) {
@@ -159,7 +110,7 @@ export async function GET() {
     return NextResponse.json(
       {
         error: "Relayer not configured",
-        hint: "Add RELAYER_PRIVATE_KEY to Render environment variables",
+        hint: "Add RELAYER_PRIVATE_KEY to Render environment variables and fund with ~$3-$5 of ETH on Base",
       },
       { status: 500 }
     );

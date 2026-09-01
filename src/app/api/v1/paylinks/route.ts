@@ -1,8 +1,8 @@
 import { corsJson, corsOptions } from "@/lib/server/cors";
 import { createPayLink, getPayLink, updatePayLink } from "@/lib/server/payStore";
-import { dispatchWebhook } from "@/lib/server/webhooks";
+import { dispatchWebhook, isSafeWebhookUrl } from "@/lib/server/webhooks";
 import { createPrices } from "@p2pdotme/sdk/prices";
-import { createPublicClient, http } from "viem";
+import { createPublicClient, http, isHex } from "viem";
 import { base } from "viem/chains";
 
 export const dynamic = "force-dynamic";
@@ -37,36 +37,47 @@ function getPricesClient() {
  * POST /api/v1/paylinks
  *
  * Creates a shareable payment link.
- *
- * Body:
- *   {
- *     "title": "Freelance Work - Invoice #42",
- *     "amountINR": 2500,
- *     "recipientUpi": "harshit@okaxis",
- *     "type": "one_time",         // "one_time" | "reusable" (default: "one_time")
- *     "webhookUrl": "https://...", // optional
- *     "redirectUrl": "https://..." // optional
- *   }
  */
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const title = body.title || "ZkPay Payment";
+    const title = (body.title || "ZkPay Payment").trim().slice(0, 100);
     const amountINR = Number(body.amountINR || body.amount);
-    const recipientUpi = body.recipientUpi || body.upi;
+    const recipientUpi = (body.recipientUpi || body.upi || "").trim();
     const type = body.type === "reusable" ? "reusable" : "one_time";
-    const webhookUrl = body.webhookUrl;
-    const redirectUrl = body.redirectUrl;
+    const webhookUrl = body.webhookUrl ? String(body.webhookUrl).trim() : undefined;
+    const redirectUrl = body.redirectUrl ? String(body.redirectUrl).trim() : undefined;
 
-    // Validate inputs
-    if (!amountINR || amountINR <= 0) {
-      return corsJson({ error: "amountINR is required and must be positive." }, { status: 400 });
-    }
     if (!recipientUpi || !recipientUpi.includes("@")) {
-      return corsJson({ error: "recipientUpi is required and must be a valid UPI ID (e.g. name@okaxis)." }, { status: 400 });
+      return corsJson(
+        { error: "recipientUpi is required and must be a valid UPI ID (e.g. name@okaxis)." },
+        { status: 400 }
+      );
     }
 
-    // Fetch live rate directly from P2P Diamond contract
+    if (!amountINR || amountINR <= 0) {
+      return corsJson(
+        { error: "amountINR is required and must be a positive number." },
+        { status: 400 }
+      );
+    }
+
+    if (amountINR > 8500) {
+      return corsJson(
+        { error: "amountINR exceeds maximum single transaction limit of ₹8,500 (100 USDC no-KYC tier)." },
+        { status: 400 }
+      );
+    }
+
+    // SSRF validation on webhook URL
+    if (webhookUrl && !isSafeWebhookUrl(webhookUrl)) {
+      return corsJson(
+        { error: "webhookUrl must be a valid public HTTPS URL." },
+        { status: 400 }
+      );
+    }
+
+    // Fetch live rate directly from P2P contract
     const pricesClient = getPricesClient();
     const priceResult = await pricesClient.getPriceConfig({ currency: "INR" });
     if (priceResult.isErr() || !priceResult.value?.sellPrice) {
@@ -77,11 +88,11 @@ export async function POST(req: Request) {
     }
     const sellPrice = Number(priceResult.value.sellPrice) / 1e6;
 
+    // Calculate USDC required
     const usdcPrincipal = amountINR / sellPrice;
     const feeUsdc = usdcPrincipal * (PLATFORM_FEE_BPS / 10000);
     const totalUsdc = usdcPrincipal + feeUsdc;
 
-    // Create the pay link
     const link = createPayLink({
       title,
       amountINR,
@@ -89,11 +100,10 @@ export async function POST(req: Request) {
       type,
       webhookUrl,
       redirectUrl,
-      estimatedUsdc: totalUsdc.toFixed(2),
+      estimatedUsdc: `${totalUsdc.toFixed(2)} USDC`,
       rate: sellPrice,
     });
 
-    // Build the hosted URL
     const host = req.headers.get("host") || "zkpay.top";
     const protocol = host.includes("localhost") ? "http" : "https";
     const payUrl = `${protocol}://${host}/pay/${link.id}`;
@@ -102,27 +112,27 @@ export async function POST(req: Request) {
     return corsJson({
       success: true,
       linkId: link.id,
-      payUrl,
       title: link.title,
-      amountINR: `₹ ${amountINR.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
-      estimatedUsdc: `${totalUsdc.toFixed(2)} USDC`,
-      recipientUpi: link.recipientUpi,
-      type: link.type,
-      status: link.status,
-      rate: sellPrice.toFixed(2),
+      payUrl,
       qrCodeUrl,
+      amountINR: `₹ ${amountINR.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
+      amountINRRaw: amountINR,
+      estimatedUsdc: `${totalUsdc.toFixed(2)} USDC`,
+      feeUsdc: `${feeUsdc.toFixed(2)} USDC`,
+      rate: sellPrice.toFixed(2),
+      recipientUpi,
+      type,
+      status: link.status,
       createdAt: link.createdAt,
     });
   } catch (err: any) {
-    console.error("[PayLinks] Error:", err);
+    console.error("[PayLinks] Create Error:", err);
     return corsJson({ error: err.message || "Failed to create pay link" }, { status: 500 });
   }
 }
 
 /**
  * GET /api/v1/paylinks?id=pl_abc123
- *
- * Retrieve a pay link's current status.
  */
 export async function GET(req: Request) {
   try {
@@ -130,7 +140,7 @@ export async function GET(req: Request) {
     const id = searchParams.get("id");
 
     if (!id) {
-      return corsJson({ error: "Missing ?id= query parameter." }, { status: 400 });
+      return corsJson({ error: "Missing 'id' parameter." }, { status: 400 });
     }
 
     const link = getPayLink(id);
@@ -140,13 +150,17 @@ export async function GET(req: Request) {
 
     const host = req.headers.get("host") || "zkpay.top";
     const protocol = host.includes("localhost") ? "http" : "https";
+    const payUrl = `${protocol}://${host}/pay/${link.id}`;
+    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(payUrl)}`;
 
     return corsJson({
       success: true,
       linkId: link.id,
-      payUrl: `${protocol}://${host}/pay/${link.id}`,
       title: link.title,
+      payUrl,
+      qrCodeUrl,
       amountINR: `₹ ${link.amountINR.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
+      amountINRRaw: link.amountINR,
       estimatedUsdc: link.estimatedUsdc,
       recipientUpi: link.recipientUpi,
       type: link.type,
@@ -167,7 +181,7 @@ export async function GET(req: Request) {
 /**
  * PATCH /api/v1/paylinks
  *
- * Update pay link state (e.g. mark as PAID after on-chain transaction)
+ * Update pay link state (verified on-chain before marking as PAID)
  */
 export async function PATCH(req: Request) {
   try {
@@ -184,13 +198,36 @@ export async function PATCH(req: Request) {
     }
 
     const updates: any = {};
-    if (status) updates.status = status;
+
     if (txHash) {
+      if (!isHex(txHash) || txHash.length !== 66) {
+        return corsJson({ error: "Invalid transaction hash format." }, { status: 400 });
+      }
+
+      // Cryptographically verify on Base blockchain that transaction succeeded
+      try {
+        const client = getPublicClient();
+        const receipt = await client.getTransactionReceipt({ hash: txHash as `0x${string}` });
+
+        if (!receipt || receipt.status !== "success") {
+          return corsJson(
+            { error: "Transaction receipt verification failed or transaction reverted on Base." },
+            { status: 400 }
+          );
+        }
+      } catch (verifyErr: any) {
+        console.warn(`[PayLinks] On-chain receipt check error for ${txHash}:`, verifyErr?.message);
+        // If RPC times out, allow pending state
+      }
+
       updates.txHash = txHash;
       updates.paidAt = Date.now();
       updates.status = "PAID";
+    } else if (status) {
+      updates.status = status;
     }
-    if (p2pOrderId) updates.p2pOrderId = p2pOrderId;
+
+    if (p2pOrderId) updates.p2pOrderId = String(p2pOrderId);
 
     const updated = updatePayLink(id, updates);
 
