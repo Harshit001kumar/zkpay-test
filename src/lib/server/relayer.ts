@@ -52,7 +52,7 @@ function getRelayerPrivateKey(): `0x${string}` {
   return key as `0x${string}`;
 }
 
-let _relayerAccount: ReturnType<typeof privateKeyToAccount> | null = null;
+let _relayerAccount: any = null;
 function getRelayerAccount() {
   if (!_relayerAccount) {
     _relayerAccount = privateKeyToAccount(getRelayerPrivateKey());
@@ -60,7 +60,7 @@ function getRelayerAccount() {
   return _relayerAccount;
 }
 
-let _walletClient: ReturnType<typeof createWalletClient> | null = null;
+let _walletClient: any = null;
 function getWalletClient() {
   if (!_walletClient) {
     _walletClient = createWalletClient({
@@ -72,7 +72,7 @@ function getWalletClient() {
   return _walletClient;
 }
 
-let _publicClient: ReturnType<typeof createPublicClient> | null = null;
+let _publicClient: any = null;
 function getPublicClient() {
   if (!_publicClient) {
     _publicClient = createPublicClient({
