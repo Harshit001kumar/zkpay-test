@@ -19,6 +19,7 @@ import {
   parseP2PError,
   getPublicClient,
 } from "@/lib/p2pkit";
+import { useGasRelay } from "@/hooks/useGasRelay";
 
 interface CheckoutFlowProps {
   amount: number; // total INR amount
@@ -31,6 +32,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
   const { ready, authenticated, login } = usePrivy();
   const { wallets } = useWallets();
   const { client: smartClient } = useSmartWallets();
+  const { ensureGas } = useGasRelay();
   const router = useRouter();
   
   const [status, setStatus] = useState<TxStatus>("idle");
@@ -300,14 +302,10 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
       let txHash = "";
 
-      // 1-Click Batched Smart Wallet Execution (User pays gas with USDC)
+      // 1-Click Batched Smart Wallet Execution (Gas pre-funded by backend relayer)
       if (smartClient) {
-        txHash = await smartClient.sendTransaction({
-          calls,
-          paymasterContext: {
-            token: CONTRACTS.USDC,
-          },
-        } as any);
+        await ensureGas(activeAddr);
+        txHash = await smartClient.sendTransaction({ calls });
       } else if (wallet) {
         // Fallback to sequential EOA calls
         const provider = await wallet.getEthereumProvider();

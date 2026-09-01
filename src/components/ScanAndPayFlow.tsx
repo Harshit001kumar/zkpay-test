@@ -20,6 +20,7 @@ import {
   parseP2PError 
 } from "@/lib/p2pkit";
 import { saveTransaction } from "@/lib/history";
+import { useGasRelay } from "@/hooks/useGasRelay";
 import { 
   ArrowLeft, 
   QrCode, 
@@ -47,6 +48,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   const { client: smartClient } = useSmartWallets();
   const wallet = wallets?.[0];
   const activeAddress = (smartClient?.account?.address || wallet?.address) as `0x${string}` | undefined;
+  const { ensureGas } = useGasRelay();
 
   // Flow State
   const [step, setStep] = useState<FlowStep>("amount");
@@ -249,14 +251,10 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
       let placedTxHash = "";
 
-      // 1-Click Batched Smart Wallet Execution (User pays gas with USDC)
+      // 1-Click Batched Smart Wallet Execution (Gas pre-funded by backend relayer)
       if (smartClient) {
-        placedTxHash = await smartClient.sendTransaction({
-          calls,
-          paymasterContext: {
-            token: CONTRACTS.USDC,
-          },
-        } as any);
+        await ensureGas(senderAddress);
+        placedTxHash = await smartClient.sendTransaction({ calls });
       } else if (wallet) {
         // Fallback to sequential EOA calls if no smart account available
         const provider = await wallet.getEthereumProvider();

@@ -6,7 +6,6 @@ import { base } from "viem/chains";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createConfig, WagmiProvider } from "@privy-io/wagmi";
 import { http } from "wagmi";
-import { CONTRACTS } from "@/lib/constants";
 
 const queryClient = new QueryClient();
 
@@ -44,13 +43,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         loginMethods: ["wallet", "email"],
       }) as any}
     >
-      <SmartWalletsProvider
-        config={{
-          paymasterContext: {
-            token: CONTRACTS.USDC,
-          },
-        }}
-      >
+      <SmartWalletsProvider>
         <QueryClientProvider client={queryClient}>
           <WagmiProvider config={wagmiConfig}>
             {children}
