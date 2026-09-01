@@ -3,7 +3,9 @@ import { verifyAdminRequest } from "@/lib/server/adminAuth";
 import { CONTRACTS, CHAIN } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
 import { createPrices } from "@p2pdotme/sdk/prices";
-import { createPublicClient, http } from "viem";
+import { getRelayerAddress, getRelayerBalance } from "@/lib/server/relayer";
+import { listPayLinks, getActivePayInSessions } from "@/lib/server/payStore";
+import { createPublicClient, http, formatEther } from "viem";
 import { base } from "viem/chains";
 
 export const dynamic = "force-dynamic";
@@ -81,6 +83,35 @@ export async function GET(req: Request) {
       console.warn("[Admin Stats] Failed to read P2P INR price feed:", err);
     }
 
+    // 4. Fetch Gas Relayer telemetry
+    let relayerStats = {
+      address: "Not Configured",
+      balanceEth: "0.00",
+      healthy: false,
+      error: undefined as string | undefined,
+    };
+    try {
+      const relAddress = getRelayerAddress();
+      const relBal = await getRelayerBalance();
+      relayerStats = {
+        address: relAddress,
+        balanceEth: formatEther(relBal),
+        healthy: relBal > 0n,
+        error: relBal === 0n ? "Gas Tank is empty (0 ETH). Please send ETH to relayer address." : undefined,
+      };
+    } catch (relErr: any) {
+      relayerStats = {
+        address: "Not Configured",
+        balanceEth: "0.00",
+        healthy: false,
+        error: relErr?.message || "Missing RELAYER_PRIVATE_KEY",
+      };
+    }
+
+    // 5. Fetch PayLinks and Sessions summary
+    const payLinks = listPayLinks();
+    const activeSessions = getActivePayInSessions();
+
     const treasuryUsdc = (Number(treasuryUsdcRaw) / 1_000_000).toFixed(2);
     const diamondUsdc = (Number(diamondUsdcRaw) / 1_000_000).toFixed(2);
 
@@ -96,6 +127,15 @@ export async function GET(req: Request) {
         diamond: CONTRACTS.DIAMOND,
         usdc: CONTRACTS.USDC,
         treasury: CONTRACTS.TREASURY,
+      },
+      relayer: relayerStats,
+      paylinksSummary: {
+        total: payLinks.length,
+        paid: payLinks.filter((p) => p.status === "PAID").length,
+        active: payLinks.filter((p) => p.status === "ACTIVE").length,
+      },
+      payinSessionsSummary: {
+        activeCount: activeSessions.length,
       },
       telemetry: {
         treasuryUsdcBalance: treasuryUsdc,

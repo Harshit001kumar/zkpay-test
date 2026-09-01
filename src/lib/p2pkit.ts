@@ -330,6 +330,18 @@ export async function parseP2PError(error: any) {
       };
     }
 
+    const rawErrorString = String(error?.message || error?.details || error || "");
+    if (
+      rawErrorString.includes("AA21") ||
+      rawErrorString.includes("didn't pay prefund") ||
+      rawErrorString.includes("sufficient funds to execute the User Operation")
+    ) {
+      return {
+        code: "AA21_PREFUND_REQUIRED",
+        message: "Smart Account requires gas: Ensure your Backend Gas Relayer (RELAYER_PRIVATE_KEY) is funded on Render, or send ~$0.05 of ETH on Base directly to your Smart Account.",
+      };
+    }
+
     const message = getContractErrorMessage(code) || error?.message || "Transaction failed";
     return { code, message };
   } catch {
