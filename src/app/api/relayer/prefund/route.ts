@@ -52,8 +52,7 @@ export async function POST(request: Request) {
 
     const normalizedTarget = address.toLowerCase();
 
-    // ── 3. Security Check: Verify Wallet Ownership (Anti-Hijack) ──
-    // Ensure the requested address belongs to the authenticated user
+    // ── 3. Security Check: Restrict Exclusively to Privy Embedded & Smart Accounts ──
     try {
       const privy = getPrivyClient() as any;
       let privyUser: any = null;
@@ -67,26 +66,35 @@ export async function POST(request: Request) {
       }
 
       if (privyUser?.linkedAccounts) {
-        const userWallets = privyUser.linkedAccounts
-          .filter((acc: any) => acc.type === "wallet" || acc.type === "smart_wallet")
+        // Find valid Privy-managed smart wallets or embedded wallets
+        const privyManagedWallets = privyUser.linkedAccounts
+          .filter(
+            (acc: any) =>
+              acc.type === "smart_wallet" ||
+              (acc.type === "wallet" &&
+                (acc.walletClientType === "privy" || acc.connectorType === "embedded"))
+          )
           .map((acc: any) => (acc.address || "").toLowerCase());
 
-        const hasMatchingWallet = userWallets.some(
+        const isPrivyManaged = privyManagedWallets.some(
           (w: string) => w === normalizedTarget
         );
 
-        if (userWallets.length > 0 && !hasMatchingWallet) {
+        if (!isPrivyManaged) {
           console.warn(
-            `[Relayer Security] Rejected prefund for unlinked address ${address} by user ${userId}`
+            `[Relayer Security] Rejected prefund: ${address} is an external wallet or unlinked account.`
           );
           return NextResponse.json(
-            { error: "Security violation: Target address is not linked to your account." },
+            {
+              error:
+                "Gas subsidy is exclusively for Privy Smart Accounts and Embedded Wallets. External connected wallets (e.g. MetaMask, Phantom) must pay their own gas.",
+            },
             { status: 403 }
           );
         }
       }
     } catch (lookupErr: any) {
-      console.warn("[Relayer Security] User wallet lookup error (proceeding with checks):", lookupErr?.message);
+      console.warn("[Relayer Security] User wallet lookup error:", lookupErr?.message);
     }
 
     // ── 4. Security Check: Sybil & Bot-Farm Filter (USDC Activity) ──
