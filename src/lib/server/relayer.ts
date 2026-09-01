@@ -1,31 +1,42 @@
-import { createWalletClient, createPublicClient, http, parseEther, formatEther } from "viem";
+import { createWalletClient, createPublicClient, http, parseEther, formatEther, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
-import { CHAIN } from "@/lib/constants";
+import { CHAIN, CONTRACTS } from "@/lib/constants";
 
 // ─────────────────────────────────────────────────────
-// Backend Gas Relayer
+// Enterprise-Grade Backend Gas Relayer ("Gas Tank")
 //
-// A single server-side wallet funded with ~$3-5 of ETH
-// on Base. It pre-funds user smart accounts with micro
-// ETH so they can pay gas natively — no Privy paymaster
-// or credit card required.
-//
-// Env var: RELAYER_PRIVATE_KEY (hex private key, with or without 0x prefix)
+// Multi-layered security to prevent drain, Sybil abuse,
+// and unauthorized gas extraction while providing seamless
+// 1-click execution for legitimate users.
 // ─────────────────────────────────────────────────────
 
-// Minimum ETH balance threshold: below this, the smart account gets pre-funded
+// Minimum ETH threshold: below this, account is eligible for pre-funding
 export const MIN_ETH_THRESHOLD = parseEther("0.00003"); // ~$0.006
 
-// Amount of ETH to send when pre-funding (enough for ~20-50 txs on Base)
+// Amount of ETH dispensed per prefund (enough for ~20-50 txs on Base)
 export const PREFUND_AMOUNT = parseEther("0.0001"); // ~$0.02
 
-// Rate-limit: max prefunds per user per hour
-const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
-const MAX_PREFUNDS_PER_WINDOW = 5;
+// ── Security Constraints ──
+// 1. Sliding window rate-limits per user wallet
+const COOLDOWN_PER_ADDRESS_MS = 5 * 60 * 1000; // 5 minutes cooldown between prefunds
+const MAX_PREFUNDS_PER_DAY = 3; // Max 3 prefunds per 24 hours per wallet
+const WINDOW_24H_MS = 24 * 60 * 60 * 1000;
 
-// In-memory rate limiter (resets on server restart, sufficient for production)
-const prefundLog = new Map<string, number[]>();
+// 2. Global Circuit Breaker: Max 0.005 ETH (~$1.00) total dispensed per hour across all users
+const HOURLY_GLOBAL_BUDGET = parseEther("0.005");
+const HOURLY_WINDOW_MS = 60 * 60 * 1000;
+
+// 3. Minimum USDC balance for Sybil / bot-farm prevention (1 cent = 10,000 wei in 6 decimals)
+export const MIN_USDC_FOR_PREFUND = 10_000n; // $0.01 USDC
+
+const ERC20_BALANCE_ABI = parseAbi([
+  "function balanceOf(address account) view returns (uint256)",
+]);
+
+// In-memory security tracking stores
+const addressPrefundTimestamps = new Map<string, number[]>();
+let hourlyGlobalDispatched: { timestamp: number; amount: bigint }[] = [];
 
 function getRelayerPrivateKey(): `0x${string}` {
   const raw =
@@ -40,11 +51,9 @@ function getRelayerPrivateKey(): `0x${string}` {
   }
 
   let key = raw.trim();
-  // Strip surrounding quotes
   if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
     key = key.slice(1, -1);
   }
-  // Ensure 0x prefix
   if (!key.startsWith("0x")) {
     key = `0x${key}`;
   }
@@ -83,24 +92,15 @@ function getPublicClient() {
   return _publicClient;
 }
 
-/**
- * Get the relayer's wallet address (for monitoring).
- */
 export function getRelayerAddress(): `0x${string}` {
   return getRelayerAccount().address;
 }
 
-/**
- * Get the relayer's current ETH balance.
- */
 export async function getRelayerBalance(): Promise<bigint> {
   const publicClient = getPublicClient();
   return publicClient.getBalance({ address: getRelayerAddress() });
 }
 
-/**
- * Check if an address needs pre-funding (ETH balance below threshold).
- */
 export async function needsPrefund(address: `0x${string}`): Promise<boolean> {
   const publicClient = getPublicClient();
   const balance = await publicClient.getBalance({ address });
@@ -108,76 +108,149 @@ export async function needsPrefund(address: `0x${string}`): Promise<boolean> {
 }
 
 /**
- * Rate-limit check for a specific address.
+ * Security Layer 1: Check Global Circuit Breaker
  */
-function checkRateLimit(address: string): boolean {
-  const key = address.toLowerCase();
+function checkGlobalCircuitBreaker(): boolean {
   const now = Date.now();
-  const timestamps = prefundLog.get(key) || [];
+  // Filter dispatches in the last 1 hour
+  hourlyGlobalDispatched = hourlyGlobalDispatched.filter(
+    (item) => now - item.timestamp < HOURLY_WINDOW_MS
+  );
 
-  // Remove expired entries
-  const valid = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+  const totalHourDispensed = hourlyGlobalDispatched.reduce(
+    (acc, item) => acc + item.amount,
+    0n
+  );
 
-  if (valid.length >= MAX_PREFUNDS_PER_WINDOW) {
-    return false; // Rate limited
-  }
-
-  valid.push(now);
-  prefundLog.set(key, valid);
-  return true;
+  return totalHourDispensed + PREFUND_AMOUNT <= HOURLY_GLOBAL_BUDGET;
 }
 
 /**
- * Pre-fund a user's smart account with micro ETH for gas.
- *
- * Returns the transaction hash, or null if:
- * - The account already has sufficient ETH
- * - Rate limited
+ * Security Layer 2: Check Address Cooldown & Daily Cap
+ */
+function checkAddressRateLimit(address: string): { allowed: boolean; reason?: string } {
+  const key = address.toLowerCase();
+  const now = Date.now();
+  const timestamps = addressPrefundTimestamps.get(key) || [];
+
+  // Filter entries in the last 24h
+  const recent24h = timestamps.filter((t) => now - t < WINDOW_24H_MS);
+
+  // Check cooldown from last prefund
+  const lastPrefund = recent24h[recent24h.length - 1];
+  if (lastPrefund && now - lastPrefund < COOLDOWN_PER_ADDRESS_MS) {
+    const waitSeconds = Math.ceil((COOLDOWN_PER_ADDRESS_MS - (now - lastPrefund)) / 1000);
+    return {
+      allowed: false,
+      reason: `Please wait ${waitSeconds}s before requesting gas again.`,
+    };
+  }
+
+  // Check 24h max prefund cap
+  if (recent24h.length >= MAX_PREFUNDS_PER_DAY) {
+    return {
+      allowed: false,
+      reason: "Daily gas subsidy limit reached for this wallet.",
+    };
+  }
+
+  return { allowed: true };
+}
+
+function recordPrefund(address: string) {
+  const key = address.toLowerCase();
+  const now = Date.now();
+
+  const timestamps = addressPrefundTimestamps.get(key) || [];
+  timestamps.push(now);
+  addressPrefundTimestamps.set(key, timestamps);
+
+  hourlyGlobalDispatched.push({ timestamp: now, amount: PREFUND_AMOUNT });
+}
+
+/**
+ * Security Layer 3: Verify Minimum On-Chain USDC Activity (Sybil Resistance)
+ */
+export async function checkUsdcActivity(address: `0x${string}`): Promise<boolean> {
+  try {
+    const publicClient = getPublicClient();
+    const balance = (await publicClient.readContract({
+      address: CONTRACTS.USDC as `0x${string}`,
+      abi: ERC20_BALANCE_ABI,
+      functionName: "balanceOf",
+      args: [address],
+    })) as bigint;
+
+    return balance >= MIN_USDC_FOR_PREFUND;
+  } catch (err) {
+    console.warn("[Relayer Security] USDC balance check failed:", err);
+    return true; // Don't block legitimate users if RPC fails
+  }
+}
+
+/**
+ * Pre-fund account with full security verification
  */
 export async function prefundAccount(
   targetAddress: `0x${string}`
 ): Promise<{ hash: string | null; alreadyFunded: boolean; error?: string }> {
-  // 1. Check if the account already has enough ETH
   const publicClient = getPublicClient();
-  const balance = await publicClient.getBalance({ address: targetAddress });
 
+  // 1. Balance Threshold Check
+  const balance = await publicClient.getBalance({ address: targetAddress });
   if (balance >= MIN_ETH_THRESHOLD) {
     return { hash: null, alreadyFunded: true };
   }
 
-  // 2. Rate-limit check
-  if (!checkRateLimit(targetAddress)) {
-    return { hash: null, alreadyFunded: false, error: "Rate limited. Try again later." };
+  // 2. Global Circuit Breaker Check
+  if (!checkGlobalCircuitBreaker()) {
+    console.warn("[Relayer Security] Global hourly budget reached. Circuit breaker engaged.");
+    return {
+      hash: null,
+      alreadyFunded: false,
+      error: "High network volume. Gas relayer temporarily throttled. Please try again shortly.",
+    };
   }
 
-  // 3. Check relayer has enough funds
+  // 3. User Cooldown & Rate Limit Check
+  const rateCheck = checkAddressRateLimit(targetAddress);
+  if (!rateCheck.allowed) {
+    return {
+      hash: null,
+      alreadyFunded: false,
+      error: rateCheck.reason || "Rate limit exceeded.",
+    };
+  }
+
+  // 4. Check Relayer Gas Tank Health
   const relayerBalance = await getRelayerBalance();
-  const minRelayerBalance = PREFUND_AMOUNT * 2n; // Keep a safety buffer
+  const minRelayerBalance = PREFUND_AMOUNT * 2n;
   if (relayerBalance < minRelayerBalance) {
     console.error(
-      `[Relayer] LOW BALANCE: ${formatEther(relayerBalance)} ETH remaining. ` +
-      `Relayer address: ${getRelayerAddress()}`
+      `[Relayer Security] LOW GAS TANK: ${formatEther(relayerBalance)} ETH remaining at ${getRelayerAddress()}`
     );
     return {
       hash: null,
       alreadyFunded: false,
-      error: "Gas relayer is temporarily unavailable. Please try again later.",
+      error: "Gas tank requires refill. Please contact support.",
     };
   }
 
-  // 4. Send micro ETH to target
+  // 5. Broadcast micro ETH on Base
   const walletClient = getWalletClient();
   const hash = await walletClient.sendTransaction({
     to: targetAddress,
     value: PREFUND_AMOUNT,
   });
 
-  // 5. Wait for confirmation (Base ~2s block time)
+  // 6. Record in security ledger
+  recordPrefund(targetAddress);
+
+  // 7. Wait for receipt
   await publicClient.waitForTransactionReceipt({ hash, confirmations: 1 });
 
   console.log(
-    `[Relayer] Pre-funded ${targetAddress} with ${formatEther(PREFUND_AMOUNT)} ETH. ` +
-    `TX: ${hash}. Relayer balance: ${formatEther(relayerBalance - PREFUND_AMOUNT)} ETH`
+    `[Relayer Security] Secured pre-fund: ${targetAddress} (+${formatEther(PREFUND_AMOUNT)} ETH). TX: ${hash}`
   );
 
   return { hash, alreadyFunded: false };
