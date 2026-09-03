@@ -2,17 +2,19 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { usePrivy, useWallets, getAccessToken } from "@privy-io/react-auth";
-import { formatUnits, parseUnits } from "viem";
+import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
+import { formatUnits, parseUnits, encodeFunctionData } from "viem";
 import { base } from "viem/chains";
 import { useReadContract } from "wagmi";
 import { CONTRACTS } from "@/lib/constants";
-import { ERC20_ABI } from "@/lib/abi";
+import { ERC20_ABI, ERC4626_ABI } from "@/lib/abi";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
 import { ShinyText } from "@/components/ui/ShinyText";
 import { ShimmerButton } from "@/components/ui/ShimmerButton";
 
 interface VaultInfo {
+  address?: string | null;
   name: string;
   provider: string;
   apy: string;
@@ -33,6 +35,7 @@ const PRESET_AMOUNTS = [10, 50, 100, 250];
 export default function EarnFlow() {
   const { authenticated, login, user } = usePrivy();
   const { wallets } = useWallets();
+  const { client: smartClient } = useSmartWallets();
   const { address: activeAddress } = useActiveAccount();
 
   const [amount, setAmount] = useState("");
@@ -60,6 +63,24 @@ export default function EarnFlow() {
   });
 
   const availableUsdc = rawBal !== undefined ? Number(formatUnits(rawBal as bigint, 6)) : 0;
+
+  // Live on-chain staked balance if vault address is known
+  const { data: onChainVaultAssets, refetch: refetchVaultBal } = useReadContract({
+    address: (vault?.address as `0x${string}`) || undefined,
+    abi: ERC4626_ABI,
+    functionName: "maxWithdraw",
+    args: [activeAddress ?? "0x0000000000000000000000000000000000000000"],
+    chainId: base.id,
+    query: {
+      enabled: !!activeAddress && !!vault?.address,
+      refetchInterval: 5000,
+    },
+  });
+
+  const effectiveAssetsInVault =
+    onChainVaultAssets !== undefined
+      ? Number(formatUnits(onChainVaultAssets as bigint, 6))
+      : (position?.assetsInVault ?? 0);
 
   // Resolve target wallet ID: Prefer the Privy embedded wallet ID from linkedAccounts
   const getWalletId = useCallback(() => {
@@ -137,8 +158,7 @@ export default function EarnFlow() {
       return;
     }
 
-    const walletId = getWalletId();
-    if (!walletId) {
+    if (!activeAddress) {
       setError("Please connect your wallet first.");
       return;
     }
@@ -148,31 +168,116 @@ export default function EarnFlow() {
     setSuccess("");
 
     try {
-      const accessToken = await getAccessToken();
+      if (vault?.address) {
+        // Direct on-chain deposit via ERC-4626 standard (with Pimlico gas sponsorship)
+        const amountUnits = parseUnits(parsedAmount.toFixed(6), 6);
 
-      const response = await fetch("/api/earn/deposit", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ amount: parsedAmount, walletId }),
-      });
+        if (smartClient) {
+          const txHash = await smartClient.sendTransaction({
+            calls: [
+              {
+                to: CONTRACTS.USDC as `0x${string}`,
+                data: encodeFunctionData({
+                  abi: ERC20_ABI,
+                  functionName: "approve",
+                  args: [vault.address as `0x${string}`, amountUnits],
+                }),
+                value: 0n,
+              },
+              {
+                to: vault.address as `0x${string}`,
+                data: encodeFunctionData({
+                  abi: ERC4626_ABI,
+                  functionName: "deposit",
+                  args: [amountUnits, activeAddress as `0x${string}`],
+                }),
+                value: 0n,
+              },
+            ],
+          });
+          console.log("[EarnFlow] On-chain deposit tx:", txHash);
+        } else {
+          const wallet =
+            wallets?.find((w) => w.address.toLowerCase() === activeAddress?.toLowerCase()) ||
+            wallets?.[0];
+          if (!wallet) throw new Error("Connected wallet not found");
+          const provider = await wallet.getEthereumProvider();
 
-      const data = await response.json();
+          await provider.request({
+            method: "eth_sendTransaction",
+            params: [
+              {
+                from: activeAddress,
+                to: CONTRACTS.USDC,
+                data: encodeFunctionData({
+                  abi: ERC20_ABI,
+                  functionName: "approve",
+                  args: [vault.address as `0x${string}`, amountUnits],
+                }),
+              },
+            ],
+          });
 
-      if (!response.ok) {
-        throw new Error(data.error || "Deposit failed");
-      }
+          await provider.request({
+            method: "eth_sendTransaction",
+            params: [
+              {
+                from: activeAddress,
+                to: vault.address,
+                data: encodeFunctionData({
+                  abi: ERC4626_ABI,
+                  functionName: "deposit",
+                  args: [amountUnits, activeAddress as `0x${string}`],
+                }),
+              },
+            ],
+          });
+        }
 
-      setSuccess(`Deposit of $${parsedAmount.toFixed(2)} USDC initiated!`);
-      setAmount("");
-      refetchBal?.();
-      setTimeout(() => {
-        fetchPosition();
+        setSuccess(`Successfully deposited $${parsedAmount.toFixed(2)} USDC into vault!`);
+        setAmount("");
         refetchBal?.();
-      }, 4000);
+        refetchVaultBal?.();
+        setTimeout(() => {
+          fetchPosition();
+          refetchBal?.();
+          refetchVaultBal?.();
+        }, 3000);
+      } else {
+        // Fallback to server route
+        const walletId = getWalletId();
+        if (!walletId) {
+          setError("Please connect your wallet first.");
+          return;
+        }
+
+        const accessToken = await getAccessToken();
+
+        const response = await fetch("/api/earn/deposit", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ amount: parsedAmount, walletId }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Deposit failed");
+        }
+
+        setSuccess(`Deposit of $${parsedAmount.toFixed(2)} USDC initiated!`);
+        setAmount("");
+        refetchBal?.();
+        setTimeout(() => {
+          fetchPosition();
+          refetchBal?.();
+        }, 4000);
+      }
     } catch (err: any) {
+      console.error("[EarnFlow] Deposit error:", err);
       setError(err.message || "Deposit transaction failed.");
     } finally {
       setIsDepositing(false);
@@ -180,13 +285,13 @@ export default function EarnFlow() {
   };
 
   const handleWithdraw = async () => {
-    if (!position || position.assetsInVault <= 0) {
+    const withdrawAmount = effectiveAssetsInVault;
+    if (withdrawAmount <= 0) {
       setError("No staked balance available to withdraw.");
       return;
     }
 
-    const walletId = getWalletId();
-    if (!walletId) {
+    if (!activeAddress) {
       setError("Please connect your wallet first.");
       return;
     }
@@ -196,33 +301,92 @@ export default function EarnFlow() {
     setSuccess("");
 
     try {
-      const accessToken = await getAccessToken();
+      if (vault?.address) {
+        // Direct on-chain withdrawal from ERC-4626 vault
+        const withdrawUnits = parseUnits(withdrawAmount.toFixed(6), 6);
 
-      const response = await fetch("/api/earn/withdraw", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          amount: position.assetsInVault,
-          walletId,
-        }),
-      });
+        if (smartClient) {
+          const txHash = await smartClient.sendTransaction({
+            calls: [
+              {
+                to: vault.address as `0x${string}`,
+                data: encodeFunctionData({
+                  abi: ERC4626_ABI,
+                  functionName: "withdraw",
+                  args: [withdrawUnits, activeAddress as `0x${string}`, activeAddress as `0x${string}`],
+                }),
+                value: 0n,
+              },
+            ],
+          });
+          console.log("[EarnFlow] On-chain withdraw tx:", txHash);
+        } else {
+          const wallet =
+            wallets?.find((w) => w.address.toLowerCase() === activeAddress?.toLowerCase()) ||
+            wallets?.[0];
+          if (!wallet) throw new Error("Connected wallet not found");
+          const provider = await wallet.getEthereumProvider();
 
-      const data = await response.json();
+          await provider.request({
+            method: "eth_sendTransaction",
+            params: [
+              {
+                from: activeAddress,
+                to: vault.address,
+                data: encodeFunctionData({
+                  abi: ERC4626_ABI,
+                  functionName: "withdraw",
+                  args: [withdrawUnits, activeAddress as `0x${string}`, activeAddress as `0x${string}`],
+                }),
+              },
+            ],
+          });
+        }
 
-      if (!response.ok) {
-        throw new Error(data.error || "Withdrawal failed");
-      }
-
-      setSuccess("Withdrawal request submitted successfully!");
-      refetchBal?.();
-      setTimeout(() => {
-        fetchPosition();
+        setSuccess("Successfully withdrawn funds from vault!");
         refetchBal?.();
-      }, 4000);
+        refetchVaultBal?.();
+        setTimeout(() => {
+          fetchPosition();
+          refetchBal?.();
+          refetchVaultBal?.();
+        }, 3000);
+      } else {
+        const walletId = getWalletId();
+        if (!walletId) {
+          setError("Please connect your wallet first.");
+          return;
+        }
+
+        const accessToken = await getAccessToken();
+
+        const response = await fetch("/api/earn/withdraw", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            amount: withdrawAmount,
+            walletId,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Withdrawal failed");
+        }
+
+        setSuccess("Withdrawal request submitted successfully!");
+        refetchBal?.();
+        setTimeout(() => {
+          fetchPosition();
+          refetchBal?.();
+        }, 4000);
+      }
     } catch (err: any) {
+      console.error("[EarnFlow] Withdraw error:", err);
       setError(err.message || "Withdrawal failed.");
     } finally {
       setIsWithdrawing(false);
@@ -274,9 +438,9 @@ export default function EarnFlow() {
   const rawApy = vault?.apy && parseFloat(vault.apy) > 0 ? vault.apy : "8.40";
   const displayApy = `${rawApy}%`;
   const displayVaultName = vault?.name && vault.name !== "Yield Vault" ? vault.name : "Base USDC Yield Vault";
-  const displayPosition = position ? `$${position.assetsInVault.toFixed(2)}` : "$0.00";
+  const displayPosition = `$${effectiveAssetsInVault.toFixed(2)}`;
   const displayYield = position ? `+$${position.earnedYield.toFixed(2)}` : "+$0.00";
-  const hasPosition = position && position.assetsInVault > 0;
+  const hasPosition = effectiveAssetsInVault > 0;
   const isLoading = isDepositing || isWithdrawing || isClaiming;
 
   return (

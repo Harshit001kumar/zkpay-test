@@ -93,6 +93,21 @@ export async function GET(request: Request) {
     const vaultData = vaultRes.ok ? await vaultRes.json() : null;
     const positionData = positionRes && positionRes.ok ? await positionRes.json() : null;
 
+    if (!vaultRes.ok) {
+      console.warn(`[Earn Position] Privy vault query returned ${vaultRes.status}`);
+    } else {
+      console.log(`[Earn Position] Privy vault data:`, vaultData);
+    }
+
+    // Resolve on-chain vault address
+    const resolvedVaultAddress =
+      (VAULT_ID.startsWith("0x") ? VAULT_ID : null) ||
+      vaultData?.vault_address ||
+      vaultData?.address ||
+      vaultData?.contract_address ||
+      vaultData?.vaultAddress ||
+      null;
+
     // Parse APY from basis points to percentage (fallback to 8.40% benchmark)
     const userApyBps = vaultData?.user_apy;
     const userApyPercent = userApyBps && userApyBps > 0 ? (userApyBps / 100).toFixed(2) : "8.40";
@@ -121,7 +136,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       vault: {
-        address: vaultData?.vault_address || vaultData?.address || null,
+        address: resolvedVaultAddress,
         name: vaultData?.name || "Base USDC Yield Vault",
         provider: vaultData?.provider || "DeFi Protocol",
         apy: userApyPercent,
