@@ -45,6 +45,7 @@ export async function GET(request: Request) {
       // Return default benchmark vault data so the UI remains operational
       return NextResponse.json({
         vault: {
+          address: null,
           name: "Base USDC Yield Vault",
           provider: "DeFi Protocol",
           apy: "8.40",
@@ -120,6 +121,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       vault: {
+        address: vaultData?.vault_address || vaultData?.address || null,
         name: vaultData?.name || "Base USDC Yield Vault",
         provider: vaultData?.provider || "DeFi Protocol",
         apy: userApyPercent,
@@ -139,6 +141,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         vault: {
+          address: null,
           name: "Base USDC Yield Vault",
           provider: "DeFi Protocol",
           apy: "8.40",
