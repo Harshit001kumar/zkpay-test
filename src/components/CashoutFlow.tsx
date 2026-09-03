@@ -18,7 +18,7 @@ import {
   parseP2PError,
   getPublicClient,
 } from "@/lib/p2pkit";
-import { useGasRelay } from "@/hooks/useGasRelay";
+
 
 type CashoutStatus = "input" | "processing" | "matching" | "paying" | "completed" | "error";
 
@@ -26,7 +26,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
   const { ready, authenticated } = usePrivy();
   const { wallets } = useWallets();
   const { client: smartClient } = useSmartWallets();
-  const { ensureGas } = useGasRelay();
+
   const router = useRouter();
   
   const [amountStr, setAmountStr] = useState("");
@@ -315,9 +315,8 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
 
       let hash = "";
 
-      // 1-Click Batched Smart Wallet Execution (Gas pre-funded by backend relayer)
+      // 1-Click Batched Smart Wallet Execution (gas sponsored by Pimlico paymaster)
       if (smartClient) {
-        await ensureGas(activeAddr);
         hash = await smartClient.sendTransaction({ calls });
       } else if (wallet) {
         // Fallback to sequential EOA calls

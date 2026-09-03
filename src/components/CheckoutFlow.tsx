@@ -19,7 +19,7 @@ import {
   parseP2PError,
   getPublicClient,
 } from "@/lib/p2pkit";
-import { useGasRelay } from "@/hooks/useGasRelay";
+
 
 interface CheckoutFlowProps {
   amount: number; // total INR amount
@@ -32,7 +32,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
   const { ready, authenticated, login } = usePrivy();
   const { wallets } = useWallets();
   const { client: smartClient } = useSmartWallets();
-  const { ensureGas } = useGasRelay();
+
   const router = useRouter();
   
   const [status, setStatus] = useState<TxStatus>("idle");
@@ -302,9 +302,8 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
       let txHash = "";
 
-      // 1-Click Batched Smart Wallet Execution (Gas pre-funded by backend relayer)
+      // 1-Click Batched Smart Wallet Execution (gas sponsored by Pimlico paymaster)
       if (smartClient) {
-        await ensureGas(activeAddr);
         txHash = await smartClient.sendTransaction({ calls });
       } else if (wallet) {
         // Fallback to sequential EOA calls

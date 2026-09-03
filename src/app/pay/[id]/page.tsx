@@ -12,7 +12,7 @@ import { saveTransaction } from "@/lib/history";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
 import { ShinyText } from "@/components/ui/ShinyText";
 import { ShimmerButton } from "@/components/ui/ShimmerButton";
-import { useGasRelay } from "@/hooks/useGasRelay";
+
 
 interface PayLinkData {
   linkId: string;
@@ -39,7 +39,7 @@ export default function PayPage() {
   const { ready, authenticated, login } = usePrivy();
   const { wallets } = useWallets();
   const { client: smartClient } = useSmartWallets();
-  const { ensureGas } = useGasRelay();
+
   const linkId = params.id as string;
 
   const [step, setStep] = useState<PayStep>("loading");
@@ -139,7 +139,6 @@ export default function PayPage() {
       let txH = "";
 
       if (smartClient) {
-        await ensureGas(smartClient?.account?.address || wallet.address);
         txH = await smartClient.sendTransaction({
           calls: [
             {

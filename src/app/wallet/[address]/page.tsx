@@ -11,7 +11,7 @@ import { useReadContract, useBalance } from "wagmi";
 import { CONTRACTS, CHAIN } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
 import { parseP2PError, getPublicClient } from "@/lib/p2pkit";
-import { useGasRelay } from "@/hooks/useGasRelay";
+
 import { 
   ArrowLeft, 
   Copy, 
@@ -42,7 +42,7 @@ export default function WalletAddressPage() {
   const { client: smartClient } = useSmartWallets();
   const connectedWallet = wallets?.[0];
   const connectedAddress = (smartClient?.account?.address || connectedWallet?.address) as `0x${string}` | undefined;
-  const { ensureGas } = useGasRelay();
+
 
   // Use route address if valid, otherwise fallback to connected wallet
   const targetAddress = (rawAddressParam && isAddress(rawAddressParam) 
@@ -142,9 +142,8 @@ export default function WalletAddressPage() {
 
       let hash = "";
 
-      // 1-Click Transfer via Smart Wallet (gas pre-funded by backend relayer)
+      // 1-Click Transfer via Smart Wallet (gas sponsored by Pimlico paymaster)
       if (smartClient) {
-        await ensureGas(connectedAddress);
         const txHash = await smartClient.sendTransaction({
           calls: [{
             to: CONTRACTS.USDC as `0x${string}`,

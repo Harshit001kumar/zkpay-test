@@ -20,7 +20,7 @@ import {
   parseP2PError 
 } from "@/lib/p2pkit";
 import { saveTransaction } from "@/lib/history";
-import { useGasRelay } from "@/hooks/useGasRelay";
+
 import { 
   ArrowLeft, 
   QrCode, 
@@ -48,7 +48,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   const { client: smartClient } = useSmartWallets();
   const wallet = wallets?.[0];
   const activeAddress = (smartClient?.account?.address || wallet?.address) as `0x${string}` | undefined;
-  const { ensureGas } = useGasRelay();
+
 
   // Flow State
   const [step, setStep] = useState<FlowStep>("amount");
@@ -251,9 +251,8 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
       let placedTxHash = "";
 
-      // 1-Click Batched Smart Wallet Execution (Gas pre-funded by backend relayer)
+      // 1-Click Batched Smart Wallet Execution (gas sponsored by Pimlico paymaster)
       if (smartClient) {
-        await ensureGas(senderAddress);
         placedTxHash = await smartClient.sendTransaction({ calls });
       } else if (wallet) {
         // Fallback to sequential EOA calls if no smart account available
