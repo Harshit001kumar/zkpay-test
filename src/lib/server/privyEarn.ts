@@ -71,9 +71,5 @@ export function parsePrivyEarnError(error: any): string {
     error?.message ||
     String(error);
 
-  if (rawMsg.includes("authorization signatures") || rawMsg.includes("401")) {
-    return "Privy Authorization Key is required for Earn deposits and withdrawals. Please create an Authorization Key in Privy Dashboard (Settings > Authorization Keys) and set PRIVY_AUTH_PRIVATE_KEY in your Render environment variables.";
-  }
-
   return rawMsg;
 }

@@ -48,17 +48,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const authPrivateKey = getPrivyAuthPrivateKey();
-    if (!authPrivateKey) {
-      return NextResponse.json(
-        {
-          error:
-            "Privy Authorization Key is not configured on the server. Please generate an Authorization Key in Privy Dashboard (Settings > Authorization Keys) and add PRIVY_AUTH_PRIVATE_KEY to your Render environment variables.",
-        },
-        { status: 400 }
-      );
-    }
-
     // ── 3. Parse and validate input ──
     const body = await request.json();
     const { amount, walletId: rawWalletId } = body;
@@ -102,26 +91,43 @@ export async function POST(request: Request) {
       );
     }
 
-    // ── 5. Call Privy Earn deposit API ──
-    const depositParams: Record<string, unknown> = {
-      vault_id: VAULT_ID,
-      amount: String(parsedAmount),
-      authorization_context: {
-        authorization_private_keys: [authPrivateKey],
-      },
-    };
+    // ── 5. Call Privy Earn deposit REST API via Basic Auth ──
+    const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID!;
+    const appSecret = process.env.PRIVY_APP_SECRET!;
+    const basicAuth = Buffer.from(`${appId}:${appSecret}`).toString("base64");
 
-    const earnResponse = await getPrivyClient()
-      .wallets()
-      .earn()
-      .ethereum()
-      .deposit(targetWalletId, depositParams as any);
+    const restResponse = await fetch(
+      `https://api.privy.io/api/v1/wallets/${targetWalletId}/earn/ethereum/deposit`,
+      {
+        method: "POST",
+        headers: {
+          "privy-app-id": appId,
+          Authorization: `Basic ${basicAuth}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          vault_id: VAULT_ID,
+          amount: String(parsedAmount),
+        }),
+      }
+    );
+
+    const earnData = await restResponse.json();
+
+    if (!restResponse.ok) {
+      console.error("[Earn Deposit REST Error]:", earnData);
+      const errMsg = earnData.error || earnData.message || earnData.details || "Deposit failed";
+      return NextResponse.json(
+        { error: errMsg },
+        { status: restResponse.status }
+      );
+    }
 
     return NextResponse.json(
       {
         success: true,
-        actionId: earnResponse.id,
-        status: earnResponse.status,
+        actionId: earnData.id,
+        status: earnData.status,
       },
       { status: 200 }
     );

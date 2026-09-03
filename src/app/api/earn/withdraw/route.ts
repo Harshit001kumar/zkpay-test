@@ -44,17 +44,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const authPrivateKey = getPrivyAuthPrivateKey();
-    if (!authPrivateKey) {
-      return NextResponse.json(
-        {
-          error:
-            "Privy Authorization Key is not configured on the server. Please generate an Authorization Key in Privy Dashboard (Settings > Authorization Keys) and add PRIVY_AUTH_PRIVATE_KEY to your Render environment variables.",
-        },
-        { status: 400 }
-      );
-    }
-
     // ── 2. Validate input ──
     const body = await request.json();
     const { amount, walletId: rawWalletId } = body;
@@ -83,26 +72,43 @@ export async function POST(request: Request) {
       );
     }
 
-    // ── 4. Call Privy Earn withdraw API ──
-    const withdrawParams: Record<string, unknown> = {
-      vault_id: VAULT_ID,
-      amount: String(parsedAmount),
-      authorization_context: {
-        authorization_private_keys: [authPrivateKey],
-      },
-    };
+    // ── 4. Call Privy Earn withdraw REST API via Basic Auth ──
+    const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID!;
+    const appSecret = process.env.PRIVY_APP_SECRET!;
+    const basicAuth = Buffer.from(`${appId}:${appSecret}`).toString("base64");
 
-    const response = await getPrivyClient()
-      .wallets()
-      .earn()
-      .ethereum()
-      .withdraw(targetWalletId, withdrawParams as any);
+    const restResponse = await fetch(
+      `https://api.privy.io/api/v1/wallets/${targetWalletId}/earn/ethereum/withdraw`,
+      {
+        method: "POST",
+        headers: {
+          "privy-app-id": appId,
+          Authorization: `Basic ${basicAuth}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          vault_id: VAULT_ID,
+          amount: String(parsedAmount),
+        }),
+      }
+    );
+
+    const earnData = await restResponse.json();
+
+    if (!restResponse.ok) {
+      console.error("[Earn Withdraw REST Error]:", earnData);
+      const errMsg = earnData.error || earnData.message || earnData.details || "Withdrawal failed";
+      return NextResponse.json(
+        { error: errMsg },
+        { status: restResponse.status }
+      );
+    }
 
     return NextResponse.json(
       {
         success: true,
-        actionId: response.id,
-        status: response.status,
+        actionId: earnData.id,
+        status: earnData.status,
       },
       { status: 200 }
     );
