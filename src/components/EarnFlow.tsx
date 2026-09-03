@@ -38,6 +38,7 @@ export default function EarnFlow() {
   const [amount, setAmount] = useState("");
   const [isDepositing, setIsDepositing] = useState(false);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [isClaiming, setIsClaiming] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -228,13 +229,55 @@ export default function EarnFlow() {
     }
   };
 
+  const handleClaimRewards = async () => {
+    const walletId = getWalletId();
+    if (!walletId) {
+      setError("Please connect your wallet first.");
+      return;
+    }
+
+    setIsClaiming(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const accessToken = await getAccessToken();
+
+      const response = await fetch("/api/earn/claim", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ walletId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Claim failed");
+      }
+
+      setSuccess("Reward incentives claimed successfully!");
+      refetchBal?.();
+      setTimeout(() => {
+        fetchPosition();
+        refetchBal?.();
+      }, 4000);
+    } catch (err: any) {
+      setError(err.message || "Failed to claim rewards.");
+    } finally {
+      setIsClaiming(false);
+    }
+  };
+
   const rawApy = vault?.apy && parseFloat(vault.apy) > 0 ? vault.apy : "8.40";
   const displayApy = `${rawApy}%`;
   const displayVaultName = vault?.name && vault.name !== "Yield Vault" ? vault.name : "Base USDC Yield Vault";
   const displayPosition = position ? `$${position.assetsInVault.toFixed(2)}` : "$0.00";
   const displayYield = position ? `+$${position.earnedYield.toFixed(2)}` : "+$0.00";
   const hasPosition = position && position.assetsInVault > 0;
-  const isLoading = isDepositing || isWithdrawing;
+  const isLoading = isDepositing || isWithdrawing || isClaiming;
 
   return (
     <div className="w-full relative flex flex-col items-center justify-start pt-8 pb-32 font-body-md overflow-hidden text-[#e5e2e3]">
@@ -392,16 +435,29 @@ export default function EarnFlow() {
                 PROTOCOL: {displayVaultName.toUpperCase()}
               </span>
 
-              <button
-                onClick={handleWithdraw}
-                disabled={!hasPosition || isLoading}
-                className="text-[#c6c6cd] hover:text-white font-label-caps text-[9px] uppercase tracking-[0.2em] font-bold disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
-              >
-                {isWithdrawing && (
-                  <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-                )}
-                <span>WITHDRAW ALL</span>
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleClaimRewards}
+                  disabled={!hasPosition || isLoading}
+                  className="text-[#c0c6de] hover:text-white font-label-caps text-[9px] uppercase tracking-[0.2em] font-bold disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
+                >
+                  {isClaiming && (
+                    <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                  )}
+                  <span>CLAIM REWARDS</span>
+                </button>
+                <span className="text-white/20">|</span>
+                <button
+                  onClick={handleWithdraw}
+                  disabled={!hasPosition || isLoading}
+                  className="text-[#c6c6cd] hover:text-white font-label-caps text-[9px] uppercase tracking-[0.2em] font-bold disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
+                >
+                  {isWithdrawing && (
+                    <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                  )}
+                  <span>WITHDRAW ALL</span>
+                </button>
+              </div>
             </div>
           </div>
         </SpotlightCard>

@@ -51,13 +51,41 @@ export async function resolveEmbeddedWalletId(userId: string): Promise<string | 
       privyUser = await privy.getUser(userId);
     }
 
-    const embeddedWallet = privyUser?.linkedAccounts?.find(
+    let embeddedWallet = privyUser?.linkedAccounts?.find(
       (acc: any) =>
         acc.type === "wallet" &&
         (acc.walletClientType === "privy" || acc.connectorType === "embedded")
     ) as any;
 
-    return embeddedWallet?.id || null;
+    if (embeddedWallet?.id) return embeddedWallet.id;
+
+    // Fallback: Fetch user directly via Privy REST API
+    const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+    const appSecret = process.env.PRIVY_APP_SECRET;
+    if (appId && appSecret) {
+      const basicAuth = Buffer.from(`${appId}:${appSecret}`).toString("base64");
+      const res = await fetch(`https://api.privy.io/api/v1/users/${encodeURIComponent(userId)}`, {
+        headers: {
+          "privy-app-id": appId,
+          Authorization: `Basic ${basicAuth}`,
+        },
+      });
+      if (res.ok) {
+        const userData = await res.json();
+        embeddedWallet = userData?.linked_accounts?.find(
+          (acc: any) =>
+            acc.type === "wallet" &&
+            (acc.wallet_client_type === "privy" || acc.connector_type === "embedded")
+        ) || userData?.linkedAccounts?.find(
+          (acc: any) =>
+            acc.type === "wallet" &&
+            (acc.walletClientType === "privy" || acc.connectorType === "embedded")
+        );
+        if (embeddedWallet?.id) return embeddedWallet.id;
+      }
+    }
+
+    return null;
   } catch (err: any) {
     console.error("[PrivyEarn] Error resolving embedded wallet ID:", err?.message || err);
     return null;

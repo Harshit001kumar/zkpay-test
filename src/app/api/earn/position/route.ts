@@ -96,18 +96,25 @@ export async function GET(request: Request) {
     const userApyBps = vaultData?.user_apy;
     const userApyPercent = userApyBps && userApyBps > 0 ? (userApyBps / 100).toFixed(2) : "8.40";
 
-    // Parse position amounts (smallest unit → human-readable)
+    // Parse position amounts (handle array or object response)
     const decimals = vaultData?.asset?.decimals ?? 6;
     const divisor = Math.pow(10, decimals);
 
-    const totalDeposited = positionData?.total_deposited
-      ? Number(positionData.total_deposited) / divisor
+    let pos = positionData;
+    if (Array.isArray(pos)) {
+      pos = pos.find((p: any) => p.vault_id === VAULT_ID) || pos[0];
+    } else if (Array.isArray(pos?.data)) {
+      pos = pos.data.find((p: any) => p.vault_id === VAULT_ID) || pos.data[0];
+    }
+
+    const totalDeposited = pos?.total_deposited
+      ? Number(pos.total_deposited) / divisor
       : 0;
-    const totalWithdrawn = positionData?.total_withdrawn
-      ? Number(positionData.total_withdrawn) / divisor
+    const totalWithdrawn = pos?.total_withdrawn
+      ? Number(pos.total_withdrawn) / divisor
       : 0;
-    const assetsInVault = positionData?.assets_in_vault
-      ? Number(positionData.assets_in_vault) / divisor
+    const assetsInVault = pos?.assets_in_vault
+      ? Number(pos.assets_in_vault) / divisor
       : 0;
     const earnedYield = assetsInVault - (totalDeposited - totalWithdrawn);
 
