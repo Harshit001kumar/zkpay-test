@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import { getTransactionByHash, TransactionRecord } from "@/lib/history";
 import { ArrowRight, ExternalLink } from "lucide-react";
+import DecryptedText from "@/components/ui/DecryptedText";
 
 export default function TransactionReceipt() {
   const params = useParams();
@@ -236,7 +237,9 @@ export default function TransactionReceipt() {
               >
                 <div className="flex flex-col">
                   <span className="font-label-caps text-[9px] font-bold text-[#909097] uppercase tracking-tighter mb-1">Transaction Hash</span>
-                  <span className="text-[12px] font-mono text-[#c6c6cd] font-semibold tracking-tight">{shortHash}</span>
+                  <span className="text-[12px] font-mono text-[#c6c6cd] font-semibold tracking-tight">
+                    <DecryptedText text={shortHash} speed={40} />
+                  </span>
                 </div>
                 <ExternalLink className="w-5 h-5 text-[#c0c6de] group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
               </a>

@@ -10,6 +10,7 @@ import { ERC20_ABI } from "@/lib/abi";
 import { MerchantData } from "@/lib/types";
 import { saveTransaction } from "@/lib/history";
 import { PAYMENT_ID_FIELDS } from "@p2pdotme/sdk/country";
+import DecryptedText from "@/components/ui/DecryptedText";
 import {
   getOfframpLimits,
   getOfframpPrice,
@@ -444,7 +445,9 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
           <div className="w-full bg-white/[0.03] border border-white/10 rounded-xl p-5 flex flex-col gap-3 text-sm">
             <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
               <span>RECIPIENT UPI</span>
-              <span className="text-[#e5e2e3] font-mono font-semibold truncate max-w-[200px]">{targetUpi}</span>
+              <span className="text-[#e5e2e3] font-mono font-semibold truncate max-w-[200px]">
+                <DecryptedText text={targetUpi} speed={30} />
+              </span>
             </div>
             <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
               <span>PAYMENT AMOUNT</span>

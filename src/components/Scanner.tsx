@@ -277,7 +277,7 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
           
           {/* Inner Viewfinder Container */}
           <div className="absolute inset-[12px] rounded-full overflow-hidden bg-black flex items-center justify-center z-10">
-            {!cameraError && <div className="scan-line pointer-events-none"></div>}
+            {!cameraError && <div className="scanner-laser pointer-events-none"></div>}
             <div className="crosshair ch-h pointer-events-none"></div>
             <div className="crosshair ch-v pointer-events-none"></div>
             

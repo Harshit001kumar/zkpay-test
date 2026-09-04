@@ -12,6 +12,7 @@ import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
 import { ShinyText } from "@/components/ui/ShinyText";
 import { ShimmerButton } from "@/components/ui/ShimmerButton";
+import { CountUp } from "@/components/ui/CountUp";
 
 interface VaultInfo {
   address?: string | null;
@@ -576,7 +577,7 @@ export default function EarnFlow() {
                 <div className="w-6 h-6 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin mt-1" />
               ) : (
                 <div className="font-display-xl text-2xl sm:text-4xl font-bold text-[#e5e2e3] tracking-tight">
-                  {displayPosition}
+                  <CountUp to={effectiveAssetsInVault} prefix="$" decimals={2} />
                   <span className="text-xs font-normal text-[#909097] ml-1.5 font-mono">USDC</span>
                 </div>
               )}
@@ -587,7 +588,7 @@ export default function EarnFlow() {
                 ACCRUED YIELD
               </span>
               <div className="font-display-xl text-2xl sm:text-4xl font-bold text-[#c0c6de] tracking-tight">
-                {displayYield}
+                <CountUp to={position ? Math.max(0, position.earnedYield) : 0} prefix="+$" decimals={2} />
                 <span className="text-xs font-normal text-[#909097] ml-1.5 font-mono">USDC</span>
               </div>
             </div>

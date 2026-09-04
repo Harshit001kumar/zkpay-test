@@ -11,6 +11,7 @@ import { formatUnits, erc20Abi } from "viem";
 import { CONTRACTS, CHAIN } from "@/lib/constants";
 
 import PayLinkModal from "@/components/PayLinkModal";
+import { CountUp } from "@/components/ui/CountUp";
 
 const ScanAndPayFlow = dynamic(() => import("@/components/ScanAndPayFlow"), { ssr: false });
 const DepositFlow = dynamic(() => import("@/components/DepositFlow"), { ssr: false });
@@ -62,7 +63,7 @@ export default function Dashboard() {
               <div className="h-px w-8 bg-white/20"></div>
             </div>
             <h1 className="font-display-xl text-[#e5e2e3] text-5xl md:text-[80px] tracking-tighter mb-12 font-medium">
-              ${balance} <span className="text-[#c6c6cd]/40 font-extralight text-3xl md:text-[80px]">USDC</span>
+              <CountUp to={Number(balance)} prefix="$" decimals={2} /> <span className="text-[#c6c6cd]/40 font-extralight text-3xl md:text-[80px]">USDC</span>
             </h1>
             <div className="grid grid-cols-2 md:flex md:items-center gap-4 md:gap-16 pt-8 border-t border-white/10">
               <div className="flex flex-col gap-1">
