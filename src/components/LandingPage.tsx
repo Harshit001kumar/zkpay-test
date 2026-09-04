@@ -1,521 +1,460 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState, useRef, MouseEvent } from "react";
+import React, { useState, useRef, MouseEvent } from "react";
 import { 
   QrCode, 
-  Zap, 
   ShieldCheck, 
-  ArrowRight, 
   TrendingUp, 
-  Wallet,
-  Coins,
-  ArrowRightLeft,
+  ArrowRightLeft, 
+  CheckCircle2, 
+  ArrowRight, 
   Sparkles,
-  Smartphone,
-  CheckCircle2,
+  ExternalLink,
+  ChevronRight,
+  CreditCard,
   Lock,
   Layers
 } from "lucide-react";
+import { SpotlightCard } from "@/components/ui/SpotlightCard";
+import { ShimmerButton } from "@/components/ui/ShimmerButton";
+import { ShinyText } from "@/components/ui/ShinyText";
+import { CountUp } from "@/components/ui/CountUp";
+import { DecryptedText } from "@/components/ui/DecryptedText";
 
-export default function LandingPage({ login }: { login: () => void }) {
-  const [upiAmount, setUpiAmount] = useState<number>(500);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  const [tilt, setTilt] = useState({ x: 0, y: 0 });
-  const phoneRef = useRef<HTMLDivElement>(null);
+interface LandingPageProps {
+  login: () => void;
+}
 
-  // React Bits TiltedCard 3D Interaction
-  const handlePhoneMouseMove = (e: MouseEvent<HTMLDivElement>) => {
-    if (!phoneRef.current) return;
-    const rect = phoneRef.current.getBoundingClientRect();
+const PRESET_AMOUNTS = [
+  { inr: 100, label: "₹100", usdc: 1.15 },
+  { inr: 500, label: "₹500", usdc: 5.73 },
+  { inr: 1000, label: "₹1,000", usdc: 11.45 },
+  { inr: 2500, label: "₹2,500", usdc: 28.63 },
+];
+
+export default function LandingPage({ login }: LandingPageProps) {
+  const [selectedInr, setSelectedInr] = useState<number>(500);
+  const [waitlistJoined, setWaitlistJoined] = useState<boolean>(false);
+  const [waitlistCount, setWaitlistCount] = useState<number>(42109);
+
+  // 3D Card Tilt State
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [cardTilt, setCardTilt] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const handleCardMouseMove = (e: MouseEvent<HTMLDivElement>) => {
+    if (!cardRef.current) return;
+    const rect = cardRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left - rect.width / 2;
     const y = e.clientY - rect.top - rect.height / 2;
-    setTilt({
-      x: -(y / rect.height) * 20,
-      y: (x / rect.width) * 20
+    setCardTilt({
+      x: -(y / (rect.height / 2)) * 14,
+      y: (x / (rect.width / 2)) * 14,
     });
   };
 
-  const handlePhoneMouseLeave = () => {
-    setTilt({ x: 0, y: 0 });
+  const handleCardMouseLeave = () => {
+    setCardTilt({ x: 0, y: 0 });
   };
 
-  // React Bits Spotlight Card Handler
-  const handleSpotlightMouseMove = (e: MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    e.currentTarget.style.setProperty("--mouse-x", `${x}px`);
-    e.currentTarget.style.setProperty("--mouse-y", `${y}px`);
+  const handleJoinWaitlist = () => {
+    if (!waitlistJoined) {
+      setWaitlistJoined(true);
+      setWaitlistCount((prev) => prev + 1);
+    }
   };
 
-  const usdcEquivalent = (upiAmount / 87.5).toFixed(2);
-  const feeEquivalent = (Number(usdcEquivalent) * 0.01).toFixed(2);
+  const usdcRate = 87.5;
+  const usdcEquivalent = Number((selectedInr / usdcRate).toFixed(2));
+  const feeEquivalent = Number((usdcEquivalent * 0.01).toFixed(2));
+  const totalDebit = Number((usdcEquivalent + feeEquivalent).toFixed(2));
 
   return (
-    <div className="font-body-md text-body-md min-h-screen flex flex-col bg-[#0e0e0f] text-[#e5e2e3] selection:bg-[#c0c6de]/30 relative overflow-x-hidden">
-      <style dangerouslySetInnerHTML={{__html: `
-        /* React Bits Spotlight Effect */
-        .spotlight-card {
-          position: relative;
-          background: rgba(255, 255, 255, 0.03);
-          backdrop-filter: blur(40px);
-          -webkit-backdrop-filter: blur(40px);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          overflow: hidden;
-        }
-        .spotlight-card::before {
-          content: "";
-          position: absolute;
-          top: 0; left: 0; right: 0; bottom: 0;
-          background: radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(192, 198, 222, 0.15), transparent 40%);
-          opacity: 0;
-          transition: opacity 0.3s ease;
-          pointer-events: none;
-        }
-        .spotlight-card:hover::before {
-          opacity: 1;
-        }
+    <div className="min-h-screen bg-[#0e0e0f] text-[#e5e2e3] flex flex-col items-center selection:bg-[#c0c6de]/20 relative overflow-x-hidden font-sans">
+      {/* Background Ambience */}
+      <div className="fixed inset-0 pointer-events-none z-0">
+        <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[390px] h-[390px] rounded-full bg-gradient-to-b from-[#c0c6de]/10 to-transparent blur-[120px]" />
+        <div className="absolute bottom-[10%] left-1/2 -translate-x-1/2 w-[320px] h-[320px] rounded-full bg-gradient-to-t from-[#c0c6de]/5 to-transparent blur-[100px]" />
+      </div>
 
-        /* React Bits Shiny Text Effect */
-        .shiny-text {
-          background: linear-gradient(
-            120deg,
-            rgba(255, 255, 255, 0.7) 0%,
-            rgba(255, 255, 255, 1) 25%,
-            rgba(192, 198, 222, 1) 50%,
-            rgba(255, 255, 255, 1) 75%,
-            rgba(255, 255, 255, 0.7) 100%
-          );
-          background-size: 200% auto;
-          color: #000;
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          animation: shine 4s linear infinite;
-        }
-        @keyframes shine {
-          to {
-            background-position: 200% center;
-          }
-        }
-
-        /* React Bits Star Border Glow Button */
-        .star-border-btn {
-          position: relative;
-          background: rgba(192, 198, 222, 0.95);
-          color: #151b2d;
-          border-radius: 14px;
-          z-index: 1;
-          overflow: hidden;
-          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .star-border-btn::after {
-          content: "";
-          position: absolute;
-          inset: -2px;
-          background: linear-gradient(90deg, #ffffff, #c0c6de, #72778d, #ffffff);
-          background-size: 300% 300%;
-          z-index: -1;
-          animation: starBorder 3s linear infinite;
-          border-radius: 16px;
-        }
-        @keyframes starBorder {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-
-        /* Viewfinder Laser Scan Line */
-        .laser-line {
-          position: absolute;
-          width: 100%;
-          height: 2px;
-          background: linear-gradient(90deg, transparent 0%, #c0c6de 50%, transparent 100%);
-          box-shadow: 0 0 15px #c0c6de;
-          animation: scan 2.5s ease-in-out infinite alternate;
-        }
-        @keyframes scan {
-          0% { top: 10%; }
-          100% { top: 85%; }
-        }
-      `}} />
-
-      {/* Top Navbar */}
-      <header className="fixed top-0 left-0 w-full z-50 bg-[#0e0e0f]/80 backdrop-blur-xl border-b border-white/10 h-20 transition-all duration-300">
-        <div className="flex justify-between items-center max-w-7xl mx-auto px-6 md:px-12 h-full">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={login}>
-            <div className="w-10 h-10 rounded-full bg-white/5 border border-white/15 flex items-center justify-center">
-              <span className="material-symbols-outlined text-[#c0c6de] text-[22px]">security</span>
-            </div>
-            <span className="font-headline-lg text-2xl font-bold tracking-tighter text-white">ZkPay</span>
-          </div>
-
-          <nav className="hidden md:flex gap-8 items-center font-label-caps text-[11px] tracking-[0.2em] text-[#c6c6cd]">
-            <a href="#scan-demo" className="hover:text-white transition-colors">SCAN DEMO</a>
-            <a href="#calculator" className="hover:text-white transition-colors">CALCULATOR</a>
-            <a href="#features" className="hover:text-white transition-colors">FEATURES</a>
-            <a href="#card" className="hover:text-white transition-colors">OBSIDIAN CARD</a>
-          </nav>
-
-          <button 
-            onClick={login}
-            className="star-border-btn px-6 py-2.5 font-label-caps text-[12px] font-bold uppercase tracking-[0.1em] hover:scale-105 active:scale-95 shadow-xl"
-          >
-            Launch App
-          </button>
-        </div>
-      </header>
-
-      <main className="flex-grow pt-28">
-        
-        {/* HERO SECTION: Smartphone Scanner Viewfinder Focus */}
-        <section className="relative min-h-[90vh] flex flex-col items-center justify-center px-6 py-12 overflow-hidden">
-          
-          {/* Ambient Background Radial Mesh */}
-          <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-[#c0c6de]/5 rounded-full blur-[150px] pointer-events-none"></div>
-
-          <div className="relative z-10 max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-            
-            {/* Left Column: Headlines & Call-to-Actions */}
-            <div className="lg:col-span-7 text-left flex flex-col items-start">
-              
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full spotlight-card mb-6 border border-white/10 text-xs text-[#c0c6de] font-label-caps tracking-widest uppercase">
-                <Sparkles className="w-3.5 h-3.5 text-[#c0c6de]" />
-                Pure Scan & Pay Protocol • Built on Base Chain
+      {/* Main Mobile Frame (390px - 430px Responsive Shell) */}
+      <div className="w-full max-w-[430px] relative z-10 flex flex-col pb-28 px-4">
+        {/* ─── Top App Bar ─── */}
+        <header className="fixed top-0 left-0 right-0 z-50 bg-[#131315]/85 backdrop-blur-[40px] border-b border-white/[0.08]">
+          <div className="max-w-[430px] mx-auto h-16 px-4 flex items-center justify-between">
+            {/* Logo */}
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-white/[0.06] border border-white/15 flex items-center justify-center text-[#c0c6de]">
+                <ShieldCheck className="w-4 h-4 text-[#c0c6de]" />
               </div>
-
-              <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold tracking-tighter leading-none mb-6 text-white">
-                Scan Any UPI QR. <br />
-                Pay with <span className="shiny-text">USDC</span>.
-              </h1>
-
-              <p className="text-lg md:text-xl text-[#c6c6cd] max-w-xl mb-8 leading-relaxed font-body-lg">
-                Point your camera at any merchant UPI QR code across India. ZkPay instantly converts your USDC on Base and settles INR directly into the merchant's bank account.
-              </p>
-
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md mb-3">
-                <button 
-                  onClick={login}
-                  className="star-border-btn py-4 px-8 font-label-caps text-[13px] font-bold uppercase tracking-[0.1em] flex items-center justify-center gap-2 shadow-2xl active:scale-95"
-                >
-                  <QrCode className="w-4 h-4" />
-                  Scan UPI QR Now
-                </button>
-                
-                <button 
-                  onClick={login}
-                  className="spotlight-card text-white border border-white/20 py-4 px-8 rounded-xl font-label-caps text-[13px] font-bold uppercase tracking-[0.1em] flex items-center justify-center gap-2 hover:bg-white/10 active:scale-95 transition-all"
-                >
-                  <Wallet className="w-4 h-4 text-[#c0c6de]" />
-                  Connect Wallet
-                </button>
-              </div>
-
-              {/* Legal Agreement Consent Notice */}
-              <p className="text-[11px] text-[#909097] mb-6 leading-relaxed">
-                By connecting, you agree to ZkPay&apos;s{" "}
-                <Link href="/terms" className="text-[#c0c6de] hover:underline underline-offset-2">
-                  Terms of Service
-                </Link>{" "}
-                and{" "}
-                <Link href="/privacy" className="text-[#c0c6de] hover:underline underline-offset-2">
-                  Privacy Policy
-                </Link>.
-              </p>
-
-              {/* Quick Feature Chips */}
-              <div className="flex flex-wrap gap-4 text-xs text-[#909097] font-label-caps tracking-wider">
-                <div className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  Zero KYC up to $100
-                </div>
-                <div className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
-                  <Zap className="w-3.5 h-3.5 text-[#c0c6de]" />
-                  1% Fixed Platform Fee
-                </div>
-              </div>
-
+              <span className="font-bold text-lg tracking-tight text-white">ZkPay</span>
             </div>
 
-            {/* Right Column: Native Obsidian Glass Smartphone Scanner */}
-            <div className="lg:col-span-5 flex justify-center items-center relative">
-              {/* Grounding Ambient Glow behind Phone */}
-              <div className="absolute w-[280px] h-[480px] bg-gradient-to-tr from-[#c0c6de]/10 via-[#c0c6de]/5 to-emerald-500/10 rounded-[56px] blur-3xl pointer-events-none -z-10 animate-pulse"></div>
-
-              <div 
-                ref={phoneRef}
-                onMouseMove={handlePhoneMouseMove}
-                onMouseLeave={handlePhoneMouseLeave}
-                style={{
-                  transform: `perspective(1000px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
-                  transition: "transform 0.1s ease-out"
-                }}
-                className="relative w-[310px] sm:w-[330px] aspect-[9/18.5] rounded-[48px] p-3 bg-gradient-to-b from-[#28282c] via-[#141416] to-[#1c1c1f] shadow-[0_30px_100px_rgba(0,0,0,0.95),inset_0_1px_1px_rgba(255,255,255,0.3),inset_0_-1px_1px_rgba(0,0,0,0.8)] border border-white/15 select-none cursor-pointer group"
+            {/* Network Pill & Launch Action */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/10 text-[11px] font-mono text-[#c0c6de]">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Base Mainnet</span>
+              </div>
+              <button
+                onClick={login}
+                className="text-xs font-semibold text-[#131315] bg-[#e5e2e3] hover:bg-white active:scale-95 transition-all rounded-lg px-3 py-1.5 shadow-sm"
               >
-                {/* Smartphone Dynamic Island */}
-                <div className="absolute top-5 left-1/2 -translate-x-1/2 w-24 h-4 bg-black rounded-full z-30 flex items-center justify-between px-3 border border-white/5">
-                  <div className="w-2 h-2 rounded-full bg-[#1b1b1d] border border-white/10"></div>
-                  <div className="w-1.5 h-1.5 rounded-full bg-[#0e0e0f]"></div>
-                </div>
+                Launch
+              </button>
+            </div>
+          </div>
+        </header>
 
-                {/* Smartphone Screen Viewfinder */}
-                <div className="w-full h-full rounded-[38px] bg-[#0c0c0e] border border-white/10 relative overflow-hidden flex flex-col justify-between p-5 pt-8">
-                  {/* Subtle Screen Sheen Reflection */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-white/[0.04] via-transparent to-transparent pointer-events-none z-20"></div>
+        {/* ─── Main Content Body ─── */}
+        <main className="pt-20 flex flex-col gap-6 w-full">
+          {/* ─── Hero Section ─── */}
+          <section className="flex flex-col gap-4 text-center mt-2">
+            {/* Security Pill */}
+            <div className="flex justify-center">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.03] border border-white/10 text-[11px] font-mono text-[#c0c6de]">
+                <Sparkles className="w-3 h-3 text-[#c0c6de]" />
+                <DecryptedText text="ZERO KYC UNDER $100 • 2-STEP ESCROW" speed={30} />
+              </div>
+            </div>
 
-                  {/* Top Status inside Phone */}
-                  <div className="flex justify-between items-center z-20">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-4 h-4 rounded-full bg-[#c0c6de]/20 border border-[#c0c6de]/40 flex items-center justify-center">
-                        <div className="w-1.5 h-1.5 rounded-full bg-[#c0c6de]"></div>
-                      </div>
-                      <span className="font-bold text-xs tracking-tight text-white">
-                        <span className="text-[#c0c6de]">Zk</span>Pay
-                      </span>
-                    </div>
-                    <span className="flex items-center gap-1.5 text-[9px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full tracking-wider">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                      BASE MAINNET
+            {/* Asymmetrical Editorial Headline */}
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white leading-[1.15]">
+              Scan Any UPI QR. <br />
+              <ShinyText text="Pay with USDC." className="text-3xl sm:text-4xl font-extrabold" />
+            </h1>
+
+            <p className="text-xs sm:text-sm text-[#909097] max-w-[340px] mx-auto leading-relaxed">
+              Pay Chai Point, auto rickshaws, and merchants across India instantly using USDC on Base Mainnet.
+            </p>
+
+            {/* ─── Mobile HUD Scanner Preview Card ─── */}
+            <div className="mt-2">
+              <SpotlightCard className="p-4 border-white/15 bg-[#131315]/90 rounded-2xl relative overflow-hidden">
+                {/* Visual Viewport Reticle */}
+                <div className="relative aspect-square w-full rounded-xl bg-[#0e0e10] border border-white/10 flex items-center justify-center overflow-hidden">
+                  {/* Razor Corner Reticle Brackets */}
+                  <div className="absolute top-3 left-3 w-5 h-5 border-t-2 border-l-2 border-[#c0c6de] rounded-tl-sm pointer-events-none" />
+                  <div className="absolute top-3 right-3 w-5 h-5 border-t-2 border-r-2 border-[#c0c6de] rounded-tr-sm pointer-events-none" />
+                  <div className="absolute bottom-3 left-3 w-5 h-5 border-b-2 border-l-2 border-[#c0c6de] rounded-bl-sm pointer-events-none" />
+                  <div className="absolute bottom-3 right-3 w-5 h-5 border-b-2 border-r-2 border-[#c0c6de] rounded-br-sm pointer-events-none" />
+
+                  {/* Scanning Laser Beam */}
+                  <div className="scanner-laser" />
+
+                  {/* Vector QR Matrix Mockup */}
+                  <div className="opacity-25 flex flex-col items-center gap-2 pointer-events-none">
+                    <QrCode className="w-32 h-32 text-[#c0c6de]" strokeWidth={1.5} />
+                    <span className="font-mono text-[10px] text-[#c0c6de] tracking-widest uppercase">
+                      UPI // RETICLE_ACTIVE
                     </span>
                   </div>
 
-                  {/* QR Code Scanner Viewfinder Box */}
-                  <div id="scan-demo" className="relative my-auto w-full aspect-square bg-[#121215]/90 backdrop-blur-md rounded-2xl border border-white/15 p-5 flex flex-col items-center justify-center overflow-hidden shadow-[inset_0_0_24px_rgba(0,0,0,0.8)] group-hover:border-[#c0c6de]/50 transition-colors">
-                    {/* Viewfinder Reticle Corners */}
-                    <div className="absolute top-2.5 left-2.5 w-5 h-5 border-t-2 border-l-2 border-[#c0c6de] rounded-tl-sm shadow-[0_0_8px_rgba(192,198,222,0.4)]"></div>
-                    <div className="absolute top-2.5 right-2.5 w-5 h-5 border-t-2 border-r-2 border-[#c0c6de] rounded-tr-sm shadow-[0_0_8px_rgba(192,198,222,0.4)]"></div>
-                    <div className="absolute bottom-2.5 left-2.5 w-5 h-5 border-b-2 border-l-2 border-[#c0c6de] rounded-bl-sm shadow-[0_0_8px_rgba(192,198,222,0.4)]"></div>
-                    <div className="absolute bottom-2.5 right-2.5 w-5 h-5 border-b-2 border-r-2 border-[#c0c6de] rounded-br-sm shadow-[0_0_8px_rgba(192,198,222,0.4)]"></div>
+                  {/* Live Transaction Readout Overlay */}
+                  <div className="absolute bottom-3 left-3 right-3 bg-[#131315]/90 backdrop-blur-xl border border-white/20 rounded-xl p-3 text-left shadow-2xl">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                        <span className="font-semibold text-xs text-white">Chai Point, Indiranagar</span>
+                      </div>
+                      <span className="font-mono text-xs font-bold text-[#c0c6de]">₹150.00</span>
+                    </div>
 
-                    {/* Laser Scan Line */}
-                    <div className="scanner-laser z-20"></div>
+                    <div className="w-full h-px bg-white/10 my-2" />
 
-                    {/* Crisp Vector Stylized UPI QR Code */}
-                    <svg viewBox="0 0 100 100" className="w-36 h-36 opacity-90 fill-white" shapeRendering="crispEdges">
-                      {/* Top-Left Position Marker */}
-                      <rect x="10" y="10" width="26" height="26" rx="4" fill="none" stroke="white" strokeWidth="4" />
-                      <rect x="18" y="18" width="10" height="10" rx="2" fill="#c0c6de" />
-                      
-                      {/* Top-Right Position Marker */}
-                      <rect x="64" y="10" width="26" height="26" rx="4" fill="none" stroke="white" strokeWidth="4" />
-                      <rect x="72" y="18" width="10" height="10" rx="2" fill="#c0c6de" />
-                      
-                      {/* Bottom-Left Position Marker */}
-                      <rect x="10" y="64" width="26" height="26" rx="4" fill="none" stroke="white" strokeWidth="4" />
-                      <rect x="18" y="72" width="10" height="10" rx="2" fill="#c0c6de" />
-
-                      {/* Timing & Data Elements */}
-                      <rect x="42" y="12" width="5" height="5" />
-                      <rect x="52" y="12" width="5" height="5" />
-                      <rect x="42" y="24" width="5" height="5" />
-                      <rect x="48" y="20" width="8" height="5" />
-                      <rect x="12" y="42" width="5" height="5" />
-                      <rect x="22" y="44" width="6" height="5" />
-                      <rect x="14" y="52" width="5" height="5" />
-
-                      {/* Center Data Matrix */}
-                      <rect x="40" y="38" width="22" height="22" rx="3" fill="#1b1b20" stroke="rgba(192,198,222,0.4)" strokeWidth="1.5" />
-                      <circle cx="51" cy="49" r="4" fill="#c0c6de" />
-                      
-                      <rect x="68" y="44" width="8" height="6" />
-                      <rect x="80" y="48" width="6" height="6" />
-                      <rect x="74" y="58" width="8" height="6" />
-                      <rect x="42" y="66" width="6" height="6" />
-                      <rect x="52" y="72" width="8" height="6" />
-                      <rect x="44" y="80" width="10" height="6" />
-                      <rect x="68" y="72" width="8" height="6" />
-                      <rect x="80" y="80" width="8" height="6" />
-                    </svg>
-
-                    <div className="absolute bottom-2.5 bg-[#17171a]/95 backdrop-blur-md border border-white/10 px-3 py-1 rounded-full text-[9px] text-[#c0c6de] font-mono font-bold z-20 flex items-center gap-1.5 shadow-lg">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#c0c6de] animate-ping"></span>
-                      SCANNING MERCHANT QR...
+                    <div className="flex justify-between items-center text-[11px]">
+                      <span className="text-[#909097] font-mono">Settling on Base</span>
+                      <span className="text-white font-mono font-bold">≈ 1.71 USDC</span>
                     </div>
                   </div>
-
-                  {/* Bottom Payment Preview inside Phone */}
-                  <div className="bg-white/[0.04] backdrop-blur-2xl border border-white/15 p-3.5 rounded-2xl z-20 text-left space-y-1.5 shadow-xl">
-                    <div className="flex justify-between items-center text-[10px] text-[#909097] tracking-wider uppercase font-sans font-semibold">
-                      <span>MERCHANT</span>
-                      <span className="text-white font-medium">Chai Point (UPI)</span>
-                    </div>
-                    <div className="flex justify-between items-baseline pt-0.5">
-                      <span className="text-2xl font-black text-white font-mono tracking-tight">₹150.00</span>
-                      <span className="text-xs font-bold text-[#c0c6de] font-mono bg-white/5 border border-white/10 px-2.5 py-0.5 rounded-md">
-                        1.71 USDC
-                      </span>
-                    </div>
-                  </div>
-
                 </div>
-              </div>
+
+                {/* Primary Scan Action */}
+                <div className="mt-4">
+                  <ShimmerButton
+                    onClick={login}
+                    className="w-full py-3.5 rounded-xl font-bold tracking-wider text-xs"
+                  >
+                    <QrCode className="w-4 h-4 mr-1.5 inline-block" />
+                    SCAN UPI QR NOW
+                  </ShimmerButton>
+                </div>
+              </SpotlightCard>
+            </div>
+          </section>
+
+          {/* ─── Quick Conversion Calculator Strip ─── */}
+          <section className="flex flex-col gap-2.5">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[11px] font-mono text-[#909097] uppercase tracking-wider">
+                Live Exchange (1% Protocol Fee)
+              </span>
+              <span className="text-[11px] font-mono text-[#c0c6de]">1 USDC = ₹87.50</span>
             </div>
 
-          </div>
-        </section>
-
-        {/* REACT BITS INTERACTIVE CALCULATOR */}
-        <section id="calculator" className="py-20 px-6 border-t border-white/5 bg-[#0e0e0f]/60">
-          <div className="max-w-4xl mx-auto text-center">
-            <span className="font-label-caps text-[11px] text-[#909097] uppercase tracking-[0.2em] font-bold">Live Conversion Simulator</span>
-            <h2 className="text-3xl md:text-5xl font-bold text-white tracking-tighter mt-2 mb-12">Scan & Pay Calculator</h2>
-
-            <div className="spotlight-card p-8 md:p-12 rounded-3xl text-left flex flex-col md:flex-row gap-8 items-center" onMouseMove={handleSpotlightMouseMove}>
-              
-              {/* Left Controls */}
-              <div className="flex-1 w-full space-y-6">
-                <div>
-                  <label className="font-label-caps text-xs text-[#c0c6de] tracking-widest font-bold block mb-3">
-                    SELECT PAYMENT AMOUNT (INR)
-                  </label>
-                  <div className="text-4xl font-extrabold text-white font-mono mb-4">
-                    ₹ {upiAmount.toLocaleString("en-IN")}
-                  </div>
-                  <input 
-                    type="range" 
-                    min={100} 
-                    max={8500} 
-                    step={100}
-                    value={upiAmount}
-                    onChange={(e) => setUpiAmount(Number(e.target.value))}
-                    className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#c0c6de]"
-                  />
-                  <div className="flex justify-between text-[10px] font-mono text-[#909097] mt-2">
-                    <span>₹100</span>
-                    <span>₹8,500 ($100 Limit)</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Calculation Display */}
-              <div className="flex-1 w-full bg-black/40 p-6 rounded-2xl border border-white/10 space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="font-label-caps text-xs text-[#909097]">USDC Debited (Base)</span>
-                  <span className="font-mono text-xl font-bold text-white">{usdcEquivalent} USDC</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="font-label-caps text-xs text-[#909097]">1% Platform Fee</span>
-                  <span className="font-mono text-sm text-[#c0c6de]">{feeEquivalent} USDC</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="font-label-caps text-xs text-[#909097]">KYC Status</span>
-                  <span className="font-label-caps text-[10px] text-emerald-400 font-bold bg-emerald-400/10 px-2 py-0.5 rounded-full">ZERO KYC</span>
-                </div>
-                <div className="border-t border-white/10 pt-4 flex justify-between items-center">
-                  <span className="font-label-caps text-xs text-[#909097]">Merchant Receives</span>
-                  <span className="font-mono text-xl font-bold text-emerald-400">₹ {upiAmount.toLocaleString("en-IN")} INR</span>
-                </div>
-
-                <button onClick={login} className="w-full star-border-btn py-3 font-label-caps text-xs font-bold uppercase tracking-wider mt-2">
-                  Test This Amount
+            {/* Amount Selection Chips */}
+            <div className="grid grid-cols-4 gap-2">
+              {PRESET_AMOUNTS.map((item) => (
+                <button
+                  key={item.inr}
+                  onClick={() => setSelectedInr(item.inr)}
+                  className={`py-2.5 px-2 rounded-xl flex flex-col items-center justify-center transition-all border ${
+                    selectedInr === item.inr
+                      ? "bg-white/[0.08] border-[#c0c6de] text-white shadow-sm scale-[1.02]"
+                      : "bg-white/[0.02] border-white/10 text-[#909097] hover:border-white/20"
+                  }`}
+                >
+                  <span className="font-mono text-xs font-bold">{item.label}</span>
+                  <span className="font-mono text-[10px] text-[#c0c6de] mt-0.5">{item.usdc} $</span>
                 </button>
-              </div>
-
-            </div>
-          </div>
-        </section>
-
-        {/* REACT BITS SPOTLIGHT BENTO FEATURES GRID */}
-        <section id="features" className="py-24 px-6 border-t border-white/5">
-          <div className="max-w-6xl mx-auto">
-            <div className="text-center mb-16">
-              <span className="font-label-caps text-[11px] text-[#909097] uppercase tracking-[0.2em] font-bold">Architecture</span>
-              <h2 className="text-3xl md:text-5xl font-bold text-white tracking-tighter mt-2">Protocol Capabilities</h2>
+              ))}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-              {/* Feature 1 */}
-              <div className="md:col-span-7 spotlight-card p-8 md:p-10 rounded-2xl flex flex-col justify-between" onMouseMove={handleSpotlightMouseMove}>
-                <div className="w-12 h-12 rounded-xl bg-[#c0c6de]/10 flex items-center justify-center text-[#c0c6de] mb-8">
-                  <QrCode className="w-6 h-6" />
-                </div>
-                <div>
-                  <span className="font-label-caps text-[10px] text-[#909097] uppercase tracking-widest font-bold">Primary Retail Engine</span>
-                  <h3 className="text-2xl font-bold text-white mt-1 mb-2">Instant UPI QR Scanning</h3>
-                  <p className="text-[#c6c6cd] text-sm leading-relaxed">Pay at millions of stores across India directly from your self-custodial Web3 wallet. Works with Google Pay, PhonePe, and Paytm merchant QRs.</p>
-                </div>
+            {/* Calculated Breakdown Card */}
+            <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-between text-xs font-mono">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[#909097] text-[11px]">Merchant receives</span>
+                <span className="text-white font-bold text-sm">₹{selectedInr.toLocaleString()}</span>
               </div>
-
-              {/* Feature 2 */}
-              <div className="md:col-span-5 spotlight-card p-8 md:p-10 rounded-2xl flex flex-col justify-between" onMouseMove={handleSpotlightMouseMove}>
-                <div className="w-12 h-12 rounded-xl bg-[#c0c6de]/10 flex items-center justify-center text-[#c0c6de] mb-8">
-                  <ShieldCheck className="w-6 h-6" />
-                </div>
-                <div>
-                  <span className="font-label-caps text-[10px] text-[#909097] uppercase tracking-widest font-bold">Zero Friction</span>
-                  <h3 className="text-2xl font-bold text-white mt-1 mb-2">Zero KYC Up To $100</h3>
-                  <p className="text-[#c6c6cd] text-sm leading-relaxed">No passport or identity uploads needed. Start scanning and paying immediately upon connecting your wallet.</p>
-                </div>
-              </div>
-
-              {/* Feature 3 */}
-              <div className="md:col-span-5 spotlight-card p-8 md:p-10 rounded-2xl flex flex-col justify-between" onMouseMove={handleSpotlightMouseMove}>
-                <div className="w-12 h-12 rounded-xl bg-[#c0c6de]/10 flex items-center justify-center text-[#c0c6de] mb-8">
-                  <ArrowRightLeft className="w-6 h-6" />
-                </div>
-                <div>
-                  <span className="font-label-caps text-[10px] text-[#909097] uppercase tracking-widest font-bold">Cross-Chain Vault</span>
-                  <h3 className="text-2xl font-bold text-white mt-1 mb-2">Deposit ETH, SOL, or BTC</h3>
-                  <p className="text-[#c6c6cd] text-sm leading-relaxed">Deposit tokens from any blockchain. ZkPay converts them to USDC on Base automatically.</p>
-                </div>
-              </div>
-
-              {/* Feature 4 */}
-              <div className="md:col-span-7 spotlight-card p-8 md:p-10 rounded-2xl flex flex-col justify-between" onMouseMove={handleSpotlightMouseMove}>
-                <div className="w-12 h-12 rounded-xl bg-[#c0c6de]/10 flex items-center justify-center text-[#c0c6de] mb-8">
-                  <TrendingUp className="w-6 h-6" />
-                </div>
-                <div>
-                  <span className="font-label-caps text-[10px] text-[#909097] uppercase tracking-widest font-bold">Yield Engine</span>
-                  <h3 className="text-2xl font-bold text-white mt-1 mb-2">Earn Yield While Idle</h3>
-                  <p className="text-[#c6c6cd] text-sm leading-relaxed">Keep your USDC in ZkPay Yield Vaults to earn interest continuously. Your balance remains 100% liquid for instant scan-and-pay transactions.</p>
+              <div className="w-px h-8 bg-white/10" />
+              <div className="flex flex-col gap-0.5 items-end">
+                <span className="text-[#909097] text-[11px]">You pay (USDC + 1% fee)</span>
+                <div className="text-[#c0c6de] font-bold text-sm flex items-center gap-1">
+                  <CountUp to={totalDebit} decimals={2} />
+                  <span className="text-[11px] text-[#909097] font-normal">USDC</span>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        {/* OBSIDIAN CARD WAITLIST SECTION */}
-        <section id="card" className="py-20 px-6 border-t border-white/5 bg-[#0e0e0f]">
-          <div className="max-w-4xl mx-auto spotlight-card p-8 md:p-12 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-8" onMouseMove={handleSpotlightMouseMove}>
-            <div className="flex-1 text-left">
-              <span className="font-label-caps text-[11px] text-[#c0c6de] uppercase tracking-[0.2em] font-bold">Coming Soon</span>
-              <h2 className="text-3xl md:text-4xl font-extrabold text-white mt-2 mb-3">ZkPay Obsidian Card</h2>
-              <p className="text-[#c6c6cd] text-sm leading-relaxed">Spend your USDC balance directly anywhere Visa is accepted worldwide with zero foreign transaction fees.</p>
+          {/* ─── 2-Step Transparent Settlement Flow ─── */}
+          <section className="flex flex-col gap-3">
+            <div className="px-1">
+              <h2 className="text-sm font-bold text-white tracking-tight flex items-center gap-2">
+                <Layers className="w-4 h-4 text-[#c0c6de]" />
+                How ZkPay Settles in 2 Steps
+              </h2>
+              <p className="text-[11px] text-[#909097] mt-0.5">
+                Strictly self-custodial on Base Mainnet. No intermediary bank account lockups.
+              </p>
             </div>
 
-            <button 
-              onClick={login}
-              className="star-border-btn px-8 py-4 font-label-caps text-xs font-bold uppercase tracking-[0.1em] flex items-center gap-2 whitespace-nowrap active:scale-95"
+            <div className="grid grid-cols-1 gap-2.5">
+              {/* Step 1 */}
+              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-white/[0.06] border border-white/20 flex items-center justify-center font-mono text-xs font-bold text-[#c0c6de] shrink-0 mt-0.5">
+                  1
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-white">Approve Transfer & 1% Fee</span>
+                    <span className="text-[10px] font-mono text-[#c0c6de] bg-white/[0.05] px-2 py-0.5 rounded">
+                      Treasury Fee
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#909097] leading-relaxed">
+                    A transparent 1% protocol fee is routed directly to the ZkPay Treasury on Base.
+                  </p>
+                </div>
+              </div>
+
+              {/* Step 2 */}
+              <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-white/[0.06] border border-white/20 flex items-center justify-center font-mono text-xs font-bold text-[#c0c6de] shrink-0 mt-0.5">
+                  2
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-white">P2PKit Escrow Settlement</span>
+                    <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
+                      Instant INR
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#909097] leading-relaxed">
+                    Funds are deposited into decentralized escrow until the UPI merchant receives the INR transfer.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* ─── 4 Core ZkPay Features (Strictly Real Capabilities) ─── */}
+          <section className="flex flex-col gap-3">
+            <div className="px-1">
+              <h2 className="text-sm font-bold text-white tracking-tight">Built for Everyday Crypto Spending</h2>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              {/* Feature 1: Universal UPI */}
+              <SpotlightCard className="p-3.5 rounded-xl border-white/10 bg-white/[0.02] flex flex-col justify-between aspect-square">
+                <div className="w-9 h-9 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center text-[#c0c6de]">
+                  <QrCode className="w-5 h-5" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-bold text-white leading-tight">Universal<br />UPI Scan</span>
+                  <span className="text-[10px] text-[#909097] leading-tight">
+                    Google Pay, PhonePe, Paytm, BHIM.
+                  </span>
+                </div>
+              </SpotlightCard>
+
+              {/* Feature 2: Zero KYC */}
+              <SpotlightCard className="p-3.5 rounded-xl border-white/10 bg-white/[0.02] flex flex-col justify-between aspect-square">
+                <div className="w-9 h-9 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center text-[#c0c6de]">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-bold text-white leading-tight">Zero KYC<br />Under $100</span>
+                  <span className="text-[10px] text-[#909097] leading-tight">
+                    Instant micro-settlement, no passport needed.
+                  </span>
+                </div>
+              </SpotlightCard>
+
+              {/* Feature 3: Moonwell Earn */}
+              <SpotlightCard className="p-3.5 rounded-xl border-white/10 bg-white/[0.02] flex flex-col justify-between aspect-square">
+                <div className="w-9 h-9 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center text-[#c0c6de]">
+                  <TrendingUp className="w-5 h-5" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white leading-tight">Earn Yield</span>
+                    <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1 py-0.5 rounded">
+                      7.56%
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-[#909097] leading-tight">
+                    Moonwell Flagship USDC vault on Base.
+                  </span>
+                </div>
+              </SpotlightCard>
+
+              {/* Feature 4: Instant Cashout */}
+              <SpotlightCard className="p-3.5 rounded-xl border-white/10 bg-white/[0.02] flex flex-col justify-between aspect-square">
+                <div className="w-9 h-9 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center text-[#c0c6de]">
+                  <ArrowRightLeft className="w-5 h-5" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-bold text-white leading-tight">Instant<br />Cashout</span>
+                  <span className="text-[10px] text-[#909097] leading-tight">
+                    Off-ramp USDC directly to your personal UPI ID.
+                  </span>
+                </div>
+              </SpotlightCard>
+            </div>
+          </section>
+
+          {/* ─── Obsidian Card 3D Waitlist Section ─── */}
+          <section className="flex flex-col gap-3 mt-2">
+            <div className="px-1 text-center">
+              <h2 className="text-lg font-bold text-white tracking-tight">The Obsidian Card</h2>
+              <p className="text-[11px] text-[#909097] mt-0.5">
+                Matte black titanium physical card linked to your Base USDC balance.
+              </p>
+            </div>
+
+            {/* 3D Interactive Card Showcase */}
+            <div 
+              ref={cardRef}
+              onMouseMove={handleCardMouseMove}
+              onMouseLeave={handleCardMouseLeave}
+              style={{ perspective: "1000px" }}
+              className="w-full flex justify-center py-2"
             >
-              Join Priority Waitlist
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </section>
+              <div 
+                style={{
+                  transform: `rotateX(${cardTilt.x}deg) rotateY(${cardTilt.y}deg)`,
+                  transition: "transform 0.15s ease-out",
+                  transformStyle: "preserve-3d"
+                }}
+                className="w-full max-w-[340px] aspect-[1.586] rounded-2xl bg-gradient-to-tr from-[#161618] via-[#1f1f22] to-[#121213] border border-white/20 p-5 flex flex-col justify-between relative shadow-[0_20px_50px_rgba(0,0,0,0.9)] overflow-hidden"
+              >
+                {/* Subtle Titanium Sheen */}
+                <div className="absolute inset-0 bg-gradient-to-br from-white/[0.08] via-transparent to-black/40 pointer-events-none" />
 
-      </main>
+                {/* Top of Card */}
+                <div className="flex justify-between items-center relative z-10">
+                  <span className="font-extrabold text-sm tracking-wider text-[#e5e2e3]">ZkPay</span>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-white/20" />
+                    <CreditCard className="w-4 h-4 text-[#c0c6de]" />
+                  </div>
+                </div>
 
-      {/* Footer */}
-      <footer className="py-10 px-6 border-t border-white/10 bg-[#0e0e0f] text-[#909097]">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6 text-xs font-label-caps tracking-widest">
-          <div className="flex items-center gap-3">
-            <span className="font-bold text-white text-sm">ZkPay</span>
-            <span>• Powered by Base Chain & P2PKit</span>
-          </div>
+                {/* EMV Microchip Detail */}
+                <div className="relative z-10">
+                  <div className="w-10 h-8 rounded bg-gradient-to-tr from-[#8f96a3] via-[#c0c6de] to-[#7a8190] border border-white/40 p-1 flex flex-col justify-between opacity-90 shadow-sm">
+                    <div className="w-full h-px bg-black/40" />
+                    <div className="w-full h-px bg-black/40" />
+                    <div className="w-full h-px bg-black/40" />
+                  </div>
+                </div>
 
-          <div className="flex flex-wrap gap-6 items-center">
-            <a href="https://basescan.org/address/0x4cad6eC90e65baBec9335cAd728DDC610c316368" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">BASE CONTRACT</a>
-            <Link href="/docs" className="hover:text-white transition-colors">DEVELOPERS</Link>
-            <Link href="/privacy" className="hover:text-white transition-colors">PRIVACY</Link>
-            <Link href="/terms" className="hover:text-white transition-colors">TERMS</Link>
-          </div>
+                {/* Bottom of Card */}
+                <div className="flex justify-between items-end relative z-10 font-mono">
+                  <div className="flex flex-col">
+                    <span className="text-[9px] text-[#909097] tracking-widest uppercase">Base Obsidian</span>
+                    <span className="text-xs tracking-widest text-[#e5e2e3]">•••• 4892</span>
+                  </div>
+                  <span className="text-[10px] text-[#c0c6de] tracking-widest uppercase">P2P Escrow</span>
+                </div>
+              </div>
+            </div>
 
-          <p>© {new Date().getFullYear()} ZkPay Protocol. All rights reserved.</p>
+            {/* Waitlist Callout */}
+            <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-between">
+              <div className="flex flex-col">
+                <span className="text-xs font-bold text-white">Priority Waitlist</span>
+                <span className="text-[11px] font-mono text-[#909097] mt-0.5">
+                  {waitlistJoined ? (
+                    <span className="text-emerald-400 font-semibold">You're on the list! #{waitlistCount}</span>
+                  ) : (
+                    <span>{waitlistCount.toLocaleString()} ahead of you</span>
+                  )}
+                </span>
+              </div>
+
+              <button
+                onClick={handleJoinWaitlist}
+                disabled={waitlistJoined}
+                className={`px-4 py-2 rounded-xl text-xs font-bold font-mono transition-all ${
+                  waitlistJoined
+                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                    : "bg-white text-[#131315] hover:bg-[#e5e2e3] active:scale-95 shadow-sm"
+                }`}
+              >
+                {waitlistJoined ? "JOINED" : "JOIN NOW"}
+              </button>
+            </div>
+          </section>
+
+          {/* ─── Minimal Trust Footer ─── */}
+          <footer className="mt-4 pt-4 border-t border-white/10 flex flex-col items-center gap-2 text-center text-[11px] text-[#909097]">
+            <div className="flex items-center gap-4 text-[#c0c6de]">
+              <span>Base Mainnet</span>
+              <span>•</span>
+              <span>P2PKit Protocol</span>
+              <span>•</span>
+              <span>Privy Auth</span>
+            </div>
+            <p className="max-w-[280px]">
+              ZkPay is a non-custodial interface. You retain full cryptographic control of your funds.
+            </p>
+          </footer>
+        </main>
+      </div>
+
+      {/* ─── Sticky Thumb-Accessible Bottom Bar (Mobile First) ─── */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#131315]/95 backdrop-blur-[40px] border-t border-white/[0.08] p-3 pb-[calc(14px+env(safe-area-inset-bottom))]">
+        <div className="max-w-[430px] mx-auto">
+          <ShimmerButton
+            onClick={login}
+            className="w-full py-3.5 rounded-xl text-xs font-bold tracking-wider"
+          >
+            <QrCode className="w-4 h-4 mr-2 inline-block" />
+            LAUNCH APP & SCAN QR
+          </ShimmerButton>
         </div>
-      </footer>
-
+      </div>
     </div>
   );
 }
