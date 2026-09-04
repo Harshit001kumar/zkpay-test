@@ -238,8 +238,11 @@ export default function LandingPage({ login }: { login: () => void }) {
 
             </div>
 
-            {/* Right Column: React Bits Tilted Smartphone Viewfinder Display */}
-            <div className="lg:col-span-5 flex justify-center items-center">
+            {/* Right Column: Native Obsidian Glass Smartphone Scanner */}
+            <div className="lg:col-span-5 flex justify-center items-center relative">
+              {/* Grounding Ambient Glow behind Phone */}
+              <div className="absolute w-[280px] h-[480px] bg-gradient-to-tr from-[#c0c6de]/10 via-[#c0c6de]/5 to-emerald-500/10 rounded-[56px] blur-3xl pointer-events-none -z-10 animate-pulse"></div>
+
               <div 
                 ref={phoneRef}
                 onMouseMove={handlePhoneMouseMove}
@@ -248,58 +251,100 @@ export default function LandingPage({ login }: { login: () => void }) {
                   transform: `perspective(1000px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
                   transition: "transform 0.1s ease-out"
                 }}
-                className="relative w-[320px] md:w-[340px] aspect-[9/18] rounded-[48px] p-4 bg-[#1b1b1d] border-4 border-[#353436] shadow-[0_30px_100px_rgba(0,0,0,0.9)] cursor-pointer group select-none"
+                className="relative w-[310px] sm:w-[330px] aspect-[9/18.5] rounded-[48px] p-3 bg-gradient-to-b from-[#28282c] via-[#141416] to-[#1c1c1f] shadow-[0_30px_100px_rgba(0,0,0,0.95),inset_0_1px_1px_rgba(255,255,255,0.3),inset_0_-1px_1px_rgba(0,0,0,0.8)] border border-white/15 select-none cursor-pointer group"
               >
-                {/* Smartphone Dynamic Island / Notch */}
-                <div className="absolute top-7 left-1/2 -translate-x-1/2 w-28 h-5 bg-black rounded-full z-30 flex items-center justify-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#1b1b1d]"></div>
-                  <div className="w-2 h-2 rounded-full bg-[#0e0e0f]"></div>
+                {/* Smartphone Dynamic Island */}
+                <div className="absolute top-5 left-1/2 -translate-x-1/2 w-24 h-4 bg-black rounded-full z-30 flex items-center justify-between px-3 border border-white/5">
+                  <div className="w-2 h-2 rounded-full bg-[#1b1b1d] border border-white/10"></div>
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#0e0e0f]"></div>
                 </div>
 
                 {/* Smartphone Screen Viewfinder */}
-                <div className="w-full h-full rounded-[38px] bg-[#0e0e0f] border border-white/10 relative overflow-hidden flex flex-col justify-between p-5 pt-10">
-                  
+                <div className="w-full h-full rounded-[38px] bg-[#0c0c0e] border border-white/10 relative overflow-hidden flex flex-col justify-between p-5 pt-8">
+                  {/* Subtle Screen Sheen Reflection */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-white/[0.04] via-transparent to-transparent pointer-events-none z-20"></div>
+
                   {/* Top Status inside Phone */}
                   <div className="flex justify-between items-center z-20">
-                    <span className="font-label-caps text-[9px] text-[#c0c6de] tracking-widest font-bold">ZKPAY CAMERA</span>
-                    <span className="flex items-center gap-1 text-[9px] text-emerald-400 font-bold bg-emerald-400/10 px-2 py-0.5 rounded-full">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-4 h-4 rounded-full bg-[#c0c6de]/20 border border-[#c0c6de]/40 flex items-center justify-center">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#c0c6de]"></div>
+                      </div>
+                      <span className="font-bold text-xs tracking-tight text-white">
+                        <span className="text-[#c0c6de]">Zk</span>Pay
+                      </span>
+                    </div>
+                    <span className="flex items-center gap-1.5 text-[9px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full tracking-wider">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                       BASE MAINNET
                     </span>
                   </div>
 
                   {/* QR Code Scanner Viewfinder Box */}
-                  <div id="scan-demo" className="relative my-auto w-full aspect-square bg-black/50 rounded-2xl border border-white/20 p-4 flex flex-col items-center justify-center overflow-hidden group-hover:border-[#c0c6de] transition-colors">
+                  <div id="scan-demo" className="relative my-auto w-full aspect-square bg-[#121215]/90 backdrop-blur-md rounded-2xl border border-white/15 p-5 flex flex-col items-center justify-center overflow-hidden shadow-[inset_0_0_24px_rgba(0,0,0,0.8)] group-hover:border-[#c0c6de]/50 transition-colors">
                     {/* Viewfinder Reticle Corners */}
-                    <div className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-[#c0c6de]"></div>
-                    <div className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-[#c0c6de]"></div>
-                    <div className="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-[#c0c6de]"></div>
-                    <div className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-[#c0c6de]"></div>
+                    <div className="absolute top-2.5 left-2.5 w-5 h-5 border-t-2 border-l-2 border-[#c0c6de] rounded-tl-sm shadow-[0_0_8px_rgba(192,198,222,0.4)]"></div>
+                    <div className="absolute top-2.5 right-2.5 w-5 h-5 border-t-2 border-r-2 border-[#c0c6de] rounded-tr-sm shadow-[0_0_8px_rgba(192,198,222,0.4)]"></div>
+                    <div className="absolute bottom-2.5 left-2.5 w-5 h-5 border-b-2 border-l-2 border-[#c0c6de] rounded-bl-sm shadow-[0_0_8px_rgba(192,198,222,0.4)]"></div>
+                    <div className="absolute bottom-2.5 right-2.5 w-5 h-5 border-b-2 border-r-2 border-[#c0c6de] rounded-br-sm shadow-[0_0_8px_rgba(192,198,222,0.4)]"></div>
 
-                    {/* Animated Scanning Laser Line */}
-                    <div className="laser-line z-10"></div>
+                    {/* Laser Scan Line */}
+                    <div className="scanner-laser z-20"></div>
 
-                    {/* Simulated UPI Merchant QR Code */}
-                    <img 
-                      src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=upi://pay?pa=merchant@upi&pn=ChaiPoint&am=150&cu=INR" 
-                      alt="UPI Merchant QR Code Scanner"
-                      className="w-36 h-36 opacity-80 mix-blend-screen"
-                    />
+                    {/* Crisp Vector Stylized UPI QR Code */}
+                    <svg viewBox="0 0 100 100" className="w-36 h-36 opacity-90 fill-white" shapeRendering="crispEdges">
+                      {/* Top-Left Position Marker */}
+                      <rect x="10" y="10" width="26" height="26" rx="4" fill="none" stroke="white" strokeWidth="4" />
+                      <rect x="18" y="18" width="10" height="10" rx="2" fill="#c0c6de" />
+                      
+                      {/* Top-Right Position Marker */}
+                      <rect x="64" y="10" width="26" height="26" rx="4" fill="none" stroke="white" strokeWidth="4" />
+                      <rect x="72" y="18" width="10" height="10" rx="2" fill="#c0c6de" />
+                      
+                      {/* Bottom-Left Position Marker */}
+                      <rect x="10" y="64" width="26" height="26" rx="4" fill="none" stroke="white" strokeWidth="4" />
+                      <rect x="18" y="72" width="10" height="10" rx="2" fill="#c0c6de" />
 
-                    <div className="absolute bottom-2 bg-black/80 backdrop-blur-md px-3 py-1 rounded-full text-[10px] text-[#c0c6de] font-mono font-bold z-20">
+                      {/* Timing & Data Elements */}
+                      <rect x="42" y="12" width="5" height="5" />
+                      <rect x="52" y="12" width="5" height="5" />
+                      <rect x="42" y="24" width="5" height="5" />
+                      <rect x="48" y="20" width="8" height="5" />
+                      <rect x="12" y="42" width="5" height="5" />
+                      <rect x="22" y="44" width="6" height="5" />
+                      <rect x="14" y="52" width="5" height="5" />
+
+                      {/* Center Data Matrix */}
+                      <rect x="40" y="38" width="22" height="22" rx="3" fill="#1b1b20" stroke="rgba(192,198,222,0.4)" strokeWidth="1.5" />
+                      <circle cx="51" cy="49" r="4" fill="#c0c6de" />
+                      
+                      <rect x="68" y="44" width="8" height="6" />
+                      <rect x="80" y="48" width="6" height="6" />
+                      <rect x="74" y="58" width="8" height="6" />
+                      <rect x="42" y="66" width="6" height="6" />
+                      <rect x="52" y="72" width="8" height="6" />
+                      <rect x="44" y="80" width="10" height="6" />
+                      <rect x="68" y="72" width="8" height="6" />
+                      <rect x="80" y="80" width="8" height="6" />
+                    </svg>
+
+                    <div className="absolute bottom-2.5 bg-[#17171a]/95 backdrop-blur-md border border-white/10 px-3 py-1 rounded-full text-[9px] text-[#c0c6de] font-mono font-bold z-20 flex items-center gap-1.5 shadow-lg">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#c0c6de] animate-ping"></span>
                       SCANNING MERCHANT QR...
                     </div>
                   </div>
 
                   {/* Bottom Payment Preview inside Phone */}
-                  <div className="bg-white/5 backdrop-blur-md border border-white/15 p-4 rounded-2xl z-20 text-left space-y-1">
-                    <div className="flex justify-between items-center text-[10px] text-[#909097] font-label-caps">
+                  <div className="bg-white/[0.04] backdrop-blur-2xl border border-white/15 p-3.5 rounded-2xl z-20 text-left space-y-1.5 shadow-xl">
+                    <div className="flex justify-between items-center text-[10px] text-[#909097] tracking-wider uppercase font-sans font-semibold">
                       <span>MERCHANT</span>
-                      <span className="text-white font-bold">Chai Point (UPI)</span>
+                      <span className="text-white font-medium">Chai Point (UPI)</span>
                     </div>
-                    <div className="flex justify-between items-baseline pt-1">
-                      <span className="text-2xl font-extrabold text-white font-mono">₹150.00</span>
-                      <span className="text-xs font-bold text-[#c0c6de] font-mono">1.71 USDC</span>
+                    <div className="flex justify-between items-baseline pt-0.5">
+                      <span className="text-2xl font-black text-white font-mono tracking-tight">₹150.00</span>
+                      <span className="text-xs font-bold text-[#c0c6de] font-mono bg-white/5 border border-white/10 px-2.5 py-0.5 rounded-md">
+                        1.71 USDC
+                      </span>
                     </div>
                   </div>
 
