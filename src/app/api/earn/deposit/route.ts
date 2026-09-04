@@ -91,26 +91,67 @@ export async function POST(request: Request) {
       );
     }
 
-    // ── 5. Call Privy Earn deposit REST API via Basic Auth ──
+    // ── 5. Call Privy Earn deposit API with Authorization Context ──
     const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID!;
     const appSecret = process.env.PRIVY_APP_SECRET!;
     const basicAuth = Buffer.from(`${appId}:${appSecret}`).toString("base64");
+    const authKey = getPrivyAuthPrivateKey();
 
-    const restResponse = await fetch(
-      `https://api.privy.io/api/v1/wallets/${targetWalletId}/earn/ethereum/deposit`,
-      {
-        method: "POST",
-        headers: {
-          "privy-app-id": appId,
-          Authorization: `Basic ${basicAuth}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+    // Attempt SDK call with authorization_context first
+    const privy = getPrivyClient() as any;
+    if (typeof privy?.wallets === "function" && typeof privy.wallets()?.earn === "function") {
+      try {
+        const sdkContext: Record<string, any> = { user_jwts: [accessToken] };
+        if (authKey) sdkContext.authorization_private_keys = [authKey];
+
+        const sdkResult = await privy.wallets().earn().ethereum().deposit(targetWalletId, {
           vault_id: VAULT_ID,
           amount: String(parsedAmount),
-        }),
+          authorization_context: sdkContext,
+        });
+
+        return NextResponse.json({
+          success: true,
+          actionId: sdkResult?.id,
+          status: sdkResult?.status || "pending",
+        });
+      } catch (sdkErr: any) {
+        console.warn("[Earn Deposit SDK call failed, falling back to REST]:", sdkErr?.message);
       }
-    );
+    }
+
+    // Fallback: REST API with computed privy-authorization-signature
+    const endpointUrl = `https://api.privy.io/api/v1/wallets/${targetWalletId}/earn/ethereum/deposit`;
+    const requestBody = {
+      vault_id: VAULT_ID,
+      amount: String(parsedAmount),
+    };
+
+    const headers: Record<string, string> = {
+      "privy-app-id": appId,
+      Authorization: `Basic ${basicAuth}`,
+      "Content-Type": "application/json",
+    };
+
+    if (authKey) {
+      const { createPrivyAuthorizationSignature } = await import("@/lib/server/privyEarn");
+      const signature = createPrivyAuthorizationSignature({
+        method: "POST",
+        url: endpointUrl,
+        body: requestBody,
+        appId,
+        privateKeyRaw: authKey,
+      });
+      if (signature) {
+        headers["privy-authorization-signature"] = signature;
+      }
+    }
+
+    const restResponse = await fetch(endpointUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(requestBody),
+    });
 
     const earnData = await restResponse.json();
 

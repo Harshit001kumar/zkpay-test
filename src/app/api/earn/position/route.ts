@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPrivyClient, resolveEmbeddedWalletId } from "@/lib/server/privyEarn";
+import { CONTRACTS, EARN_CONFIG } from "@/lib/constants";
 
 const VAULT_ID = process.env.PRIVY_EARN_VAULT_ID;
 
@@ -42,13 +43,18 @@ export async function GET(request: Request) {
     }
 
     if (!VAULT_ID) {
-      // Return default benchmark vault data so the UI remains operational
+      // Calculate net APY after ZkPay 10% performance fee (8.40% gross -> 7.56% net)
+      const grossApy = parseFloat(EARN_CONFIG.BENCHMARK_APY);
+      const netApy = (grossApy * (1 - EARN_CONFIG.PERFORMANCE_FEE_BPS / 10000)).toFixed(2);
+
       return NextResponse.json({
         vault: {
-          address: null,
-          name: "Base USDC Yield Vault",
-          provider: "DeFi Protocol",
-          apy: "8.40",
+          address: CONTRACTS.EARN_VAULT,
+          name: EARN_CONFIG.VAULT_NAME,
+          provider: EARN_CONFIG.VAULT_PROVIDER,
+          apy: netApy,
+          grossApy: EARN_CONFIG.BENCHMARK_APY,
+          performanceFeePercent: "10%",
           tvlUsd: 12500000,
           availableLiquidityUsd: 5000000,
           asset: "USDC",
@@ -106,11 +112,12 @@ export async function GET(request: Request) {
       vaultData?.address ||
       vaultData?.contract_address ||
       vaultData?.vaultAddress ||
-      null;
+      CONTRACTS.EARN_VAULT;
 
-    // Parse APY from basis points to percentage (fallback to 8.40% benchmark)
+    // Parse APY from basis points to percentage (fallback to benchmark net APY)
     const userApyBps = vaultData?.user_apy;
-    const userApyPercent = userApyBps && userApyBps > 0 ? (userApyBps / 100).toFixed(2) : "8.40";
+    const grossApy = userApyBps && userApyBps > 0 ? userApyBps / 100 : parseFloat(EARN_CONFIG.BENCHMARK_APY);
+    const netApyPercent = (grossApy * (1 - EARN_CONFIG.PERFORMANCE_FEE_BPS / 10000)).toFixed(2);
 
     // Parse position amounts (handle array or object response)
     const decimals = vaultData?.asset?.decimals ?? 6;
@@ -137,11 +144,13 @@ export async function GET(request: Request) {
     return NextResponse.json({
       vault: {
         address: resolvedVaultAddress,
-        name: vaultData?.name || "Base USDC Yield Vault",
-        provider: vaultData?.provider || "DeFi Protocol",
-        apy: userApyPercent,
-        tvlUsd: vaultData?.tvl_usd ?? null,
-        availableLiquidityUsd: vaultData?.available_liquidity_usd ?? null,
+        name: vaultData?.name || EARN_CONFIG.VAULT_NAME,
+        provider: vaultData?.provider || EARN_CONFIG.VAULT_PROVIDER,
+        apy: netApyPercent,
+        grossApy: grossApy.toFixed(2),
+        performanceFeePercent: "10%",
+        tvlUsd: vaultData?.tvl_usd ?? 12500000,
+        availableLiquidityUsd: vaultData?.available_liquidity_usd ?? 5000000,
         asset: vaultData?.asset?.symbol ?? "USDC",
       },
       position: {
@@ -156,10 +165,12 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         vault: {
-          address: null,
-          name: "Base USDC Yield Vault",
-          provider: "DeFi Protocol",
-          apy: "8.40",
+          address: CONTRACTS.EARN_VAULT,
+          name: EARN_CONFIG.VAULT_NAME,
+          provider: EARN_CONFIG.VAULT_PROVIDER,
+          apy: "7.56",
+          grossApy: EARN_CONFIG.BENCHMARK_APY,
+          performanceFeePercent: "10%",
           tvlUsd: 12500000,
           availableLiquidityUsd: 5000000,
           asset: "USDC",

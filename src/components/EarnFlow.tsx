@@ -6,7 +6,7 @@ import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
 import { formatUnits, parseUnits, encodeFunctionData } from "viem";
 import { base } from "viem/chains";
 import { useReadContract } from "wagmi";
-import { CONTRACTS } from "@/lib/constants";
+import { CONTRACTS, EARN_CONFIG } from "@/lib/constants";
 import { ERC20_ABI, ERC4626_ABI } from "@/lib/abi";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
@@ -64,15 +64,17 @@ export default function EarnFlow() {
 
   const availableUsdc = rawBal !== undefined ? Number(formatUnits(rawBal as bigint, 6)) : 0;
 
+  const activeVaultAddress = (vault?.address as `0x${string}`) || CONTRACTS.EARN_VAULT;
+
   // Live on-chain staked balance if vault address is known
   const { data: onChainVaultAssets, refetch: refetchVaultBal } = useReadContract({
-    address: (vault?.address as `0x${string}`) || undefined,
+    address: activeVaultAddress,
     abi: ERC4626_ABI,
     functionName: "maxWithdraw",
     args: [activeAddress ?? "0x0000000000000000000000000000000000000000"],
     chainId: base.id,
     query: {
-      enabled: !!activeAddress && !!vault?.address,
+      enabled: !!activeAddress && !!activeVaultAddress,
       refetchInterval: 5000,
     },
   });
@@ -168,7 +170,7 @@ export default function EarnFlow() {
     setSuccess("");
 
     try {
-      if (vault?.address) {
+      if (activeVaultAddress) {
         // Direct on-chain deposit via ERC-4626 standard (with Pimlico gas sponsorship)
         const amountUnits = parseUnits(parsedAmount.toFixed(6), 6);
 
@@ -180,12 +182,12 @@ export default function EarnFlow() {
                 data: encodeFunctionData({
                   abi: ERC20_ABI,
                   functionName: "approve",
-                  args: [vault.address as `0x${string}`, amountUnits],
+                  args: [activeVaultAddress, amountUnits],
                 }),
                 value: 0n,
               },
               {
-                to: vault.address as `0x${string}`,
+                to: activeVaultAddress,
                 data: encodeFunctionData({
                   abi: ERC4626_ABI,
                   functionName: "deposit",
@@ -212,7 +214,7 @@ export default function EarnFlow() {
                 data: encodeFunctionData({
                   abi: ERC20_ABI,
                   functionName: "approve",
-                  args: [vault.address as `0x${string}`, amountUnits],
+                  args: [activeVaultAddress, amountUnits],
                 }),
               },
             ],
@@ -223,7 +225,7 @@ export default function EarnFlow() {
             params: [
               {
                 from: activeAddress,
-                to: vault.address,
+                to: activeVaultAddress,
                 data: encodeFunctionData({
                   abi: ERC4626_ABI,
                   functionName: "deposit",
@@ -301,7 +303,7 @@ export default function EarnFlow() {
     setSuccess("");
 
     try {
-      if (vault?.address) {
+      if (activeVaultAddress) {
         // Direct on-chain withdrawal from ERC-4626 vault
         const withdrawUnits = parseUnits(withdrawAmount.toFixed(6), 6);
 
@@ -309,7 +311,7 @@ export default function EarnFlow() {
           const txHash = await smartClient.sendTransaction({
             calls: [
               {
-                to: vault.address as `0x${string}`,
+                to: activeVaultAddress,
                 data: encodeFunctionData({
                   abi: ERC4626_ABI,
                   functionName: "withdraw",
@@ -332,7 +334,7 @@ export default function EarnFlow() {
             params: [
               {
                 from: activeAddress,
-                to: vault.address,
+                to: activeVaultAddress,
                 data: encodeFunctionData({
                   abi: ERC4626_ABI,
                   functionName: "withdraw",
@@ -394,41 +396,133 @@ export default function EarnFlow() {
   };
 
   const handleClaimRewards = async () => {
-    const walletId = getWalletId();
-    if (!walletId) {
+    if (!activeAddress) {
       setError("Please connect your wallet first.");
       return;
     }
+
+    const earnedYield = position?.earnedYield || 0;
 
     setIsClaiming(true);
     setError("");
     setSuccess("");
 
     try {
-      const accessToken = await getAccessToken();
+      if (earnedYield > 0.001 && activeVaultAddress) {
+        // Direct on-chain harvest of earned yield with 10% platform performance fee to Treasury
+        const totalYieldUnits = parseUnits(earnedYield.toFixed(6), 6);
+        const feeUnits = (totalYieldUnits * BigInt(EARN_CONFIG.PERFORMANCE_FEE_BPS)) / 10000n;
+        const netUserYield = earnedYield * (1 - EARN_CONFIG.PERFORMANCE_FEE_BPS / 10000);
 
-      const response = await fetch("/api/earn/claim", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ walletId }),
-      });
+        if (smartClient) {
+          // Bundle yield withdrawal + 10% fee routing to Treasury in a single atomic transaction
+          const calls: any[] = [
+            {
+              to: activeVaultAddress,
+              data: encodeFunctionData({
+                abi: ERC4626_ABI,
+                functionName: "withdraw",
+                args: [totalYieldUnits, activeAddress as `0x${string}`, activeAddress as `0x${string}`],
+              }),
+              value: 0n,
+            },
+          ];
 
-      const data = await response.json();
+          if (feeUnits > 0n) {
+            calls.push({
+              to: CONTRACTS.USDC as `0x${string}`,
+              data: encodeFunctionData({
+                abi: ERC20_ABI,
+                functionName: "transfer",
+                args: [CONTRACTS.TREASURY as `0x${string}`, feeUnits],
+              }),
+              value: 0n,
+            });
+          }
 
-      if (!response.ok) {
-        throw new Error(data.error || "Claim failed");
-      }
+          const txHash = await smartClient.sendTransaction({ calls });
+          console.log("[EarnFlow] On-chain yield claim tx:", txHash);
+        } else {
+          // Standard wallet provider: Withdraw yield to user wallet, then route fee
+          const wallet =
+            wallets?.find((w) => w.address.toLowerCase() === activeAddress?.toLowerCase()) ||
+            wallets?.[0];
+          if (!wallet) throw new Error("Connected wallet not found");
+          const provider = await wallet.getEthereumProvider();
 
-      setSuccess("Reward incentives claimed successfully!");
-      refetchBal?.();
-      setTimeout(() => {
-        fetchPosition();
+          await provider.request({
+            method: "eth_sendTransaction",
+            params: [
+              {
+                from: activeAddress,
+                to: activeVaultAddress,
+                data: encodeFunctionData({
+                  abi: ERC4626_ABI,
+                  functionName: "withdraw",
+                  args: [totalYieldUnits, activeAddress as `0x${string}`, activeAddress as `0x${string}`],
+                }),
+              },
+            ],
+          });
+
+          if (feeUnits > 0n) {
+            try {
+              await provider.request({
+                method: "eth_sendTransaction",
+                params: [
+                  {
+                    from: activeAddress,
+                    to: CONTRACTS.USDC,
+                    data: encodeFunctionData({
+                      abi: ERC20_ABI,
+                      functionName: "transfer",
+                      args: [CONTRACTS.TREASURY as `0x${string}`, feeUnits],
+                    }),
+                  },
+                ],
+              });
+            } catch (feeErr) {
+              console.warn("[EarnFlow] Fee transfer skipped:", feeErr);
+            }
+          }
+        }
+
+        setSuccess(`Successfully claimed $${netUserYield.toFixed(2)} USDC in yield! (10% fee routed to treasury)`);
         refetchBal?.();
-      }, 4000);
+        refetchVaultBal?.();
+        setTimeout(() => {
+          fetchPosition();
+          refetchBal?.();
+          refetchVaultBal?.();
+        }, 3000);
+      } else {
+        // Fallback to server route (e.g. protocol token incentives)
+        const walletId = getWalletId();
+        const accessToken = await getAccessToken();
+
+        const response = await fetch("/api/earn/claim", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ walletId }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Claim failed");
+        }
+
+        setSuccess("Reward incentives claimed successfully!");
+        refetchBal?.();
+        setTimeout(() => {
+          fetchPosition();
+          refetchBal?.();
+        }, 4000);
+      }
     } catch (err: any) {
+      console.error("[EarnFlow] Claim error:", err);
       setError(err.message || "Failed to claim rewards.");
     } finally {
       setIsClaiming(false);
@@ -595,9 +689,15 @@ export default function EarnFlow() {
 
             {/* Footer Actions */}
             <div className="flex items-center justify-between pt-4 border-t border-white/10 text-xs">
-              <span className="font-label-caps text-[9px] text-[#909097] tracking-[0.15em]">
-                PROTOCOL: {displayVaultName.toUpperCase()}
-              </span>
+              <a
+                href={`https://basescan.org/address/${activeVaultAddress}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-label-caps text-[9px] text-[#909097] hover:text-[#c0c6de] tracking-[0.15em] flex items-center gap-1 transition-colors"
+              >
+                <span>PROTOCOL: {displayVaultName.toUpperCase()}</span>
+                <span className="material-symbols-outlined text-[10px]">open_in_new</span>
+              </a>
 
               <div className="flex items-center gap-3">
                 <button
