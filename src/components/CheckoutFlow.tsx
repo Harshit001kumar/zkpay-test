@@ -4,7 +4,7 @@ import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { encodeFunctionData, parseUnits, formatUnits } from "viem";
+import { encodeFunctionData, parseUnits, formatUnits, maxUint256 } from "viem";
 import { CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
 import { MerchantData } from "@/lib/types";
@@ -288,7 +288,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
           data: encodeFunctionData({
             abi: ERC20_ABI,
             functionName: "approve",
-            args: [CONTRACTS.DIAMOND as `0x${string}`, usdcPrincipalBigInt],
+            args: [CONTRACTS.DIAMOND as `0x${string}`, maxUint256],
           }),
           value: 0n,
         });
@@ -487,7 +487,12 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
             <p className="font-label-caps text-xs text-[#e5e2e3] tracking-[0.25em] font-bold mb-1">
               AUTHORIZING ON BASE
             </p>
-            <p className="text-xs text-[#909097]">Please confirm the transaction in your wallet</p>
+            <p className="text-xs text-[#909097]">Please confirm the 2-step payment in your wallet</p>
+            <div className="flex items-center justify-center gap-2 mt-3 text-[10px] text-[#c0c6de] font-mono">
+              <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded">1. Protocol Fee (1%)</span>
+              <span>→</span>
+              <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded">2. Escrow Order</span>
+            </div>
           </div>
         </div>
       )}

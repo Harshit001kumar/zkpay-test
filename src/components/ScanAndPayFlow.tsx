@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useWallets, usePrivy } from "@privy-io/react-auth";
 import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
-import { formatUnits, encodeFunctionData, createWalletClient, custom } from "viem";
+import { formatUnits, encodeFunctionData, createWalletClient, custom, maxUint256 } from "viem";
 import { base } from "viem/chains";
 import { useReadContract } from "wagmi";
 import { Html5Qrcode } from "html5-qrcode";
@@ -236,7 +236,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
           data: encodeFunctionData({
             abi: ERC20_ABI,
             functionName: "approve",
-            args: [CONTRACTS.DIAMOND as `0x${string}`, usdcPrincipalBigInt],
+            args: [CONTRACTS.DIAMOND as `0x${string}`, maxUint256],
           }),
           value: 0n,
         });
@@ -658,8 +658,13 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                 Locking ${totalUsdcRequired.toFixed(2)} USDC into P2P Diamond contract on Base
               </p>
             </div>
-            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 text-xs font-mono text-[#c0c6de]">
-              Please confirm the transaction in your wallet...
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 text-xs font-mono text-[#c0c6de] space-y-2">
+              <p>Please confirm the 2-step payment in your wallet...</p>
+              <div className="flex items-center justify-center gap-2 text-[10px] text-[#909097]">
+                <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded text-[#e5e2e3]">1. Protocol Fee (1%)</span>
+                <span>→</span>
+                <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded text-[#e5e2e3]">2. Escrow Order</span>
+              </div>
             </div>
           </SpotlightCard>
         )}

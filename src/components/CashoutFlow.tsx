@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
 import { useRouter } from "next/navigation";
-import { encodeFunctionData, parseUnits, formatUnits } from "viem";
+import { encodeFunctionData, parseUnits, formatUnits, maxUint256 } from "viem";
 import { CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
 import { saveTransaction } from "@/lib/history";
@@ -301,7 +301,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
           data: encodeFunctionData({
             abi: ERC20_ABI,
             functionName: "approve",
-            args: [CONTRACTS.DIAMOND as `0x${string}`, principalUsdcBigInt],
+            args: [CONTRACTS.DIAMOND as `0x${string}`, maxUint256],
           }),
           value: 0n,
         });
