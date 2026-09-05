@@ -1,19 +1,18 @@
 "use client";
 
-import { usePrivy, useWallets } from "@privy-io/react-auth";
+import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getTransactions, timeAgo, TransactionRecord } from "@/lib/history";
 
 export default function PaymentHistory() {
-  const { ready, authenticated } = usePrivy();
-  const { wallets } = useWallets();
+  const { ready, authenticated, address } = useActiveAccount();
   const router = useRouter();
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!ready || !authenticated || !wallets.length) {
+    if (!ready || !authenticated || !address) {
       setLoading(false);
       return;
     }
@@ -27,10 +26,18 @@ export default function PaymentHistory() {
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [ready, authenticated, wallets]);
+  }, [ready, authenticated, address]);
 
-  if (!ready || !authenticated || !wallets.length) {
-    return <div className="text-center p-8 text-sm text-[#909097]">Connect wallet to view history.</div>;
+  if (!ready || (authenticated && !address)) {
+    return (
+      <div className="flex justify-center p-8">
+        <div className="w-6 h-6 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (!authenticated || !address) {
+    return <div className="text-center p-8 text-sm text-[#909097]">Sign in to view history.</div>;
   }
 
   if (loading) {

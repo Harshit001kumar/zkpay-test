@@ -3,8 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
-import { useWallets } from "@privy-io/react-auth";
+import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { createWalletClient, custom, parseUnits, formatUnits, isAddress, encodeFunctionData } from "viem";
 import { base } from "viem/chains";
 import { useReadContract, useBalance } from "wagmi";
@@ -38,10 +37,8 @@ export default function WalletAddressPage() {
   const router = useRouter();
   const rawAddressParam = params?.address as string | undefined;
 
-  const { wallets } = useWallets();
-  const { client: smartClient } = useSmartWallets();
-  const connectedWallet = wallets?.[0];
-  const connectedAddress = (smartClient?.account?.address || connectedWallet?.address) as `0x${string}` | undefined;
+  const { address, smartClient, primaryWallet: connectedWallet } = useActiveAccount();
+  const connectedAddress = (address || undefined) as `0x${string}` | undefined;
 
 
   // Use route address if valid, otherwise fallback to connected wallet

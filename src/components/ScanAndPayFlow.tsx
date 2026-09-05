@@ -2,8 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useWallets, usePrivy } from "@privy-io/react-auth";
-import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
+import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { formatUnits, encodeFunctionData, createWalletClient, custom, maxUint256 } from "viem";
 import { base } from "viem/chains";
 import { useReadContract } from "wagmi";
@@ -31,11 +30,17 @@ import {
   CameraOff,
   Coins,
   Sparkles,
-  Info
+  Info,
+  Copy, 
+  RefreshCw, 
+  ShieldCheck, 
+  X,
+  AlertCircle
 } from "lucide-react";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
 import { NumericKeypad } from "@/components/ui/NumericKeypad";
 import { ShimmerButton } from "@/components/ui/ShimmerButton";
+import DecryptedText from "@/components/ui/DecryptedText";
 
 type FlowStep = "amount" | "authorizing" | "scanning_matching" | "delivering" | "settling" | "completed";
 
@@ -43,11 +48,8 @@ const PRESET_AMOUNTS = [100, 250, 500, 1000, 2000];
 
 export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   const router = useRouter();
-  const { login } = usePrivy();
-  const { wallets } = useWallets();
-  const { client: smartClient } = useSmartWallets();
-  const wallet = wallets?.[0];
-  const activeAddress = (smartClient?.account?.address || wallet?.address) as `0x${string}` | undefined;
+  const { address, smartClient, primaryWallet: wallet, login } = useActiveAccount();
+  const activeAddress = (address || undefined) as `0x${string}` | undefined;
 
 
   // Flow State

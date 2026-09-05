@@ -33,14 +33,17 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           privacyPolicyUrl: "/privacy",
         },
         embeddedWallets: {
-          createOnLogin: "users-without-wallets"
+          createOnLogin: "users-without-wallets",
+          ethereum: {
+            createOnLogin: "users-without-wallets",
+          },
         },
         smartWallets: {
           createOnLogin: "all-users",
         },
         defaultChain: base,
         supportedChains: [base],
-        loginMethods: ["wallet", "email"],
+        loginMethods: ["email"],
       }) as any}
     >
       <SmartWalletsProvider>
@@ -53,3 +56,4 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     </PrivyProvider>
   );
 }
+

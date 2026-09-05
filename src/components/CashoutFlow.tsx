@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
+import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { useRouter } from "next/navigation";
 import { encodeFunctionData, parseUnits, formatUnits, maxUint256 } from "viem";
 import { CONTRACTS } from "@/lib/constants";
@@ -23,9 +22,7 @@ import {
 type CashoutStatus = "input" | "processing" | "matching" | "paying" | "completed" | "error";
 
 export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
-  const { ready, authenticated } = usePrivy();
-  const { wallets } = useWallets();
-  const { client: smartClient } = useSmartWallets();
+  const { ready, authenticated, address, primaryWallet, smartClient } = useActiveAccount();
 
   const router = useRouter();
   
@@ -46,15 +43,15 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
   };
 
   useEffect(() => {
-    if (!ready || !authenticated || !wallets.length) return;
+    if (!ready || !authenticated || !address) return;
     
     let isMounted = true;
     
     const fetchConfig = async () => {
       try {
-        const address = wallets[0].address as `0x${string}`;
+        const userAddress = address as `0x${string}`;
         const [limits, priceCfg] = await Promise.all([
-          getOfframpLimits(address, "INR"),
+          getOfframpLimits(userAddress, "INR"),
           getOfframpPrice("INR")
         ]);
         
@@ -84,10 +81,10 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [ready, authenticated, wallets]);
+  }, [ready, authenticated, address]);
 
   useEffect(() => {
-    if (!ready || !authenticated || !wallets.length) return;
+    if (!ready || !authenticated || !address) return;
     const pendingOrderStr = localStorage.getItem("pending_cashout_order");
     if (pendingOrderStr) {
       try {
@@ -220,8 +217,17 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
     estimatedFiat = Number(formatUnits(fiatBigInt, 6));
   }
 
-  if (!ready || !authenticated || !wallets.length) {
-    return <div className="text-center p-4 text-sm text-[#909097]">Connect wallet to cash out.</div>;
+  if (!ready || (authenticated && !address)) {
+    return (
+      <div className="text-center p-8 text-sm text-[#909097] flex flex-col items-center justify-center gap-2">
+        <div className="w-5 h-5 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
+        <span>Loading account...</span>
+      </div>
+    );
+  }
+
+  if (!authenticated || !address) {
+    return <div className="text-center p-4 text-sm text-[#909097]">Please sign in to cash out.</div>;
   }
   
   const isValidUpi = () => {
@@ -243,8 +249,8 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       setStatus("processing");
       setError(null);
 
-      const wallet = wallets[0];
-      const activeAddr = (smartClient?.account?.address || wallet.address) as `0x${string}`;
+      const wallet = primaryWallet;
+      const activeAddr = (smartClient?.account?.address || wallet?.address || address) as `0x${string}`;
       const publicClient = getPublicClient();
       
       const principalUsdcBigInt = parseUnits(amountUsdc.toFixed(6), 6);

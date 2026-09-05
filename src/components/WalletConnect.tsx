@@ -51,12 +51,20 @@ export default function WalletConnect() {
     );
   }
 
+  if (authenticated && !address) {
+    return (
+      <div className="h-9 w-28 bg-white/10 rounded-full animate-pulse flex items-center justify-center text-[11px] font-medium text-[#909097]">
+        Syncing...
+      </div>
+    );
+  }
+
   return (
     <button
       onClick={login}
       className="btn-primary text-xs px-5 py-2 rounded-full flex items-center gap-1.5 shadow-lg shadow-white/10 font-bold"
     >
-      <span>Connect</span>
+      <span>Sign In</span>
     </button>
   );
 }

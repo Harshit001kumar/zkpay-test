@@ -74,8 +74,29 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
     return () => clearInterval(interval);
   }, [exchangeId, exchangeStatus]);
 
-  if (!ready || !authenticated || !address) {
-    return <div className="text-center p-4 text-[#909097] text-sm">Please connect wallet to continue.</div>;
+  if (!ready || (authenticated && !address)) {
+    return (
+      <div className="bg-[#0e0e0f] text-[#e5e2e3] min-h-[100dvh] flex flex-col items-center justify-center p-6 gap-3">
+        <Loader2 className="w-8 h-8 animate-spin text-[#c0c6de]" />
+        <p className="text-sm text-[#909097]">Initializing wallet account...</p>
+      </div>
+    );
+  }
+
+  if (!authenticated) {
+    return (
+      <div className="bg-[#0e0e0f] text-[#e5e2e3] min-h-[100dvh] flex flex-col items-center justify-center p-6 gap-4 text-center">
+        <p className="text-sm text-[#909097]">Please sign in to make a deposit.</p>
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="px-5 py-2 rounded-xl bg-white/10 text-white hover:bg-white/20 text-xs font-semibold"
+          >
+            Go Back
+          </button>
+        )}
+      </div>
+    );
   }
 
   const baseAddress = address;

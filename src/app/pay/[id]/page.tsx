@@ -107,8 +107,8 @@ export default function PayPage() {
         return;
       }
 
-      const wallet = wallets[0];
-      if (!wallet) {
+      const wallet = wallets?.[0];
+      if (!smartClient && !wallet) {
         setError("No wallet connected");
         setStep("details");
         return;

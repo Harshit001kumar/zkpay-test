@@ -1,7 +1,6 @@
 "use client";
 
-import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
+import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { encodeFunctionData, parseUnits, formatUnits, maxUint256 } from "viem";
@@ -30,9 +29,7 @@ interface CheckoutFlowProps {
 type TxStatus = "idle" | "approving" | "matching" | "paying" | "completed" | "error";
 
 export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps) {
-  const { ready, authenticated, login } = usePrivy();
-  const { wallets } = useWallets();
-  const { client: smartClient } = useSmartWallets();
+  const { ready, authenticated, address, primaryWallet, smartClient, login } = useActiveAccount();
 
   const router = useRouter();
   
@@ -59,9 +56,9 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
   };
 
   const fetchRatesAndLimits = useCallback(async () => {
-    if (!wallets.length) return;
+    if (!address) return;
     try {
-      const userAddr = wallets[0].address as `0x${string}`;
+      const userAddr = address as `0x${string}`;
       const publicClient = getPublicClient();
 
       const [priceCfg, limits, balance] = await Promise.all([
@@ -87,20 +84,20 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
     } catch (err: any) {
       console.error("[CheckoutFlow] Failed to fetch live P2P price / limits", err);
     }
-  }, [wallets]);
+  }, [address]);
 
   useEffect(() => {
-    if (!ready || !authenticated || !wallets.length) return;
+    if (!ready || !authenticated || !address) return;
     
     fetchRatesAndLimits();
     // Refresh price every 60s to prevent slippage reverts (per quickstart guide)
     const interval = setInterval(fetchRatesAndLimits, 60000);
     return () => clearInterval(interval);
-  }, [ready, authenticated, wallets, fetchRatesAndLimits]);
+  }, [ready, authenticated, address, fetchRatesAndLimits]);
 
   // Resume pending order if user refreshed during matching
   useEffect(() => {
-    if (!ready || !authenticated || !wallets.length) return;
+    if (!ready || !authenticated || !address) return;
     const pendingStr = localStorage.getItem("pending_payment_order");
     if (pendingStr) {
       try {
@@ -178,15 +175,24 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
     }
   };
 
-  if (!ready || !authenticated || !wallets.length) {
+  if (!ready || (authenticated && !address)) {
     return (
       <div className="text-center p-6 bg-white/5 rounded-xl border border-white/10 space-y-4">
-        <p className="text-sm text-[#909097]">Please connect your wallet to confirm payment.</p>
+        <div className="w-6 h-6 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin mx-auto"></div>
+        <p className="text-sm text-[#909097]">Initializing wallet account...</p>
+      </div>
+    );
+  }
+
+  if (!authenticated || !address) {
+    return (
+      <div className="text-center p-6 bg-white/5 rounded-xl border border-white/10 space-y-4">
+        <p className="text-sm text-[#909097]">Please sign in to confirm payment.</p>
         <button onClick={() => login()} className="btn-primary w-full">
-          Connect Wallet
+          Sign In
         </button>
         <p className="text-[11px] text-[#909097] leading-relaxed">
-          By connecting, you agree to ZkPay&apos;s{" "}
+          By signing in, you agree to ZkPay&apos;s{" "}
           <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-[#c0c6de] hover:underline">
             Terms of Service
           </a>{" "}
@@ -214,8 +220,8 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       setStatus("approving");
       setError(null);
 
-      const wallet = wallets[0];
-      const activeAddr = (smartClient?.account?.address || wallet.address) as `0x${string}`;
+      const wallet = primaryWallet;
+      const activeAddr = (smartClient?.account?.address || wallet?.address || address) as `0x${string}`;
       const publicClient = getPublicClient();
 
       // Convert INR amount to USDC using real price
