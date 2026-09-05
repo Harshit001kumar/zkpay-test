@@ -244,6 +244,119 @@ export async function getOrderStatus(orderId: bigint) {
   return res.value;
 }
 
+/**
+ * Robustly parses the orderId from transaction receipt logs across all P2P protocol event shapes.
+ */
+export async function parseOrderIdFromReceipt(receipt: any, userAddress?: string): Promise<bigint> {
+  if (!receipt || !receipt.logs || !Array.isArray(receipt.logs)) {
+    throw new Error("Transaction receipt contains no logs");
+  }
+
+  console.log("[p2pkit] Parsing orderId from receipt logs:", receipt.logs);
+
+  const { toEventSelector } = await import("viem");
+
+  // Candidate selectors across Diamond facets (canonical OrderFlowFacet, B2BGatewayFacet, etc.)
+  const candidateSelectors = [
+    toEventSelector("OrderPlaced(uint256,address,address,uint256,uint8,uint256,(uint256,uint256,uint256,uint256,uint256,address,address,address))"),
+    toEventSelector("OrderPlaced(uint256,address,uint256)"),
+    toEventSelector("B2BOrderPlaced(uint256,address,address,uint256)"),
+    toEventSelector("SellOrderPlaced(uint256,address,uint256,bytes32)"),
+    toEventSelector("OfframpOrderPlaced(uint256,address,uint256)"),
+    toEventSelector("OrderPlaced(uint256,address,uint256,bytes32,uint256,uint256,uint256)"),
+  ];
+
+  const diamondAddress = (CONTRACTS.DIAMOND || "").toLowerCase();
+  const usdcAddress = (CONTRACTS.USDC || "").toLowerCase();
+
+  // Strategy 1: Match known topic0 signatures
+  for (const log of receipt.logs) {
+    if (log.topics && log.topics.length >= 2 && candidateSelectors.includes(log.topics[0])) {
+      try {
+        const id = BigInt(log.topics[1]);
+        if (id > 0n) {
+          console.log("[p2pkit] Found orderId via known selector:", id.toString());
+          return id;
+        }
+      } catch {}
+    }
+  }
+
+  // Strategy 2: Match ANY log emitted by the Diamond contract
+  for (const log of receipt.logs) {
+    if (log.address && log.address.toLowerCase() === diamondAddress) {
+      if (log.topics && log.topics.length >= 2) {
+        try {
+          const id = BigInt(log.topics[1]);
+          if (id > 0n) {
+            console.log("[p2pkit] Found orderId from Diamond log topic1:", id.toString());
+            return id;
+          }
+        } catch {}
+      }
+      if (log.data && log.data.length >= 66) {
+        try {
+          const id = BigInt("0x" + log.data.slice(2, 66));
+          if (id > 0n) {
+            console.log("[p2pkit] Found orderId from Diamond log data:", id.toString());
+            return id;
+          }
+        } catch {}
+      }
+    }
+  }
+
+  // Strategy 3: Inspect any non-USDC log that has a valid positive integer in topic1
+  for (const log of receipt.logs) {
+    if (log.address && log.address.toLowerCase() !== usdcAddress) {
+      if (log.topics && log.topics.length >= 2) {
+        try {
+          const id = BigInt(log.topics[1]);
+          if (id > 0n) {
+            console.log("[p2pkit] Found orderId from candidate log topic1:", id.toString());
+            return id;
+          }
+        } catch {}
+      }
+    }
+  }
+
+  // Strategy 4: Fallback to Subgraph query for the user's latest placed order
+  if (userAddress) {
+    try {
+      console.log("[p2pkit] Attempting subgraph query fallback for user:", userAddress);
+      const query = `
+        query GetLatestOrder($user: String!) {
+          orders(where: { user: $user }, orderBy: blockTimestamp, orderDirection: desc, first: 1) {
+            id
+            orderId
+          }
+        }
+      `;
+      const res = await fetch(SUBGRAPH_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query,
+          variables: { user: userAddress.toLowerCase() },
+        }),
+      });
+      const data = await res.json();
+      const latest = data?.data?.orders?.[0];
+      const foundId = latest?.orderId || latest?.id;
+      if (foundId) {
+        const id = BigInt(foundId);
+        console.log("[p2pkit] Found orderId via Subgraph fallback:", id.toString());
+        return id;
+      }
+    } catch (err) {
+      console.warn("[p2pkit] Subgraph order lookup failed:", err);
+    }
+  }
+
+  throw new Error("Failed to get orderId from receipt logs");
+}
+
 export async function parseP2PError(error: any) {
   try {
     const errorCode = error?.code || "";

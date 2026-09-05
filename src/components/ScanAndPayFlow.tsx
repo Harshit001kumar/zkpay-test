@@ -16,6 +16,7 @@ import {
   getOrderStatus, 
   sendPayoutAddress, 
   getOfframpLimits, 
+  parseOrderIdFromReceipt,
   parseP2PError 
 } from "@/lib/p2pkit";
 import { saveTransaction } from "@/lib/history";
@@ -48,7 +49,7 @@ const PRESET_AMOUNTS = [100, 250, 500, 1000, 2000];
 
 export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   const router = useRouter();
-  const { address, smartClient, primaryWallet: wallet, login } = useActiveAccount();
+  const { address, smartClient, primaryWallet: wallet, login, ready, authenticated } = useActiveAccount();
   const activeAddress = (address || undefined) as `0x${string}` | undefined;
 
 
@@ -125,10 +126,10 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
         const price = await getSellRate("INR");
         if (isMounted) setSellPrice(price);
 
-        if (wallet?.address) {
-          const limits = await getOfframpLimits(wallet.address as `0x${string}`, "INR");
-          if (isMounted && limits?.maxSellableUsdc) {
-            setMaxSellable(limits.maxSellableUsdc);
+        if (activeAddress) {
+          const limits = await getOfframpLimits(activeAddress, "INR");
+          if (isMounted && limits?.sellLimit) {
+            setMaxSellable(Number(limits.sellLimit));
           }
         }
       } catch (err: any) {
@@ -141,7 +142,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
     fetchRateAndLimits();
     return () => { isMounted = false; };
-  }, [wallet?.address]);
+  }, [activeAddress]);
 
   // Rate Math Calculations
   const numericInr = parseFloat(amountInr) || 0;
@@ -152,7 +153,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
   // 2. STEP 1 -> STEP 2: Place Order on-chain into escrow
   const handlePlaceOrder = async () => {
-    if (!wallet || !wallet.address) {
+    if (!activeAddress) {
       login();
       return;
     }
@@ -170,7 +171,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
       setStep("authorizing");
 
       const publicClient = getPublicClient();
-      const senderAddress = activeAddress || wallet!.address as `0x${string}`;
+      const senderAddress = activeAddress;
 
       const fiatPrincipal1e6 = BigInt(Math.floor(numericInr * 1_000_000));
       const usdcPrincipalBigInt = (fiatPrincipal1e6 * 1_000_000n) / sellPrice;
@@ -278,21 +279,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
       // Parse orderId from receipt
       const receipt = await publicClient.waitForTransactionReceipt({ hash: placedTxHash as `0x${string}` });
-      const { toEventSelector } = await import("viem");
-      const orderPlacedTopic0 = toEventSelector("OrderPlaced(uint256,address,uint256,bytes32,uint256,uint256,uint256)");
-      
-      let parsedOrderId: bigint | null = null;
-      for (const log of receipt.logs) {
-        if (log.topics.length >= 2 && log.topics[0] === orderPlacedTopic0) {
-          try {
-            const topic = log.topics[1];
-            if (topic) {
-              parsedOrderId = BigInt(topic);
-              break;
-            }
-          } catch {}
-        }
-      }
+      const parsedOrderId = await parseOrderIdFromReceipt(receipt, activeAddress);
 
       if (parsedOrderId) {
         setOrderId(parsedOrderId);
@@ -445,21 +432,29 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
       try {
         setStep("delivering");
-        const userWallet = wallets?.[0];
-        if (!userWallet) throw new Error("Wallet not connected");
+        // Use smartClient directly when available (email-only users have no primaryWallet)
+        if (smartClient) {
+          await sendPayoutAddress(smartClient as any, {
+            orderId: orderId,
+            paymentAddress: scannedUpi,
+            merchantPublicKey: merchantAcceptedOrder.pubkey,
+          });
+        } else if (wallet) {
+          const provider = await wallet.getEthereumProvider();
+          const client = createWalletClient({
+            account: wallet.address as `0x${string}`,
+            chain: base,
+            transport: custom(provider),
+          });
 
-        const provider = await userWallet.getEthereumProvider();
-        const client = createWalletClient({
-          account: userWallet.address as `0x${string}`,
-          chain: base,
-          transport: custom(provider),
-        });
-
-        await sendPayoutAddress(client, {
-          orderId: orderId,
-          paymentAddress: scannedUpi,
-          merchantPublicKey: merchantAcceptedOrder.pubkey,
-        });
+          await sendPayoutAddress(client, {
+            orderId: orderId,
+            paymentAddress: scannedUpi,
+            merchantPublicKey: merchantAcceptedOrder.pubkey,
+          });
+        } else {
+          throw new Error("No wallet available to send payout address.");
+        }
 
         // Save transaction to local history
         saveTransaction({
@@ -495,7 +490,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
     };
 
     deliverUpi();
-  }, [orderId, scannedUpi, merchantAcceptedOrder, step, wallets, txHash, numericInr, usdcAmountNum, platformFeeUsdc, scannedMerchantName]);
+  }, [orderId, scannedUpi, merchantAcceptedOrder, step, smartClient, wallet, txHash, numericInr, usdcAmountNum, platformFeeUsdc, scannedMerchantName]);
 
   // ────────────── RENDER ──────────────
 

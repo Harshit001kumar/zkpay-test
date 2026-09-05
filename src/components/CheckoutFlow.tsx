@@ -16,6 +16,7 @@ import {
   prepareOfframpOrder,
   getOrderStatus,
   sendPayoutAddress,
+  parseOrderIdFromReceipt,
   parseP2PError,
   getPublicClient,
 } from "@/lib/p2pkit";
@@ -111,7 +112,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         localStorage.removeItem("pending_payment_order");
       }
     }
-  }, [ready, authenticated, wallets]);
+  }, [ready, authenticated, address]);
 
   const resumeOrder = async (pOrderId: bigint, upi: string, txHash: string, pending: any) => {
     try {
@@ -137,21 +138,31 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
       if (acceptedOrder && acceptedOrder.pubkey) {
         setStatus("paying");
-        const wallet = wallets[0];
-        const provider = await wallet.getEthereumProvider();
-        const { createWalletClient, custom } = await import("viem");
-        const { base } = await import("viem/chains");
-        const walletClient = createWalletClient({
-          account: wallet.address as `0x${string}`,
-          chain: base,
-          transport: custom(provider),
-        });
+        // Use smartClient directly when available (email-only users have no primaryWallet)
+        if (smartClient) {
+          await sendPayoutAddress(smartClient as any, {
+            orderId: pOrderId,
+            paymentAddress: upi,
+            merchantPublicKey: acceptedOrder.pubkey,
+          });
+        } else if (primaryWallet) {
+          const provider = await primaryWallet.getEthereumProvider();
+          const { createWalletClient, custom } = await import("viem");
+          const { base } = await import("viem/chains");
+          const walletClient = createWalletClient({
+            account: primaryWallet.address as `0x${string}`,
+            chain: base,
+            transport: custom(provider),
+          });
 
-        await sendPayoutAddress(walletClient, {
-          orderId: pOrderId,
-          paymentAddress: upi,
-          merchantPublicKey: acceptedOrder.pubkey,
-        });
+          await sendPayoutAddress(walletClient, {
+            orderId: pOrderId,
+            paymentAddress: upi,
+            merchantPublicKey: acceptedOrder.pubkey,
+          });
+        } else {
+          throw new Error("No wallet available to send payout address.");
+        }
 
         // Wait for final completion
         const MAX_PAY_POLLS = 100;
@@ -333,23 +344,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       // Parse orderId from receipt
       const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
 
-      const { toEventSelector } = await import("viem");
-      const orderPlacedTopic0 = toEventSelector("OrderPlaced(uint256,address,uint256,bytes32,uint256,uint256,uint256)");
-      
-      let parsedOrderId: bigint | null = null;
-      for (const log of receipt.logs) {
-        if (log.topics.length >= 2 && log.topics[0] === orderPlacedTopic0) {
-          try {
-            const topic = log.topics[1];
-            if (!topic) continue;
-            const possibleOrderId = BigInt(topic);
-            if (possibleOrderId > 0n) {
-              parsedOrderId = possibleOrderId;
-              break;
-            }
-          } catch {}
-        }
-      }
+      const parsedOrderId = await parseOrderIdFromReceipt(receipt, activeAddr);
 
       // Save transaction to local history immediately
       saveTransaction({

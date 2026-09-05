@@ -14,6 +14,7 @@ import {
   prepareOfframpOrder, 
   sendPayoutAddress, 
   getOrderStatus,
+  parseOrderIdFromReceipt,
   parseP2PError,
   getPublicClient,
 } from "@/lib/p2pkit";
@@ -98,7 +99,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         localStorage.removeItem("pending_cashout_order");
       }
     }
-  }, [ready, authenticated, wallets]);
+  }, [ready, authenticated, address]);
 
   const resumePendingOrder = async (orderId: bigint, savedUpiId: string, hash: string, pending: any) => {
     try {
@@ -125,16 +126,19 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         await new Promise(r => setTimeout(r, 3000));
       }
 
-      const wallet = wallets[0];
-      
-      // Use Privy Smart Wallet client for sendPayoutAddress if available
+      // Use smartClient directly as walletClient when available (email-only users have no primaryWallet)
       if (smartClient) {
-        // sendPayoutAddress expects a walletClient - create one from smartClient
-        const provider = await wallet.getEthereumProvider();
+        await sendPayoutAddress(smartClient as any, {
+          orderId,
+          paymentAddress: savedUpiId,
+          merchantPublicKey: acceptedOrder.pubkey,
+        });
+      } else if (primaryWallet) {
+        const provider = await primaryWallet.getEthereumProvider();
         const { createWalletClient, custom } = await import("viem");
         const { base } = await import("viem/chains");
         const walletClient = createWalletClient({
-          account: (smartClient.account?.address || wallet.address) as `0x${string}`,
+          account: primaryWallet.address as `0x${string}`,
           chain: base,
           transport: custom(provider)
         });
@@ -145,20 +149,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
           merchantPublicKey: acceptedOrder.pubkey,
         });
       } else {
-        const provider = await wallet.getEthereumProvider();
-        const { createWalletClient, custom } = await import("viem");
-        const { base } = await import("viem/chains");
-        const walletClient = createWalletClient({
-          account: wallet.address as `0x${string}`,
-          chain: base,
-          transport: custom(provider)
-        });
-        
-        await sendPayoutAddress(walletClient, {
-          orderId,
-          paymentAddress: savedUpiId,
-          merchantPublicKey: acceptedOrder.pubkey,
-        });
+        throw new Error("No wallet available to send payout address.");
       }
 
       setStatus("paying");
@@ -343,28 +334,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       }
 
       const receipt = await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
-
-      const { toEventSelector } = await import("viem");
-      const orderPlacedTopic0 = toEventSelector("OrderPlaced(uint256,address,uint256,bytes32,uint256,uint256,uint256)");
-      
-      let orderId: bigint | null = null;
-      for (const log of receipt.logs) {
-        if (log.topics.length >= 2 && log.topics[0] === orderPlacedTopic0) {
-          try {
-            const topic = log.topics[1];
-            if (!topic) continue;
-            const possibleOrderId = BigInt(topic);
-            if (possibleOrderId > 0n) {
-              orderId = possibleOrderId;
-              break;
-            }
-          } catch {}
-        }
-      }
-      
-      if (!orderId) {
-        throw new Error("Failed to get orderId from receipt logs");
-      }
+      const orderId = await parseOrderIdFromReceipt(receipt, activeAddr);
 
       const pendingOrderData = {
         orderId: orderId.toString(),
