@@ -25,10 +25,23 @@ export const EARN_CONFIG = {
   PERFORMANCE_FEE_BPS: 1000,
 } as const;
 
+const INFURA_KEY = process.env.NEXT_PUBLIC_INFURA_API_KEY;
+const INFURA_RPC = INFURA_KEY ? `https://base-mainnet.infura.io/v3/${INFURA_KEY}` : null;
+
+export const BASE_RPC_URLS = [
+  process.env.NEXT_PUBLIC_RPC_URL,
+  INFURA_RPC,
+  "https://base.llamarpc.com",
+  "https://base-rpc.publicnode.com",
+  "https://1rpc.io/base",
+  "https://mainnet.base.org",
+].filter(Boolean) as string[];
+
 export const CHAIN = {
   id: Number(process.env.NEXT_PUBLIC_CHAIN_ID) || 8453, // Base Mainnet
   name: "Base",
-  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org",
+  rpcUrl: INFURA_RPC || process.env.NEXT_PUBLIC_RPC_URL || "https://base.llamarpc.com",
+  rpcUrls: BASE_RPC_URLS,
   blockExplorer: "https://basescan.org",
 } as const;
 

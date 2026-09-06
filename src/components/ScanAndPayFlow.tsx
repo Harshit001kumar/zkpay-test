@@ -127,9 +127,14 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
         if (isMounted) setSellPrice(price);
 
         if (activeAddress) {
-          const limits = await getOfframpLimits(activeAddress, "INR");
-          if (isMounted && limits?.sellLimit) {
-            setMaxSellable(Number(limits.sellLimit));
+          try {
+            const limits = await getOfframpLimits(activeAddress, "INR");
+            if (isMounted && limits?.sellLimit) {
+              setMaxSellable(Number(limits.sellLimit));
+            }
+          } catch (limitErr) {
+            console.warn("[ScanAndPayFlow] Limits fetch warning, using 100 USDC baseline floor:", limitErr);
+            if (isMounted) setMaxSellable(100);
           }
         }
       } catch (err: any) {

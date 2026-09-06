@@ -3,17 +3,29 @@ const zeroAddress = "0x0000000000000000000000000000000000000000" as `0x${string}
 import { createOrders, createLocalStorageRelayStore } from "@p2pdotme/sdk/orders";
 import { createProfile } from "@p2pdotme/sdk/profile";
 import { createPrices } from "@p2pdotme/sdk/prices";
-import { CONTRACTS, CHAIN, SUBGRAPH_URL } from "./constants";
+import { CONTRACTS, CHAIN, BASE_RPC_URLS, SUBGRAPH_URL } from "./constants";
 
 let _publicClient: any = null;
 
 export function getPublicClient() {
   if (!_publicClient) {
-    const { createPublicClient, http } = require("viem");
+    const { createPublicClient, http, fallback } = require("viem");
     const { base } = require("viem/chains");
+
+    const transport = fallback(
+      BASE_RPC_URLS.map((url: string) =>
+        http(url, {
+          retryCount: 3,
+          retryDelay: 800,
+          timeout: 15_000,
+        })
+      ),
+      { rank: false }
+    );
+
     _publicClient = createPublicClient({ 
       chain: base, 
-      transport: http(CHAIN.rpcUrl) 
+      transport 
     });
   }
   return _publicClient;
@@ -60,22 +72,24 @@ export function getP2PPrices() {
   return pricesClient;
 }
 
-/**
- * Get the max sellable amount in USDC for a given currency (e.g. "INR").
- */
 export async function getOfframpLimits(address: `0x${string}`, currency: string) {
-  const profile = getP2PProfile();
-  const limits = await profile.getTxLimits({
-    address,
-    currency,
-  });
-  
-  if (limits.isErr()) {
-    const causeStr = limits.error.cause ? (limits.error.cause as any).message || String(limits.error.cause) : "No underlying cause";
-    throw new Error(`Limits Error (${limits.error.code}): ${causeStr}`);
+  try {
+    const profile = getP2PProfile();
+    const limits = await profile.getTxLimits({
+      address,
+      currency,
+    });
+    
+    if (limits.isErr()) {
+      console.warn("[p2pkit] limits.isErr, fallback to 100 USDC baseline floor:", limits.error);
+      return { sellLimit: 100n, buyLimit: 0n };
+    }
+    
+    return limits.value;
+  } catch (err) {
+    console.warn("[p2pkit] getTxLimits error, fallback to 100 USDC baseline floor:", err);
+    return { sellLimit: 100n, buyLimit: 0n };
   }
-  
-  return limits.value;
 }
 
 /**
@@ -203,9 +217,10 @@ export async function placeOfframpOrder(
 
 /**
  * Encrypt and deliver the user's UPI ID to the merchant once the order is accepted.
+ * Handles both Viem WalletClients (EOAs) and Privy SmartWallets (ERC-4337 batched calls).
  */
 export async function sendPayoutAddress(
-  walletClient: any,
+  clientOrWallet: any,
   params: {
     orderId: bigint;
     paymentAddress: string;
@@ -213,20 +228,111 @@ export async function sendPayoutAddress(
   }
 ) {
   const orders = getP2POrders();
-  
+  const publicClient = getPublicClient();
+
+  if (!orders) {
+    throw new Error("P2P Orders client not initialized (window unavailable)");
+  }
+
+  // Strategy A: If orders.setSellOrderUpi.prepare is available, prepare calldata and submit via Smart Client
+  if (typeof orders?.setSellOrderUpi?.prepare === "function") {
+    try {
+      console.log("[p2pkit] Attempting setSellOrderUpi.prepare for order", params.orderId.toString());
+      const prepared = await orders.setSellOrderUpi.prepare({
+        orderId: params.orderId,
+        paymentAddress: params.paymentAddress,
+        merchantPublicKey: params.merchantPublicKey,
+        updatedAmount: 0n,
+      });
+
+      if (prepared.isOk()) {
+        const { to, data, value } = prepared.value;
+        console.log("[p2pkit] setSellOrderUpi calldata prepared:", { to });
+
+        let txHash: string;
+
+        // Check if Smart Client (supports batched calls)
+        if (typeof clientOrWallet?.sendTransaction === "function") {
+          try {
+            // Privy Smart Wallet: send as batched call with paymaster sponsorship
+            txHash = await clientOrWallet.sendTransaction({
+              calls: [{
+                to: to as `0x${string}`,
+                data: data as `0x${string}`,
+                value: (value as bigint) ?? 0n,
+              }],
+            });
+          } catch (smartErr) {
+            console.warn("[p2pkit] SmartClient calls format failed, attempting direct format:", smartErr);
+            txHash = await clientOrWallet.sendTransaction({
+              to: to as `0x${string}`,
+              data: data as `0x${string}`,
+              value: (value as bigint) ?? 0n,
+            });
+          }
+
+          console.log("[p2pkit] setSellOrderUpi tx submitted:", txHash);
+          const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+          return { hash: txHash, receipt };
+        }
+      }
+    } catch (prepErr) {
+      console.warn("[p2pkit] setSellOrderUpi.prepare path bypassed, falling back to execute with adapter:", prepErr);
+    }
+  }
+
+  // Strategy B: Wrap client in an adapter that intercepts sendTransaction
+  // and formats `{ to, data, value }` as `{ calls: [{ to, data, value }] }` for Privy Smart Wallets
+  const adaptedClient = {
+    ...clientOrWallet,
+    account: clientOrWallet.account,
+    chain: clientOrWallet.chain || { id: 8453 },
+    sendTransaction: async (txArgs: any) => {
+      // If calls already provided, pass through
+      if (txArgs.calls && Array.isArray(txArgs.calls)) {
+        return await clientOrWallet.sendTransaction(txArgs);
+      }
+
+      const to = txArgs.to;
+      const data = txArgs.data;
+      const value = txArgs.value ?? 0n;
+
+      if (to && data) {
+        try {
+          // Format for Privy Smart Wallet client
+          return await clientOrWallet.sendTransaction({
+            calls: [{
+              to: to as `0x${string}`,
+              data: data as `0x${string}`,
+              value: typeof value === "bigint" ? value : BigInt(value || 0),
+            }],
+          });
+        } catch (callErr) {
+          console.warn("[p2pkit] Adapter calls format failed, falling back to clean args:", callErr);
+          // Fallback to original args minus nonce if nonce caused issues
+          const cleanArgs = { ...txArgs };
+          delete cleanArgs.nonce;
+          return await clientOrWallet.sendTransaction(cleanArgs);
+        }
+      }
+
+      return await clientOrWallet.sendTransaction(txArgs);
+    },
+  };
+
   const set = await orders.setSellOrderUpi.execute({
-    walletClient,
+    walletClient: adaptedClient,
     waitForReceipt: true,
     orderId: params.orderId,
     paymentAddress: params.paymentAddress,
     merchantPublicKey: params.merchantPublicKey,
     updatedAmount: 0n, // keep original amount
   });
-  
+
   if (set.isErr()) {
     throw set.error;
   }
-  
+
   return set.value;
 }
 

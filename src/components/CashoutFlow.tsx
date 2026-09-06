@@ -33,6 +33,8 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
   const [error, setError] = useState<string | null>(null);
   
   const [maxSellable, setMaxSellable] = useState<number | null>(null);
+  const [orderId, setOrderId] = useState<bigint | null>(null);
+  const [pendingOrderData, setPendingOrderData] = useState<any | null>(null);
   const [sellPrice, setSellPrice] = useState<bigint | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
 
@@ -92,6 +94,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         const pending = JSON.parse(pendingOrderStr);
         if (pending.orderId && pending.upiId) {
           setUpiId(pending.upiId);
+          setPendingOrderData(pending);
           setStatus("matching");
           resumePendingOrder(BigInt(pending.orderId), pending.upiId, pending.hash, pending);
         }
@@ -113,11 +116,14 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         }
         if (currentOrder.status === "completed") {
           localStorage.removeItem("pending_cashout_order");
+          setPendingOrderData(null);
           setStatus("completed");
           router.push(`/tx/${hash}`);
           return;
         }
         if (currentOrder.status === "cancelled") {
+          localStorage.removeItem("pending_cashout_order");
+          setPendingOrderData(null);
           throw new Error("Order was cancelled by the protocol.");
         }
         if (i === MAX_ACCEPT_POLLS - 1) {
@@ -158,6 +164,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         const currentOrder = await getOrderStatus(orderId);
         if (currentOrder.status === "completed") {
           localStorage.removeItem("pending_cashout_order");
+          setPendingOrderData(null);
           
           saveTransaction({
             hash: hash,
@@ -185,8 +192,11 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       }
     } catch (e: any) {
       console.error("Resume failed", e);
-      localStorage.removeItem("pending_cashout_order");
-      setError(e.message || "Failed to resume order.");
+      if (e.message?.includes("cancelled")) {
+        localStorage.removeItem("pending_cashout_order");
+        setPendingOrderData(null);
+      }
+      setError(e.message || "Failed to deliver payout details to merchant.");
       setStatus("error");
     }
   };
@@ -346,6 +356,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         timestamp: Date.now()
       };
       localStorage.setItem("pending_cashout_order", JSON.stringify(pendingOrderData));
+      setPendingOrderData(pendingOrderData);
       
       setStatus("matching");
       resumePendingOrder(orderId, upiId, hash, pendingOrderData);
@@ -549,13 +560,39 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
             )}
             
             {status === "error" && (
-              <div className="flex flex-col items-center">
+              <div className="flex flex-col items-center max-w-sm mx-auto text-center">
                 <span className="material-symbols-outlined text-[#ffb4ab] text-5xl mb-4">error</span>
-                <h3 className="font-headline-md text-2xl mb-2 text-[#ffb4ab]">Cashout Failed</h3>
+                <h3 className="font-headline-md text-2xl mb-2 text-[#ffb4ab]">Cashout Notice</h3>
                 <p className="text-sm text-[#909097] mb-8">{error}</p>
-                <button onClick={() => setStatus("input")} className="px-8 py-3 rounded-lg border border-white/20 text-[#e5e2e3] font-label-caps tracking-widest text-[10px] uppercase hover:bg-white/5 transition-colors">
-                  Try Again
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3 w-full justify-center">
+                  {pendingOrderData && (
+                    <button 
+                      onClick={() => {
+                        setError(null);
+                        setStatus("matching");
+                        resumePendingOrder(
+                          BigInt(pendingOrderData.orderId), 
+                          pendingOrderData.upiId, 
+                          pendingOrderData.hash, 
+                          pendingOrderData
+                        );
+                      }} 
+                      className="px-6 py-3 rounded-lg bg-[#c0c6de] text-[#0e0e0f] font-bold text-xs uppercase tracking-wider hover:bg-white transition-colors"
+                    >
+                      Retry Delivering UPI
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => {
+                      localStorage.removeItem("pending_cashout_order");
+                      setPendingOrderData(null);
+                      setStatus("input");
+                    }} 
+                    className="px-6 py-3 rounded-lg border border-white/20 text-[#e5e2e3] font-label-caps tracking-widest text-[10px] uppercase hover:bg-white/5 transition-colors"
+                  >
+                    {pendingOrderData ? "Start New Order" : "Try Again"}
+                  </button>
+                </div>
               </div>
             )}
           </section>

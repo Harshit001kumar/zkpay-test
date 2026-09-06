@@ -5,14 +5,24 @@ import { SmartWalletsProvider } from "@privy-io/react-auth/smart-wallets";
 import { base } from "viem/chains";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createConfig, WagmiProvider } from "@privy-io/wagmi";
-import { http } from "wagmi";
+import { fallback, http } from "viem";
+import { BASE_RPC_URLS } from "@/lib/constants";
 
 const queryClient = new QueryClient();
 
 const wagmiConfig = createConfig({
   chains: [base],
   transports: {
-    [base.id]: http(process.env.NEXT_PUBLIC_RPC_URL || undefined),
+    [base.id]: fallback(
+      BASE_RPC_URLS.map((url) =>
+        http(url, {
+          retryCount: 3,
+          retryDelay: 800,
+          timeout: 15_000,
+        })
+      ),
+      { rank: false }
+    ),
   },
 });
 
