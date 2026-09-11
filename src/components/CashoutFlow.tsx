@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { useRouter } from "next/navigation";
 import { encodeFunctionData, parseUnits, formatUnits, maxUint256 } from "viem";
@@ -38,6 +38,9 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
   const [pendingOrderData, setPendingOrderData] = useState<any | null>(null);
   const [sellPrice, setSellPrice] = useState<bigint | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
+
+  const isResumingCashoutRef = useRef<string | null>(null);
+  const deliveredCashoutPayoutRef = useRef<string | null>(null);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -106,6 +109,10 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
   }, [ready, authenticated, address]);
 
   const resumePendingOrder = async (orderId: bigint, savedUpiId: string, hash: string, pending: any) => {
+    const orderIdStr = orderId.toString();
+    if (isResumingCashoutRef.current === orderIdStr) return;
+    isResumingCashoutRef.current = orderIdStr;
+
     try {
       let acceptedOrder: any = null;
       const MAX_ACCEPT_POLLS = 200;
@@ -133,30 +140,35 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         await new Promise(r => setTimeout(r, 3000));
       }
 
-      // Use smartClient directly as walletClient when available (email-only users have no primaryWallet)
-      if (smartClient) {
-        await sendPayoutAddress(smartClient as any, {
-          orderId,
-          paymentAddress: savedUpiId,
-          merchantPublicKey: acceptedOrder.pubkey,
-        });
-      } else if (primaryWallet) {
-        const provider = await primaryWallet.getEthereumProvider();
-        const { createWalletClient, custom } = await import("viem");
-        const { base } = await import("viem/chains");
-        const walletClient = createWalletClient({
-          account: primaryWallet.address as `0x${string}`,
-          chain: base,
-          transport: custom(provider)
-        });
-        
-        await sendPayoutAddress(walletClient, {
-          orderId,
-          paymentAddress: savedUpiId,
-          merchantPublicKey: acceptedOrder.pubkey,
-        });
-      } else {
-        throw new Error("No wallet available to send payout address.");
+      // Guard: strictly send payout address once per orderId
+      if (deliveredCashoutPayoutRef.current !== orderIdStr) {
+        deliveredCashoutPayoutRef.current = orderIdStr;
+
+        // Use smartClient directly as walletClient when available (email-only users have no primaryWallet)
+        if (smartClient) {
+          await sendPayoutAddress(smartClient as any, {
+            orderId,
+            paymentAddress: savedUpiId,
+            merchantPublicKey: acceptedOrder.pubkey,
+          });
+        } else if (primaryWallet) {
+          const provider = await primaryWallet.getEthereumProvider();
+          const { createWalletClient, custom } = await import("viem");
+          const { base } = await import("viem/chains");
+          const walletClient = createWalletClient({
+            account: primaryWallet.address as `0x${string}`,
+            chain: base,
+            transport: custom(provider)
+          });
+          
+          await sendPayoutAddress(walletClient, {
+            orderId,
+            paymentAddress: savedUpiId,
+            merchantPublicKey: acceptedOrder.pubkey,
+          });
+        } else {
+          throw new Error("No wallet available to send payout address.");
+        }
       }
 
       setStatus("paying");
@@ -201,6 +213,8 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       }
       setError(e.message || "Failed to deliver payout details to merchant.");
       setStatus("error");
+      isResumingCashoutRef.current = null;
+      deliveredCashoutPayoutRef.current = null;
     }
   };
 

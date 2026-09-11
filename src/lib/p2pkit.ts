@@ -260,99 +260,56 @@ export async function sendPayoutAddress(
     throw new Error("P2P Orders client not initialized (window unavailable)");
   }
 
-  // Strategy A: If orders.setSellOrderUpi.prepare is available, prepare calldata and submit via Smart Client
+  // Pre-flight check: Guard against sending sponsored UserOperations for terminal orders
+  try {
+    const order = await getOrderStatus(params.orderId);
+    if (order.status === "cancelled" || order.status === "completed") {
+      throw new Error(`Order #${params.orderId.toString()} is already ${order.status}. Delivery aborted.`);
+    }
+  } catch (statusErr: any) {
+    if (statusErr.message?.includes("already")) throw statusErr;
+  }
+
+  // Strategy A: Direct calldata preparation and submission for Smart Wallets
   if (typeof orders?.setSellOrderUpi?.prepare === "function") {
-    try {
-      console.log("[p2pkit] Attempting setSellOrderUpi.prepare for order", params.orderId.toString());
-      const prepared = await orders.setSellOrderUpi.prepare({
-        orderId: params.orderId,
-        paymentAddress: params.paymentAddress,
-        merchantPublicKey: params.merchantPublicKey,
-        updatedAmount: 0n,
-      });
+    console.log("[p2pkit] Preparing setSellOrderUpi for order", params.orderId.toString());
+    const prepared = await orders.setSellOrderUpi.prepare({
+      orderId: params.orderId,
+      paymentAddress: params.paymentAddress,
+      merchantPublicKey: params.merchantPublicKey,
+      updatedAmount: 0n,
+    });
 
-      if (prepared.isOk()) {
-        const { to, data, value } = prepared.value;
-        console.log("[p2pkit] setSellOrderUpi calldata prepared:", { to });
+    if (prepared.isOk()) {
+      const { to, data, value } = prepared.value;
 
-        let txHash: string;
+      // Smart Wallet execution (ERC-4337 batched call sponsored by Pimlico)
+      if (typeof clientOrWallet?.sendTransaction === "function") {
+        const txHash = await clientOrWallet.sendTransaction({
+          calls: [{
+            to: to as `0x${string}`,
+            data: data as `0x${string}`,
+            value: (value as bigint) ?? 0n,
+          }],
+        });
 
-        // Check if Smart Client (supports batched calls)
-        if (typeof clientOrWallet?.sendTransaction === "function") {
-          try {
-            // Privy Smart Wallet: send as batched call with paymaster sponsorship
-            txHash = await clientOrWallet.sendTransaction({
-              calls: [{
-                to: to as `0x${string}`,
-                data: data as `0x${string}`,
-                value: (value as bigint) ?? 0n,
-              }],
-            });
-          } catch (smartErr) {
-            console.warn("[p2pkit] SmartClient calls format failed, attempting direct format:", smartErr);
-            txHash = await clientOrWallet.sendTransaction({
-              to: to as `0x${string}`,
-              data: data as `0x${string}`,
-              value: (value as bigint) ?? 0n,
-            });
-          }
-
-          console.log("[p2pkit] setSellOrderUpi tx submitted:", txHash);
-          const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
-          return { hash: txHash, receipt };
-        }
+        console.log("[p2pkit] setSellOrderUpi UserOp submitted:", txHash);
+        const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+        return { hash: txHash, receipt };
       }
-    } catch (prepErr) {
-      console.warn("[p2pkit] setSellOrderUpi.prepare path bypassed, falling back to execute with adapter:", prepErr);
+    } else {
+      throw prepared.error;
     }
   }
 
-  // Strategy B: Wrap client in an adapter that intercepts sendTransaction
-  // and formats `{ to, data, value }` as `{ calls: [{ to, data, value }] }` for Privy Smart Wallets
-  const adaptedClient = {
-    ...clientOrWallet,
-    account: clientOrWallet.account,
-    chain: clientOrWallet.chain || { id: 8453 },
-    sendTransaction: async (txArgs: any) => {
-      // If calls already provided, pass through
-      if (txArgs.calls && Array.isArray(txArgs.calls)) {
-        return await clientOrWallet.sendTransaction(txArgs);
-      }
-
-      const to = txArgs.to;
-      const data = txArgs.data;
-      const value = txArgs.value ?? 0n;
-
-      if (to && data) {
-        try {
-          // Format for Privy Smart Wallet client
-          return await clientOrWallet.sendTransaction({
-            calls: [{
-              to: to as `0x${string}`,
-              data: data as `0x${string}`,
-              value: typeof value === "bigint" ? value : BigInt(value || 0),
-            }],
-          });
-        } catch (callErr) {
-          console.warn("[p2pkit] Adapter calls format failed, falling back to clean args:", callErr);
-          // Fallback to original args minus nonce if nonce caused issues
-          const cleanArgs = { ...txArgs };
-          delete cleanArgs.nonce;
-          return await clientOrWallet.sendTransaction(cleanArgs);
-        }
-      }
-
-      return await clientOrWallet.sendTransaction(txArgs);
-    },
-  };
-
+  // Strategy B: Fallback for standard Viem WalletClients (EOAs)
   const set = await orders.setSellOrderUpi.execute({
-    walletClient: adaptedClient,
+    walletClient: clientOrWallet,
     waitForReceipt: true,
     orderId: params.orderId,
     paymentAddress: params.paymentAddress,
     merchantPublicKey: params.merchantPublicKey,
-    updatedAmount: 0n, // keep original amount
+    updatedAmount: 0n,
   });
 
   if (set.isErr()) {

@@ -38,6 +38,7 @@ import {
   Copy, 
   RefreshCw, 
   ShieldCheck, 
+  Store,
   X,
   AlertCircle
 } from "lucide-react";
@@ -119,6 +120,8 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   const [cameraLoading, setCameraLoading] = useState<boolean>(true);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const deliveredOrderIdRef = useRef<string | null>(null);
+  const isDeliveringUpiRef = useRef<boolean>(false);
 
   // 1. Fetch on-chain rate and limits on mount
   useEffect(() => {
@@ -320,7 +323,8 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
   // 3. STEP 3: Background P2P Match Polling while user is scanning
   useEffect(() => {
-    if (!orderId || (step !== "scanning_matching" && step !== "delivering")) return;
+    // Only poll while waiting for merchant match! Once matched or outside scanning_matching, stop immediately
+    if (!orderId || step !== "scanning_matching" || merchantAcceptedOrder?.pubkey) return;
 
     let isPolling = true;
     const pollInterval = setInterval(async () => {
@@ -329,7 +333,10 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
         if (!isPolling) return;
 
         if (order.status === "accepted" && order.pubkey) {
-          setMerchantAcceptedOrder(order);
+          setMerchantAcceptedOrder((prev: any) => {
+            if (prev?.pubkey === order.pubkey && prev?.status === order.status) return prev;
+            return order;
+          });
         } else if (order.status === "completed") {
           setStep("completed");
           clearInterval(pollInterval);
@@ -341,13 +348,13 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
       } catch (e) {
         console.warn("[ScanAndPayFlow] Error polling order status:", e);
       }
-    }, 2500);
+    }, 3000);
 
     return () => {
       isPolling = false;
       clearInterval(pollInterval);
     };
-  }, [orderId, step]);
+  }, [orderId, step, merchantAcceptedOrder?.pubkey]);
 
   // 4. STEP 3 Camera Scanner Setup
   const parseUpiString = useCallback((rawText: string) => {
@@ -442,11 +449,15 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     if (!orderId || !scannedUpi || !merchantAcceptedOrder?.pubkey || step !== "scanning_matching") return;
 
-    let isExecuting = false;
-    const deliverUpi = async () => {
-      if (isExecuting) return;
-      isExecuting = true;
+    const currentOrderIdStr = orderId.toString();
+    if (deliveredOrderIdRef.current === currentOrderIdStr || isDeliveringUpiRef.current) {
+      return;
+    }
 
+    isDeliveringUpiRef.current = true;
+    deliveredOrderIdRef.current = currentOrderIdStr;
+
+    const deliverUpi = async () => {
       try {
         setStep("delivering");
         // Use smartClient directly when available (email-only users have no primaryWallet)
@@ -500,17 +511,19 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
             localStorage.removeItem("pending_scan_order");
             break;
           }
-          await new Promise(r => setTimeout(r, 2500));
+          await new Promise(r => setTimeout(r, 3000));
         }
       } catch (err: any) {
         console.error("[ScanAndPayFlow] Failed to deliver encrypted UPI:", err);
         const parsed = await parseP2PError(err);
         setError(parsed.message || "Failed to deliver payout address.");
+        isDeliveringUpiRef.current = false;
+        deliveredOrderIdRef.current = null;
       }
     };
 
     deliverUpi();
-  }, [orderId, scannedUpi, merchantAcceptedOrder, step, smartClient, wallet, txHash, numericInr, usdcAmountNum, platformFeeUsdc, scannedMerchantName]);
+  }, [orderId, scannedUpi, merchantAcceptedOrder?.pubkey, step, smartClient, wallet, txHash, numericInr, usdcAmountNum, platformFeeUsdc, scannedMerchantName]);
 
   // ────────────── RENDER ──────────────
 

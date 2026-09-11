@@ -1,7 +1,7 @@
 "use client";
 
 import { useActiveAccount } from "@/hooks/useActiveAccount";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { encodeFunctionData, parseUnits, formatUnits, maxUint256 } from "viem";
 import { CONTRACTS } from "@/lib/constants";
@@ -42,6 +42,9 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
   const [maxSellable, setMaxSellable] = useState<number | null>(null);
   const [orderId, setOrderId] = useState<bigint | null>(null);
   const [usdcBalance, setUsdcBalance] = useState<bigint | null>(null);
+
+  const isResumingCheckoutRef = useRef<string | null>(null);
+  const deliveredCheckoutPayoutRef = useRef<string | null>(null);
 
   const fee = amount * 0.01;
   const totalAmount = amount + fee;
@@ -117,6 +120,10 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
   }, [ready, authenticated, address]);
 
   const resumeOrder = async (pOrderId: bigint, upi: string, txHash: string, pending: any) => {
+    const orderIdStr = pOrderId.toString();
+    if (isResumingCheckoutRef.current === orderIdStr) return;
+    isResumingCheckoutRef.current = orderIdStr;
+
     try {
       let acceptedOrder: any = null;
       const MAX_ACCEPT_POLLS = 100;
@@ -140,30 +147,33 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
       if (acceptedOrder && acceptedOrder.pubkey) {
         setStatus("paying");
-        // Use smartClient directly when available (email-only users have no primaryWallet)
-        if (smartClient) {
-          await sendPayoutAddress(smartClient as any, {
-            orderId: pOrderId,
-            paymentAddress: upi,
-            merchantPublicKey: acceptedOrder.pubkey,
-          });
-        } else if (primaryWallet) {
-          const provider = await primaryWallet.getEthereumProvider();
-          const { createWalletClient, custom } = await import("viem");
-          const { base } = await import("viem/chains");
-          const walletClient = createWalletClient({
-            account: primaryWallet.address as `0x${string}`,
-            chain: base,
-            transport: custom(provider),
-          });
+        if (deliveredCheckoutPayoutRef.current !== orderIdStr) {
+          deliveredCheckoutPayoutRef.current = orderIdStr;
+          // Use smartClient directly when available (email-only users have no primaryWallet)
+          if (smartClient) {
+            await sendPayoutAddress(smartClient as any, {
+              orderId: pOrderId,
+              paymentAddress: upi,
+              merchantPublicKey: acceptedOrder.pubkey,
+            });
+          } else if (primaryWallet) {
+            const provider = await primaryWallet.getEthereumProvider();
+            const { createWalletClient, custom } = await import("viem");
+            const { base } = await import("viem/chains");
+            const walletClient = createWalletClient({
+              account: primaryWallet.address as `0x${string}`,
+              chain: base,
+              transport: custom(provider),
+            });
 
-          await sendPayoutAddress(walletClient, {
-            orderId: pOrderId,
-            paymentAddress: upi,
-            merchantPublicKey: acceptedOrder.pubkey,
-          });
-        } else {
-          throw new Error("No wallet available to send payout address.");
+            await sendPayoutAddress(walletClient, {
+              orderId: pOrderId,
+              paymentAddress: upi,
+              merchantPublicKey: acceptedOrder.pubkey,
+            });
+          } else {
+            throw new Error("No wallet available to send payout address.");
+          }
         }
 
         // Wait for final completion
@@ -185,6 +195,8 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       const parsed = await parseP2PError(e);
       setError(parsed.message);
       setStatus("error");
+      isResumingCheckoutRef.current = null;
+      deliveredCheckoutPayoutRef.current = null;
     }
   };
 
@@ -409,20 +421,32 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       // Deliver encrypted UPI to the matched merchant
       if (acceptedOrder && acceptedOrder.pubkey) {
         setStatus("paying");
-        const provider = await wallet.getEthereumProvider();
-        const { createWalletClient, custom } = await import("viem");
-        const { base } = await import("viem/chains");
-        const walletClient = createWalletClient({
-          account: (smartClient?.account?.address || wallet.address) as `0x${string}`,
-          chain: base,
-          transport: custom(provider),
-        });
+        const orderIdStr = parsedOrderId.toString();
+        if (deliveredCheckoutPayoutRef.current !== orderIdStr) {
+          deliveredCheckoutPayoutRef.current = orderIdStr;
+          if (smartClient) {
+            await sendPayoutAddress(smartClient as any, {
+              orderId: parsedOrderId,
+              paymentAddress: targetUpi,
+              merchantPublicKey: acceptedOrder.pubkey,
+            });
+          } else {
+            const provider = await wallet.getEthereumProvider();
+            const { createWalletClient, custom } = await import("viem");
+            const { base } = await import("viem/chains");
+            const walletClient = createWalletClient({
+              account: wallet.address as `0x${string}`,
+              chain: base,
+              transport: custom(provider),
+            });
 
-        await sendPayoutAddress(walletClient, {
-          orderId: parsedOrderId,
-          paymentAddress: targetUpi,
-          merchantPublicKey: acceptedOrder.pubkey,
-        });
+            await sendPayoutAddress(walletClient, {
+              orderId: parsedOrderId,
+              paymentAddress: targetUpi,
+              merchantPublicKey: acceptedOrder.pubkey,
+            });
+          }
+        }
 
         // Wait for final merchant fiat payment settlement
         const MAX_PAY_POLLS = 100;
