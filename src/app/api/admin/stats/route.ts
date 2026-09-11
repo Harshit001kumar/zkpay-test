@@ -184,6 +184,8 @@ export async function GET(req: Request) {
         diamondUsdcLiquidity: diamondUsdc,
         inrPerUsdcRate: inrSellPrice,
         platformFeeBps: 100, // 1%
+        fixedFeeThresholdUsdc: 10,
+        fixedFeeUsdc: 0.10,
         noKycLimitUsdc: 100, // $100 baseline floor
       },
     });

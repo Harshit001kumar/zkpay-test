@@ -18,6 +18,8 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const limit = Math.min(parseInt(searchParams.get("limit") || "20", 10), 50);
     const search = searchParams.get("search")?.toLowerCase().trim() || "";
+    const typeFilter = searchParams.get("type")?.toLowerCase().trim() || "all";
+    const statusFilter = searchParams.get("status")?.toUpperCase().trim() || "ALL";
 
     const query = `
       query GetRecentOrders($first: Int!) {
@@ -70,6 +72,12 @@ export async function GET(req: Request) {
       );
     }
 
+    if (typeFilter === "pay") {
+      orders = orders.filter((o: any) => o.orderType !== "1" && o.orderType !== 1);
+    } else if (typeFilter === "cashout") {
+      orders = orders.filter((o: any) => o.orderType === "1" || o.orderType === 1);
+    }
+
     const formattedOrders = orders.map((o: any) => {
       const usdcAmount = (Number(o.amount || 0) / 1_000_000).toFixed(2);
       const fiat = (Number(o.fiatAmount || 0) / 1_000_000).toFixed(2);
@@ -94,10 +102,14 @@ export async function GET(req: Request) {
       };
     });
 
+    const finalOrders = statusFilter !== "ALL" 
+      ? formattedOrders.filter((o: any) => o.status === statusFilter)
+      : formattedOrders;
+
     return NextResponse.json({
       success: true,
-      count: formattedOrders.length,
-      orders: formattedOrders,
+      count: finalOrders.length,
+      orders: finalOrders,
     });
   } catch (error: any) {
     console.error("[Admin Orders] Error fetching subgraph orders:", error);
