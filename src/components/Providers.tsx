@@ -37,12 +37,14 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           logo: undefined,
           termsAndConditionsUrl: "/terms",
           privacyPolicyUrl: "/privacy",
+          showWalletUIs: false,
         },
         legal: {
           termsAndConditionsUrl: "/terms",
           privacyPolicyUrl: "/privacy",
         },
         embeddedWallets: {
+          showWalletUIs: false,
           createOnLogin: "users-without-wallets",
           ethereum: {
             createOnLogin: "users-without-wallets",

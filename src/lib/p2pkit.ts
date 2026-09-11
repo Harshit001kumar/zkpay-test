@@ -114,6 +114,32 @@ export async function getSellRate(currency: string = "INR"): Promise<bigint> {
 }
 
 /**
+ * P2P.me Protocol Constants & Fee Rules
+ * On Base mainnet, the Diamond contract enforces a fixed fee of 0.10 USDC on orders <= 10 USDC.
+ */
+export const P2P_SMALL_ORDER_THRESHOLD_USDC = 10;
+export const P2P_SMALL_ORDER_FEE_USDC = 0.10;
+export const P2P_SMALL_ORDER_THRESHOLD_BIGINT = 10_000_000n; // 10 USDC with 6 decimals
+export const P2P_SMALL_ORDER_FEE_BIGINT = 100_000n; // 0.10 USDC with 6 decimals
+
+/**
+ * Fee breakdown calculation for offramp (SELL/PAY) transactions.
+ */
+export function calculateOrderFees(principalUsdc: number) {
+  const isSmallOrder = principalUsdc > 0 && principalUsdc <= P2P_SMALL_ORDER_THRESHOLD_USDC;
+  const protocolFeeUsdc = isSmallOrder ? P2P_SMALL_ORDER_FEE_USDC : 0;
+  const zkPayFeeUsdc = principalUsdc * 0.01; // 1% platform fee
+  const totalRequiredUsdc = principalUsdc + zkPayFeeUsdc + protocolFeeUsdc;
+
+  return {
+    isSmallOrder,
+    protocolFeeUsdc,
+    zkPayFeeUsdc,
+    totalRequiredUsdc,
+  };
+}
+
+/**
  * Prepare a SELL order calldata for batching (Smart Wallets).
  */
 export async function prepareOfframpOrder(

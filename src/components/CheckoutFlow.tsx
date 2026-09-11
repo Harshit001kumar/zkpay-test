@@ -19,6 +19,8 @@ import {
   parseOrderIdFromReceipt,
   parseP2PError,
   getPublicClient,
+  P2P_SMALL_ORDER_THRESHOLD_BIGINT,
+  P2P_SMALL_ORDER_FEE_BIGINT,
 } from "@/lib/p2pkit";
 
 
@@ -242,7 +244,10 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       
       const fiatFee1e6 = BigInt(Math.floor(fee * 1_000_000));
       const usdcFeeBigInt = (fiatFee1e6 * 1_000_000n) / sellPrice;
-      const totalRequiredUsdc = usdcPrincipalBigInt + usdcFeeBigInt;
+
+      const isSmallOrder = usdcPrincipalBigInt <= P2P_SMALL_ORDER_THRESHOLD_BIGINT;
+      const protocolFeeBigInt = isSmallOrder ? P2P_SMALL_ORDER_FEE_BIGINT : 0n;
+      const totalRequiredUsdc = usdcPrincipalBigInt + usdcFeeBigInt + protocolFeeBigInt;
 
       // Check on-chain balance before initiating any transactions
       const onChainBalance = (await publicClient.readContract({
@@ -255,8 +260,11 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       if (onChainBalance < totalRequiredUsdc) {
         const balFloat = Number(onChainBalance) / 1_000_000;
         const reqFloat = Number(totalRequiredUsdc) / 1_000_000;
+        const feeDetail = protocolFeeBigInt > 0n
+          ? ` ($${(Number(usdcPrincipalBigInt) / 1e6).toFixed(2)} payment + $${(Number(usdcFeeBigInt) / 1e6).toFixed(2)} 1% fee + $${(Number(protocolFeeBigInt) / 1e6).toFixed(2)} protocol fee)`
+          : ` ($${(Number(usdcPrincipalBigInt) / 1e6).toFixed(2)} payment + $${(Number(usdcFeeBigInt) / 1e6).toFixed(2)} 1% fee)`;
         throw new Error(
-          `Insufficient USDC balance on Base. You have $${balFloat.toFixed(2)} USDC, but this payment requires $${reqFloat.toFixed(2)} USDC ($${(Number(usdcPrincipalBigInt) / 1e6).toFixed(2)} payment + $${(Number(usdcFeeBigInt) / 1e6).toFixed(2)} fee).`
+          `Insufficient USDC balance on Base. You have $${balFloat.toFixed(2)} USDC, but this payment requires $${reqFloat.toFixed(2)} USDC${feeDetail}.`
         );
       }
 
@@ -291,7 +299,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         });
       }
 
-      // 2. Check allowance; only add approve if current allowance < required
+      // 2. Check allowance; Diamond pulls actualUsdtAmount (= principal + protocol fee) at setSellOrderUpi
       const currentAllowance = (await publicClient.readContract({
         address: CONTRACTS.USDC,
         abi: ERC20_ABI,
@@ -299,7 +307,8 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         args: [activeAddr, CONTRACTS.DIAMOND],
       })) as bigint;
 
-      if (currentAllowance < usdcPrincipalBigInt) {
+      const neededByDiamond = usdcPrincipalBigInt + protocolFeeBigInt;
+      if (currentAllowance < neededByDiamond) {
         calls.push({
           to: CONTRACTS.USDC as `0x${string}`,
           data: encodeFunctionData({
@@ -458,12 +467,36 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
               <span>ZKPAY CONVENIENCE FEE (1%)</span>
               <span className="text-[#e5e2e3]">₹ {fee.toFixed(2)}</span>
             </div>
-            {sellPrice && (
-              <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
-                <span>ON-CHAIN RATE</span>
-                <span className="text-[#c0c6de]">1 USDC ≈ ₹{(Number(sellPrice) / 1e6).toFixed(2)}</span>
-              </div>
-            )}
+            {sellPrice && (() => {
+              const fiatPrincipal1e6 = BigInt(Math.floor(amount * 1_000_000));
+              const estUsdc = Number((fiatPrincipal1e6 * 1_000_000n) / sellPrice) / 1e6;
+              const isSmall = estUsdc > 0 && estUsdc <= 10;
+              const protocolFee = isSmall ? 0.10 : 0;
+              const estTotalUsdc = estUsdc + (estUsdc * 0.01) + protocolFee;
+              return (
+                <>
+                  <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
+                    <span>ON-CHAIN RATE</span>
+                    <span className="text-[#c0c6de]">1 USDC ≈ ₹{(Number(sellPrice) / 1e6).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
+                    <div className="flex items-center gap-1.5">
+                      <span>PROTOCOL FEE</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-[#909097]">
+                        {isSmall ? "≤ $10 orders" : "Free > $10"}
+                      </span>
+                    </div>
+                    <span className={isSmall ? "text-[#e5e2e3]" : "text-[#77d9a8]"}>
+                      {isSmall ? "$0.10 USDC" : "Free"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
+                    <span>ESTIMATED USDC DEBIT</span>
+                    <span className="text-[#c0c6de] font-mono font-semibold">${estTotalUsdc.toFixed(2)} USDC</span>
+                  </div>
+                </>
+              );
+            })()}
             <div className="border-t border-white/10 my-1"></div>
             <div className="flex justify-between font-bold text-lg text-[#e5e2e3]">
               <span className="font-label-caps text-xs tracking-[0.15em] text-[#c0c6de]">TOTAL PAYABLE</span>
@@ -488,7 +521,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
             <p className="font-label-caps text-xs text-[#e5e2e3] tracking-[0.25em] font-bold mb-1">
               AUTHORIZING ON BASE
             </p>
-            <p className="text-xs text-[#909097]">Please confirm the 2-step payment in your wallet</p>
+            <p className="text-xs text-[#909097]">Executing transaction on Base...</p>
             <div className="flex items-center justify-center gap-2 mt-3 text-[10px] text-[#c0c6de] font-mono">
               <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded">1. Protocol Fee (1%)</span>
               <span>→</span>

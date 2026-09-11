@@ -17,6 +17,7 @@ import {
   parseOrderIdFromReceipt,
   parseP2PError,
   getPublicClient,
+  calculateOrderFees,
 } from "@/lib/p2pkit";
 
 
@@ -202,8 +203,10 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
   };
 
   const amountUsdc = parseFloat(amountStr) || 0;
-  const feeUsdc = amountUsdc * 0.01;
-  const totalUsdc = amountUsdc + feeUsdc;
+  const fees = calculateOrderFees(amountUsdc);
+  const feeUsdc = fees.zkPayFeeUsdc;
+  const protocolFeeUsdc = fees.protocolFeeUsdc;
+  const totalUsdc = fees.totalRequiredUsdc;
   
   let estimatedFiat = 0;
   let rateDisplay = "1 USDC ≈ ₹0.00";
@@ -256,7 +259,8 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       
       const principalUsdcBigInt = parseUnits(amountUsdc.toFixed(6), 6);
       const feeUsdcBigInt = parseUnits(feeUsdc.toFixed(6), 6);
-      const totalRequiredUsdc = principalUsdcBigInt + feeUsdcBigInt;
+      const protocolFeeBigInt = parseUnits(protocolFeeUsdc.toFixed(6), 6);
+      const totalRequiredUsdc = principalUsdcBigInt + feeUsdcBigInt + protocolFeeBigInt;
 
       // Verify on-chain USDC balance before submitting
       const onChainBalance = (await publicClient.readContract({
@@ -269,8 +273,11 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       if (onChainBalance < totalRequiredUsdc) {
         const balFloat = Number(onChainBalance) / 1_000_000;
         const reqFloat = Number(totalRequiredUsdc) / 1_000_000;
+        const feeDetail = protocolFeeUsdc > 0 
+          ? ` ($${amountUsdc.toFixed(2)} cashout + $${feeUsdc.toFixed(2)} 1% fee + $${protocolFeeUsdc.toFixed(2)} protocol fee)`
+          : ` ($${amountUsdc.toFixed(2)} cashout + $${feeUsdc.toFixed(2)} 1% fee)`;
         throw new Error(
-          `Insufficient USDC balance on Base. You have $${balFloat.toFixed(2)} USDC, but this cashout requires $${reqFloat.toFixed(2)} USDC ($${amountUsdc.toFixed(2)} + $${feeUsdc.toFixed(2)} fee).`
+          `Insufficient USDC balance on Base. You have $${balFloat.toFixed(2)} USDC, but this cashout requires $${reqFloat.toFixed(2)} USDC${feeDetail}.`
         );
       }
       
@@ -294,7 +301,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         });
       }
 
-      // Check allowance; only add approve if current allowance < required
+      // Check allowance; Diamond pulls actualUsdtAmount (= principal + protocol fee) at setSellOrderUpi
       const currentAllowance = (await publicClient.readContract({
         address: CONTRACTS.USDC,
         abi: ERC20_ABI,
@@ -302,7 +309,8 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         args: [activeAddr, CONTRACTS.DIAMOND],
       })) as bigint;
 
-      if (currentAllowance < principalUsdcBigInt) {
+      const neededByDiamond = principalUsdcBigInt + protocolFeeBigInt;
+      if (currentAllowance < neededByDiamond) {
         calls.push({
           to: CONTRACTS.USDC as `0x${string}`,
           data: encodeFunctionData({
@@ -353,6 +361,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         estimatedFiat: estimatedFiat,
         totalUsdc: totalUsdc,
         feeUsdc: feeUsdc,
+        protocolFeeUsdc: protocolFeeUsdc,
         timestamp: Date.now()
       };
       localStorage.setItem("pending_cashout_order", JSON.stringify(pendingOrderData));
@@ -486,14 +495,29 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
                 </span>
                 <span className="font-headline-md text-[#bcc7de] tracking-widest text-lg font-light uppercase">INR</span>
               </div>
-              <div className="space-y-4 pt-4 border-t border-white/5">
+              <div className="space-y-3 pt-4 border-t border-white/5">
                 <div className="flex justify-between items-center">
                   <span className="font-body-md text-[#909097] text-sm">Exchange Rate</span>
                   <span className="font-body-md text-[#e5e2e3] text-sm">{rateDisplay}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="font-body-md text-[#909097] text-sm">Protocol Fee (1%)</span>
+                  <span className="font-body-md text-[#909097] text-sm">Platform Fee (1%)</span>
                   <span className="font-body-md text-[#e5e2e3] text-sm">${feeUsdc.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-body-md text-[#909097] text-sm">Protocol Fee</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-[#909097] font-medium">
+                      {fees.isSmallOrder ? "≤ $10 orders" : "Free > $10"}
+                    </span>
+                  </div>
+                  <span className={`font-body-md text-sm ${fees.isSmallOrder ? "text-[#e5e2e3]" : "text-[#77d9a8]"}`}>
+                    {fees.isSmallOrder ? `$${protocolFeeUsdc.toFixed(2)}` : "Free"}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t border-white/5">
+                  <span className="font-body-md text-[#c0c6de] text-sm font-semibold">Total USDC Debited</span>
+                  <span className="font-body-md text-[#c0c6de] text-sm font-semibold">${totalUsdc.toFixed(2)}</span>
                 </div>
               </div>
             </section>
@@ -541,7 +565,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
             {status === "processing" && (
               <>
                 <h3 className="font-headline-md text-2xl mb-2 text-[#e5e2e3]">Processing...</h3>
-                <p className="text-sm text-[#909097]">Please confirm the transactions in your wallet.</p>
+                <p className="text-sm text-[#909097]">Executing transaction on Base...</p>
               </>
             )}
             

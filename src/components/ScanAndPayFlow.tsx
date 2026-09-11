@@ -17,7 +17,10 @@ import {
   sendPayoutAddress, 
   getOfframpLimits, 
   parseOrderIdFromReceipt,
-  parseP2PError 
+  parseP2PError,
+  calculateOrderFees,
+  P2P_SMALL_ORDER_THRESHOLD_BIGINT,
+  P2P_SMALL_ORDER_FEE_BIGINT,
 } from "@/lib/p2pkit";
 import { saveTransaction } from "@/lib/history";
 
@@ -153,8 +156,10 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   const numericInr = parseFloat(amountInr) || 0;
   const rateInrPerUsdc = sellPrice ? Number(sellPrice) / 1_000_000 : 88.0;
   const baseUsdcPrincipal = rateInrPerUsdc > 0 ? numericInr / rateInrPerUsdc : 0;
-  const platformFeeUsdc = baseUsdcPrincipal * 0.01; // 1% fee
-  const totalUsdcRequired = baseUsdcPrincipal + platformFeeUsdc;
+  const fees = calculateOrderFees(baseUsdcPrincipal);
+  const platformFeeUsdc = fees.zkPayFeeUsdc;
+  const protocolFeeUsdc = fees.protocolFeeUsdc;
+  const totalUsdcRequired = fees.totalRequiredUsdc;
 
   // 2. STEP 1 -> STEP 2: Place Order on-chain into escrow
   const handlePlaceOrder = async () => {
@@ -182,7 +187,10 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
       const usdcPrincipalBigInt = (fiatPrincipal1e6 * 1_000_000n) / sellPrice;
       const fiatFee1e6 = BigInt(Math.floor((numericInr * 0.01) * 1_000_000));
       const usdcFeeBigInt = (fiatFee1e6 * 1_000_000n) / sellPrice;
-      const totalRequiredUsdcBigInt = usdcPrincipalBigInt + usdcFeeBigInt;
+
+      const isSmallOrder = usdcPrincipalBigInt <= P2P_SMALL_ORDER_THRESHOLD_BIGINT;
+      const protocolFeeBigInt = isSmallOrder ? P2P_SMALL_ORDER_FEE_BIGINT : 0n;
+      const totalRequiredUsdcBigInt = usdcPrincipalBigInt + usdcFeeBigInt + protocolFeeBigInt;
 
       setUsdcAmountNum(Number(totalRequiredUsdcBigInt) / 1_000_000);
 
@@ -197,8 +205,11 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
       if (onChainBalance < totalRequiredUsdcBigInt) {
         const balFloat = Number(onChainBalance) / 1_000_000;
         const reqFloat = Number(totalRequiredUsdcBigInt) / 1_000_000;
+        const feeDetail = protocolFeeBigInt > 0n
+          ? ` ($${(Number(usdcPrincipalBigInt) / 1e6).toFixed(2)} payment + $${(Number(usdcFeeBigInt) / 1e6).toFixed(2)} 1% fee + $${(Number(protocolFeeBigInt) / 1e6).toFixed(2)} protocol fee)`
+          : ` ($${(Number(usdcPrincipalBigInt) / 1e6).toFixed(2)} payment + $${(Number(usdcFeeBigInt) / 1e6).toFixed(2)} 1% fee)`;
         throw new Error(
-          `Insufficient USDC balance on Base. You have $${balFloat.toFixed(2)} USDC, but this payment requires $${reqFloat.toFixed(2)} USDC ($${(Number(usdcPrincipalBigInt) / 1e6).toFixed(2)} payment + $${(Number(usdcFeeBigInt) / 1e6).toFixed(2)} fee).`
+          `Insufficient USDC balance on Base. You have $${balFloat.toFixed(2)} USDC, but this payment requires $${reqFloat.toFixed(2)} USDC${feeDetail}.`
         );
       }
 
@@ -230,7 +241,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
         });
       }
 
-      // 2. Approve allowance if needed
+      // 2. Check allowance; Diamond pulls actualUsdtAmount (= principal + protocol fee) at setSellOrderUpi
       const currentAllowance = (await publicClient.readContract({
         address: CONTRACTS.USDC,
         abi: ERC20_ABI,
@@ -238,7 +249,8 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
         args: [senderAddress, CONTRACTS.DIAMOND],
       })) as bigint;
 
-      if (currentAllowance < usdcPrincipalBigInt) {
+      const neededByDiamond = usdcPrincipalBigInt + protocolFeeBigInt;
+      if (currentAllowance < neededByDiamond) {
         calls.push({
           to: CONTRACTS.USDC as `0x${string}`,
           data: encodeFunctionData({
@@ -619,14 +631,27 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
             />
 
             {/* Fee & Escrow Info Pill */}
-            <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/10 flex items-center justify-between text-xs font-mono text-[#909097]">
-              <div className="flex items-center gap-2">
-                <Info className="w-3.5 h-3.5 text-[#c0c6de]" />
-                <span>Protocol Fee (1%)</span>
+            <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/10 flex flex-col gap-2 text-xs font-mono text-[#909097]">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Info className="w-3.5 h-3.5 text-[#c0c6de]" />
+                  <span>Platform Fee (1%)</span>
+                </div>
+                <span className="text-[#e5e2e3] font-bold">
+                  ${platformFeeUsdc.toFixed(2)} USDC
+                </span>
               </div>
-              <span className="text-[#e5e2e3] font-bold">
-                ${platformFeeUsdc.toFixed(2)} USDC
-              </span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span>Protocol Fee</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-[#909097]">
+                    {fees.isSmallOrder ? "≤ $10 orders" : "Free > $10"}
+                  </span>
+                </div>
+                <span className={fees.isSmallOrder ? "text-[#e5e2e3] font-bold" : "text-[#77d9a8] font-bold"}>
+                  {fees.isSmallOrder ? `$${protocolFeeUsdc.toFixed(2)} USDC` : "Free"}
+                </span>
+              </div>
             </div>
 
             {/* Error Message */}
@@ -661,7 +686,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
               </p>
             </div>
             <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 text-xs font-mono text-[#c0c6de] space-y-2">
-              <p>Please confirm the 2-step payment in your wallet...</p>
+              <p>Executing transaction on Base...</p>
               <div className="flex items-center justify-center gap-2 text-[10px] text-[#909097]">
                 <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded text-[#e5e2e3]">1. Protocol Fee (1%)</span>
                 <span>→</span>
