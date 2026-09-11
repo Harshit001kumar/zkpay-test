@@ -9,7 +9,10 @@ export interface TransactionRecord {
   amountINR: number;
   amountUSDC: number;
   fee: number;
+  protocolFee?: number;
   recipient: string; // UPI ID or wallet address
+  merchantName?: string;
+  orderId?: string;
   network: string;
   timestamp: number; // Unix ms
   status?: "pending" | "settled" | "failed";

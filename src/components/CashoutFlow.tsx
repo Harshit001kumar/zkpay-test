@@ -174,7 +174,9 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
             amountINR: pending.estimatedFiat || 0,
             amountUSDC: pending.totalUsdc || 0,
             fee: pending.feeUsdc || 0,
+            protocolFee: pending.protocolFeeUsdc || 0,
             recipient: savedUpiId,
+            orderId: orderId.toString(),
             network: "Base",
             timestamp: pending.timestamp || Date.now(),
           });

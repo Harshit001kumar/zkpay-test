@@ -481,8 +481,11 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
           amountINR: numericInr,
           amountUSDC: usdcAmountNum,
           fee: platformFeeUsdc,
+          protocolFee: protocolFeeUsdc,
           recipient: scannedUpi,
-          network: "Base Mainnet",
+          merchantName: scannedMerchantName,
+          orderId: orderId ? orderId.toString() : undefined,
+          network: "Base",
           timestamp: Date.now(),
         });
 
@@ -814,35 +817,73 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
         {/* STEP 6: COMPLETED SUCCESS RECEIPT */}
         {step === "completed" && (
-          <SpotlightCard className="p-8 bg-[#1b1b1d] border border-white/15 rounded-3xl text-center space-y-6 animate-in zoom-in-95 duration-500">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
-              <CheckCircle2 className="w-9 h-9" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold text-white">Payment Successful!</h2>
-              <p className="text-xs text-[#909097] font-mono mt-1">
-                Settled in Indian Rupees directly to merchant
-              </p>
+          <SpotlightCard className="p-6 bg-gradient-to-b from-[#1a1a1e]/90 to-[#121215]/90 border border-white/15 rounded-3xl text-center space-y-5 animate-in zoom-in-95 duration-500 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
+            
+            {/* Seamless Ambient Halo & Floating Emblem (No Boxy Container) */}
+            <div className="relative w-28 h-28 mx-auto flex items-center justify-center">
+              <div 
+                className="absolute inset-0 rounded-full scale-125 animate-pulse pointer-events-none"
+                style={{
+                  background: "radial-gradient(circle at center, rgba(16, 185, 129, 0.28) 0%, rgba(16, 185, 129, 0.08) 45%, transparent 70%)"
+                }}
+              />
+              <div className="relative w-16 h-16 rounded-full border border-emerald-400/40 bg-gradient-to-b from-[#121c17] to-[#0a100d] shadow-[0_0_30px_rgba(16,185,129,0.35)] flex items-center justify-center">
+                <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+              </div>
             </div>
 
-            <div className="p-5 rounded-2xl bg-black/40 border border-white/10 space-y-3 text-xs font-mono text-left">
+            <div>
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-400 font-semibold">
+                Payment Settled
+              </span>
+              <h2 className="text-4xl font-black text-white tracking-tight mt-1">
+                ₹{numericInr.toFixed(2)}
+              </h2>
+              <p className="text-xs text-[#909097] font-mono mt-1">
+                ≈ ${usdcAmountNum.toFixed(2)} USDC
+              </p>
+
+              {/* Dynamic Merchant Name or Zero-Knowledge Status Badge */}
+              <div className="mt-2.5">
+                {scannedMerchantName ? (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.05] border border-white/10 text-white text-xs font-medium">
+                    <Store className="w-3.5 h-3.5 text-[#c0c6de]" />
+                    <span>Paid to <strong className="text-white font-semibold">{scannedMerchantName}</strong></span>
+                  </div>
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono text-[10px]">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Zero-Knowledge Proof Verified</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Receipt Table */}
+            <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2.5 text-xs font-mono text-left">
               {orderId && (
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
                   <span className="text-[#909097]">Order ID</span>
                   <span className="text-[#c0c6de] font-bold">#{orderId.toString()}</span>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span className="text-[#909097]">Amount Paid</span>
-                <span className="text-white font-bold text-sm">₹{numericInr.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#909097]">Crypto Settled</span>
-                <span className="text-white">${usdcAmountNum.toFixed(2)} USDC</span>
-              </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span className="text-[#909097]">Recipient UPI</span>
-                <span className="text-[#c0c6de] font-bold">{scannedUpi}</span>
+                <span className="text-white font-bold truncate max-w-[200px]">{scannedUpi}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[#909097]">Network</span>
+                <span className="text-white font-mono text-[11px]">Base L2 (Gasless)</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[#909097]">Fee Breakdown</span>
+                <span className="text-white text-[11px]">
+                  ${platformFeeUsdc.toFixed(2)} Platform • {protocolFeeUsdc > 0 ? `$${protocolFeeUsdc.toFixed(2)} Protocol` : "Free Protocol"}
+                </span>
+              </div>
+              <div className="flex justify-between items-center pt-2 border-t border-white/10">
+                <span className="text-[#c0c6de] font-semibold">Total USDC Debited</span>
+                <span className="text-white font-bold">${(usdcAmountNum + protocolFeeUsdc).toFixed(2)} USDC</span>
               </div>
               {txHash && (
                 <div className="pt-2 border-t border-white/10 flex justify-between items-center">
@@ -851,21 +892,51 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                     href={`https://basescan.org/tx/${txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[#c0c6de] hover:underline flex items-center gap-1"
+                    className="text-[#c0c6de] hover:underline flex items-center gap-1 font-mono text-[11px]"
                   >
-                    <span>Basescan</span>
+                    <span>{txHash.slice(0, 8)}...{txHash.slice(-6)}</span>
                     <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>
               )}
             </div>
 
-            <button
-              onClick={onBack}
-              className="w-full py-4 rounded-2xl bg-[#e5e2e3] hover:bg-white text-[#131315] font-bold text-xs tracking-[0.2em] font-label-caps uppercase transition-all shadow-lg hover:shadow-white/10 cursor-pointer"
-            >
-              Done / Return to Dashboard
-            </button>
+            {/* Buttons */}
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                onClick={onBack}
+                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#e5e2e6] to-[#d8d4dc] hover:from-white hover:to-white text-[#0e0e0f] font-bold text-xs uppercase tracking-[0.2em] transition-all shadow-[0_4px_20px_rgba(229,226,230,0.25)] active:scale-[0.98] cursor-pointer"
+              >
+                Done
+              </button>
+
+              <div className="grid grid-cols-2 gap-2">
+                {txHash && (
+                  <button
+                    onClick={() => router.push(`/tx/${txHash}`)}
+                    className="py-2.5 px-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white text-xs font-mono transition-colors"
+                  >
+                    Full Receipt
+                  </button>
+                )}
+                <button
+                  onClick={async () => {
+                    const shareText = `ZkPay Payment Receipt\nAmount: ₹${numericInr.toFixed(2)}\nRecipient: ${scannedMerchantName ? `${scannedMerchantName} (${scannedUpi})` : scannedUpi}\nOrder ID: #${orderId ? orderId.toString() : 'N/A'}\nStatus: Settled via UPI Rails`;
+                    if (navigator.share) {
+                      try {
+                        await navigator.share({ title: "ZkPay Receipt", text: shareText });
+                        return;
+                      } catch {}
+                    }
+                    await navigator.clipboard.writeText(shareText);
+                    alert("Receipt copied to clipboard!");
+                  }}
+                  className={`py-2.5 px-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white text-xs font-mono transition-colors ${!txHash ? 'col-span-2' : ''}`}
+                >
+                  Share Receipt
+                </button>
+              </div>
+            </div>
           </SpotlightCard>
         )}
 

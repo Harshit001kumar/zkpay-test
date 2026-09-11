@@ -362,9 +362,12 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         title: `Paid to ${merchantData.name || targetUpi}`,
         amountINR: amount,
         amountUSDC: usdcFloat,
-        fee: fee,
+        fee: (Number(usdcFeeBigInt) / 1e6),
+        protocolFee: (Number(protocolFeeBigInt) / 1e6),
         recipient: targetUpi,
-        network: "Base Mainnet",
+        merchantName: merchantData.name,
+        orderId: parsedOrderId ? parsedOrderId.toString() : undefined,
+        network: "Base",
         timestamp: Date.now(),
       });
 
