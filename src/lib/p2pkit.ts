@@ -334,6 +334,38 @@ export async function getOrderStatus(orderId: bigint) {
 }
 
 /**
+ * Safely determines if a parsed BigInt is a legitimate P2P protocol order ID
+ * (positive integer in realistic range, rather than a 160-bit address or 256-bit hash).
+ */
+export function isValidP2POrderId(id: bigint | null | undefined): boolean {
+  if (typeof id !== "bigint") return false;
+  return id > 0n && id < 100_000_000n;
+}
+
+/**
+ * Derives a clean, readable merchant or recipient display name from a UPI string.
+ */
+export function formatUpiName(upiIdOrName: string): string {
+  if (!upiIdOrName) return "Merchant";
+  const trimmed = upiIdOrName.trim();
+  // If it already looks like a formatted name (no @ and has letters)
+  if (!trimmed.includes("@") && /[a-zA-Z]/.test(trimmed)) {
+    return trimmed;
+  }
+  const prefix = trimmed.split("@")[0];
+  if (!prefix) return "Merchant";
+  // If prefix is numeric (e.g. mobile number)
+  if (/^\d+$/.test(prefix)) {
+    return `Merchant (${prefix})`;
+  }
+  // Convert handle like "chai.wala" or "super_mart" -> "Chai Wala" or "Super Mart"
+  return prefix
+    .replace(/[._-]/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+}
+
+/**
  * Robustly parses the orderId from transaction receipt logs across all P2P protocol event shapes.
  */
 export async function parseOrderIdFromReceipt(receipt: any, userAddress?: string): Promise<bigint> {
@@ -351,20 +383,20 @@ export async function parseOrderIdFromReceipt(receipt: any, userAddress?: string
     toEventSelector("OrderPlaced(uint256,address,uint256)"),
     toEventSelector("B2BOrderPlaced(uint256,address,address,uint256)"),
     toEventSelector("SellOrderPlaced(uint256,address,uint256,bytes32)"),
+    toEventSelector("CheckoutOrderCreated(uint256,address,address,uint256,uint256)"),
     toEventSelector("OfframpOrderPlaced(uint256,address,uint256)"),
     toEventSelector("OrderPlaced(uint256,address,uint256,bytes32,uint256,uint256,uint256)"),
   ];
 
   const diamondAddress = (CONTRACTS.DIAMOND || "").toLowerCase();
-  const usdcAddress = (CONTRACTS.USDC || "").toLowerCase();
 
-  // Strategy 1: Match known topic0 signatures
+  // Strategy 1: Match known topic0 signatures from the Diamond
   for (const log of receipt.logs) {
     if (log.topics && log.topics.length >= 2 && candidateSelectors.includes(log.topics[0])) {
       try {
         const id = BigInt(log.topics[1]);
-        if (id > 0n) {
-          console.log("[p2pkit] Found orderId via known selector:", id.toString());
+        if (isValidP2POrderId(id)) {
+          console.log("[p2pkit] Found orderId via known selector topic1:", id.toString());
           return id;
         }
       } catch {}
@@ -377,7 +409,7 @@ export async function parseOrderIdFromReceipt(receipt: any, userAddress?: string
       if (log.topics && log.topics.length >= 2) {
         try {
           const id = BigInt(log.topics[1]);
-          if (id > 0n) {
+          if (isValidP2POrderId(id)) {
             console.log("[p2pkit] Found orderId from Diamond log topic1:", id.toString());
             return id;
           }
@@ -386,7 +418,7 @@ export async function parseOrderIdFromReceipt(receipt: any, userAddress?: string
       if (log.data && log.data.length >= 66) {
         try {
           const id = BigInt("0x" + log.data.slice(2, 66));
-          if (id > 0n) {
+          if (isValidP2POrderId(id)) {
             console.log("[p2pkit] Found orderId from Diamond log data:", id.toString());
             return id;
           }
@@ -395,19 +427,30 @@ export async function parseOrderIdFromReceipt(receipt: any, userAddress?: string
     }
   }
 
-  // Strategy 3: Inspect any non-USDC log that has a valid positive integer in topic1
-  for (const log of receipt.logs) {
-    if (log.address && log.address.toLowerCase() !== usdcAddress) {
-      if (log.topics && log.topics.length >= 2) {
-        try {
-          const id = BigInt(log.topics[1]);
-          if (id > 0n) {
-            console.log("[p2pkit] Found orderId from candidate log topic1:", id.toString());
-            return id;
-          }
-        } catch {}
+  // Strategy 3: Read getNextOrderId() directly on the Diamond contract (Diamond reads-then-increments)
+  try {
+    const publicClient = getPublicClient();
+    const nextOrderId = (await publicClient.readContract({
+      address: CONTRACTS.DIAMOND,
+      abi: [{
+        inputs: [],
+        name: "getNextOrderId",
+        outputs: [{ type: "uint256", name: "" }],
+        stateMutability: "view",
+        type: "function",
+      }],
+      functionName: "getNextOrderId",
+    })) as bigint;
+
+    if (nextOrderId > 1n) {
+      const candidateId = nextOrderId - 1n;
+      if (isValidP2POrderId(candidateId)) {
+        console.log("[p2pkit] Found orderId via Diamond getNextOrderId() - 1:", candidateId.toString());
+        return candidateId;
       }
     }
+  } catch (nextErr) {
+    console.warn("[p2pkit] getNextOrderId check bypassed:", nextErr);
   }
 
   // Strategy 4: Fallback to Subgraph query for the user's latest placed order
@@ -435,8 +478,10 @@ export async function parseOrderIdFromReceipt(receipt: any, userAddress?: string
       const foundId = latest?.orderId || latest?.id;
       if (foundId) {
         const id = BigInt(foundId);
-        console.log("[p2pkit] Found orderId via Subgraph fallback:", id.toString());
-        return id;
+        if (isValidP2POrderId(id)) {
+          console.log("[p2pkit] Found orderId via Subgraph fallback:", id.toString());
+          return id;
+        }
       }
     } catch (err) {
       console.warn("[p2pkit] Subgraph order lookup failed:", err);
@@ -451,6 +496,18 @@ export async function parseP2PError(error: any) {
     const errorCode = error?.code || "";
     const errorString = String(error?.message || error?.details || error?.shortMessage || error || "").toLowerCase();
     
+    // 1. Immediately prioritize clear USDC balance errors (do not let contract SDK mask this)
+    if (
+      errorString.includes("insufficient usdc balance") ||
+      errorString.includes("insufficient balance") ||
+      (errorString.includes("insufficient") && errorString.includes("usdc"))
+    ) {
+      return {
+        code: "INSUFFICIENT_USDC_BALANCE",
+        message: error?.message || "Insufficient USDC balance on Base to complete this payment.",
+      };
+    }
+
     if (errorString.includes("insufficient funds for gas") || errorString.includes("exceeds the balance of the account")) {
       return {
         code: "INSUFFICIENT_GAS_ETH",
@@ -544,8 +601,15 @@ export async function parseP2PError(error: any) {
       };
     }
 
-    const message = getContractErrorMessage(code) || error?.message || "Transaction failed";
-    return { code, message };
+    // Never allow generic "Something went wrong" or "Unknown error" to wipe out custom thrown validation errors
+    const contractMsg = code ? getContractErrorMessage(code) : null;
+    const isGeneric = !contractMsg || contractMsg === "Something went wrong" || contractMsg === "Unknown error" || contractMsg === "Transaction failed";
+
+    const message = (!isGeneric && contractMsg)
+      ? contractMsg
+      : (error?.shortMessage || error?.message || contractMsg || "Transaction failed");
+
+    return { code: code || "ERROR", message };
   } catch {
     return {
       code: "UNKNOWN",

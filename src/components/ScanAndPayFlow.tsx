@@ -19,6 +19,7 @@ import {
   parseOrderIdFromReceipt,
   parseP2PError,
   calculateOrderFees,
+  formatUpiName,
   P2P_SMALL_ORDER_THRESHOLD_BIGINT,
   P2P_SMALL_ORDER_FEE_BIGINT,
 } from "@/lib/p2pkit";
@@ -361,20 +362,42 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
     const trimmed = rawText.trim();
     if (!trimmed) return null;
 
-    if (trimmed.toLowerCase().startsWith("upi://pay")) {
+    // 1. Handle standard upi:// URI format safely across all browser environments
+    if (trimmed.toLowerCase().startsWith("upi://")) {
       try {
-        const url = new URL(trimmed);
-        const upiId = url.searchParams.get("pa") || "";
-        const name = url.searchParams.get("pn") || "Merchant";
+        const queryIndex = trimmed.indexOf("?");
+        const queryString = queryIndex !== -1 ? trimmed.slice(queryIndex + 1) : "";
+        const params = new URLSearchParams(queryString);
+        const upiId = params.get("pa") || "";
+        let name = params.get("pn") || "";
+
+        if (name) {
+          name = decodeURIComponent(name.replace(/\+/g, " ")).trim();
+        }
+        
+        if (!name && upiId) {
+          name = formatUpiName(upiId);
+        }
+
+        if (upiId) {
+          return { upiId, name: name || "Merchant" };
+        }
+      } catch (err) {
+        console.warn("[parseUpiString] Error parsing UPI URI:", err);
+      }
+    }
+
+    // 2. Handle raw UPI ID (e.g. merchant@okaxis)
+    if (trimmed.includes("@")) {
+      const match = trimmed.match(/[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}/);
+      if (match) {
+        const upiId = match[0];
+        const name = formatUpiName(upiId);
         return { upiId, name };
-      } catch {}
+      }
     }
 
-    if (trimmed.includes("@") && !trimmed.includes(" ")) {
-      return { upiId: trimmed, name: trimmed.split("@")[0] };
-    }
-
-    if (trimmed.startsWith("0x")) {
+    if (trimmed.startsWith("0x") && trimmed.length === 42) {
       return { upiId: trimmed, name: "Crypto Address" };
     }
 
@@ -484,17 +507,19 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
           throw new Error("No wallet available to send payout address.");
         }
 
+        const finalMerchantName = scannedMerchantName || (scannedUpi ? formatUpiName(scannedUpi) : "Merchant");
+
         // Save transaction to local history
         saveTransaction({
           hash: txHash || "",
           type: "payment",
-          title: `Paid to ${scannedMerchantName || scannedUpi}`,
+          title: `Paid to ${finalMerchantName}`,
           amountINR: numericInr,
           amountUSDC: usdcAmountNum,
           fee: platformFeeUsdc,
           protocolFee: protocolFeeUsdc,
           recipient: scannedUpi,
-          merchantName: scannedMerchantName,
+          merchantName: finalMerchantName,
           orderId: orderId ? orderId.toString() : undefined,
           network: "Base",
           timestamp: Date.now(),
@@ -858,10 +883,10 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
               {/* Dynamic Merchant Name or Zero-Knowledge Status Badge */}
               <div className="mt-2.5">
-                {scannedMerchantName ? (
+                {(scannedMerchantName || (scannedUpi ? formatUpiName(scannedUpi) : null)) ? (
                   <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.05] border border-white/10 text-white text-xs font-medium">
                     <Store className="w-3.5 h-3.5 text-[#c0c6de]" />
-                    <span>Paid to <strong className="text-white font-semibold">{scannedMerchantName}</strong></span>
+                    <span>Paid to <strong className="text-white font-semibold">{scannedMerchantName || formatUpiName(scannedUpi)}</strong></span>
                   </div>
                 ) : (
                   <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono text-[10px]">
@@ -934,7 +959,8 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                 )}
                 <button
                   onClick={async () => {
-                    const shareText = `ZkPay Payment Receipt\nAmount: ₹${numericInr.toFixed(2)}\nRecipient: ${scannedMerchantName ? `${scannedMerchantName} (${scannedUpi})` : scannedUpi}\nOrder ID: #${orderId ? orderId.toString() : 'N/A'}\nStatus: Settled via UPI Rails`;
+                    const finalName = scannedMerchantName || (scannedUpi ? formatUpiName(scannedUpi) : "Merchant");
+                    const shareText = `ZkPay Payment Receipt\nAmount: ₹${numericInr.toFixed(2)}\nRecipient: ${finalName} (${scannedUpi})\nOrder ID: #${orderId ? orderId.toString() : 'N/A'}\nStatus: Settled via UPI Rails`;
                     if (navigator.share) {
                       try {
                         await navigator.share({ title: "ZkPay Receipt", text: shareText });

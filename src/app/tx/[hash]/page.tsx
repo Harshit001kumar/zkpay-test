@@ -16,6 +16,7 @@ import {
   Lock
 } from "lucide-react";
 import DecryptedText from "@/components/ui/DecryptedText";
+import { formatUpiName } from "@/lib/p2pkit";
 
 export default function TransactionReceipt() {
   const params = useParams();
@@ -150,14 +151,61 @@ export default function TransactionReceipt() {
     }
   };
 
+  const [resolvedOrderId, setResolvedOrderId] = useState<string | null>(null);
+
+  const isNumericOrderId = (id?: string | null) => {
+    if (!id) return false;
+    return /^\d+$/.test(id) && BigInt(id) > 0n && BigInt(id) < 100_000_000n;
+  };
+
+  useEffect(() => {
+    if (!tx) return;
+    if (tx.orderId && isNumericOrderId(tx.orderId)) {
+      setResolvedOrderId(tx.orderId);
+      return;
+    }
+
+    let isCancelled = false;
+    const resolveId = async () => {
+      try {
+        const { getPublicClient, parseOrderIdFromReceipt } = await import("@/lib/p2pkit");
+        const client = getPublicClient();
+        const receipt = await client.getTransactionReceipt({ hash: tx.hash as `0x${string}` });
+        if (receipt) {
+          const parsed = await parseOrderIdFromReceipt(receipt, tx.recipient);
+          if (parsed && !isCancelled) {
+            const parsedStr = parsed.toString();
+            setResolvedOrderId(parsedStr);
+            setTx((prev) => (prev ? { ...prev, orderId: parsedStr } : prev));
+            const { saveTransaction } = await import("@/lib/history");
+            saveTransaction({ ...tx, orderId: parsedStr });
+          }
+        }
+      } catch (err) {
+        console.warn("Could not resolve on-chain orderId:", err);
+      }
+    };
+
+    resolveId();
+    return () => { isCancelled = true; };
+  }, [tx?.hash]);
+
   const shortHash = tx ? `${tx.hash.slice(0, 8)}...${tx.hash.slice(-6)}` : "";
-  const displayOrderId = tx?.orderId ? tx.orderId : (tx ? tx.hash.slice(2, 10).toUpperCase() : "N/A");
+  const displayOrderId = resolvedOrderId || (tx?.orderId && isNumericOrderId(tx.orderId) ? tx.orderId : null);
+
+  const isCashout = tx?.type === "cashout";
+  const merchantDisplayName = !isCashout && (
+    (tx?.merchantName && tx.merchantName !== "Merchant" && tx.merchantName !== "Zero-Knowledge Proof Verified")
+      ? tx.merchantName
+      : (tx?.recipient && tx.recipient.includes("@") ? formatUpiName(tx.recipient) : (tx?.merchantName || null))
+  );
 
   // Share Receipt Implementation
   const handleShare = async () => {
     if (!tx) return;
-    const recipientText = tx.merchantName ? `${tx.merchantName} (${tx.recipient})` : tx.recipient;
-    const shareText = `ZkPay Payment Receipt\nAmount: ₹${tx.amountINR.toFixed(2)} (${tx.amountUSDC.toFixed(2)} USDC)\nRecipient: ${recipientText}\nOrder ID: #${displayOrderId}\nStatus: Settled via UPI Rails\nTx Hash: ${tx.hash}\nVerified on Base L2`;
+    const recipientText = merchantDisplayName ? `${merchantDisplayName} (${tx.recipient})` : tx.recipient;
+    const orderText = displayOrderId ? `#${displayOrderId}` : "Verified";
+    const shareText = `ZkPay Payment Receipt\nAmount: ₹${tx.amountINR.toFixed(2)} (${tx.amountUSDC.toFixed(2)} USDC)\nRecipient: ${recipientText}\nOrder ID: ${orderText}\nStatus: Settled via UPI Rails\nTx Hash: ${tx.hash}\nVerified on Base L2`;
 
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
@@ -240,13 +288,13 @@ export default function TransactionReceipt() {
       ctx.font = "500 18px 'JetBrains Mono', monospace";
       ctx.fillText(`≈ ${tx.amountUSDC.toFixed(2)} USDC`, 375, 380);
 
-      if (tx.merchantName) {
+      if (merchantDisplayName) {
         ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
-        ctx.roundRect(225, 405, 300, 36, 18);
+        ctx.roundRect(175, 405, 400, 36, 18);
         ctx.fill();
         ctx.fillStyle = "#dce2fb";
         ctx.font = "600 15px 'Hanken Grotesk', sans-serif";
-        ctx.fillText(`Paid to ${tx.merchantName}`, 375, 428);
+        ctx.fillText(`Paid to ${merchantDisplayName}`, 375, 428);
       }
 
       // 6. Horizontal Divider
@@ -261,7 +309,7 @@ export default function TransactionReceipt() {
       ctx.textAlign = "left";
       const rows = [
         ["RECIPIENT UPI", tx.recipient],
-        ["ORDER ID", `#${displayOrderId}`],
+        ["ORDER ID", displayOrderId ? `#${displayOrderId}` : "Verified"],
         ["NETWORK", "Base L2 (Gasless)"],
         ["TRANSACTION HASH", `${tx.hash.slice(0, 18)}...${tx.hash.slice(-10)}`],
         ["PLATFORM FEE (1%)", `$${tx.fee.toFixed(2)} USDC`],
@@ -294,7 +342,7 @@ export default function TransactionReceipt() {
 
       // 9. Download trigger
       const link = document.createElement("a");
-      link.download = `zkpay-receipt-${displayOrderId}.png`;
+      link.download = displayOrderId ? `zkpay-receipt-${displayOrderId}.png` : `zkpay-receipt-${tx.hash.slice(2, 10)}.png`;
       link.href = canvas.toDataURL("image/png");
       link.click();
       triggerToast("Receipt downloaded!");
@@ -324,8 +372,6 @@ export default function TransactionReceipt() {
       </main>
     );
   }
-
-  const isCashout = tx.type === "cashout";
 
   return (
     <div className="bg-[#0e0e0f] text-[#e5e2e3] font-body min-h-[100dvh] relative overflow-x-hidden selection:bg-emerald-500/20">
@@ -394,10 +440,10 @@ export default function TransactionReceipt() {
 
             {/* Merchant Name or Zero-Knowledge Status Badge */}
             <div className="mt-3">
-              {tx.merchantName ? (
+              {merchantDisplayName ? (
                 <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.05] border border-white/15 text-white text-xs font-medium backdrop-blur-md shadow-sm">
                   <Store className="w-3.5 h-3.5 text-[#c0c6de]" />
-                  <span>Paid to <strong className="text-white font-semibold">{tx.merchantName}</strong></span>
+                  <span>Paid to <strong className="text-white font-semibold">{merchantDisplayName}</strong></span>
                 </div>
               ) : (
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono text-[11px]">
@@ -449,14 +495,18 @@ export default function TransactionReceipt() {
               <div className="flex items-center justify-between text-xs sm:text-sm">
                 <span className="text-[#909097]">Order ID</span>
                 <div className="flex items-center gap-1.5">
-                  <span className="font-mono font-semibold text-white">#{displayOrderId}</span>
-                  <button 
-                    onClick={() => copyToClipboard(displayOrderId, "orderId")}
-                    className="text-[#909097] hover:text-white transition-colors"
-                    title="Copy Order ID"
-                  >
-                    {copiedKey === "orderId" ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  </button>
+                  <span className="font-mono font-semibold text-white">
+                    {displayOrderId ? `#${displayOrderId}` : "Resolving..."}
+                  </span>
+                  {displayOrderId && (
+                    <button 
+                      onClick={() => copyToClipboard(displayOrderId, "orderId")}
+                      className="text-[#909097] hover:text-white transition-colors"
+                      title="Copy Order ID"
+                    >
+                      {copiedKey === "orderId" ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  )}
                 </div>
               </div>
 

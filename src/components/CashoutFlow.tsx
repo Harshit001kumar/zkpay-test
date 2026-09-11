@@ -99,6 +99,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         if (pending.orderId && pending.upiId) {
           setUpiId(pending.upiId);
           setPendingOrderData(pending);
+          setOrderId(BigInt(pending.orderId));
           setStatus("matching");
           resumePendingOrder(BigInt(pending.orderId), pending.upiId, pending.hash, pending);
         }
@@ -369,6 +370,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
 
       const receipt = await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
       const orderId = await parseOrderIdFromReceipt(receipt, activeAddr);
+      setOrderId(orderId);
 
       const pendingOrderData = {
         orderId: orderId.toString(),
@@ -589,6 +591,12 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
               <>
                 <h3 className="font-headline-md text-2xl mb-2 text-[#e5e2e3]">Matching...</h3>
                 <p className="text-sm text-[#909097]">Finding the best merchant for your order. (Usually 20-90s)</p>
+                {(orderId || pendingOrderData?.orderId) && (
+                  <div className="mt-5 px-4 py-2 rounded-full bg-white/[0.05] border border-white/10 text-xs font-mono text-[#c0c6de] inline-flex items-center gap-2">
+                    <span className="text-[#909097]">Order ID:</span>
+                    <strong className="text-white font-bold tracking-wider">#{orderId ? orderId.toString() : pendingOrderData?.orderId}</strong>
+                  </div>
+                )}
               </>
             )}
             
@@ -596,6 +604,12 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
               <>
                 <h3 className="font-headline-md text-2xl mb-2 text-[#e5e2e3]">Paying out...</h3>
                 <p className="text-sm text-[#909097]">Merchant is transferring INR to your account.</p>
+                {(orderId || pendingOrderData?.orderId) && (
+                  <div className="mt-5 px-4 py-2 rounded-full bg-white/[0.05] border border-white/10 text-xs font-mono text-[#c0c6de] inline-flex items-center gap-2">
+                    <span className="text-[#909097]">Order ID:</span>
+                    <strong className="text-white font-bold tracking-wider">#{orderId ? orderId.toString() : pendingOrderData?.orderId}</strong>
+                  </div>
+                )}
               </>
             )}
             
