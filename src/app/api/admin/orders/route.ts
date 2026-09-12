@@ -21,22 +21,28 @@ export async function GET(req: Request) {
     const typeFilter = searchParams.get("type")?.toLowerCase().trim() || "all";
     const statusFilter = searchParams.get("status")?.toUpperCase().trim() || "ALL";
 
+    // Field names match the P2P.me Goldsky subgraph schema (introspected Sept 2026):
+    //   orders_collection (not orders — singular requires id arg)
+    //   type (not orderType), userAddress (not user), usdcRecipientAddress (not recipientAddr),
+    //   usdcAmount (not amount), transactionHash (not txHash)
     const query = `
       query GetRecentOrders($first: Int!) {
-        orders(
+        orders_collection(
           first: $first, 
-          orderBy: blockTimestamp, 
+          orderBy: placedAt, 
           orderDirection: desc
         ) {
           id
-          orderType
-          user
-          recipientAddr
+          orderId
+          type
+          userAddress
+          usdcRecipientAddress
           currency
-          amount
+          usdcAmount
           fiatAmount
           status
-          txHash
+          transactionHash
+          placedAt
           blockTimestamp
         }
       }
@@ -61,44 +67,72 @@ export async function GET(req: Request) {
     }
 
     const subData = await subRes.json();
-    let orders = subData?.data?.orders || [];
+
+    // Surface GraphQL errors instead of silently returning empty
+    if (subData?.errors?.length) {
+      console.error("[Admin Orders] Subgraph GraphQL errors:", JSON.stringify(subData.errors));
+      if (!subData?.data) {
+        return NextResponse.json(
+          { error: `Subgraph query error: ${subData.errors[0]?.message || "Unknown"}`, orders: [] },
+          { status: 502 }
+        );
+      }
+    }
+
+    let orders = subData?.data?.orders_collection || [];
+
+    // Decode bytes32 currency to human-readable string
+    const decodeCurrency = (raw: string): string => {
+      if (!raw || !raw.startsWith("0x")) return raw || "INR";
+      try {
+        const hex = raw.slice(2).replace(/0+$/, "");
+        let str = "";
+        for (let i = 0; i < hex.length; i += 2) {
+          str += String.fromCharCode(parseInt(hex.substring(i, i + 2), 16));
+        }
+        return str || "INR";
+      } catch { return "INR"; }
+    };
 
     if (search) {
       orders = orders.filter((o: any) =>
         o.id?.toLowerCase().includes(search) ||
-        o.user?.toLowerCase().includes(search) ||
-        o.recipientAddr?.toLowerCase().includes(search) ||
-        o.txHash?.toLowerCase().includes(search)
+        o.orderId?.toString().includes(search) ||
+        o.userAddress?.toLowerCase().includes(search) ||
+        o.usdcRecipientAddress?.toLowerCase().includes(search) ||
+        o.transactionHash?.toLowerCase().includes(search)
       );
     }
 
     if (typeFilter === "pay") {
-      orders = orders.filter((o: any) => o.orderType !== "1" && o.orderType !== 1);
+      orders = orders.filter((o: any) => o.type !== 1 && o.type !== "1");
     } else if (typeFilter === "cashout") {
-      orders = orders.filter((o: any) => o.orderType === "1" || o.orderType === 1);
+      orders = orders.filter((o: any) => o.type === 1 || o.type === "1");
     }
 
     const formattedOrders = orders.map((o: any) => {
-      const usdcAmount = (Number(o.amount || 0) / 1_000_000).toFixed(2);
+      const usdc = (Number(o.usdcAmount || 0) / 1_000_000).toFixed(2);
       const fiat = (Number(o.fiatAmount || 0) / 1_000_000).toFixed(2);
 
       let statusLabel = "PENDING";
-      if (o.status === "1" || o.status === 1) statusLabel = "ACCEPTED";
-      else if (o.status === "2" || o.status === 2) statusLabel = "SETTLED";
-      else if (o.status === "3" || o.status === 3) statusLabel = "CANCELLED";
-      else if (o.status === "4" || o.status === 4) statusLabel = "DISPUTED";
+      if (o.status === 1 || o.status === "1") statusLabel = "ACCEPTED";
+      else if (o.status === 2 || o.status === "2") statusLabel = "SETTLED";
+      else if (o.status === 3 || o.status === "3") statusLabel = "CANCELLED";
+      else if (o.status === 4 || o.status === "4") statusLabel = "DISPUTED";
+
+      const isSell = o.type === 1 || o.type === "1";
 
       return {
-        id: o.id,
-        orderType: o.orderType === "1" || o.orderType === 1 ? "SELL (Cashout)" : "PAY (Merchant)",
-        user: o.user,
-        recipient: o.recipientAddr,
-        currency: o.currency || "INR",
-        usdcAmount: `${usdcAmount} USDC`,
+        id: o.orderId || o.id,
+        orderType: isSell ? "SELL (Cashout)" : "PAY (Merchant)",
+        user: o.userAddress,
+        recipient: o.usdcRecipientAddress,
+        currency: decodeCurrency(o.currency),
+        usdcAmount: `${usdc} USDC`,
         fiatAmount: `₹ ${fiat}`,
         status: statusLabel,
-        txHash: o.txHash,
-        timestamp: Number(o.blockTimestamp || 0) * 1000 || Date.now(),
+        txHash: o.transactionHash,
+        timestamp: Number(o.placedAt || o.blockTimestamp || 0) * 1000 || Date.now(),
       };
     });
 

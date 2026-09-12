@@ -459,7 +459,7 @@ export async function parseOrderIdFromReceipt(receipt: any, userAddress?: string
       console.log("[p2pkit] Attempting subgraph query fallback for user:", userAddress);
       const query = `
         query GetLatestOrder($user: String!) {
-          orders(where: { user: $user }, orderBy: blockTimestamp, orderDirection: desc, first: 1) {
+          orders_collection(where: { userAddress: $user }, orderBy: placedAt, orderDirection: desc, first: 1) {
             id
             orderId
           }
@@ -474,7 +474,7 @@ export async function parseOrderIdFromReceipt(receipt: any, userAddress?: string
         }),
       });
       const data = await res.json();
-      const latest = data?.data?.orders?.[0];
+      const latest = data?.data?.orders_collection?.[0];
       const foundId = latest?.orderId || latest?.id;
       if (foundId) {
         const id = BigInt(foundId);
