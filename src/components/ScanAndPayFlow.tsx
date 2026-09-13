@@ -534,6 +534,22 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
           if (currentOrder.status === "completed" || currentOrder.status === "paid") {
             setStep("completed");
             localStorage.removeItem("pending_scan_order");
+
+            // Record monthly rewards for Scan & Pay (cashback & referral)
+            if (activeAddress) {
+              fetch("/api/rewards/record", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  txHash,
+                  orderId: orderId ? orderId.toString() : "",
+                  principalUsdc: usdcAmountNum,
+                  feeUsdc: platformFeeUsdc,
+                  userAddress: activeAddress,
+                }),
+              }).catch((err) => console.warn("[RewardsRecord] Ping error:", err));
+            }
+
             break;
           }
           await new Promise(r => setTimeout(r, 3000));
@@ -693,6 +709,15 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                   {fees.isSmallOrder ? `$${protocolFeeUsdc.toFixed(2)} USDC` : "Free"}
                 </span>
               </div>
+            </div>
+
+            {/* Monthly Cashback Promo Pill */}
+            <div className="p-3 rounded-2xl bg-gradient-to-r from-emerald-950/40 to-black/40 border border-emerald-500/20 flex items-center justify-between text-xs font-mono text-emerald-400">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="font-bold">⚡ Earn Monthly Cashback on this payment</span>
+              </div>
+              <span className="text-[10px] text-[#909097]">Disbursed at month-end</span>
             </div>
 
             {/* Error Message */}
@@ -894,6 +919,15 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                     <span>Zero-Knowledge Proof Verified</span>
                   </div>
                 )}
+              </div>
+
+              {/* Monthly Cashback Celebration Pill */}
+              <div className="mt-3 p-3 rounded-2xl bg-gradient-to-r from-emerald-950/60 to-black/60 border border-emerald-500/30 flex items-center justify-between text-xs font-mono text-emerald-400">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="font-bold">🎉 Added to your monthly cashback pool!</span>
+                </div>
+                <span className="text-[10px] text-[#909097]">Disbursed at month-end</span>
               </div>
             </div>
 

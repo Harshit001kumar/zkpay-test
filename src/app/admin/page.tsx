@@ -1,6 +1,6 @@
 "use client";
 
-import { usePrivy } from "@privy-io/react-auth";
+import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
@@ -27,8 +27,18 @@ import {
   ArrowUpRight,
   ChevronRight,
   SlidersHorizontal,
+  Gift,
+  UserMinus,
+  UserCheck,
+  Send,
+  Wallet,
+  Calendar,
+  Sparkles,
 } from "lucide-react";
 import { formatUpiName } from "@/lib/p2pkit";
+import { CONTRACTS } from "@/lib/constants";
+import { ERC20_ABI } from "@/lib/abi";
+import { encodeFunctionData, parseUnits } from "viem";
 
 interface AdminStats {
   network: {
@@ -97,10 +107,11 @@ interface OrderItem {
   timestamp: number;
 }
 
-type AdminTab = "overview" | "orders" | "tools";
+type AdminTab = "overview" | "orders" | "rewards" | "tools";
 
 export default function AdminPage() {
   const { ready, authenticated, user, login, logout, getAccessToken } = usePrivy();
+  const { wallets } = useWallets();
 
   const [isVerifying, setIsVerifying] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -111,6 +122,14 @@ export default function AdminPage() {
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Rewards State
+  const [rewardsData, setRewardsData] = useState<any>(null);
+  const [rewardsCycle, setRewardsCycle] = useState<string>("");
+  const [isDisbursing, setIsDisbursing] = useState(false);
+  const [disburseProgress, setDisburseProgress] = useState<string | null>(null);
+  const [disburseTxHash, setDisburseTxHash] = useState<string | null>(null);
+  const [disburseError, setDisburseError] = useState<string | null>(null);
 
   // Orders Filter State
   const [searchQuery, setSearchQuery] = useState("");
@@ -202,12 +221,145 @@ export default function AdminPage() {
         const ordersJson = await ordersRes.json();
         setOrders(ordersJson.orders || []);
       }
+
+      // 3. Fetch Monthly Rewards
+      const rewardsUrl = `/api/admin/rewards${rewardsCycle ? `?cycle=${encodeURIComponent(rewardsCycle)}` : ""}`;
+      const rewardsRes = await fetch(rewardsUrl, { headers: reqHeaders });
+      if (rewardsRes.ok) {
+        const rewardsJson = await rewardsRes.json();
+        if (rewardsJson.success) {
+          setRewardsData(rewardsJson.data);
+          if (!rewardsCycle && rewardsJson.data.cycle) {
+            setRewardsCycle(rewardsJson.data.cycle);
+          }
+        }
+      }
     } catch (err) {
       console.error("Failed to load admin data", err);
     } finally {
       setIsLoadingData(false);
     }
-  }, [isAuthorized, getAccessToken, searchQuery, typeFilter, statusFilter]);
+  }, [isAuthorized, getAccessToken, searchQuery, typeFilter, statusFilter, rewardsCycle]);
+
+  // Handler for Admin excluding or adding back a user from monthly payout list
+  const handleToggleExclusion = async (userAddress: string, currentlyExcluded: boolean) => {
+    try {
+      const token = await getAccessToken();
+      if (!token) return;
+      const res = await fetch("/api/admin/rewards", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "toggle-exclusion",
+          cycle: rewardsData?.cycle,
+          userAddress,
+          excluded: !currentlyExcluded,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        loadAdminData();
+      } else {
+        alert(data.error || "Failed to toggle user exclusion");
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to toggle user exclusion");
+    }
+  };
+
+  // Handler for Admin signing batch payout transaction
+  const handleDisburseRewards = async () => {
+    if (!rewardsData || !rewardsData.users) return;
+    const eligible = rewardsData.users.filter(
+      (u: any) => !u.excluded && u.status === "PENDING" && u.totalDueUsdc > 0
+    );
+
+    if (eligible.length === 0) {
+      alert("No eligible users pending disbursal in this cycle.");
+      return;
+    }
+
+    const totalUsdc = eligible.reduce((acc: number, u: any) => acc + u.totalDueUsdc, 0);
+    const confirmed = window.confirm(
+      `Disburse $${totalUsdc.toFixed(2)} USDC to ${eligible.length} users using your connected admin wallet?`
+    );
+    if (!confirmed) return;
+
+    const activeWallet = wallets?.[0] || user?.wallet;
+    if (!activeWallet) {
+      alert("No wallet connected. Please ensure your admin wallet is connected.");
+      return;
+    }
+
+    setIsDisbursing(true);
+    setDisburseError(null);
+    setDisburseTxHash(null);
+    setDisburseProgress(`Preparing batch disbursal to ${eligible.length} users...`);
+
+    try {
+      const provider = await (activeWallet as any).getEthereumProvider();
+      const adminAddress = (activeWallet as any).address;
+      let lastTxHash = "";
+      const disbursedAddresses: string[] = [];
+
+      for (let i = 0; i < eligible.length; i++) {
+        const u = eligible[i];
+        setDisburseProgress(`Sending ${i + 1}/${eligible.length}: $${u.totalDueUsdc.toFixed(2)} USDC to ${u.userAddress.slice(0, 6)}...${u.userAddress.slice(-4)}`);
+
+        const amountWei = parseUnits(u.totalDueUsdc.toFixed(6), 6);
+        const data = encodeFunctionData({
+          abi: ERC20_ABI,
+          functionName: "transfer",
+          args: [u.userAddress as `0x${string}`, amountWei],
+        });
+
+        const txHash = await provider.request({
+          method: "eth_sendTransaction",
+          params: [{
+            from: adminAddress,
+            to: CONTRACTS.USDC,
+            data,
+          }],
+        });
+
+        lastTxHash = txHash as string;
+        disbursedAddresses.push(u.userAddress);
+      }
+
+      setDisburseProgress("Confirming payout records on backend...");
+      const token = await getAccessToken();
+      const recordRes = await fetch("/api/admin/rewards", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "mark-paid",
+          cycle: rewardsData.cycle,
+          userAddresses: disbursedAddresses,
+          payoutTxHash: lastTxHash,
+        }),
+      });
+
+      const recordJson = await recordRes.json();
+      if (!recordJson.success) {
+        console.warn("Backend mark-paid warning:", recordJson.error);
+      }
+
+      setDisburseTxHash(lastTxHash);
+      setDisburseProgress(null);
+      loadAdminData();
+    } catch (err: any) {
+      console.error("[Admin Payout] Failed:", err);
+      setDisburseError(err.message || "Payout transaction failed or was rejected.");
+    } finally {
+      setIsDisbursing(false);
+    }
+  };
 
   useEffect(() => {
     verifyAdmin();
@@ -400,7 +552,7 @@ export default function AdminPage() {
       <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-5 space-y-6">
 
         {/* Segmented Tab Bar (Mobile-First) */}
-        <div className="grid grid-cols-3 p-1 rounded-2xl bg-black/40 border border-white/10 max-w-md mx-auto sm:mx-0">
+        <div className="grid grid-cols-4 p-1 rounded-2xl bg-black/40 border border-white/10 max-w-xl mx-auto sm:mx-0">
           <button
             onClick={() => setActiveTab("overview")}
             className={`py-2 px-3 rounded-xl text-xs font-mono font-bold transition-all ${
@@ -419,10 +571,25 @@ export default function AdminPage() {
                 : "text-[#909097] hover:text-[#e5e2e3]"
             }`}
           >
-            <span>Live Orders</span>
+            <span>Orders</span>
             {orders.length > 0 && (
-              <span className="ml-1.5 px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px]">
+              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 text-[9px]">
                 {orders.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("rewards")}
+            className={`py-2 px-3 rounded-xl text-xs font-mono font-bold transition-all relative ${
+              activeTab === "rewards"
+                ? "bg-white/10 text-white shadow-sm border border-white/15"
+                : "text-[#909097] hover:text-[#e5e2e3]"
+            }`}
+          >
+            <span>Rewards</span>
+            {rewardsData?.eligibleUserCount > 0 && (
+              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-300 text-[9px]">
+                {rewardsData.eligibleUserCount}
               </span>
             )}
           </button>
@@ -434,7 +601,7 @@ export default function AdminPage() {
                 : "text-[#909097] hover:text-[#e5e2e3]"
             }`}
           >
-            System & Tools
+            Tools
           </button>
         </div>
 
@@ -1078,6 +1245,246 @@ export default function AdminPage() {
               </div>
             </div>
 
+          </div>
+        )}
+
+        {/* ────────────── TAB 4: MONTHLY REWARDS & CASHBACK ────────────── */}
+        {activeTab === "rewards" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Header & Controls */}
+            <div className="p-5 rounded-2xl bg-black/40 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
+                  <Gift className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-white font-mono tracking-tight flex items-center gap-2">
+                    <span>Monthly Cashback & Referral Disbursal</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-mono">
+                      Scan & Pay Only
+                    </span>
+                  </h2>
+                  <p className="text-xs text-[#909097] font-mono">
+                    Cycle: <span className="text-white font-bold">{rewardsData?.cycle || rewardsCycle || "Current"}</span> • Funded from 1% Scan & Pay Platform Fees
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={loadAdminData}
+                  disabled={isLoadingData}
+                  className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-[#c0c6de] flex items-center gap-1.5 transition-all"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingData ? "animate-spin" : ""}`} />
+                  <span>Refresh</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Metrics Overview Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 font-mono">
+              <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-1">
+                <span className="text-[10px] font-bold text-[#909097] uppercase tracking-wider block">Scan & Pay Volume</span>
+                <span className="text-xl sm:text-2xl font-black text-white">${rewardsData?.totalCycleVolume?.toFixed(2) || "0.00"}</span>
+                <span className="text-[10px] text-[#909097] block">Base Network</span>
+              </div>
+              <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-1">
+                <span className="text-[10px] font-bold text-[#909097] uppercase tracking-wider block">1% Fees Collected</span>
+                <span className="text-xl sm:text-2xl font-black text-cyan-400">${rewardsData?.totalPlatformFees?.toFixed(2) || "0.00"}</span>
+                <span className="text-[10px] text-[#909097] block">In Treasury</span>
+              </div>
+              <div className="p-4 rounded-2xl bg-black/40 border border-purple-500/20 bg-purple-950/20 space-y-1">
+                <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider block">Pending Disbursal</span>
+                <span className="text-xl sm:text-2xl font-black text-purple-300">${rewardsData?.totalPendingPayout?.toFixed(2) || "0.00"}</span>
+                <span className="text-[10px] text-purple-400/70 block">{rewardsData?.eligibleUserCount || 0} Eligible Wallets</span>
+              </div>
+              <div className="p-4 rounded-2xl bg-black/40 border border-emerald-500/20 bg-emerald-950/20 space-y-1">
+                <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider block">Net Profit Retained</span>
+                <span className="text-xl sm:text-2xl font-black text-emerald-400">${rewardsData?.netTreasuryProfitRetained?.toFixed(2) || "0.00"}</span>
+                <span className="text-[10px] text-emerald-400/70 block">≥60% Guaranteed Margin</span>
+              </div>
+            </div>
+
+            {/* Disbursal Action Banner */}
+            <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-purple-950/40 via-black/50 to-purple-950/40 border border-purple-500/30 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-bold text-white font-mono uppercase tracking-wider flex items-center gap-2">
+                    <Send className="w-4 h-4 text-purple-400" />
+                    <span>Month-End Disbursal Action</span>
+                  </h3>
+                  <p className="text-xs text-[#909097] font-mono mt-1">
+                    Signing will disburse <strong className="text-white">${rewardsData?.totalPendingPayout?.toFixed(2) || "0.00"} USDC</strong> to{" "}
+                    <strong className="text-white">{rewardsData?.eligibleUserCount || 0} approved users</strong> directly from your connected admin wallet.
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleDisburseRewards}
+                  disabled={isDisbursing || !rewardsData?.eligibleUserCount || rewardsData.eligibleUserCount === 0}
+                  className="px-6 py-3.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 text-white font-bold text-xs font-mono uppercase tracking-wider transition-all shadow-lg active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shrink-0"
+                >
+                  <Wallet className="w-4 h-4" />
+                  <span>
+                    {isDisbursing ? "Disbursing..." : `Sign & Disburse ($${rewardsData?.totalPendingPayout?.toFixed(2) || "0.00"})`}
+                  </span>
+                </button>
+              </div>
+
+              {/* Disbursal Feedback Messages */}
+              {disburseProgress && (
+                <div className="p-3.5 rounded-xl bg-purple-950/60 border border-purple-500/40 text-xs font-mono text-purple-200 flex items-center gap-2 animate-pulse">
+                  <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
+                  <span>{disburseProgress}</span>
+                </div>
+              )}
+
+              {disburseTxHash && (
+                <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-xs font-mono text-emerald-300 flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Payout successful! Transaction recorded on Base.</span>
+                  </span>
+                  <a
+                    href={`https://basescan.org/tx/${disburseTxHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline text-white flex items-center gap-1 font-bold"
+                  >
+                    <span>View Basescan</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              )}
+
+              {disburseError && (
+                <div className="p-3.5 rounded-xl bg-red-950/60 border border-red-500/40 text-xs font-mono text-[#ffb4ab]">
+                  {disburseError}
+                </div>
+              )}
+            </div>
+
+            {/* Eligible Users Table */}
+            <div className="obsidian-glass rounded-2xl overflow-hidden border border-white/10">
+              <div className="p-4 sm:p-5 border-b border-white/10 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-[#c0c6de]" />
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+                    User Reward Ledger ({rewardsData?.users?.length || 0})
+                  </h3>
+                </div>
+                <span className="text-xs text-[#909097] font-mono">
+                  Toggle to exclude or add back users before signing
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs font-mono">
+                  <thead>
+                    <tr className="border-b border-white/10 bg-white/[0.02] text-[#909097]">
+                      <th className="py-3 px-4">User Address</th>
+                      <th className="py-3 px-4">Scan Orders</th>
+                      <th className="py-3 px-4">Cashback</th>
+                      <th className="py-3 px-4">Referrals</th>
+                      <th className="py-3 px-4 font-bold text-white">Total Due</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {rewardsData?.users && rewardsData.users.length > 0 ? (
+                      rewardsData.users.map((u: any, idx: number) => (
+                        <tr
+                          key={idx}
+                          className={`hover:bg-white/[0.02] transition-colors ${
+                            u.excluded ? "opacity-40 bg-red-950/10" : ""
+                          }`}
+                        >
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              <span className="text-white font-mono">
+                                {u.userAddress.slice(0, 6)}...{u.userAddress.slice(-4)}
+                              </span>
+                              <button
+                                onClick={() => copyToClipboard(u.userAddress, `user_${idx}`)}
+                                className="text-[#909097] hover:text-white"
+                                title="Copy"
+                              >
+                                {copiedKey === `user_${idx}` ? (
+                                  <Check className="w-3 h-3 text-emerald-400" />
+                                ) : (
+                                  <Copy className="w-3 h-3" />
+                                )}
+                              </button>
+                              <a
+                                href={`https://basescan.org/address/${u.userAddress}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[#909097] hover:text-white"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-[#909097]">{u.scanCount} txs</td>
+                          <td className="py-3 px-4 text-white">${u.cashbackUsdc.toFixed(2)}</td>
+                          <td className="py-3 px-4 text-white">${u.referralUsdc.toFixed(2)}</td>
+                          <td className="py-3 px-4 text-emerald-400 font-bold">
+                            ${u.totalDueUsdc.toFixed(2)} USDC
+                          </td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                u.status === "PAID"
+                                  ? "bg-emerald-500/20 text-emerald-400"
+                                  : u.excluded
+                                  ? "bg-red-500/20 text-red-400"
+                                  : "bg-yellow-500/20 text-yellow-300"
+                              }`}
+                            >
+                              {u.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            {u.status !== "PAID" ? (
+                              <button
+                                onClick={() => handleToggleExclusion(u.userAddress, u.excluded)}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                                  u.excluded
+                                    ? "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30"
+                                    : "bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30"
+                                }`}
+                              >
+                                {u.excluded ? (
+                                  <span className="flex items-center gap-1">
+                                    <UserCheck className="w-3 h-3" /> Add Back
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-1">
+                                    <UserMinus className="w-3 h-3" /> Exclude
+                                  </span>
+                                )}
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-emerald-400 font-bold flex items-center justify-end gap-1">
+                                <CheckCircle2 className="w-3 h-3" /> Disbursed
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-[#909097]">
+                          No user rewards recorded for this cycle yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
 

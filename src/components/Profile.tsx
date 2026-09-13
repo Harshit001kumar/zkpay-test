@@ -1,10 +1,32 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
-import { Copy, Check, ChevronRight, Key, Fingerprint, FileText, DollarSign, Globe, Network, LogOut, Shield, Scale, Code2, ExternalLink } from "lucide-react";
+import {
+  Copy,
+  Check,
+  ChevronRight,
+  Key,
+  Fingerprint,
+  FileText,
+  DollarSign,
+  Globe,
+  Network,
+  LogOut,
+  Shield,
+  Scale,
+  Code2,
+  ExternalLink,
+  Gift,
+  Users,
+  Share2,
+  ArrowLeft,
+  Sparkles,
+  Calendar,
+  CheckCircle,
+} from "lucide-react";
 
 export default function Profile({ onBack }: { onBack?: () => void }) {
   const router = useRouter();
@@ -12,7 +34,24 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
 
   const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Not connected";
   const [copied, setCopied] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(true);
+  const [activeView, setActiveView] = useState<"main" | "referral">("main");
+  const [rewardsData, setRewardsData] = useState<any>(null);
+  const [isLoadingRewards, setIsLoadingRewards] = useState(false);
+
+  useEffect(() => {
+    if (!address) return;
+    setIsLoadingRewards(true);
+    fetch(`/api/rewards/user?address=${address}`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success) setRewardsData(json.data);
+      })
+      .catch((err) => console.warn("[Profile] Failed to fetch rewards:", err))
+      .finally(() => setIsLoadingRewards(false));
+  }, [address]);
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -22,6 +61,227 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
       setTimeout(() => setCopied(false), 2000);
     }
   };
+
+  const handleCopyReferralCode = () => {
+    if (rewardsData?.referralCode) {
+      navigator.clipboard.writeText(rewardsData.referralCode);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    }
+  };
+
+  const handleCopyReferralLink = () => {
+    if (rewardsData?.referralLink) {
+      navigator.clipboard.writeText(rewardsData.referralLink);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    }
+  };
+
+  if (activeView === "referral") {
+    const code = rewardsData?.referralCode || "...";
+    const link = rewardsData?.referralLink || `https://zkpay.in/?ref=${code}`;
+    const shareText = `Hey! I use ZkPay to scan any UPI QR code and pay directly with crypto on Base. Get Monthly Cashback on all payments: ${link}`;
+    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
+    const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("Pay any UPI QR with crypto on Base and get Monthly Cashback!")}`;
+
+    return (
+      <div className="bg-[#020408] text-[#e5e2e3] font-body-md selection:bg-[#c0c6de]/30 min-h-screen relative flex flex-col pb-36 overflow-y-auto w-full">
+        {/* TopAppBar */}
+        <header className="w-full sticky top-0 z-50 flex justify-between items-center px-6 py-6 max-w-2xl mx-auto backdrop-blur-md bg-[#020408]/60">
+          <button
+            onClick={() => setActiveView("main")}
+            className="flex items-center gap-2 px-4 py-2 monolith-card rounded-full cursor-pointer hover:scale-105 active:scale-95 transition-transform text-xs font-mono font-bold text-[#c0c6de]"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>BACK TO PROFILE</span>
+          </button>
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span>SCAN & PAY ONLY</span>
+          </div>
+        </header>
+
+        <main className="w-full max-w-xl mx-auto px-4 pt-4 pb-40 space-y-6">
+          {/* Header */}
+          <div className="text-center space-y-2">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#c0c6de]/10 border border-[#c0c6de]/30 text-[#c0c6de] mb-2 shadow-lg">
+              <Gift className="w-7 h-7" />
+            </div>
+            <h2 className="font-display-xl-mobile text-[28px] font-bold text-white tracking-tight">
+              Refer & Earn
+            </h2>
+            <p className="text-xs text-[#909097] max-w-md mx-auto leading-relaxed font-mono">
+              Earn 20% commission on friends&apos; Scan & Pay fees + get Monthly Cashback on all your own payments.
+            </p>
+          </div>
+
+          {/* Monthly Pool Card */}
+          <section className="monolith-card rounded-[28px] p-6 md:p-8 space-y-4 bg-gradient-to-b from-[#c0c6de]/15 via-white/5 to-transparent border border-[#c0c6de]/30 shadow-2xl">
+            <div className="flex justify-between items-center text-xs font-mono text-[#c0c6de]">
+              <span className="uppercase tracking-widest font-bold">THIS MONTH&apos;S ACCRUAL</span>
+              <span className="text-[11px] px-2 py-0.5 rounded-md bg-white/10 text-white">
+                Cycle: {rewardsData?.currentCycle || "Current"}
+              </span>
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-4xl font-bold font-display tracking-tight text-white flex items-baseline gap-2">
+                ${(rewardsData?.thisMonth?.totalDueUsdc || 0).toFixed(2)}
+                <span className="text-base font-normal font-mono text-[#c0c6de]">USDC</span>
+              </div>
+              <p className="text-[11px] font-mono text-[#909097]">
+                Status:{" "}
+                <span className="text-emerald-400 font-bold">
+                  {rewardsData?.thisMonth?.status === "PAID" ? "Settled / Paid" : "Accruing for Month-End Disbursal"}
+                </span>
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-white/10 text-xs font-mono">
+              <div className="bg-black/30 p-3 rounded-xl border border-white/5">
+                <span className="text-[#909097] block text-[10px] mb-1">YOUR CASHBACK</span>
+                <span className="text-white font-bold text-sm">
+                  ${(rewardsData?.thisMonth?.cashbackUsdc || 0).toFixed(2)} USDC
+                </span>
+              </div>
+              <div className="bg-black/30 p-3 rounded-xl border border-white/5">
+                <span className="text-[#909097] block text-[10px] mb-1">REFERRAL COMMISSIONS</span>
+                <span className="text-white font-bold text-sm">
+                  ${(rewardsData?.thisMonth?.referralUsdc || 0).toFixed(2)} USDC
+                </span>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 flex items-start gap-3 text-[11px] font-mono text-[#909097] leading-relaxed">
+              <Calendar className="w-4 h-4 text-[#c0c6de] shrink-0 mt-0.5" />
+              <span>
+                Rewards are sent automatically by Admin in a single batch directly to your wallet at the end of each month.
+              </span>
+            </div>
+          </section>
+
+          {/* Referral Sharing Card */}
+          <section className="monolith-card rounded-[28px] p-6 md:p-8 space-y-5">
+            <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#c6c6cd] uppercase tracking-wider">
+              <Share2 className="w-4 h-4 text-[#c0c6de]" />
+              <span>Share Your Referral Link</span>
+            </div>
+
+            {/* Code Row */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-mono text-[#909097]">Your Referral Code</label>
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-black/30 border border-white/10">
+                <span className="font-mono text-base font-bold text-[#c0c6de] tracking-wider">{code}</span>
+                <button
+                  onClick={handleCopyReferralCode}
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white transition-colors"
+                  title="Copy Code"
+                >
+                  {copiedCode ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Link Row */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-mono text-[#909097]">Your Referral Link</label>
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-black/30 border border-white/10">
+                <span className="font-mono text-xs text-white truncate max-w-[260px]">{link}</span>
+                <button
+                  onClick={handleCopyReferralLink}
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white transition-colors"
+                  title="Copy Link"
+                >
+                  {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* 1-Tap Share Buttons */}
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <a
+                href={waUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="py-3.5 px-4 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-all active:scale-95"
+              >
+                <Share2 className="w-4 h-4" />
+                <span>WhatsApp</span>
+              </a>
+              <a
+                href={tgUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="py-3.5 px-4 rounded-xl bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/30 text-sky-300 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-all active:scale-95"
+              >
+                <Share2 className="w-4 h-4" />
+                <span>Telegram</span>
+              </a>
+            </div>
+          </section>
+
+          {/* Quick Stats Grid */}
+          <section className="grid grid-cols-2 gap-3">
+            <div className="monolith-card rounded-2xl p-5 text-center space-y-1">
+              <Users className="w-5 h-5 text-[#c0c6de] mx-auto mb-1" />
+              <div className="text-2xl font-bold text-white font-display">
+                {rewardsData?.friendsInvited || 0}
+              </div>
+              <div className="text-[10px] font-mono text-[#909097] uppercase tracking-wider">Friends Invited</div>
+            </div>
+            <div className="monolith-card rounded-2xl p-5 text-center space-y-1">
+              <Sparkles className="w-5 h-5 text-[#c0c6de] mx-auto mb-1" />
+              <div className="text-2xl font-bold text-white font-display">
+                ${(rewardsData?.lifetime?.totalEarnedUsdc || 0).toFixed(2)}
+              </div>
+              <div className="text-[10px] font-mono text-[#909097] uppercase tracking-wider">Lifetime Rewards</div>
+            </div>
+          </section>
+
+          {/* Past Payouts History */}
+          <section className="monolith-card rounded-[28px] p-6 space-y-3">
+            <span className="text-xs font-mono font-bold text-[#c6c6cd] uppercase tracking-wider block">
+              Past Monthly Disbursals
+            </span>
+            {rewardsData?.pastPayouts && rewardsData.pastPayouts.length > 0 ? (
+              <div className="space-y-2">
+                {rewardsData.pastPayouts.map((p: any, idx: number) => (
+                  <div
+                    key={idx}
+                    className="p-3.5 rounded-xl bg-black/30 border border-white/5 flex items-center justify-between text-xs font-mono"
+                  >
+                    <div>
+                      <span className="text-white font-bold block">Cycle {p.cycle}</span>
+                      <span className="text-[10px] text-[#909097]">
+                        {new Date(p.paidAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-emerald-400 font-bold">+${p.amountUsdc.toFixed(2)} USDC</span>
+                      <a
+                        href={`https://basescan.org/tx/${p.payoutTxHash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#c0c6de] hover:underline"
+                        title="View on Basescan"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs font-mono text-[#909097] text-center py-4">
+                No past payouts yet. Your active rewards will be included in this month&apos;s batch!
+              </p>
+            )}
+          </section>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-[#020408] text-[#e5e2e3] font-body-md selection:bg-[#c0c6de]/30 min-h-screen relative flex flex-col pb-36 overflow-y-auto w-full">
@@ -130,6 +390,64 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
               <span className="material-symbols-outlined text-[#c0c6de]/50" style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
             </div>
           </div>
+        </section>
+
+        {/* Refer & Earn & Monthly Cashback Monolith */}
+        <section className="monolith-card rounded-[32px] p-6 md:p-8 animate-in fade-in slide-in-from-bottom-6 duration-600 bg-gradient-to-b from-[#c0c6de]/10 via-white/5 to-transparent border border-[#c0c6de]/30 shadow-[0_20px_50px_rgba(0,0,0,0.6)]">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-[#c0c6de]/20 flex items-center justify-center text-[#c0c6de]">
+                <Gift className="w-4 h-4" />
+              </div>
+              <span className="font-label-caps text-[11px] font-bold text-[#c0c6de] tracking-[0.2em] uppercase">
+                Refer & Earn • Monthly Cashback
+              </span>
+            </div>
+            <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold">
+              Scan & Pay Exclusive
+            </span>
+          </div>
+
+          <div className="bg-black/30 rounded-2xl p-5 border border-white/5 mb-5 space-y-3">
+            <div className="flex justify-between items-baseline">
+              <span className="text-xs text-[#909097] font-mono">This Month&apos;s Accrued</span>
+              <span className="text-2xl font-bold text-white font-display tracking-tight">
+                ${(rewardsData?.thisMonth?.totalDueUsdc || 0).toFixed(2)}{" "}
+                <span className="text-xs text-[#c0c6de] font-mono font-normal">USDC</span>
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/10 text-xs font-mono text-[#909097]">
+              <div>
+                Cashback:{" "}
+                <span className="text-[#e5e2e3] font-bold">
+                  ${(rewardsData?.thisMonth?.cashbackUsdc || 0).toFixed(2)}
+                </span>
+              </div>
+              <div className="text-right">
+                Referral:{" "}
+                <span className="text-[#e5e2e3] font-bold">
+                  ${(rewardsData?.thisMonth?.referralUsdc || 0).toFixed(2)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-xs font-mono text-[#909097] mb-5 px-1">
+            <span className="flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-[#c0c6de]" />
+              Disbursed at Month-End
+            </span>
+            <span>{rewardsData?.friendsInvited || 0} friends invited</span>
+          </div>
+
+          <button
+            onClick={() => setActiveView("referral")}
+            className="w-full py-4 rounded-2xl bg-gradient-to-r from-[#c0c6de] to-[#a0a8c2] hover:from-white hover:to-[#c0c6de] text-[#020408] font-bold text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(192,198,222,0.25)] active:scale-[0.98] cursor-pointer"
+          >
+            <Share2 className="w-4 h-4" />
+            <span>Open Referral Hub & Share</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </section>
 
         {/* Security Monolith */}
