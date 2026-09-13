@@ -34,6 +34,7 @@ import {
   Wallet,
   Calendar,
   Sparkles,
+  Users,
 } from "lucide-react";
 import { formatUpiName } from "@/lib/p2pkit";
 import { CONTRACTS } from "@/lib/constants";
