@@ -76,6 +76,17 @@ export function updatePayLink(id: string, updates: Partial<PayLink>): PayLink | 
   return updated;
 }
 
+export function findPayLinkByTxHash(rawTxHash: string): PayLink | undefined {
+  const txHash = rawTxHash.toLowerCase().trim();
+  if (!txHash) return undefined;
+  for (const link of payLinks.values()) {
+    if (link.txHash?.toLowerCase() === txHash) {
+      return link;
+    }
+  }
+  return undefined;
+}
+
 export function listPayLinks(): PayLink[] {
   return Array.from(payLinks.values()).sort((a, b) => b.createdAt - a.createdAt);
 }

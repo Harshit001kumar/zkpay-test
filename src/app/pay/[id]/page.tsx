@@ -191,20 +191,8 @@ export default function PayPage() {
         timestamp: Date.now(),
       });
 
-      // Update backend pay link status & trigger webhook
-      try {
-        await fetch("/api/v1/paylinks", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: linkData.linkId,
-            status: "PAID",
-            txHash: txH,
-          }),
-        });
-      } catch (patchErr) {
-        console.warn("[PayPage] Failed to update backend status:", patchErr);
-      }
+      // Pay link settlement status must be confirmed server-to-server using secured API credentials.
+      console.info("[PayPage] Payment submitted. Awaiting secure backend confirmation for pay link settlement.");
 
       setStep("success");
     } catch (err: any) {

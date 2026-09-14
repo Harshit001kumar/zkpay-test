@@ -4,7 +4,8 @@ import {
   getPayInSession,
   updatePayInSession,
 } from "@/lib/server/payStore";
-import { dispatchWebhook } from "@/lib/server/webhooks";
+import { dispatchWebhook, isSafeWebhookUrl } from "@/lib/server/webhooks";
+import { requirePublicApiKey } from "@/lib/server/publicApiAuth";
 import { createPrices } from "@p2pdotme/sdk/prices";
 import { createPublicClient, http, parseAbi } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
@@ -63,6 +64,11 @@ function getPricesClient() {
  */
 export async function POST(req: Request) {
   try {
+    const auth = requirePublicApiKey(req);
+    if (!auth.ok) {
+      return corsJson({ error: auth.error }, { status: auth.status || 401 });
+    }
+
     const body = await req.json();
     const recipientUpi = (body.recipientUpi || body.upi || "").trim();
     const amountINR = Number(body.amountINR || body.amount);
@@ -85,6 +91,13 @@ export async function POST(req: Request) {
     if (amountINR > 8500) {
       return corsJson(
         { error: "amountINR exceeds maximum single transaction limit of ₹8,500 (100 USDC no-KYC tier)." },
+        { status: 400 }
+      );
+    }
+
+    if (webhookUrl && !isSafeWebhookUrl(String(webhookUrl))) {
+      return corsJson(
+        { error: "webhookUrl must be a valid public HTTPS URL." },
         { status: 400 }
       );
     }
