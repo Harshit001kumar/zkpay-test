@@ -68,9 +68,16 @@ export function isSafeWebhookUrl(rawUrl: string): boolean {
 export async function dispatchWebhook(
   url: string,
   payload: WebhookPayload,
-  secret: string = process.env.WEBHOOK_SECRET || "zkpay_webhook_default_sec"
+  secret: string | undefined = process.env.WEBHOOK_SECRET
 ): Promise<{ success: boolean; status?: number; error?: string }> {
   try {
+    if (!secret) {
+      return {
+        success: false,
+        error: "WEBHOOK_SECRET is not configured on server.",
+      };
+    }
+
     if (!isSafeWebhookUrl(url)) {
       console.warn(`[Webhook Security] Blocked SSRF attempt to unsafe URL: ${url}`);
       return {

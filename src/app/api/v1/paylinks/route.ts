@@ -1,15 +1,19 @@
 import { corsJson, corsOptions } from "@/lib/server/cors";
-import { createPayLink, getPayLink, updatePayLink } from "@/lib/server/payStore";
+import { createPayLink, findPayLinkByTxHash, getPayLink, updatePayLink } from "@/lib/server/payStore";
 import { dispatchWebhook, isSafeWebhookUrl } from "@/lib/server/webhooks";
+import { requirePublicApiKey } from "@/lib/server/publicApiAuth";
 import { createPrices } from "@p2pdotme/sdk/prices";
-import { createPublicClient, http, isHex } from "viem";
+import { createPublicClient, decodeEventLog, http, isHex, parseAbiItem, parseUnits } from "viem";
 import { base } from "viem/chains";
+import { CONTRACTS } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
 const DIAMOND_ADDRESS = (process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0x4cad6eC90e65baBec9335cAd728DDC610c316368") as `0x${string}`;
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
 const PLATFORM_FEE_BPS = 100;
+const PUBLIC_APP_BASE_URL = process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || "https://zkpay.top";
+const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 
 let _publicClient: any = null;
 function getPublicClient() {
@@ -33,6 +37,30 @@ function getPricesClient() {
   return _pricesClient;
 }
 
+function getPublicBaseUrl(): string {
+  try {
+    const url = new URL(PUBLIC_APP_BASE_URL);
+    if (url.protocol !== "https:" && !url.hostname.includes("localhost")) {
+      throw new Error("APP_BASE_URL must use https in production.");
+    }
+    return url.origin;
+  } catch {
+    return "https://zkpay.top";
+  }
+}
+
+function isSafeRedirectUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    const host = parsed.hostname.toLowerCase();
+    if (parsed.protocol === "https:") return true;
+    if (parsed.protocol === "http:" && host === "localhost") return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * POST /api/v1/paylinks
  *
@@ -40,6 +68,11 @@ function getPricesClient() {
  */
 export async function POST(req: Request) {
   try {
+    const auth = requirePublicApiKey(req);
+    if (!auth.ok) {
+      return corsJson({ error: auth.error }, { status: auth.status || 401 });
+    }
+
     const body = await req.json();
     const title = (body.title || "ZkPay Payment").trim().slice(0, 100);
     const amountINR = Number(body.amountINR || body.amount);
@@ -77,6 +110,13 @@ export async function POST(req: Request) {
       );
     }
 
+    if (redirectUrl && !isSafeRedirectUrl(redirectUrl)) {
+      return corsJson(
+        { error: "redirectUrl must be https (or http://localhost in development)." },
+        { status: 400 }
+      );
+    }
+
     // Fetch live rate directly from P2P contract
     const pricesClient = getPricesClient();
     const priceResult = await pricesClient.getPriceConfig({ currency: "INR" });
@@ -104,9 +144,7 @@ export async function POST(req: Request) {
       rate: sellPrice,
     });
 
-    const host = req.headers.get("host") || "zkpay.top";
-    const protocol = host.includes("localhost") ? "http" : "https";
-    const payUrl = `${protocol}://${host}/pay/${link.id}`;
+    const payUrl = `${getPublicBaseUrl()}/pay/${link.id}`;
     const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(payUrl)}`;
 
     return corsJson({
@@ -148,9 +186,7 @@ export async function GET(req: Request) {
       return corsJson({ error: "Pay link not found." }, { status: 404 });
     }
 
-    const host = req.headers.get("host") || "zkpay.top";
-    const protocol = host.includes("localhost") ? "http" : "https";
-    const payUrl = `${protocol}://${host}/pay/${link.id}`;
+    const payUrl = `${getPublicBaseUrl()}/pay/${link.id}`;
     const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(payUrl)}`;
 
     return corsJson({
@@ -185,6 +221,11 @@ export async function GET(req: Request) {
  */
 export async function PATCH(req: Request) {
   try {
+    const auth = requirePublicApiKey(req);
+    if (!auth.ok) {
+      return corsJson({ error: auth.error }, { status: auth.status || 401 });
+    }
+
     const body = await req.json();
     const { id, status, txHash, p2pOrderId } = body;
 
@@ -197,37 +238,90 @@ export async function PATCH(req: Request) {
       return corsJson({ error: "Pay link not found." }, { status: 404 });
     }
 
-    const updates: any = {};
-
-    if (txHash) {
-      if (!isHex(txHash) || txHash.length !== 66) {
-        return corsJson({ error: "Invalid transaction hash format." }, { status: 400 });
-      }
-
-      // Cryptographically verify on Base blockchain that transaction succeeded
-      try {
-        const client = getPublicClient();
-        const receipt = await client.getTransactionReceipt({ hash: txHash as `0x${string}` });
-
-        if (!receipt || receipt.status !== "success") {
-          return corsJson(
-            { error: "Transaction receipt verification failed or transaction reverted on Base." },
-            { status: 400 }
-          );
-        }
-      } catch (verifyErr: any) {
-        console.warn(`[PayLinks] On-chain receipt check error for ${txHash}:`, verifyErr?.message);
-        // If RPC times out, allow pending state
-      }
-
-      updates.txHash = txHash;
-      updates.paidAt = Date.now();
-      updates.status = "PAID";
-    } else if (status) {
-      updates.status = status;
+    if (status && status !== "PAID") {
+      return corsJson({ error: "Only PAID status transition is allowed on this endpoint." }, { status: 400 });
     }
 
-    if (p2pOrderId) updates.p2pOrderId = String(p2pOrderId);
+    if (existing.status === "PAID") {
+      if (!txHash || existing.txHash?.toLowerCase() === String(txHash).toLowerCase()) {
+        return corsJson({ success: true, link: existing });
+      }
+      return corsJson({ error: "Pay link is already marked PAID with a different transaction." }, { status: 409 });
+    }
+
+    if (!txHash) {
+      return corsJson({ error: "txHash is required for PAID confirmation." }, { status: 400 });
+    }
+
+    if (!isHex(txHash) || txHash.length !== 66) {
+      return corsJson({ error: "Invalid transaction hash format." }, { status: 400 });
+    }
+
+    const reused = findPayLinkByTxHash(txHash);
+    if (reused && reused.id !== id) {
+      return corsJson({ error: "This transaction hash has already been used for another pay link." }, { status: 409 });
+    }
+
+    let receipt: any;
+    try {
+      const client = getPublicClient();
+      receipt = await client.getTransactionReceipt({ hash: txHash as `0x${string}` });
+    } catch (verifyErr: any) {
+      console.warn(`[PayLinks] On-chain receipt check failed for ${txHash}:`, verifyErr?.message);
+      return corsJson({ error: "Could not verify transaction on-chain. Please retry shortly." }, { status: 503 });
+    }
+
+    if (!receipt || receipt.status !== "success") {
+      return corsJson(
+        { error: "Transaction receipt verification failed or transaction reverted on Base." },
+        { status: 400 }
+      );
+    }
+
+    const totalUsdc = Number(String(existing.estimatedUsdc || "").replace(/[^0-9.]/g, ""));
+    if (!Number.isFinite(totalUsdc) || totalUsdc <= 0) {
+      return corsJson({ error: "Pay link has invalid expected amount metadata." }, { status: 400 });
+    }
+
+    const expectedFeeUnits = parseUnits(totalUsdc.toFixed(6), 6) / 100n;
+    const treasuryLower = CONTRACTS.TREASURY.toLowerCase();
+    const usdcLower = CONTRACTS.USDC.toLowerCase();
+
+    const hasExpectedFeeTransfer = receipt.logs.some((log: any) => {
+      if (!log?.address || String(log.address).toLowerCase() !== usdcLower) {
+        return false;
+      }
+      try {
+        const decoded = decodeEventLog({
+          abi: [TRANSFER_EVENT],
+          data: log.data,
+          topics: log.topics,
+        });
+        if (decoded.eventName !== "Transfer") return false;
+        const to = String((decoded.args as any).to || "").toLowerCase();
+        const value = (decoded.args as any).value as bigint;
+        return to === treasuryLower && value === expectedFeeUnits;
+      } catch {
+        return false;
+      }
+    });
+
+    if (!hasExpectedFeeTransfer) {
+      return corsJson(
+        { error: "Transaction does not include the expected USDC fee transfer for this pay link." },
+        { status: 400 }
+      );
+    }
+
+    const updates: any = {
+      txHash,
+      paidAt: Date.now(),
+      status: "PAID",
+    };
+
+    if (p2pOrderId) {
+      updates.p2pOrderId = String(p2pOrderId);
+    }
 
     const updated = updatePayLink(id, updates);
 
