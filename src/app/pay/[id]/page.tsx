@@ -191,8 +191,20 @@ export default function PayPage() {
         timestamp: Date.now(),
       });
 
-      // Pay link settlement status must be confirmed server-to-server using secured API credentials.
-      console.info("[PayPage] Payment submitted. Awaiting secure backend confirmation for pay link settlement.");
+      // Confirm settlement with on-chain transaction hash
+      try {
+        await fetch("/api/v1/paylinks", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: linkId,
+            status: "PAID",
+            txHash: txH,
+          }),
+        });
+      } catch (confirmErr) {
+        console.warn("[PayPage] Auto-confirm error:", confirmErr);
+      }
 
       setStep("success");
     } catch (err: any) {

@@ -64,7 +64,7 @@ function getPricesClient() {
  */
 export async function POST(req: Request) {
   try {
-    const auth = requirePublicApiKey(req);
+    const auth = await requirePublicApiKey(req);
     if (!auth.ok) {
       return corsJson({ error: auth.error }, { status: auth.status || 401 });
     }
@@ -139,6 +139,9 @@ export async function POST(req: Request) {
       payinPrivateKey: privateKey,
       webhookUrl,
       expiresAt,
+      creatorUserId: auth.apiKeyRecord?.userId,
+      creatorWalletAddress: auth.apiKeyRecord?.walletAddress,
+      apiKeyId: auth.apiKeyRecord?.id,
     });
 
     // 6. Build Direct USDC Transfer QR code on Base (EIP-681)

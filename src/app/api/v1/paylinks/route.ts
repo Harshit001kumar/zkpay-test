@@ -68,7 +68,7 @@ function isSafeRedirectUrl(rawUrl: string): boolean {
  */
 export async function POST(req: Request) {
   try {
-    const auth = requirePublicApiKey(req);
+    const auth = await requirePublicApiKey(req);
     if (!auth.ok) {
       return corsJson({ error: auth.error }, { status: auth.status || 401 });
     }
@@ -142,6 +142,9 @@ export async function POST(req: Request) {
       redirectUrl,
       estimatedUsdc: `${totalUsdc.toFixed(2)} USDC`,
       rate: sellPrice,
+      creatorUserId: auth.apiKeyRecord?.userId,
+      creatorWalletAddress: auth.apiKeyRecord?.walletAddress,
+      apiKeyId: auth.apiKeyRecord?.id,
     });
 
     const payUrl = `${getPublicBaseUrl()}/pay/${link.id}`;
@@ -221,13 +224,17 @@ export async function GET(req: Request) {
  */
 export async function PATCH(req: Request) {
   try {
-    const auth = requirePublicApiKey(req);
-    if (!auth.ok) {
-      return corsJson({ error: auth.error }, { status: auth.status || 401 });
-    }
-
+    const auth = await requirePublicApiKey(req);
     const body = await req.json();
     const { id, status, txHash, p2pOrderId } = body;
+
+    // Must have a valid API key OR provide an on-chain txHash for verified payment confirmation
+    if (!auth.ok && !txHash) {
+      return corsJson(
+        { error: "Authentication required or provide a valid on-chain txHash for payment confirmation." },
+        { status: 401 }
+      );
+    }
 
     if (!id) {
       return corsJson({ error: "Missing 'id' parameter in request body." }, { status: 400 });

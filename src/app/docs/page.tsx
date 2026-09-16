@@ -266,6 +266,49 @@ bot.command('pay', async (ctx) => {
             </div>
           </div>
         </section>
+        {/* Authentication Section */}
+        <section className="mb-12">
+          <div className="bg-white/5 backdrop-blur-[40px] border border-white/15 rounded-xl p-8 md:p-10 shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
+            <div className="flex items-center gap-3 mb-6">
+              <span className="font-label-caps text-[#c0c6de] text-[10px] tracking-[0.25em] font-bold">
+                AUTHENTICATION
+              </span>
+              <div className="h-px w-8 bg-white/20" />
+            </div>
+
+            <h2 className="text-2xl md:text-3xl font-medium tracking-tight text-[#e5e2e3] mb-4">
+              Getting Your API Key
+            </h2>
+            <p className="text-sm text-[#c6c6cd] max-w-2xl mb-6">
+              All write endpoints (<code className="text-[#c0c6de] bg-white/5 px-1.5 py-0.5 rounded">POST</code>, <code className="text-[#c0c6de] bg-white/5 px-1.5 py-0.5 rounded">PATCH</code>) require an API key. Pass it via the <code className="text-[#c0c6de] bg-white/5 px-1.5 py-0.5 rounded">x-api-key</code> header or <code className="text-[#c0c6de] bg-white/5 px-1.5 py-0.5 rounded">Authorization: Bearer</code> header.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
+                <div className="w-8 h-8 rounded-lg bg-[#c0c6de]/10 border border-[#c0c6de]/30 flex items-center justify-center text-[#c0c6de] text-sm font-bold">1</div>
+                <p className="font-medium text-sm text-[#e5e2e3]">Connect Wallet</p>
+                <p className="text-xs text-[#909097]">Log in to ZkPay with your wallet at <a href="/" className="text-[#c0c6de] hover:underline">zkpay.top</a></p>
+              </div>
+              <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
+                <div className="w-8 h-8 rounded-lg bg-[#c0c6de]/10 border border-[#c0c6de]/30 flex items-center justify-center text-[#c0c6de] text-sm font-bold">2</div>
+                <p className="font-medium text-sm text-[#e5e2e3]">Open API Keys</p>
+                <p className="text-xs text-[#909097]">Go to <strong className="text-white">Profile → Merchant & Bot API Keys</strong></p>
+              </div>
+              <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
+                <div className="w-8 h-8 rounded-lg bg-[#c0c6de]/10 border border-[#c0c6de]/30 flex items-center justify-center text-[#c0c6de] text-sm font-bold">3</div>
+                <p className="font-medium text-sm text-[#e5e2e3]">Generate & Copy</p>
+                <p className="text-xs text-[#909097]">Create a key with a label and copy the secret (shown only once).</p>
+              </div>
+            </div>
+
+            <div className="bg-black/40 rounded-xl p-4 border border-white/5 font-mono text-xs text-[#c0c6de] overflow-x-auto">
+              <pre>{`curl -X POST "https://zkpay.top/api/v1/paylinks" \\
+  -H "x-api-key: zkpay_live_your_secret_key" \\
+  -H "Content-Type: application/json" \\
+  -d '{"amountINR": 500, "recipientUpi": "merchant@okaxis"}'`}</pre>
+            </div>
+          </div>
+        </section>
 
         {/* 2-Column API Explorer */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">

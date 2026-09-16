@@ -20,6 +20,9 @@ export interface PayLink {
   paidAt?: number;
   txHash?: string;
   p2pOrderId?: string;
+  creatorUserId?: string;
+  creatorWalletAddress?: string;
+  apiKeyId?: string;
 }
 
 export interface PayInSession {
@@ -38,6 +41,9 @@ export interface PayInSession {
   receivedUsdc?: string;
   txHash?: string;
   p2pOrderId?: string;
+  creatorUserId?: string;
+  creatorWalletAddress?: string;
+  apiKeyId?: string;
 }
 
 // In-memory stores — MVP, replace with persistent DB in production

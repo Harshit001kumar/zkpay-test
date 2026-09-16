@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { findActiveApiKey, touchApiKeyUsage, ApiKeyRecord } from "./apiKeysStore";
 
 function getConfiguredApiKeys(): string[] {
   return (process.env.ZKPAY_API_KEYS || process.env.ZKPAY_API_KEY || "")
@@ -27,33 +28,48 @@ function safeEquals(a: string, b: string): boolean {
   return crypto.timingSafeEqual(aBuf, bBuf);
 }
 
-export function requirePublicApiKey(req: Request): { ok: boolean; status?: number; error?: string } {
-  const keys = getConfiguredApiKeys();
-  if (keys.length === 0) {
-    return {
-      ok: false,
-      status: 500,
-      error: "API authentication is not configured on server (set ZKPAY_API_KEYS).",
-    };
-  }
+export interface PublicApiAuthResult {
+  ok: boolean;
+  status?: number;
+  error?: string;
+  apiKeyRecord?: ApiKeyRecord;
+  isEnvKey?: boolean;
+}
 
+export async function requirePublicApiKey(req: Request): Promise<PublicApiAuthResult> {
   const provided = extractApiKey(req);
   if (!provided) {
     return {
       ok: false,
       status: 401,
-      error: "Missing API key. Provide x-api-key header.",
+      error: "Missing API key. Provide x-api-key header or Bearer token.",
     };
   }
 
-  const matched = keys.some((k) => safeEquals(provided, k));
-  if (!matched) {
-    return {
-      ok: false,
-      status: 401,
-      error: "Invalid API key.",
-    };
+  // 1. Check static environment keys (if configured)
+  const envKeys = getConfiguredApiKeys();
+  const envMatched = envKeys.some((k) => safeEquals(provided, k));
+  if (envMatched) {
+    return { ok: true, isEnvKey: true };
   }
 
-  return { ok: true };
+  // 2. Check dynamic database keys (issued from merchant dashboard)
+  try {
+    const dbRecord = await findActiveApiKey(provided);
+    if (dbRecord) {
+      touchApiKeyUsage(dbRecord.id).catch((err) =>
+        console.warn("[PublicApiAuth] Failed to touch API key usage:", err)
+      );
+      return { ok: true, apiKeyRecord: dbRecord, isEnvKey: false };
+    }
+  } catch (err) {
+    console.warn("[PublicApiAuth] Database key lookup error:", err);
+  }
+
+  return {
+    ok: false,
+    status: 401,
+    error: "Invalid or inactive API key.",
+  };
 }
+

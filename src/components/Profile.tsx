@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
+import { usePrivy } from "@privy-io/react-auth";
 import {
   Copy,
   Check,
@@ -26,20 +27,51 @@ import {
   Sparkles,
   Calendar,
   CheckCircle,
+  Plus,
+  Trash2,
+  Terminal,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
+
+interface ApiKeyItem {
+  id: string;
+  label: string;
+  maskedKey: string;
+  status: "ACTIVE" | "REVOKED";
+  createdAt: number;
+  lastUsedAt?: number;
+  revokedAt?: number;
+}
 
 export default function Profile({ onBack }: { onBack?: () => void }) {
   const router = useRouter();
   const { logout, address, isSmartWallet } = useActiveAccount();
+  const { getAccessToken } = usePrivy();
 
   const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Not connected";
   const [copied, setCopied] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(true);
-  const [activeView, setActiveView] = useState<"main" | "referral">("main");
+  const [activeView, setActiveView] = useState<"main" | "referral" | "api-keys">("main");
   const [rewardsData, setRewardsData] = useState<any>(null);
   const [isLoadingRewards, setIsLoadingRewards] = useState(false);
+
+  // API Keys state
+  const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>([]);
+  const [isLoadingKeys, setIsLoadingKeys] = useState(false);
+  const [isCreatingKey, setIsCreatingKey] = useState(false);
+  const [keyLabel, setKeyLabel] = useState("");
+  const [newKeyResult, setNewKeyResult] = useState<{
+    plaintextKey: string;
+    label: string;
+    maskedKey: string;
+  } | null>(null);
+  const [copiedNewKey, setCopiedNewKey] = useState(false);
+  const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [keyError, setKeyError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!address) return;
@@ -75,6 +107,100 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
       navigator.clipboard.writeText(rewardsData.referralLink);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
+    }
+  };
+
+  const fetchApiKeys = async () => {
+    try {
+      setIsLoadingKeys(true);
+      setKeyError(null);
+      const token = await getAccessToken();
+      if (!token) return;
+      const res = await fetch("/api/profile/api-keys", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.keys)) {
+        setApiKeys(data.keys);
+      } else {
+        setKeyError(data.error || "Failed to load keys");
+      }
+    } catch (err: any) {
+      setKeyError(err.message || "Failed to load keys");
+    } finally {
+      setIsLoadingKeys(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeView === "api-keys") {
+      fetchApiKeys();
+    }
+  }, [activeView]);
+
+  const handleCreateKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setIsCreatingKey(true);
+      setKeyError(null);
+      const token = await getAccessToken();
+      if (!token) {
+        setKeyError("Please connect your wallet first.");
+        return;
+      }
+      const res = await fetch("/api/profile/api-keys", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ label: keyLabel.trim() || "Default Merchant Key" }),
+      });
+      const data = await res.json();
+      if (data.success && data.plaintextKey) {
+        setNewKeyResult({
+          plaintextKey: data.plaintextKey,
+          label: data.key.label,
+          maskedKey: data.key.maskedKey,
+        });
+        setKeyLabel("");
+        fetchApiKeys();
+      } else {
+        setKeyError(data.error || "Could not generate API key.");
+      }
+    } catch (err: any) {
+      setKeyError(err.message || "Could not generate API key.");
+    } finally {
+      setIsCreatingKey(false);
+    }
+  };
+
+  const handleRevokeKey = async (keyId: string) => {
+    if (!confirm("Are you sure you want to revoke this API key? Applications using this key will immediately be denied access.")) {
+      return;
+    }
+    try {
+      setRevokingId(keyId);
+      const token = await getAccessToken();
+      if (!token) return;
+      const res = await fetch("/api/profile/api-keys", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ id: keyId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchApiKeys();
+      } else {
+        alert(data.error || "Failed to revoke API key.");
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to revoke API key.");
+    } finally {
+      setRevokingId(null);
     }
   };
 
@@ -277,6 +403,235 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
                 No past payouts yet. Your active rewards will be included in this month&apos;s batch!
               </p>
             )}
+          </section>
+        </main>
+      </div>
+    );
+  }
+
+  if (activeView === "api-keys") {
+    return (
+      <div className="bg-[#020408] text-[#e5e2e3] font-body-md selection:bg-[#c0c6de]/30 min-h-screen relative flex flex-col pb-36 overflow-y-auto w-full">
+        {/* TopAppBar */}
+        <header className="w-full sticky top-0 z-50 flex justify-between items-center px-6 py-6 max-w-2xl mx-auto backdrop-blur-md bg-[#020408]/60">
+          <button
+            onClick={() => setActiveView("main")}
+            className="flex items-center gap-2 px-4 py-2 monolith-card rounded-full cursor-pointer hover:scale-105 active:scale-95 transition-transform text-xs font-mono font-bold text-[#c0c6de]"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>BACK TO PROFILE</span>
+          </button>
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[10px] font-mono font-bold">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+            <span>MERCHANT API V1</span>
+          </div>
+        </header>
+
+        <main className="w-full max-w-xl mx-auto px-4 pt-4 pb-40 space-y-6">
+          {/* Header */}
+          <div className="text-center space-y-2">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#c0c6de]/10 border border-[#c0c6de]/30 text-[#c0c6de] mb-2 shadow-lg">
+              <Key className="w-7 h-7" />
+            </div>
+            <h2 className="font-display-xl-mobile text-[28px] font-bold text-white tracking-tight">
+              Merchant & Bot API Keys
+            </h2>
+            <p className="text-xs text-[#909097] max-w-md mx-auto leading-relaxed font-mono">
+              Integrate ZkPay into Telegram/Discord bots, payment checkouts, and automated systems with on-chain crypto-to-UPI settlements.
+            </p>
+          </div>
+
+          {/* New Key Generated Alert Banner */}
+          {newKeyResult && (
+            <section className="monolith-card rounded-[24px] p-6 space-y-4 bg-gradient-to-b from-amber-500/20 via-amber-500/5 to-transparent border border-amber-500/40 shadow-2xl animate-in zoom-in-95 duration-300">
+              <div className="flex items-center gap-2 text-amber-400 text-xs font-mono font-bold uppercase tracking-wider">
+                <AlertCircle className="w-4 h-4" />
+                <span>Save Your API Key Now</span>
+              </div>
+              <p className="text-xs font-mono text-[#d0d0d8] leading-relaxed">
+                This secret API key will <strong className="text-white">never be shown again</strong>. Please copy and store it securely in your environment variables.
+              </p>
+              <div className="p-3.5 rounded-xl bg-black/60 border border-amber-500/30 flex items-center justify-between gap-2">
+                <code className="text-xs font-mono text-amber-300 break-all select-all font-semibold">
+                  {newKeyResult.plaintextKey}
+                </code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(newKeyResult.plaintextKey);
+                    setCopiedNewKey(true);
+                    setTimeout(() => setCopiedNewKey(false), 2000);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+                >
+                  {copiedNewKey ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedNewKey ? "COPIED" : "COPY"}</span>
+                </button>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setNewKeyResult(null)}
+                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-mono font-bold transition-all cursor-pointer"
+                >
+                  I have saved this key
+                </button>
+              </div>
+            </section>
+          )}
+
+          {/* Create Key Form */}
+          <section className="monolith-card rounded-[28px] p-6 space-y-4 bg-gradient-to-b from-[#c0c6de]/10 to-transparent border border-[#c0c6de]/20">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono font-bold text-[#c0c6de] uppercase tracking-wider">
+                Create New API Key
+              </span>
+              <span className="text-[10px] font-mono text-[#909097]">
+                Base Mainnet • Chain 8453
+              </span>
+            </div>
+
+            <form onSubmit={handleCreateKey} className="space-y-3">
+              <div>
+                <input
+                  type="text"
+                  value={keyLabel}
+                  onChange={(e) => setKeyLabel(e.target.value)}
+                  placeholder="Key Label (e.g. Telegram Bot, E-commerce Store)"
+                  className="w-full px-4 py-3 rounded-xl bg-black/40 border border-white/10 text-white placeholder-[#707079] text-xs font-mono focus:outline-none focus:border-[#c0c6de]/60 transition-colors"
+                  maxLength={40}
+                />
+              </div>
+
+              {keyError && (
+                <p className="text-xs font-mono text-rose-400 flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span>{keyError}</span>
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={isCreatingKey}
+                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#c0c6de] to-[#a0a8c2] hover:from-white hover:to-[#c0c6de] text-[#020408] font-bold text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(192,198,222,0.25)] active:scale-[0.98] cursor-pointer disabled:opacity-50"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{isCreatingKey ? "Generating Key..." : "Generate API Key"}</span>
+              </button>
+            </form>
+          </section>
+
+          {/* Active Keys Ledger */}
+          <section className="monolith-card rounded-[28px] p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono font-bold text-[#c6c6cd] uppercase tracking-wider">
+                Your API Keys ({apiKeys.length})
+              </span>
+              <button
+                onClick={fetchApiKeys}
+                disabled={isLoadingKeys}
+                className="text-[#909097] hover:text-[#c0c6de] transition-colors p-1 cursor-pointer"
+                title="Refresh keys"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingKeys ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+
+            {isLoadingKeys && apiKeys.length === 0 ? (
+              <div className="text-center py-8 text-xs font-mono text-[#909097]">
+                Loading keys...
+              </div>
+            ) : apiKeys.length === 0 ? (
+              <div className="text-center py-8 space-y-2">
+                <Key className="w-8 h-8 text-[#909097]/40 mx-auto" />
+                <p className="text-xs font-mono text-[#909097]">
+                  No API keys yet. Generate one above to access the API.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {apiKeys.map((k) => (
+                  <div
+                    key={k.id}
+                    className="p-4 rounded-2xl bg-black/30 border border-white/5 space-y-2 hover:border-white/10 transition-colors font-mono"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-white">{k.label}</span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                            k.status === "ACTIVE"
+                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                              : "bg-zinc-500/10 text-zinc-400 border border-zinc-500/20"
+                          }`}
+                        >
+                          {k.status}
+                        </span>
+                      </div>
+                      {k.status === "ACTIVE" && (
+                        <button
+                          onClick={() => handleRevokeKey(k.id)}
+                          disabled={revokingId === k.id}
+                          className="text-rose-400 hover:text-rose-300 text-[11px] font-mono flex items-center gap-1 hover:underline cursor-pointer disabled:opacity-50"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>{revokingId === k.id ? "Revoking..." : "Revoke"}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs bg-black/40 p-2.5 rounded-xl border border-white/5">
+                      <span className="text-[#c0c6de] select-all">{k.maskedKey}</span>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(k.id);
+                          setCopiedKeyId(k.id);
+                          setTimeout(() => setCopiedKeyId(null), 2000);
+                        }}
+                        className="text-[#909097] hover:text-white transition-colors flex items-center gap-1 text-[10px] cursor-pointer"
+                        title="Copy Key ID"
+                      >
+                        {copiedKeyId === k.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        <span>ID</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] text-[#909097] pt-1">
+                      <span>Created: {new Date(k.createdAt).toLocaleDateString()}</span>
+                      <span>
+                        {k.lastUsedAt
+                          ? `Last used: ${new Date(k.lastUsedAt).toLocaleDateString()}`
+                          : "Never used"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Quickstart Developer Card */}
+          <section className="monolith-card rounded-[28px] p-6 space-y-3 font-mono">
+            <div className="flex items-center gap-2 text-xs font-bold text-[#c0c6de] uppercase tracking-wider">
+              <Terminal className="w-4 h-4" />
+              <span>cURL Quickstart</span>
+            </div>
+            <p className="text-xs text-[#909097]">
+              Pass your API key in the <code className="text-[#c0c6de]">x-api-key</code> header:
+            </p>
+            <div className="p-3.5 rounded-xl bg-black/50 border border-white/5 text-[11px] text-[#c0c6de] overflow-x-auto leading-relaxed">
+              <pre>{`curl -X POST "https://zkpay.top/api/v1/paylinks" \\
+  -H "x-api-key: zkpay_live_your_key_here" \\
+  -H "Content-Type: application/json" \\
+  -d '{"amountINR": 500, "recipientUpi": "merchant@okaxis"}'`}</pre>
+            </div>
+            <div className="pt-2">
+              <Link
+                href="/docs"
+                className="w-full py-3 rounded-xl monolith-card text-[#c0c6de] hover:text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-white/5 transition-all"
+              >
+                <span>View Full Developer Docs</span>
+                <ChevronRight className="w-4 h-4" />
+              </Link>
+            </div>
           </section>
         </main>
       </div>
@@ -568,6 +923,23 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
               <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
             </Link>
 
+            <button 
+              onClick={() => setActiveView("api-keys")}
+              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-white/5 hover:border-white/20 transition-all block w-full text-left cursor-pointer"
+            >
+              <div className="flex items-center gap-4">
+                <Key className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px] block">Merchant & Bot API Keys</span>
+                    <span className="px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[10px] font-mono font-bold">MERCHANT</span>
+                  </div>
+                  <span className="text-xs text-[#909097]">Create & manage keys for bots & checkouts</span>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
+            </button>
+
             <Link 
               href="/docs" 
               className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-white/5 hover:border-white/20 transition-all block"
@@ -575,7 +947,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
               <div className="flex items-center gap-4">
                 <Code2 className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />
                 <div>
-                  <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px] block">Developer APIs</span>
+                  <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px] block">Developer APIs Documentation</span>
                   <span className="text-xs text-[#909097]">Pay Links, Quotes & Rates endpoints</span>
                 </div>
               </div>

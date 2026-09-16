@@ -14,11 +14,15 @@ export default function AppShell() {
   const [activeTab, setActiveTab] = useState<BottomNavTab>("home");
   const { address, authenticated } = useActiveAccount();
 
-  // Capture ?ref= query parameter and store in localStorage
+  // Capture ?ref= or ?tab= query parameter
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       const urlParams = new URLSearchParams(window.location.search);
+      const tabParam = urlParams.get("tab") as BottomNavTab;
+      if (tabParam && ["home", "earn", "cards", "profile"].includes(tabParam)) {
+        setActiveTab(tabParam);
+      }
       const refParam = urlParams.get("ref");
       if (refParam && refParam.trim()) {
         localStorage.setItem("zkpay_pending_ref", refParam.trim());
