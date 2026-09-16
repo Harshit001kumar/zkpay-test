@@ -134,6 +134,7 @@ export default function DocsPage() {
   -H "Accept: application/json"`;
       }
       return `curl -X POST "${url}" \\
+  -H "X-API-Key: YOUR_ZKPAY_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '${JSON.stringify(ep.body, null, 2)}'`;
     }
@@ -146,7 +147,10 @@ console.log(data);`;
       }
       return `const res = await fetch("${url}", {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+    "X-API-Key": "YOUR_ZKPAY_API_KEY"
+  },
   body: JSON.stringify(${JSON.stringify(ep.body, null, 4)})
 });
 const data = await res.json();
@@ -164,7 +168,11 @@ print(res.json())`;
 
 payload = ${JSON.stringify(ep.body, null, 4).replace(/true/g, "True").replace(/false/g, "False")}
 
-res = requests.post("${url}", json=payload)
+headers = {
+    "X-API-Key": "YOUR_ZKPAY_API_KEY",
+    "Content-Type": "application/json"
+}
+res = requests.post("${url}", json=payload, headers=headers)
 print(res.json())`;
     }
 
@@ -252,7 +260,7 @@ bot.command('pay', async (ctx) => {
                 <div className="hidden sm:block w-px h-8 bg-white/10" />
                 <div className="flex flex-col gap-1">
                   <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">CORS SUPPORT</span>
-                  <span className="font-body-md font-medium text-[#c0c6de]">Enabled (* global)</span>
+                  <span className="font-body-md font-medium text-[#c0c6de]">Enabled (API-key protected writes)</span>
                 </div>
               </div>
             </div>
