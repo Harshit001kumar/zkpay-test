@@ -216,9 +216,8 @@ export default function PayPage() {
 
   return (
     <div className="min-h-screen bg-[#131315] text-[#e5e2e3] font-body-md flex flex-col justify-between p-4 md:p-8 relative overflow-hidden selection:bg-[#c0c6de]/30">
-      {/* ReactBits Ambient Glow Orbs */}
-      <div className="fixed -top-40 -right-40 w-96 h-96 bg-[#c0c6de]/5 rounded-full blur-[140px] pointer-events-none" />
-      <div className="fixed -bottom-40 -left-40 w-96 h-96 bg-[#b9c7e0]/5 rounded-full blur-[140px] pointer-events-none" />
+      {/* Ambient Radial Mesh (Zero GPU filter overhead) */}
+      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(192,198,222,0.05),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(185,199,224,0.05),transparent_50%)]" />
 
       {/* Top Header */}
       <header className="max-w-[520px] w-full mx-auto flex items-center justify-between py-4 relative z-20">
@@ -249,7 +248,7 @@ export default function PayPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, type: "spring", damping: 25 }}
         >
-          <SpotlightCard className="p-6 md:p-8 border border-white/20 shadow-[0_30px_90px_rgba(0,0,0,0.9)]">
+          <SpotlightCard className="p-6 md:p-8 border border-white/20 shadow-2xl bg-[#141417]/95">
             <AnimatePresence mode="wait">
               {/* ─── 1. Loading State ─── */}
               {step === "loading" && (

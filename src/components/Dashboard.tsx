@@ -53,7 +53,7 @@ export default function Dashboard() {
     <main className="relative z-10 max-w-[1440px] mx-auto pt-8 pb-24 px-5 md:px-8">
       {/* Hero Section */}
       <section className="mb-8">
-        <div className="bg-white/5 backdrop-blur-[40px] border border-white/15 rounded-xl p-8 md:p-12 relative overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)] transition-all hover:shadow-[0_30px_60px_rgba(0,0,0,1),0_0_0_1px_rgba(255,255,255,0.2)] group">
+        <div className="bg-[#1a1a1d]/80 backdrop-blur-md border border-white/15 rounded-xl p-8 md:p-12 relative overflow-hidden shadow-2xl transition-all hover:border-white/25 group">
           <div className="absolute top-0 right-0 p-6 opacity-10 pointer-events-none">
             <span className="material-symbols-outlined text-[160px] leading-none text-white font-light">security</span>
           </div>
@@ -83,24 +83,24 @@ export default function Dashboard() {
       {/* Bento Actions */}
       <section className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-12">
         <div className="md:col-span-8 grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
-          <button onClick={() => switchTab("pay")} className="bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-white/10 transition-all border border-white/15 text-[#e5e2e3]">
+          <button onClick={() => switchTab("pay")} className="bg-[#1a1a1d]/75 backdrop-blur-md shadow-lg p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-[#222226] transition-all border border-white/10 hover:border-white/20 text-[#e5e2e3]">
             <span className="material-symbols-outlined text-2xl group-hover:scale-110 transition-transform">qr_code_scanner</span>
             <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">SCAN & PAY</span>
           </button>
-          <button onClick={() => switchTab("cashout")} className="bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-white/10 transition-all border border-white/15 text-[#e5e2e3]">
+          <button onClick={() => switchTab("cashout")} className="bg-[#1a1a1d]/75 backdrop-blur-md shadow-lg p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-[#222226] transition-all border border-white/10 hover:border-white/20 text-[#e5e2e3]">
             <span className="material-symbols-outlined text-2xl group-hover:scale-110 transition-transform">north_east</span>
             <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">CASH OUT</span>
           </button>
-          <button onClick={() => switchTab("deposit")} className="bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-white/10 transition-all border border-white/15 text-[#e5e2e3]">
+          <button onClick={() => switchTab("deposit")} className="bg-[#1a1a1d]/75 backdrop-blur-md shadow-lg p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-[#222226] transition-all border border-white/10 hover:border-white/20 text-[#e5e2e3]">
             <span className="material-symbols-outlined text-2xl group-hover:scale-110 transition-transform">south_west</span>
             <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">DEPOSIT</span>
           </button>
-          <button onClick={() => setIsPayLinkOpen(true)} className="bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-white/10 transition-all border border-white/15 text-[#e5e2e3]">
+          <button onClick={() => setIsPayLinkOpen(true)} className="bg-[#1a1a1d]/75 backdrop-blur-md shadow-lg p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-[#222226] transition-all border border-white/10 hover:border-white/20 text-[#e5e2e3]">
             <span className="material-symbols-outlined text-2xl text-[#c0c6de] group-hover:scale-110 transition-transform">link</span>
             <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">PAY LINK</span>
           </button>
         </div>
-        <div className="md:col-span-4 bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-6 rounded-xl flex items-center justify-between border border-white/15 text-[#e5e2e3] group hover:bg-white/[0.08] transition-all">
+        <div className="md:col-span-4 bg-[#1a1a1d]/75 backdrop-blur-md shadow-lg p-6 rounded-xl flex items-center justify-between border border-white/10 hover:border-white/20 text-[#e5e2e3] group hover:bg-[#222226] transition-all">
           <div>
             <p className="font-label-caps text-[9px] text-[#c6c6cd] mb-1 tracking-[0.25em] font-bold">DEVELOPER API</p>
             <a href="/docs" target="_blank" className="font-headline-md text-base text-[#e5e2e3] hover:text-white font-semibold tracking-tight flex items-center gap-1.5 transition-colors">
@@ -126,7 +126,7 @@ export default function Dashboard() {
             <button className="text-[9px] font-label-caps text-[#c6c6cd]/60 hover:text-[#e5e2e3] transition-colors font-bold tracking-[0.25em]">RECEIVED</button>
           </div>
         </div>
-        <div className="bg-white/5 backdrop-blur-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] rounded-xl overflow-hidden border border-white/15">
+        <div className="bg-[#1a1a1d]/75 backdrop-blur-md shadow-xl rounded-xl overflow-hidden border border-white/10">
           <PaymentHistory />
         </div>
         <div className="mt-8 flex justify-center">

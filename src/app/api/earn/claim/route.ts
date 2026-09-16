@@ -6,6 +6,8 @@ import {
   parsePrivyEarnError,
 } from "@/lib/server/privyEarn";
 
+export const dynamic = "force-dynamic";
+
 // ──────────────────────────────────────────────
 // POST /api/earn/claim
 // Claims accrued yield / token incentives for the user's wallet on Base.

@@ -17,13 +17,24 @@ export default function PaymentHistory() {
       return;
     }
 
+    let lastRaw = "";
+    try {
+      lastRaw = localStorage.getItem("zkpay_transactions") || "";
+    } catch {}
+
     const txs = getTransactions();
     setTransactions(txs);
     setLoading(false);
 
     const interval = setInterval(() => {
-      setTransactions(getTransactions());
-    }, 3000);
+      try {
+        const currentRaw = localStorage.getItem("zkpay_transactions") || "";
+        if (currentRaw !== lastRaw) {
+          lastRaw = currentRaw;
+          setTransactions(getTransactions());
+        }
+      } catch {}
+    }, 4000);
 
     return () => clearInterval(interval);
   }, [ready, authenticated, address]);

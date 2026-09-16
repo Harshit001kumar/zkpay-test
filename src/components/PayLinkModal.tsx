@@ -138,7 +138,7 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
               onClose();
               resetForm();
             }}
-            className="absolute inset-0 bg-[#0e0e0f]/85 backdrop-blur-[60px]"
+            className="absolute inset-0 bg-[#0e0e0f]/80 backdrop-blur-md"
           />
 
           {/* Obsidian Spotlight Modal */}
@@ -149,7 +149,7 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
             transition={{ type: "spring", stiffness: 350, damping: 28 }}
             className="relative w-full max-w-lg z-10"
           >
-            <SpotlightCard className="p-6 md:p-8 border border-white/20 shadow-[0_30px_80px_rgba(0,0,0,0.9)]">
+            <SpotlightCard className="p-6 md:p-8 border border-white/20 shadow-2xl bg-[#141417]/95">
               {/* Header */}
               <div className="flex items-center justify-between pb-5 mb-6 border-b border-white/10">
                 <div className="flex items-center gap-3">

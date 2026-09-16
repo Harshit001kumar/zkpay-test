@@ -19,11 +19,21 @@ declare global {
 }
 
 export function isMongoConfigured(): boolean {
-  return !!process.env.MONGODB_URI;
+  if (!uri) return false;
+  // Ignore dummy/placeholder templates from .env.example
+  if (
+    uri.includes("username:password") ||
+    uri.includes("<password>") ||
+    uri.includes("your-") ||
+    uri.includes("cluster0.mongodb.net") && uri.includes("username")
+  ) {
+    return false;
+  }
+  return true;
 }
 
 export async function getMongoClient(): Promise<MongoClient | null> {
-  if (!uri) {
+  if (!isMongoConfigured() || !uri) {
     return null;
   }
 

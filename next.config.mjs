@@ -53,6 +53,12 @@ const nextConfig = {
     ];
     config.plugins.push(...plugins);
     
+    config.ignoreWarnings = [
+      ...(config.ignoreWarnings || []),
+      { module: /ox/ },
+      { message: /Critical dependency: the request of a dependency is an expression/ },
+    ];
+
     return config;
   }
 };

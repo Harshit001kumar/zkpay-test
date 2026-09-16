@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getPrivyClient, resolveEmbeddedWalletId } from "@/lib/server/privyEarn";
 import { CONTRACTS, EARN_CONFIG } from "@/lib/constants";
 
+export const dynamic = "force-dynamic";
+
 const VAULT_ID = process.env.PRIVY_EARN_VAULT_ID;
 
 // ──────────────────────────────────────────────

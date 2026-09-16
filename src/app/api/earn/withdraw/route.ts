@@ -6,6 +6,8 @@ import {
   parsePrivyEarnError,
 } from "@/lib/server/privyEarn";
 
+export const dynamic = "force-dynamic";
+
 const VAULT_ID = process.env.PRIVY_EARN_VAULT_ID;
 
 // ──────────────────────────────────────────────

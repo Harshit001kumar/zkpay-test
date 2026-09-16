@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useRef, useCallback } from "react";
 
 interface SpotlightCardProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
@@ -15,22 +15,44 @@ export function SpotlightCard({
   ...props
 }: SpotlightCardProps) {
   const divRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [opacity, setOpacity] = useState<number>(0);
+  const spotlightRef = useRef<HTMLDivElement>(null);
+  const rafId = useRef<number | null>(null);
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!divRef.current) return;
-    const rect = divRef.current.getBoundingClientRect();
-    setPosition({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-  };
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!divRef.current || !spotlightRef.current) return;
+    
+    // Throttle style updates with requestAnimationFrame for smooth 60fps without React re-renders
+    const clientX = e.clientX;
+    const clientY = e.clientY;
 
-  const handleMouseEnter = () => {
-    setOpacity(1);
-  };
+    if (rafId.current !== null) {
+      cancelAnimationFrame(rafId.current);
+    }
 
-  const handleMouseLeave = () => {
-    setOpacity(0);
-  };
+    rafId.current = requestAnimationFrame(() => {
+      if (!divRef.current || !spotlightRef.current) return;
+      const rect = divRef.current.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      spotlightRef.current.style.setProperty("--mouse-x", `${x}px`);
+      spotlightRef.current.style.setProperty("--mouse-y", `${y}px`);
+    });
+  }, []);
+
+  const handleMouseEnter = useCallback(() => {
+    if (spotlightRef.current) {
+      spotlightRef.current.style.opacity = "1";
+    }
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    if (rafId.current !== null) {
+      cancelAnimationFrame(rafId.current);
+    }
+    if (spotlightRef.current) {
+      spotlightRef.current.style.opacity = "0";
+    }
+  }, []);
 
   return (
     <div
@@ -38,14 +60,14 @@ export function SpotlightCard({
       onMouseMove={handleMouseMove}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      className={`relative overflow-hidden rounded-2xl bg-white/[0.04] backdrop-blur-[40px] border border-white/15 shadow-[0_20px_50px_rgba(0,0,0,0.8)] transition-all duration-300 ${className}`}
+      className={`relative overflow-hidden rounded-2xl bg-white/[0.04] backdrop-blur-md border border-white/15 shadow-xl transition-colors duration-200 ${className}`}
       {...props}
     >
       <div
-        className="pointer-events-none absolute -inset-px rounded-2xl opacity-0 transition-opacity duration-300"
+        ref={spotlightRef}
+        className="pointer-events-none absolute -inset-px rounded-2xl opacity-0 transition-opacity duration-300 will-change-[opacity]"
         style={{
-          opacity,
-          background: `radial-gradient(600px circle at ${position.x}px ${position.y}px, ${spotlightColor}, transparent 40%)`,
+          background: `radial-gradient(500px circle at var(--mouse-x, -9999px) var(--mouse-y, -9999px), ${spotlightColor}, transparent 40%)`,
         }}
       />
       <div className="relative z-10">{children}</div>
