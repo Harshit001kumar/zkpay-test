@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { usePrivy } from "@privy-io/react-auth";
 import { motion, AnimatePresence } from "framer-motion";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
 import { ShinyText } from "@/components/ui/ShinyText";
@@ -14,6 +15,7 @@ interface PayLinkModalProps {
 const PRESET_AMOUNTS = [500, 1000, 2500, 5000];
 
 export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
+  const { authenticated, getAccessToken } = usePrivy();
   const [title, setTitle] = useState("");
   const [amountINR, setAmountINR] = useState("");
   const [recipientUpi, setRecipientUpi] = useState("");
@@ -65,9 +67,21 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
       setIsLoading(true);
       setError(null);
 
+      let token: string | null = null;
+      if (authenticated && getAccessToken) {
+        try {
+          token = await getAccessToken();
+        } catch {}
+      }
+
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const res = await fetch("/api/v1/paylinks", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           title: title || "Payment Invoice",
           amountINR: Number(amountINR),

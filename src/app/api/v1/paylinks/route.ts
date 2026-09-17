@@ -1,7 +1,7 @@
 import { corsJson, corsOptions } from "@/lib/server/cors";
 import { createPayLink, findPayLinkByTxHash, getPayLink, updatePayLink } from "@/lib/server/payStore";
 import { dispatchWebhook, isSafeWebhookUrl } from "@/lib/server/webhooks";
-import { requirePublicApiKey } from "@/lib/server/publicApiAuth";
+import { resolvePublicApiAuth } from "@/lib/server/publicApiAuth";
 import { createPrices } from "@p2pdotme/sdk/prices";
 import { createPublicClient, decodeEventLog, http, isHex, parseAbiItem, parseUnits } from "viem";
 import { base } from "viem/chains";
@@ -65,11 +65,16 @@ function isSafeRedirectUrl(rawUrl: string): boolean {
  * POST /api/v1/paylinks
  *
  * Creates a shareable payment link.
+ * Supports:
+ *   - Authenticated merchant requests with x-api-key or Bearer token (tracks creator)
+ *   - Authenticated user requests with Privy Bearer token (tracks creator)
+ *   - Open low-friction requests from frontend app/website
  */
 export async function POST(req: Request) {
   try {
-    const auth = await requirePublicApiKey(req);
-    if (!auth.ok) {
+    const auth = await resolvePublicApiAuth(req);
+    // If credentials were provided but are invalid/expired, reject with 401
+    if (auth.provided && !auth.ok) {
       return corsJson({ error: auth.error }, { status: auth.status || 401 });
     }
 
@@ -133,6 +138,10 @@ export async function POST(req: Request) {
     const feeUsdc = usdcPrincipal * (PLATFORM_FEE_BPS / 10000);
     const totalUsdc = usdcPrincipal + feeUsdc;
 
+    const creatorUserId = auth.userId || auth.apiKeyRecord?.userId;
+    const creatorWalletAddress = auth.walletAddress || auth.apiKeyRecord?.walletAddress;
+    const apiKeyId = auth.apiKeyRecord?.id;
+
     const link = createPayLink({
       title,
       amountINR,
@@ -142,9 +151,9 @@ export async function POST(req: Request) {
       redirectUrl,
       estimatedUsdc: `${totalUsdc.toFixed(2)} USDC`,
       rate: sellPrice,
-      creatorUserId: auth.apiKeyRecord?.userId,
-      creatorWalletAddress: auth.apiKeyRecord?.walletAddress,
-      apiKeyId: auth.apiKeyRecord?.id,
+      creatorUserId,
+      creatorWalletAddress,
+      apiKeyId,
     });
 
     const payUrl = `${getPublicBaseUrl()}/pay/${link.id}`;
@@ -224,11 +233,11 @@ export async function GET(req: Request) {
  */
 export async function PATCH(req: Request) {
   try {
-    const auth = await requirePublicApiKey(req);
+    const auth = await resolvePublicApiAuth(req);
     const body = await req.json();
     const { id, status, txHash, p2pOrderId } = body;
 
-    // Must have a valid API key OR provide an on-chain txHash for verified payment confirmation
+    // Must have a valid API key/session OR provide an on-chain txHash for verified payment confirmation
     if (!auth.ok && !txHash) {
       return corsJson(
         { error: "Authentication required or provide a valid on-chain txHash for payment confirmation." },
