@@ -12,15 +12,15 @@ export const CONTRACTS = {
   // ZkPay Treasury (receives 1% platform fee)
   TREASURY: TREASURY as `0x${string}`,
 
-  // Default Base Mainnet ERC-4626 Vault (Moonwell Flagship USDC)
-  EARN_VAULT: (process.env.NEXT_PUBLIC_EARN_VAULT_ADDRESS || "0xc1256Ae5FF1cf2719D4937adb3bbCCab2E00A2Ca") as `0x${string}`,
+  // Default Base Mainnet ERC-4626 Vault (Steakhouse Prime Instant USDC on Morpho)
+  EARN_VAULT: (process.env.NEXT_PUBLIC_EARN_VAULT_ADDRESS || "0xbeef0e0834849aCC03f0089F01f4F1Eeb06873C9") as `0x${string}`,
 } as const;
 
 export const EARN_CONFIG = {
   VAULT_ADDRESS: CONTRACTS.EARN_VAULT,
-  VAULT_NAME: "Moonwell Flagship USDC",
-  VAULT_PROVIDER: "Moonwell / MetaMorpho",
-  BENCHMARK_APY: "8.40",
+  VAULT_NAME: "Steakhouse Prime Instant USDC",
+  VAULT_PROVIDER: "Steakhouse / Morpho Blue",
+  BENCHMARK_APY: "5.51",
   // 10% platform performance fee on harvested yield (1000 bps)
   PERFORMANCE_FEE_BPS: 1000,
 } as const;

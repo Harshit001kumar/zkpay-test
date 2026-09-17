@@ -45,9 +45,9 @@ export async function GET(request: Request) {
     }
 
     if (!VAULT_ID) {
-      // Calculate net APY after ZkPay 10% performance fee (8.40% gross -> 7.56% net)
-      const grossApy = parseFloat(EARN_CONFIG.BENCHMARK_APY);
-      const netApy = (grossApy * (1 - EARN_CONFIG.PERFORMANCE_FEE_BPS / 10000)).toFixed(2);
+      // 5.51% net APY after ZkPay 10% performance fee (6.12% gross -> 5.51% net)
+      const netApy = EARN_CONFIG.BENCHMARK_APY;
+      const grossApy = (parseFloat(netApy) / (1 - EARN_CONFIG.PERFORMANCE_FEE_BPS / 10000)).toFixed(2);
 
       return NextResponse.json({
         vault: {
@@ -55,10 +55,10 @@ export async function GET(request: Request) {
           name: EARN_CONFIG.VAULT_NAME,
           provider: EARN_CONFIG.VAULT_PROVIDER,
           apy: netApy,
-          grossApy: EARN_CONFIG.BENCHMARK_APY,
+          grossApy,
           performanceFeePercent: "10%",
-          tvlUsd: 12500000,
-          availableLiquidityUsd: 5000000,
+          tvlUsd: 435000000,
+          availableLiquidityUsd: 150000000,
           asset: "USDC",
         },
         position: {
@@ -151,8 +151,8 @@ export async function GET(request: Request) {
         apy: netApyPercent,
         grossApy: grossApy.toFixed(2),
         performanceFeePercent: "10%",
-        tvlUsd: vaultData?.tvl_usd ?? 12500000,
-        availableLiquidityUsd: vaultData?.available_liquidity_usd ?? 5000000,
+        tvlUsd: vaultData?.tvl_usd ?? 435000000,
+        availableLiquidityUsd: vaultData?.available_liquidity_usd ?? 150000000,
         asset: vaultData?.asset?.symbol ?? "USDC",
       },
       position: {
@@ -164,17 +164,20 @@ export async function GET(request: Request) {
     });
   } catch (error: any) {
     console.error("[Earn Position Error]:", error?.message || error);
+    const netApy = EARN_CONFIG.BENCHMARK_APY;
+    const grossApy = (parseFloat(netApy) / (1 - EARN_CONFIG.PERFORMANCE_FEE_BPS / 10000)).toFixed(2);
+
     return NextResponse.json(
       {
         vault: {
           address: CONTRACTS.EARN_VAULT,
           name: EARN_CONFIG.VAULT_NAME,
           provider: EARN_CONFIG.VAULT_PROVIDER,
-          apy: "7.56",
-          grossApy: EARN_CONFIG.BENCHMARK_APY,
+          apy: netApy,
+          grossApy,
           performanceFeePercent: "10%",
-          tvlUsd: 12500000,
-          availableLiquidityUsd: 5000000,
+          tvlUsd: 435000000,
+          availableLiquidityUsd: 150000000,
           asset: "USDC",
         },
         position: {

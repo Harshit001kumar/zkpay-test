@@ -734,10 +734,10 @@ export default function AdminPage() {
 
                 <div>
                   <h3 className="text-3xl font-black text-white tracking-tight">
-                    {stats?.earnVault?.apy || "8.40"}% <span className="text-sm font-normal text-[#909097]">APY</span>
+                    {stats?.earnVault?.apy || "5.51"}% <span className="text-sm font-normal text-[#909097]">APY</span>
                   </h3>
                   <p className="text-[11px] font-mono text-[#909097] mt-1">
-                    Moonwell / MetaMorpho Vault
+                    Steakhouse / Morpho Blue Vault
                   </p>
                 </div>
 
@@ -1139,7 +1139,7 @@ export default function AdminPage() {
                 <div className="p-3.5 rounded-xl bg-black/40 border border-white/10 flex flex-col justify-between">
                   <div>
                     <span className="text-[#909097] text-[10px] uppercase font-bold block mb-1">
-                      Moonwell Yield Vault
+                      Steakhouse Morpho Vault
                     </span>
                     <p className="text-white break-all text-[11px]">
                       {stats?.contracts?.vault || stats?.earnVault?.address || "Configured"}

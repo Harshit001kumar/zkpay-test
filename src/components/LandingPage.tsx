@@ -310,7 +310,7 @@ export default function LandingPage({ login }: LandingPageProps) {
                 </div>
               </SpotlightCard>
 
-              {/* Feature 3: Moonwell Earn */}
+              {/* Feature 3: Morpho Earn */}
               <SpotlightCard className="p-3.5 rounded-xl border-white/10 bg-white/[0.02] flex flex-col justify-between aspect-square">
                 <div className="w-9 h-9 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center text-[#c0c6de]">
                   <TrendingUp className="w-5 h-5" />
@@ -319,11 +319,11 @@ export default function LandingPage({ login }: LandingPageProps) {
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-white leading-tight">Earn Yield</span>
                     <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1 py-0.5 rounded">
-                      7.56%
+                      5.51%
                     </span>
                   </div>
                   <span className="text-[10px] text-[#909097] leading-tight">
-                    Moonwell Flagship USDC vault on Base.
+                    Steakhouse Prime Instant USDC on Morpho.
                   </span>
                 </div>
               </SpotlightCard>

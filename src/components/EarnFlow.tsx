@@ -530,9 +530,9 @@ export default function EarnFlow() {
     }
   };
 
-  const rawApy = vault?.apy && parseFloat(vault.apy) > 0 ? vault.apy : "8.40";
+  const rawApy = vault?.apy && parseFloat(vault.apy) > 0 ? vault.apy : EARN_CONFIG.BENCHMARK_APY;
   const displayApy = `${rawApy}%`;
-  const displayVaultName = vault?.name && vault.name !== "Yield Vault" ? vault.name : "Base USDC Yield Vault";
+  const displayVaultName = vault?.name && vault.name !== "Yield Vault" ? vault.name : EARN_CONFIG.VAULT_NAME;
   const displayPosition = `$${effectiveAssetsInVault.toFixed(2)}`;
   const displayYield = position ? `+$${position.earnedYield.toFixed(2)}` : "+$0.00";
   const hasPosition = effectiveAssetsInVault > 0;
