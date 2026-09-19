@@ -2,64 +2,94 @@ import { NextResponse } from "next/server";
 
 export const dynamic = 'force-dynamic';
 
-const API_BASE_URL = "https://sideshift.ai/api/v2";
+const ONECLICK_API = "https://1click.chaindefuser.com/v0";
+
+// Base USDC destination asset (NEAR Intents assetId)
+const DESTINATION_ASSET = "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near";
+
+// ZkPay fee: 175 bps (1.75%)
+const APP_FEE_BPS = 175;
 
 export async function POST(req: Request) {
   try {
-    const SIDESHIFT_AFFILIATE_ID = process.env.SIDESHIFT_AFFILIATE_ID;
     const body = await req.json();
-    const { depositCoin, depositNetwork, settleCoin, settleNetwork, settleAddress } = body;
+    const { originAssetId, amount, settleAddress } = body;
 
-    if (!SIDESHIFT_AFFILIATE_ID) {
-      return NextResponse.json({ error: "API key is missing" }, { status: 500 });
+    if (!originAssetId || !amount || !settleAddress) {
+      return NextResponse.json({ error: "Missing required fields: originAssetId, amount, settleAddress" }, { status: 400 });
     }
 
-    if (!depositCoin || !settleCoin || !depositNetwork || !settleNetwork || !settleAddress) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
-    }
+    // Fee recipient — treasury or env override
+    const feeRecipient = process.env.NEXT_PUBLIC_DEPOSIT_FEE_RECIPIENT ||
+                         process.env.NEXT_PUBLIC_TREASURY_ADDRESS ||
+                         "0x4747883abdf84ad96565415514de298e3a3fd3e1";
+
+    const deadline = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
     const payload = {
-      depositCoin,
-      depositNetwork,
-      settleCoin,
-      settleNetwork,
-      settleAddress,
-      affiliateId: SIDESHIFT_AFFILIATE_ID,
+      dry: false, // wet run — generates deposit address
+      swapType: "FLEX_INPUT",
+      slippageTolerance: 100, // 1% slippage
+      originAsset: originAssetId,
+      depositType: "ORIGIN_CHAIN",
+      destinationAsset: DESTINATION_ASSET,
+      recipientType: "DESTINATION_CHAIN",
+      amount,
+      recipient: settleAddress,
+      refundTo: settleAddress,
+      refundType: "ORIGIN_CHAIN",
+      deadline,
+      appFees: [{ recipient: feeRecipient, fee: APP_FEE_BPS }],
     };
-
-    const userIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
-                   req.headers.get("cf-connecting-ip")?.trim() || 
-                   req.headers.get("x-real-ip")?.trim() || "";
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
-    if (userIp) {
-      headers["x-user-ip"] = userIp;
-    }
-    if (process.env.SIDESHIFT_SECRET) {
-      headers["x-sideshift-secret"] = process.env.SIDESHIFT_SECRET;
+
+    // API key is optional — without it 1Click adds 25 bps overhead
+    if (process.env.NEAR_INTENTS_API_KEY) {
+      headers["X-API-Key"] = process.env.NEAR_INTENTS_API_KEY;
     }
 
-    const response = await fetch(`${API_BASE_URL}/shifts/variable`, {
+    console.log("[NEAR Intents Exchange] Creating wet quote, origin:", originAssetId, "recipient:", settleAddress);
+
+    const response = await fetch(`${ONECLICK_API}/quote`, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
     });
 
-    const data = await response.json();
+    const responseText = await response.text();
+    console.log("[NEAR Intents Exchange] Status:", response.status, "Body:", responseText.slice(0, 500));
 
-    if (!response.ok) {
-      return NextResponse.json({ error: data.error?.message || data.message || "Failed to create shift" }, { status: response.status });
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      return NextResponse.json({ error: `API returned non-JSON: ${responseText.slice(0, 200)}` }, { status: 502 });
     }
 
-    // Map SideShift response to frontend expectations
+    if (!response.ok) {
+      return NextResponse.json({ error: data.message || JSON.stringify(data) }, { status: response.status });
+    }
+
+    const quote = data.quote;
+    if (!quote || !quote.depositAddress) {
+      return NextResponse.json({ error: "No deposit address in response" }, { status: 502 });
+    }
+
+    // Map to frontend expectations (same shape as old SideShift response)
     return NextResponse.json({
-      id: data.id,
-      payinAddress: data.depositAddress,
+      id: data.correlationId,
+      payinAddress: quote.depositAddress,
+      depositMemo: quote.depositMemo || null,
+      deadline: quote.deadline,
+      amountOut: quote.amountOutFormatted,
+      minAmountOut: quote.minAmountOut,
+      timeEstimate: quote.timeEstimate,
     });
   } catch (error: any) {
-    console.error("SideShift Exchange Error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("[NEAR Intents Exchange] Error:", error);
+    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
   }
 }

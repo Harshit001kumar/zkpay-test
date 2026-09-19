@@ -3,8 +3,8 @@
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { useState, useEffect } from "react";
-import { DEPOSIT_ASSETS, TARGET_ASSET } from "@/lib/constants";
-import { Copy, Check, Loader2, RefreshCw, ChevronDown } from "lucide-react";
+import { DEPOSIT_ASSETS, TARGET_ASSET, DEPOSIT_FEE_BPS } from "@/lib/constants";
+import { Copy, Check, Loader2, RefreshCw, ChevronDown, Clock, AlertTriangle } from "lucide-react";
 
 export default function DepositFlow({ onBack }: { onBack?: () => void }) {
   const { ready, authenticated, address } = useActiveAccount();
@@ -15,53 +15,86 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
   const [sourceAsset, setSourceAsset] = useState<DepositAsset>(DEPOSIT_ASSETS[0]);
   const [depositAmount, setDepositAmount] = useState("0.01");
   const [estimatedReceive, setEstimatedReceive] = useState<string | null>(null);
+  const [timeEstimate, setTimeEstimate] = useState<number | null>(null);
   const [isEstimating, setIsEstimating] = useState(false);
   const [isAssetSelectOpen, setIsAssetSelectOpen] = useState(false);
 
   // Step 2: Deposit address state
-  const [exchangeId, setExchangeId] = useState<string | null>(null);
   const [depositAddress, setDepositAddress] = useState<string | null>(null);
+  const [depositMemo, setDepositMemo] = useState<string | null>(null);
+  const [deadline, setDeadline] = useState<string | null>(null);
   const [exchangeStatus, setExchangeStatus] = useState<string>("waiting");
   const [isCreating, setIsCreating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedMemo, setCopiedMemo] = useState(false);
   const [depositError, setDepositError] = useState<string | null>(null);
+  const [deadlineRemaining, setDeadlineRemaining] = useState<string | null>(null);
 
+  // Convert human amount to smallest units
+  const toSmallestUnits = (amount: string, decimals: number): string => {
+    try {
+      const num = parseFloat(amount);
+      if (isNaN(num) || num <= 0) return "0";
+      // Use BigInt for precision
+      const factor = BigInt(10 ** decimals);
+      const whole = BigInt(Math.floor(num));
+      const fractional = amount.includes(".")
+        ? amount.split(".")[1].padEnd(decimals, "0").slice(0, decimals)
+        : "0".repeat(decimals);
+      return (whole * factor + BigInt(fractional)).toString();
+    } catch {
+      return "0";
+    }
+  };
+
+  // Estimate effect
   useEffect(() => {
     const fetchEstimate = async () => {
-      if (!depositAmount || isNaN(Number(depositAmount)) || Number(depositAmount) <= 0) {
+      if (!depositAmount || isNaN(Number(depositAmount)) || Number(depositAmount) <= 0 || !address) {
         setEstimatedReceive("0");
+        setTimeEstimate(null);
         return;
       }
       setIsEstimating(true);
       try {
+        const amountInUnits = toSmallestUnits(depositAmount, sourceAsset.decimals);
+        if (amountInUnits === "0") {
+          setEstimatedReceive("0");
+          setIsEstimating(false);
+          return;
+        }
         const res = await fetch(
-          `/api/exchange/estimate?depositCoin=${sourceAsset.coin}&settleCoin=${TARGET_ASSET.coin}&depositNetwork=${sourceAsset.network}&settleNetwork=${TARGET_ASSET.network}&depositAmount=${depositAmount}`
+          `/api/exchange/estimate?originAssetId=${encodeURIComponent(sourceAsset.assetId)}&amount=${amountInUnits}&recipientAddress=${address}`
         );
         const data = await res.json();
         if (res.ok && data.estimatedAmount) {
           setEstimatedReceive(data.estimatedAmount.toString());
+          setTimeEstimate(data.timeEstimate || null);
         } else {
           setEstimatedReceive(`Error: ${data.error || data.message || "Unknown"}`);
+          setTimeEstimate(null);
         }
       } catch (err: any) {
         setEstimatedReceive(`Error: ${err.message}`);
+        setTimeEstimate(null);
       }
       setIsEstimating(false);
     };
 
     const delayDebounceFn = setTimeout(() => {
       fetchEstimate();
-    }, 500);
+    }, 600);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [depositAmount, sourceAsset]);
+  }, [depositAmount, sourceAsset, address]);
 
+  // Status polling — query by deposit address
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (exchangeId && exchangeStatus !== "settled" && exchangeStatus !== "failed" && exchangeStatus !== "expired") {
+    if (depositAddress && exchangeStatus !== "settled" && exchangeStatus !== "failed" && exchangeStatus !== "expired" && exchangeStatus !== "refunded") {
       interval = setInterval(async () => {
         try {
-          const res = await fetch(`/api/exchange/status?id=${exchangeId}`);
+          const res = await fetch(`/api/exchange/status?depositAddress=${encodeURIComponent(depositAddress)}`);
           const data = await res.json();
           if (data.status) {
             setExchangeStatus(data.status);
@@ -69,10 +102,34 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
         } catch (error) {
           console.error("Failed to poll status", error);
         }
-      }, 10000);
+      }, 8000);
     }
     return () => clearInterval(interval);
-  }, [exchangeId, exchangeStatus]);
+  }, [depositAddress, exchangeStatus]);
+
+  // Deadline countdown
+  useEffect(() => {
+    if (!deadline) {
+      setDeadlineRemaining(null);
+      return;
+    }
+    const tick = () => {
+      const remaining = new Date(deadline).getTime() - Date.now();
+      if (remaining <= 0) {
+        setDeadlineRemaining("Expired");
+        if (exchangeStatus === "pending" || exchangeStatus === "waiting") {
+          setExchangeStatus("expired");
+        }
+        return;
+      }
+      const mins = Math.floor(remaining / 60000);
+      const secs = Math.floor((remaining % 60000) / 1000);
+      setDeadlineRemaining(`${mins}:${secs.toString().padStart(2, "0")}`);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [deadline, exchangeStatus]);
 
   if (!ready || (authenticated && !address)) {
     return (
@@ -105,21 +162,21 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
     setIsCreating(true);
     setDepositError(null);
     try {
+      const amountInUnits = toSmallestUnits(depositAmount, sourceAsset.decimals);
       const res = await fetch("/api/exchange", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          depositCoin: sourceAsset.coin,
-          settleCoin: TARGET_ASSET.coin,
-          depositNetwork: sourceAsset.network,
-          settleNetwork: TARGET_ASSET.network,
+          originAssetId: sourceAsset.assetId,
+          amount: amountInUnits,
           settleAddress: baseAddress,
         }),
       });
       const data = await res.json();
-      if (data.id && data.payinAddress) {
-        setExchangeId(data.id);
+      if (data.payinAddress) {
         setDepositAddress(data.payinAddress);
+        setDepositMemo(data.depositMemo || null);
+        setDeadline(data.deadline || null);
         setExchangeStatus("pending");
       } else {
         setDepositError(data.error || "Failed to create deposit address. Please try again.");
@@ -137,11 +194,18 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const copyMemo = () => {
+    if (!depositMemo) return;
+    navigator.clipboard.writeText(depositMemo);
+    setCopiedMemo(true);
+    setTimeout(() => setCopiedMemo(false), 2000);
+  };
+
   const getStatusText = (status: string) => {
     const states: Record<string, string> = {
       pending: "Waiting for deposit...",
-      processing: "Confirming on blockchain...",
-      settling: "Swapping to USDC...",
+      processing: "Swapping to USDC...",
+      settling: "Finalizing...",
       settled: "Deposit Complete",
       failed: "Failed",
       refunded: "Refunded",
@@ -149,6 +213,8 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
     };
     return states[status] || status;
   };
+
+  const feePercent = (DEPOSIT_FEE_BPS / 100).toFixed(2);
 
   return (
     <div className="bg-[#0e0e0f] text-[#e5e2e3] font-body-md selection:bg-[#c0c6de]/30 min-h-[100dvh] relative flex flex-col z-[60] fixed inset-0 overflow-y-auto">
@@ -197,7 +263,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
             </div>
             <div className="text-left">
               <p className="font-bold text-[#e5e2e3]">{sourceAsset.name}</p>
-              <p className="text-[12px] text-[#c6c6cd] uppercase tracking-[0.2em] font-label-caps font-bold">{sourceAsset.network} Network</p>
+              <p className="text-[12px] text-[#c6c6cd] uppercase tracking-[0.2em] font-label-caps font-bold">{sourceAsset.blockchain} Network</p>
             </div>
           </div>
           {!depositAddress && <ChevronDown className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />}
@@ -207,14 +273,14 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
           <div className="absolute top-full left-6 right-6 max-w-sm mx-auto mt-2 obsidian-glass silver-rim rounded-2xl overflow-hidden z-40 bg-[#0e0e0f]/90">
             {DEPOSIT_ASSETS.map(asset => (
               <button 
-                key={`${asset.coin}-${asset.network}`}
+                key={`${asset.symbol}-${asset.blockchain}`}
                 onClick={() => { setSourceAsset(asset); setIsAssetSelectOpen(false); }}
                 className="w-full p-4 flex items-center gap-4 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 text-left"
               >
                 <div className="w-8 h-8 rounded-full bg-[#c0c6de]/10 flex items-center justify-center text-[#c0c6de] text-xs font-bold">{asset.symbol[0]}</div>
                 <div>
                   <p className="font-bold text-[#e5e2e3]">{asset.name}</p>
-                  <p className="text-[10px] text-[#c6c6cd] uppercase tracking-[0.2em] font-bold">{asset.network} Network</p>
+                  <p className="text-[10px] text-[#c6c6cd] uppercase tracking-[0.2em] font-bold">{asset.blockchain} Network</p>
                 </div>
               </button>
             ))}
@@ -246,7 +312,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
                 <p className="font-headline-md text-[#bcc7de] text-lg font-bold tracking-widest">{sourceAsset.symbol}</p>
               </div>
 
-              <div className="bg-black/20 rounded-2xl p-6 border border-white/5 space-y-2 text-center">
+              <div className="bg-black/20 rounded-2xl p-6 border border-white/5 space-y-3 text-center">
                 <p className="font-label-caps text-[10px] text-[#909097] uppercase tracking-[0.2em] font-bold">You will receive approx.</p>
                 <div className="h-10 flex items-center justify-center">
                   {isEstimating ? (
@@ -255,6 +321,16 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
                     <p className="text-[12px] font-bold text-[#ffb4ab]">{estimatedReceive.replace("Error: ", "")}</p>
                   ) : (
                     <p className="font-headline-md text-3xl font-bold text-[#c0c6de]">{estimatedReceive || "0.00"} <span className="text-sm text-[#909097]">USDC</span></p>
+                  )}
+                </div>
+                {/* Fee & time info */}
+                <div className="flex items-center justify-center gap-4 text-[10px] text-[#909097]">
+                  <span>Fee: {feePercent}%</span>
+                  {timeEstimate && (
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      ~{Math.ceil(timeEstimate / 60)} min
+                    </span>
                   )}
                 </div>
               </div>
@@ -292,8 +368,18 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
               </div>
 
               <div className="w-full space-y-6 text-center">
+                {/* Deadline countdown */}
+                {deadlineRemaining && exchangeStatus === "pending" && (
+                  <div className={`flex items-center justify-center gap-2 text-sm font-mono ${
+                    deadlineRemaining === "Expired" ? "text-[#ffb4ab]" : "text-[#c0c6de]"
+                  }`}>
+                    <Clock className="w-4 h-4" />
+                    <span>Deposit window: {deadlineRemaining}</span>
+                  </div>
+                )}
+
                 <div className="space-y-2">
-                  <p className="font-label-caps text-[12px] text-[#c6c6cd] uppercase tracking-[0.2em] font-bold">Wallet Address</p>
+                  <p className="font-label-caps text-[12px] text-[#c6c6cd] uppercase tracking-[0.2em] font-bold">Deposit Address</p>
                   <div className="flex flex-col items-center gap-4">
                     <code className="font-mono text-xl text-white tracking-tight break-all max-w-[280px] bg-black/40 p-4 rounded-xl border border-white/10">
                       {depositAddress}
@@ -311,6 +397,26 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
                     </button>
                   </div>
                 </div>
+
+                {/* Deposit memo (required for Stellar/TON) */}
+                {depositMemo && (
+                  <div className="space-y-2">
+                    <p className="font-label-caps text-[12px] text-[#ffb4ab] uppercase tracking-[0.2em] font-bold flex items-center justify-center gap-1">
+                      <AlertTriangle className="w-3 h-3" /> Required Memo
+                    </p>
+                    <div className="flex flex-col items-center gap-2">
+                      <code className="font-mono text-lg text-white bg-black/40 p-3 rounded-xl border border-[#ffb4ab]/30">
+                        {depositMemo}
+                      </code>
+                      <button
+                        onClick={copyMemo}
+                        className="text-xs text-[#c0c6de] underline hover:text-white transition-colors"
+                      >
+                        {copiedMemo ? "Copied!" : "Copy Memo"}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="pt-6 border-t border-white/10 w-full flex items-center justify-between text-left">
                   <div>
@@ -330,7 +436,8 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
 
                 <button onClick={() => {
                   setDepositAddress(null);
-                  setExchangeId(null);
+                  setDepositMemo(null);
+                  setDeadline(null);
                   setExchangeStatus("waiting");
                 }} className="text-xs text-[#909097] underline mt-4 hover:text-white transition-colors">
                   Cancel / Start Over
@@ -342,7 +449,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
                 <div className="bg-black/60 backdrop-blur-md border border-white/20 p-5 flex gap-4 items-start shadow-2xl rounded-2xl">
                   <span className="material-symbols-outlined text-[#c0c6de] flex-shrink-0">info</span>
                   <p className="text-[13px] text-[#e5e2e3] leading-relaxed">
-                    Only send <span className="text-white font-bold">{sourceAsset.symbol} ({sourceAsset.network.toUpperCase()})</span> to this address. Other assets will be lost forever.
+                    Only send <span className="text-white font-bold">{sourceAsset.symbol} ({sourceAsset.blockchain.toUpperCase()})</span> to this address.{depositMemo ? " Include the memo above." : ""} Other assets will be lost forever.
                   </p>
                 </div>
               </div>

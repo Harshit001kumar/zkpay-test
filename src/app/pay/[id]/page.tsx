@@ -1,18 +1,19 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
-import { encodeFunctionData, parseUnits } from "viem";
+import { encodeFunctionData, parseUnits, formatUnits } from "viem";
+import { base } from "viem/chains";
+import { useReadContract } from "wagmi";
 import { motion, AnimatePresence } from "framer-motion";
 import { useParams } from "next/navigation";
+import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { CONTRACTS, CHAIN } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
 import { saveTransaction } from "@/lib/history";
+import { parseP2PError } from "@/lib/p2pkit";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
 import { ShinyText } from "@/components/ui/ShinyText";
 import { ShimmerButton } from "@/components/ui/ShimmerButton";
-
 
 interface PayLinkData {
   linkId: string;
@@ -30,15 +31,14 @@ interface PayLinkData {
   redirectUrl?: string;
   webhookUrl?: string;
   p2pOrderId?: string;
+  creatorWalletAddress?: string;
 }
 
 type PayStep = "loading" | "details" | "qr" | "processing" | "success" | "error" | "expired";
 
 export default function PayPage() {
   const params = useParams();
-  const { ready, authenticated, login } = usePrivy();
-  const { wallets } = useWallets();
-  const { client: smartClient } = useSmartWallets();
+  const { ready, authenticated, login, address: activeAddress, smartClient, primaryWallet, isSmartWallet } = useActiveAccount();
 
   const linkId = params.id as string;
 
@@ -48,6 +48,23 @@ export default function PayPage() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<"wallet" | "qr">("wallet");
+
+  // Read live USDC balance of the active wallet on Base
+  const { data: rawBal, refetch: refetchBal } = useReadContract({
+    address: CONTRACTS.USDC as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: [activeAddress ?? "0x0000000000000000000000000000000000000000"],
+    chainId: base.id,
+    query: {
+      enabled: authenticated && !!activeAddress,
+      refetchInterval: 5000,
+    },
+  });
+
+  const availableUsdc = rawBal !== undefined ? Number(formatUnits(rawBal as bigint, 6)) : 0;
+  const usdcAmount = linkData ? parseFloat(linkData.estimatedUsdc.replace(/[^0-9.]/g, "")) || 0 : 0;
+  const isBalanceSufficient = availableUsdc >= usdcAmount;
 
   // Fetch Pay Link data
   useEffect(() => {
@@ -104,37 +121,64 @@ export default function PayPage() {
 
       if (!authenticated) {
         await login();
-        return;
-      }
-
-      const wallet = wallets?.[0];
-      if (!smartClient && !wallet) {
-        setError("No wallet connected");
         setStep("details");
         return;
       }
 
-      const provider = await wallet.getEthereumProvider();
-      const usdcAmount = parseFloat(linkData.estimatedUsdc.replace(" USDC", ""));
-      const usdcWei = parseUnits(usdcAmount.toFixed(6), 6);
+      if (!activeAddress) {
+        setError("Initializing wallet account... Please try again in a moment.");
+        setStep("details");
+        return;
+      }
 
-      // Calculate fee (1%)
+      const targetUsdc = parseFloat(linkData.estimatedUsdc.replace(/[^0-9.]/g, "")) || 0;
+      if (targetUsdc <= 0) {
+        setError("Invalid payment amount.");
+        setStep("details");
+        return;
+      }
+
+      const usdcWei = parseUnits(targetUsdc.toFixed(6), 6);
+
+      // Pre-flight balance validation
+      if (rawBal !== undefined && (rawBal as bigint) < usdcWei) {
+        const balFmt = Number(formatUnits(rawBal as bigint, 6)).toFixed(2);
+        setError(
+          `Insufficient USDC balance on Base. Your wallet (${activeAddress.slice(0, 6)}...${activeAddress.slice(-4)}) has $${balFmt} USDC, but this invoice requires $${targetUsdc.toFixed(2)} USDC. Please fund your wallet to continue.`
+        );
+        setStep("details");
+        return;
+      }
+
+      // Calculate fee (1%) and principal (99%)
       const feeWei = usdcWei / 100n;
       const principalWei = usdcWei - feeWei;
 
-      // Step 1: Transfer fee to Treasury
+      // Fee goes to ZkPay Treasury
       const feeData = encodeFunctionData({
         abi: ERC20_ABI,
         functionName: "transfer",
         args: [CONTRACTS.TREASURY, feeWei],
       });
 
-      // Step 2: Approve P2P Diamond for principal amount
-      const approveData = encodeFunctionData({
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [CONTRACTS.DIAMOND, principalWei],
-      });
+      // If creator specified an on-chain Base wallet, principal goes directly to merchant wallet.
+      // Otherwise, approve P2P Diamond for protocol settlement.
+      const hasDirectMerchantWallet =
+        linkData.creatorWalletAddress &&
+        linkData.creatorWalletAddress.startsWith("0x") &&
+        linkData.creatorWalletAddress.toLowerCase() !== activeAddress.toLowerCase();
+
+      const secondCallData = hasDirectMerchantWallet
+        ? encodeFunctionData({
+            abi: ERC20_ABI,
+            functionName: "transfer",
+            args: [linkData.creatorWalletAddress as `0x${string}`, principalWei],
+          })
+        : encodeFunctionData({
+            abi: ERC20_ABI,
+            functionName: "approve",
+            args: [CONTRACTS.DIAMOND, principalWei],
+          });
 
       let txH = "";
 
@@ -148,31 +192,37 @@ export default function PayPage() {
             },
             {
               to: CONTRACTS.USDC as `0x${string}`,
-              data: approveData,
+              data: secondCallData,
               value: 0n,
             },
           ],
         });
-      } else {
-        const provider = await wallet.getEthereumProvider();
+      } else if (primaryWallet) {
+        const provider = await primaryWallet.getEthereumProvider();
         const feeTxHash = await provider.request({
           method: "eth_sendTransaction",
-          params: [{
-            from: wallet.address,
-            to: CONTRACTS.USDC,
-            data: feeData,
-          }],
+          params: [
+            {
+              from: activeAddress,
+              to: CONTRACTS.USDC,
+              data: feeData,
+            },
+          ],
         });
 
         await provider.request({
           method: "eth_sendTransaction",
-          params: [{
-            from: wallet.address,
-            to: CONTRACTS.USDC,
-            data: approveData,
-          }],
+          params: [
+            {
+              from: activeAddress,
+              to: CONTRACTS.USDC,
+              data: secondCallData,
+            },
+          ],
         });
         txH = (feeTxHash as string) || "";
+      } else {
+        throw new Error("No wallet connected to execute transaction.");
       }
 
       setTxHash(txH);
@@ -184,8 +234,8 @@ export default function PayPage() {
         type: "payment",
         title: linkData.title || `Payment to ${linkData.recipientUpi}`,
         amountINR: parsedInr,
-        amountUSDC: usdcAmount,
-        fee: usdcAmount * 0.01,
+        amountUSDC: targetUsdc,
+        fee: targetUsdc * 0.01,
         recipient: linkData.recipientUpi,
         network: "Base Mainnet",
         timestamp: Date.now(),
@@ -206,10 +256,12 @@ export default function PayPage() {
         console.warn("[PayPage] Auto-confirm error:", confirmErr);
       }
 
+      refetchBal?.();
       setStep("success");
     } catch (err: any) {
       console.error("[PayPage] Payment error:", err);
-      setError(err.message || "Payment failed");
+      const parsed = await parseP2PError(err);
+      setError(parsed.message || "Payment failed");
       setStep("details");
     }
   };
@@ -354,18 +406,93 @@ export default function PayPage() {
                         </div>
                       </div>
 
+                      {/* Active Account Status & Live Balance */}
+                      {authenticated && (
+                        <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-xs">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${isBalanceSufficient ? "bg-emerald-400" : "bg-amber-400 animate-pulse"}`} />
+                            <span className="text-[#909097]">Wallet:</span>
+                            <span className="font-mono text-white font-medium">
+                              {activeAddress ? `${activeAddress.slice(0, 6)}...${activeAddress.slice(-4)}` : "Connecting..."}
+                            </span>
+                            {isSmartWallet && (
+                              <span className="text-[9px] font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-1 py-0.5 rounded">
+                                Smart
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`font-mono text-xs font-semibold ${isBalanceSufficient ? "text-emerald-400" : "text-amber-400"}`}>
+                              ${availableUsdc.toFixed(2)} USDC
+                            </span>
+                            {activeAddress && (
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(activeAddress)}
+                                title="Copy wallet address to fund"
+                                className="text-[#909097] hover:text-white transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-xs">
+                                  {copied ? "check" : "content_copy"}
+                                </span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Insufficient Balance Alert */}
+                      {authenticated && !isBalanceSufficient && usdcAmount > 0 && (
+                        <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/30 space-y-2.5 text-xs text-amber-200">
+                          <div className="flex items-start gap-2">
+                            <span className="material-symbols-outlined text-base text-amber-400 shrink-0 mt-0.5">warning</span>
+                            <div>
+                              <p className="font-semibold text-amber-300">Insufficient USDC Balance</p>
+                              <p className="text-[11px] text-amber-200/80 mt-0.5 leading-relaxed">
+                                Your wallet has <span className="font-mono font-bold text-white">${availableUsdc.toFixed(2)} USDC</span>, but this invoice requires <span className="font-mono font-bold text-white">${usdcAmount.toFixed(2)} USDC</span> on Base.
+                              </p>
+                            </div>
+                          </div>
+                          <div className="pt-2 border-t border-amber-500/20 flex items-center justify-between text-[11px]">
+                            <span className="text-amber-200/70 font-mono truncate max-w-[200px]">
+                              {activeAddress}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => activeAddress && copyToClipboard(activeAddress)}
+                              className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-medium transition-colors inline-flex items-center gap-1 shrink-0"
+                            >
+                              <span className="material-symbols-outlined text-xs">{copied ? "check" : "content_copy"}</span>
+                              <span>{copied ? "Copied" : "Copy Address to Fund"}</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       {error && (
-                        <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-500/30 text-xs text-[#ffb4ab]">
-                          {error}
+                        <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-500/30 text-xs text-[#ffb4ab] flex items-start gap-2">
+                          <span className="material-symbols-outlined text-sm text-red-400 shrink-0 mt-0.5">error</span>
+                          <span className="leading-relaxed">{error}</span>
                         </div>
                       )}
 
                       <ShimmerButton
                         onClick={authenticated ? handleWalletPay : () => login()}
-                        className="w-full py-4 text-xs"
+                        disabled={authenticated && (!isBalanceSufficient || availableUsdc < usdcAmount)}
+                        className={`w-full py-4 text-xs ${
+                          authenticated && (!isBalanceSufficient || availableUsdc < usdcAmount) ? "opacity-60 cursor-not-allowed" : ""
+                        }`}
                       >
-                        <span className="material-symbols-outlined text-base">bolt</span>
-                        <span>{authenticated ? "PAY NOW WITH CONNECTED WALLET" : "CONNECT WALLET & PAY"}</span>
+                        <span className="material-symbols-outlined text-base">
+                          {!authenticated ? "login" : !isBalanceSufficient ? "account_balance_wallet" : "bolt"}
+                        </span>
+                        <span>
+                          {!authenticated
+                            ? "CONNECT WALLET & PAY"
+                            : !isBalanceSufficient
+                            ? `INSUFFICIENT USDC ($${availableUsdc.toFixed(2)} / $${usdcAmount.toFixed(2)})`
+                            : `PAY $${usdcAmount.toFixed(2)} USDC NOW`}
+                        </span>
                       </ShimmerButton>
                     </div>
                   ) : (

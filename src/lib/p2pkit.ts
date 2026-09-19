@@ -491,20 +491,46 @@ export async function parseOrderIdFromReceipt(receipt: any, userAddress?: string
   throw new Error("Failed to get orderId from receipt logs");
 }
 
+function decodeHexRevertReason(raw: string): string | null {
+  try {
+    const hexMatch = raw.match(/08c379a0([0-9a-fA-F]+)/i);
+    if (!hexMatch) return null;
+    const hex = hexMatch[1];
+    if (hex.length < 128) return null;
+    const lenHex = hex.slice(64, 128);
+    const len = parseInt(lenHex, 16);
+    if (isNaN(len) || len <= 0 || len > 500) return null;
+    const strHex = hex.slice(128, 128 + len * 2);
+    let str = "";
+    for (let i = 0; i < strHex.length; i += 2) {
+      str += String.fromCharCode(parseInt(strHex.substr(i, 2), 16));
+    }
+    return str.trim();
+  } catch {
+    return null;
+  }
+}
+
 export async function parseP2PError(error: any) {
   try {
     const errorCode = error?.code || "";
-    const errorString = String(error?.message || error?.details || error?.shortMessage || error || "").toLowerCase();
+    const rawErrorString = String(error?.message || error?.details || error?.shortMessage || error || "");
+    const errorString = rawErrorString.toLowerCase();
+    const decodedReason = decodeHexRevertReason(rawErrorString);
+    const decodedLower = (decodedReason || "").toLowerCase();
     
     // 1. Immediately prioritize clear USDC balance errors (do not let contract SDK mask this)
     if (
       errorString.includes("insufficient usdc balance") ||
       errorString.includes("insufficient balance") ||
-      (errorString.includes("insufficient") && errorString.includes("usdc"))
+      (errorString.includes("insufficient") && errorString.includes("usdc")) ||
+      errorString.includes("transfer amount exceeds balance") ||
+      decodedLower.includes("transfer amount exceeds balance") ||
+      errorString.includes("45524332303a207472616e7366657220616d6f756e7420657863656564732062616c616e6365")
     ) {
       return {
         code: "INSUFFICIENT_USDC_BALANCE",
-        message: error?.message || "Insufficient USDC balance on Base to complete this payment.",
+        message: "Insufficient USDC balance on Base. Please ensure your connected wallet has enough USDC to complete this payment.",
       };
     }
 
@@ -605,11 +631,12 @@ export async function parseP2PError(error: any) {
     const contractMsg = code ? getContractErrorMessage(code) : null;
     const isGeneric = !contractMsg || contractMsg === "Something went wrong" || contractMsg === "Unknown error" || contractMsg === "Transaction failed";
 
+    const finalFallback = decodedReason || error?.shortMessage || error?.message || contractMsg || "Transaction failed";
     const message = (!isGeneric && contractMsg)
       ? contractMsg
-      : (error?.shortMessage || error?.message || contractMsg || "Transaction failed");
+      : finalFallback;
 
-    return { code: code || "ERROR", message };
+    return { code: code || (decodedReason ? "REVERT_ERROR" : "ERROR"), message };
   } catch {
     return {
       code: "UNKNOWN",

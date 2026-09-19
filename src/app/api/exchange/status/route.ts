@@ -2,54 +2,76 @@ import { NextResponse } from "next/server";
 
 export const dynamic = 'force-dynamic';
 
-const API_BASE_URL = "https://sideshift.ai/api/v2";
+const ONECLICK_API = "https://1click.chaindefuser.com/v0";
+
+// Map NEAR Intents statuses → frontend-friendly statuses
+function mapStatus(nearStatus: string): string {
+  switch (nearStatus) {
+    case "PENDING_DEPOSIT":
+    case "KNOWN_DEPOSIT_TX":
+      return "pending";
+    case "PROCESSING":
+      return "processing";
+    case "SUCCESS":
+      return "settled";
+    case "FAILED":
+      return "failed";
+    case "REFUNDED":
+      return "refunded";
+    case "INCOMPLETE_DEPOSIT":
+      return "expired";
+    default:
+      return nearStatus.toLowerCase();
+  }
+}
 
 export async function GET(req: Request) {
   try {
-    const SIDESHIFT_AFFILIATE_ID = process.env.SIDESHIFT_AFFILIATE_ID;
     const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
+    const depositAddress = searchParams.get("depositAddress");
 
-    if (!SIDESHIFT_AFFILIATE_ID) {
-      return NextResponse.json({ error: "API key is missing" }, { status: 500 });
+    if (!depositAddress) {
+      return NextResponse.json({ error: "Missing depositAddress parameter" }, { status: 400 });
     }
-
-    if (!id) {
-      return NextResponse.json({ error: "Missing exchange ID" }, { status: 400 });
-    }
-
-    const userIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
-                   req.headers.get("cf-connecting-ip")?.trim() || 
-                   req.headers.get("x-real-ip")?.trim() || "";
 
     const headers: Record<string, string> = {};
-    if (userIp) {
-      headers["x-user-ip"] = userIp;
-    }
-    if (process.env.SIDESHIFT_SECRET) {
-      headers["x-sideshift-secret"] = process.env.SIDESHIFT_SECRET;
+    if (process.env.NEAR_INTENTS_API_KEY) {
+      headers["X-API-Key"] = process.env.NEAR_INTENTS_API_KEY;
     }
 
-    const response = await fetch(`${API_BASE_URL}/shifts/${id}`, {
+    const url = new URL(`${ONECLICK_API}/status`);
+    url.searchParams.set("depositAddress", depositAddress);
+
+    const response = await fetch(url.toString(), {
       method: "GET",
       headers,
     });
 
-    const data = await response.json();
+    const responseText = await response.text();
 
-    if (!response.ok) {
-      return NextResponse.json(data, { status: response.status });
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      return NextResponse.json({ error: `API returned non-JSON: ${responseText.slice(0, 200)}` }, { status: 502 });
     }
 
+    if (!response.ok) {
+      return NextResponse.json({ error: data.message || "Status lookup failed" }, { status: response.status });
+    }
+
+    const swapDetails = data.swapDetails || {};
+
     return NextResponse.json({
-      status: data.status,
-      // SideShift specific fields can also be mapped here if needed
-      depositAmount: data.depositAmount,
-      settleAmount: data.settleAmount,
-      txId: data.settleTx ? data.settleTx.txHash : null,
+      status: mapStatus(data.status),
+      rawStatus: data.status,
+      depositAmount: swapDetails.depositedAmountFormatted || null,
+      settleAmount: swapDetails.amountOutFormatted || null,
+      txId: swapDetails.destinationChainTxHashes?.[0]?.hash || null,
+      txExplorerUrl: swapDetails.destinationChainTxHashes?.[0]?.explorerUrl || null,
     });
   } catch (error: any) {
-    console.error("SideShift Status Error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("[NEAR Intents Status] Error:", error);
+    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
   }
 }

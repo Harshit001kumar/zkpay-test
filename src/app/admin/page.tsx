@@ -137,7 +137,7 @@ export default function AdminPage() {
   const [typeFilter, setTypeFilter] = useState<"all" | "pay" | "cashout">("all");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
-  // SideShift Lookup State
+  // Cross-Chain Deposit Lookup State (NEAR Intents)
   const [shiftIdInput, setShiftIdInput] = useState("");
   const [shiftData, setShiftData] = useState<any>(null);
   const [isSearchingShift, setIsSearchingShift] = useState(false);
@@ -381,15 +381,15 @@ export default function AdminPage() {
     setShiftData(null);
 
     try {
-      const res = await fetch(`/api/exchange/status?id=${encodeURIComponent(shiftIdInput.trim())}`);
+      const res = await fetch(`/api/exchange/status?depositAddress=${encodeURIComponent(shiftIdInput.trim())}`);
       const data = await res.json();
       if (res.ok && data.status) {
         setShiftData(data);
       } else {
-        setShiftError(data.error || "Shift not found or invalid ID");
+        setShiftError(data.error || "Deposit not found or invalid address");
       }
     } catch (err: any) {
-      setShiftError(err.message || "Failed to query exchange status");
+      setShiftError(err.message || "Failed to query deposit status");
     } finally {
       setIsSearchingShift(false);
     }
@@ -1170,19 +1170,19 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* SideShift Deposit Lookup Tool */}
+            {/* Cross-Chain Deposit Lookup (NEAR Intents) */}
             <div className="obsidian-glass rounded-2xl p-5 sm:p-6 space-y-4">
               <div className="flex items-center gap-2 pb-3 border-b border-white/10">
                 <Server className="w-4 h-4 text-[#c0c6de]" />
                 <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
-                  Cross-Chain Shift Inspector
+                  Cross-Chain Deposit Inspector
                 </h3>
               </div>
 
               <form onSubmit={handleLookupShift} className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="Enter SideShift Shift ID (e.g. 64a8f...)"
+                  placeholder="Enter deposit address (e.g. 0x76b4c...)"
                   value={shiftIdInput}
                   onChange={(e) => setShiftIdInput(e.target.value)}
                   className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white placeholder:text-[#909097]/60 focus:border-[#c0c6de] outline-none"

@@ -219,6 +219,7 @@ export async function GET(req: Request) {
       txHash: link.txHash,
       p2pOrderId: link.p2pOrderId,
       redirectUrl: link.redirectUrl,
+      creatorWalletAddress: link.creatorWalletAddress,
     });
   } catch (err: any) {
     console.error("[PayLinks] GET Error:", err);
