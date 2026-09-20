@@ -614,8 +614,6 @@ export async function parseP2PError(error: any) {
         message: "The P2P protocol is temporarily paused for maintenance.",
       };
     }
-
-    const rawErrorString = String(error?.message || error?.details || error || "");
     if (
       rawErrorString.includes("AA21") ||
       rawErrorString.includes("didn't pay prefund") ||
