@@ -17,10 +17,23 @@ function getServerPublicClient() {
   return _publicClient;
 }
 
+function hasUsdcTransferToTreasury(receipt: any, treasuryAddress: string): boolean {
+  if (!receipt || !Array.isArray(receipt.logs)) return false;
+  const transferTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+  const normalizedTreasury = treasuryAddress.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+
+  return receipt.logs.some((log: any) => {
+    const isUsdc = log.address?.toLowerCase() === CONTRACTS.USDC.toLowerCase();
+    const isTransfer = log.topics?.[0]?.toLowerCase() === transferTopic;
+    const recipient = log.topics?.[2]?.toLowerCase().replace(/^0x/, "");
+    return isUsdc && isTransfer && recipient === normalizedTreasury;
+  });
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { txHash, orderId, principalUsdc, feeUsdc, userAddress } = body;
+    const { txHash, feeTxHash, orderId, principalUsdc, feeUsdc, userAddress } = body;
 
     if (!txHash || !userAddress || principalUsdc === undefined) {
       return NextResponse.json(
@@ -36,9 +49,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid principal USDC amount" }, { status: 400 });
     }
 
-    // On-chain receipt verification (confirm tx succeeded on Base)
+    // On-chain receipt verification (confirm tx succeeded on Base AND fee was paid to Treasury)
+    const publicClient = getServerPublicClient();
     try {
-      const publicClient = getServerPublicClient();
       const receipt = await publicClient.getTransactionReceipt({
         hash: txHash as `0x${string}`,
       });
@@ -49,12 +62,29 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
-    } catch (verifyErr: any) {
-      console.warn("[RewardsRecord] Warning: Could not verify receipt via RPC immediately:", verifyErr?.message);
-      // If RPC is temporarily rate limited or indexing delay, allow graceful recording if hash format matches
-      if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) {
-        return NextResponse.json({ error: "Invalid transaction hash format" }, { status: 400 });
+
+      // Check if fee was transferred to ZkPay Treasury in either txHash (batched Smart Wallet) or feeTxHash (EOA)
+      let feePaid = hasUsdcTransferToTreasury(receipt, CONTRACTS.TREASURY);
+      if (!feePaid && feeTxHash && /^0x[a-fA-F0-9]{64}$/.test(feeTxHash)) {
+        try {
+          const feeReceipt = await publicClient.getTransactionReceipt({
+            hash: feeTxHash as `0x${string}`,
+          });
+          if (feeReceipt && feeReceipt.status === "success") {
+            feePaid = hasUsdcTransferToTreasury(feeReceipt, CONTRACTS.TREASURY);
+          }
+        } catch {}
       }
+
+      if (!feePaid) {
+        return NextResponse.json(
+          { error: "Transaction rejected: No 1% platform fee transfer to ZkPay Treasury detected. Rewards are only issued for orders placed through ZkPay." },
+          { status: 400 }
+        );
+      }
+    } catch (verifyErr: any) {
+      console.warn("[RewardsRecord] Warning: Verification failed:", verifyErr?.message);
+      return NextResponse.json({ error: "Transaction verification failed on Base" }, { status: 400 });
     }
 
     // Record the verified Scan & Pay transaction

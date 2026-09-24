@@ -111,6 +111,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   // Order & P2P State
   const [orderId, setOrderId] = useState<bigint | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [feeTxHash, setFeeTxHash] = useState<string | null>(null);
   const [usdcAmountNum, setUsdcAmountNum] = useState<number>(0);
   const [merchantAcceptedOrder, setMerchantAcceptedOrder] = useState<any | null>(null);
 
@@ -274,10 +275,13 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
       });
 
       let placedTxHash = "";
+      let recordedFeeHash = "";
 
       // 1-Click Batched Smart Wallet Execution (gas sponsored by Pimlico paymaster)
       if (smartClient) {
         placedTxHash = await smartClient.sendTransaction({ calls });
+        recordedFeeHash = placedTxHash;
+        setFeeTxHash(placedTxHash);
       } else if (wallet) {
         // Fallback to sequential EOA calls if no smart account available
         const provider = await wallet.getEthereumProvider();
@@ -292,6 +296,10 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
             }],
           });
           await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
+          if (i === 0 && usdcFeeBigInt > 0n) {
+            recordedFeeHash = hash as string;
+            setFeeTxHash(hash as string);
+          }
           placedTxHash = hash as string;
         }
       }
@@ -542,6 +550,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   txHash,
+                  feeTxHash,
                   orderId: orderId ? orderId.toString() : "",
                   principalUsdc: usdcAmountNum,
                   feeUsdc: platformFeeUsdc,
@@ -564,7 +573,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
     };
 
     deliverUpi();
-  }, [orderId, scannedUpi, merchantAcceptedOrder?.pubkey, step, smartClient, wallet, txHash, numericInr, usdcAmountNum, platformFeeUsdc, scannedMerchantName]);
+  }, [orderId, scannedUpi, merchantAcceptedOrder?.pubkey, step, smartClient, wallet, txHash, feeTxHash, numericInr, usdcAmountNum, platformFeeUsdc, scannedMerchantName]);
 
   // ────────────── RENDER ──────────────
 
