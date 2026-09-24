@@ -74,6 +74,7 @@ export const DEPOSIT_ASSETS = [
   { symbol: "USDC", name: "USDC (Solana)",    assetId: "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near",      blockchain: "sol",  decimals: 6 },
   { symbol: "USDC", name: "USDC (Arbitrum)",  assetId: "nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near",   blockchain: "arb",  decimals: 6 },
   { symbol: "BNB",  name: "BNB (BSC)",        assetId: "nep245:v2_1.omni.hot.tg:56_11111111111111111111",                    blockchain: "bsc",  decimals: 18 },
+  { symbol: "LTC",  name: "Litecoin",         assetId: "nep141:ltc.omft.near",                                              blockchain: "ltc",  decimals: 8 },
 ] as const;
 
 // Base USDC — the destination asset for all cross-chain deposits

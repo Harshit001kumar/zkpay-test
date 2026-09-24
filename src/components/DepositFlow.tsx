@@ -3,7 +3,7 @@
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { useState, useEffect } from "react";
-import { DEPOSIT_ASSETS, TARGET_ASSET, DEPOSIT_FEE_BPS } from "@/lib/constants";
+import { DEPOSIT_ASSETS, TARGET_ASSET } from "@/lib/constants";
 import { Copy, Check, Loader2, RefreshCw, ChevronDown, Clock, AlertTriangle } from "lucide-react";
 
 export default function DepositFlow({ onBack }: { onBack?: () => void }) {
@@ -14,6 +14,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
   type DepositAsset = typeof DEPOSIT_ASSETS[number];
   const [sourceAsset, setSourceAsset] = useState<DepositAsset>(DEPOSIT_ASSETS[0]);
   const [depositAmount, setDepositAmount] = useState("0.01");
+  const [refundAddress, setRefundAddress] = useState("");
   const [estimatedReceive, setEstimatedReceive] = useState<string | null>(null);
   const [timeEstimate, setTimeEstimate] = useState<number | null>(null);
   const [isEstimating, setIsEstimating] = useState(false);
@@ -63,8 +64,9 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
           setIsEstimating(false);
           return;
         }
+        const refundParam = refundAddress ? `&refundTo=${encodeURIComponent(refundAddress)}` : "";
         const res = await fetch(
-          `/api/exchange/estimate?originAssetId=${encodeURIComponent(sourceAsset.assetId)}&amount=${amountInUnits}&recipientAddress=${address}`
+          `/api/exchange/estimate?originAssetId=${encodeURIComponent(sourceAsset.assetId)}&amount=${amountInUnits}&recipientAddress=${address}${refundParam}`
         );
         const data = await res.json();
         if (res.ok && data.estimatedAmount) {
@@ -86,7 +88,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
     }, 600);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [depositAmount, sourceAsset, address]);
+  }, [depositAmount, sourceAsset, address, refundAddress]);
 
   // Status polling — query by deposit address
   useEffect(() => {
@@ -170,6 +172,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
           originAssetId: sourceAsset.assetId,
           amount: amountInUnits,
           settleAddress: baseAddress,
+          refundTo: refundAddress.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -213,8 +216,6 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
     };
     return states[status] || status;
   };
-
-  const feePercent = (DEPOSIT_FEE_BPS / 100).toFixed(2);
 
   return (
     <div className="bg-[#0e0e0f] text-[#e5e2e3] font-body-md selection:bg-[#c0c6de]/30 min-h-[100dvh] relative flex flex-col z-[60] fixed inset-0 overflow-y-auto">
@@ -312,6 +313,25 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
                 <p className="font-headline-md text-[#bcc7de] text-lg font-bold tracking-widest">{sourceAsset.symbol}</p>
               </div>
 
+              {/* Optional Refund Address for Non-EVM assets (Solana, BTC, Tron) */}
+              {sourceAsset.blockchain !== "eth" && sourceAsset.blockchain !== "arb" && sourceAsset.blockchain !== "bsc" && (
+                <div className="space-y-1.5 text-left w-full bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
+                  <div className="flex items-center justify-between">
+                    <label className="font-label-caps text-[11px] text-[#c6c6cd] uppercase tracking-[0.15em] font-bold">
+                      {sourceAsset.name} Refund Address
+                    </label>
+                    <span className="text-[#909097] text-[10px] lowercase">(optional)</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={refundAddress}
+                    onChange={(e) => setRefundAddress(e.target.value.trim())}
+                    placeholder={`Your ${sourceAsset.symbol} address if swap fails`}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-[#e5e2e3] font-mono placeholder:text-[#909097]/40 focus:outline-none focus:border-[#c0c6de] transition-colors"
+                  />
+                </div>
+              )}
+
               <div className="bg-black/20 rounded-2xl p-6 border border-white/5 space-y-3 text-center">
                 <p className="font-label-caps text-[10px] text-[#909097] uppercase tracking-[0.2em] font-bold">You will receive approx.</p>
                 <div className="h-10 flex items-center justify-center">
@@ -323,16 +343,13 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
                     <p className="font-headline-md text-3xl font-bold text-[#c0c6de]">{estimatedReceive || "0.00"} <span className="text-sm text-[#909097]">USDC</span></p>
                   )}
                 </div>
-                {/* Fee & time info */}
-                <div className="flex items-center justify-center gap-4 text-[10px] text-[#909097]">
-                  <span>Fee: {feePercent}%</span>
-                  {timeEstimate && (
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      ~{Math.ceil(timeEstimate / 60)} min
-                    </span>
-                  )}
-                </div>
+                {/* Time info (no fee percentage shown to user) */}
+                {timeEstimate && (
+                  <div className="flex items-center justify-center gap-2 text-[10px] text-[#909097]">
+                    <Clock className="w-3 h-3" />
+                    <span>~{Math.ceil(timeEstimate / 60)} min estimated settlement</span>
+                  </div>
+                )}
               </div>
 
               {depositError && (
