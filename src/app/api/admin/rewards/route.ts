@@ -4,6 +4,7 @@ import {
   getAdminMonthlyOverview,
   toggleUserExclusion,
   markCyclePaid,
+  resetCycleRewards,
   getCurrentCycle,
 } from "@/lib/server/rewardsStore";
 
@@ -74,6 +75,11 @@ export async function POST(req: Request) {
         updatedCount: res.updatedCount,
         updated: res.updated,
       });
+    }
+
+    if (action === "reset-cycle") {
+      const res = resetCycleRewards(cycle);
+      return NextResponse.json({ success: true, message: `Cycle ${cycle} rewards and logs reset successfully.` });
     }
 
     return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });

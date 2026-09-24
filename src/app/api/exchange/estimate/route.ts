@@ -67,7 +67,7 @@ export async function GET(req: Request) {
     // Fee recipient — treasury or env override
     const feeRecipient = process.env.NEXT_PUBLIC_DEPOSIT_FEE_RECIPIENT ||
                          process.env.NEXT_PUBLIC_TREASURY_ADDRESS ||
-                         "0x4747883abdf84ad96565415514de298e3a3fd3e1";
+                         "0xb856b24fb054135deba5e0309edd31ed6a8afbe2";
 
     const deadline = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 

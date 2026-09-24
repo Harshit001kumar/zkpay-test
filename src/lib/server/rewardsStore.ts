@@ -626,3 +626,23 @@ export function markCyclePaid(cycle: string, userAddresses: string[], payoutTxHa
 
   return { success: true, updatedCount: updated.length, updated };
 }
+
+/**
+ * Reset/wipe rewards and logs for a cycle (Admin feature)
+ */
+export function resetCycleRewards(cycle: string) {
+  if (dbData.monthlyRewards[cycle]) {
+    delete dbData.monthlyRewards[cycle];
+  }
+  dbData.scanRewardLogs = dbData.scanRewardLogs.filter((l) => l.cycle !== cycle);
+  persistFileStorage();
+
+  getMongoDb().then((db) => {
+    if (db) {
+      db.collection("monthly_rewards").deleteMany({ cycle }).catch(console.warn);
+      db.collection("scan_reward_logs").deleteMany({ cycle }).catch(console.warn);
+    }
+  }).catch(() => {});
+
+  return { success: true };
+}

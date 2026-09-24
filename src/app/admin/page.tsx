@@ -35,6 +35,7 @@ import {
   Calendar,
   Sparkles,
   Users,
+  Trash2,
 } from "lucide-react";
 import { formatUpiName } from "@/lib/p2pkit";
 import { CONTRACTS } from "@/lib/constants";
@@ -268,6 +269,35 @@ export default function AdminPage() {
       }
     } catch (err: any) {
       alert(err.message || "Failed to toggle user exclusion");
+    }
+  };
+
+  const handleResetCycle = async () => {
+    if (!window.confirm("Are you sure you want to reset and clear all phantom/test reward entries for this cycle?")) {
+      return;
+    }
+    try {
+      const token = await getAccessToken();
+      const res = await fetch("/api/admin/rewards", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "reset-cycle",
+          cycle: rewardsData?.cycle,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert("Cycle rewards successfully reset.");
+        loadAdminData();
+      } else {
+        alert(data.error || "Failed to reset cycle");
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to reset cycle");
     }
   };
 
@@ -1273,6 +1303,16 @@ export default function AdminPage() {
 
               <div className="flex items-center gap-2">
                 <button
+                  onClick={handleResetCycle}
+                  disabled={isLoadingData}
+                  title="Clear phantom/test records for this cycle"
+                  className="px-3.5 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-xs font-mono text-[#ffb4ab] flex items-center gap-1.5 transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Reset Cycle</span>
+                </button>
+
+                <button
                   onClick={loadAdminData}
                   disabled={isLoadingData}
                   className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-[#c0c6de] flex items-center gap-1.5 transition-all"
@@ -1291,9 +1331,9 @@ export default function AdminPage() {
                 <span className="text-[10px] text-[#909097] block">Base Network</span>
               </div>
               <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-1">
-                <span className="text-[10px] font-bold text-[#909097] uppercase tracking-wider block">1% Fees Collected</span>
+                <span className="text-[10px] font-bold text-[#909097] uppercase tracking-wider block">1% Fees Logged</span>
                 <span className="text-xl sm:text-2xl font-black text-cyan-400">${rewardsData?.totalPlatformFees?.toFixed(2) || "0.00"}</span>
-                <span className="text-[10px] text-[#909097] block">In Treasury</span>
+                <span className="text-[10px] text-[#909097] block">Volume Take-Rate</span>
               </div>
               <div className="p-4 rounded-2xl bg-black/40 border border-purple-500/20 bg-purple-950/20 space-y-1">
                 <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider block">Pending Disbursal</span>

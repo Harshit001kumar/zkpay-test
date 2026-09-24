@@ -80,7 +80,9 @@ export async function POST(req: Request) {
     // Calculate USDC amounts
     const usdcPrincipal = amount / sellPrice;
     const feeUsdc = usdcPrincipal * (PLATFORM_FEE_BPS / 10000);
-    const totalUsdc = usdcPrincipal + feeUsdc;
+    const isSmallOrder = usdcPrincipal > 0 && usdcPrincipal <= 10;
+    const protocolFeeUsdc = isSmallOrder ? 0.10 : 0;
+    const totalUsdc = usdcPrincipal + feeUsdc + protocolFeeUsdc;
 
     // Check against no-KYC limit (100 USDC for INR, 200 for others)
     const noKycLimit = currency === "INR" ? 100 : 200;
@@ -104,7 +106,10 @@ export async function POST(req: Request) {
       fiatAmountRaw: amount,
       usdcPrincipal: usdcPrincipal.toFixed(2),
       feeUsdc: feeUsdc.toFixed(2),
+      protocolFeeUsdc: protocolFeeUsdc.toFixed(2),
+      isSmallOrder,
       totalUsdc: totalUsdc.toFixed(2),
+      gasSponsorship: "Sponsored by ZkPay (Pimlico Paymaster)",
       rate: sellPrice.toFixed(2),
       feeBps: PLATFORM_FEE_BPS,
       currency,

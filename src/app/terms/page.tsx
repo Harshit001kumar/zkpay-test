@@ -155,7 +155,7 @@ export default function TermsOfServicePage() {
             </p>
             <ul className="list-disc list-inside space-y-2 text-xs md:text-sm text-[#909097] pl-2">
               <li>
-                <strong className="text-white">ZkPay Platform Fee:</strong> A 1% convenience fee (100 basis points) is assessed on the principal USDC amount and automatically routed to the ZkPay Treasury contract (`0x4747...3e1`).
+                <strong className="text-white">ZkPay Platform Fee:</strong> A 1% convenience fee (100 basis points) is assessed on the principal USDC amount and automatically routed to the ZkPay Treasury contract (`0xb856...fbe2`).
               </li>
               <li>
                 <strong className="text-white">Network Gas Fees:</strong> Transactions on Base require negligible gas (typically &lt;$0.01 in ETH). Users are responsible for maintaining sufficient gas balance for EOA interactions unless using sponsored paymaster flows.

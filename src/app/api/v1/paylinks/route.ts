@@ -133,10 +133,12 @@ export async function POST(req: Request) {
     }
     const sellPrice = Number(priceResult.value.sellPrice) / 1e6;
 
-    // Calculate USDC required
+    // Calculate USDC required (principal + 1% fee + protocol small order fee if <= 10 USDC)
     const usdcPrincipal = amountINR / sellPrice;
     const feeUsdc = usdcPrincipal * (PLATFORM_FEE_BPS / 10000);
-    const totalUsdc = usdcPrincipal + feeUsdc;
+    const isSmallOrder = usdcPrincipal > 0 && usdcPrincipal <= 10;
+    const protocolFeeUsdc = isSmallOrder ? 0.10 : 0;
+    const totalUsdc = usdcPrincipal + feeUsdc + protocolFeeUsdc;
 
     const creatorUserId = auth.userId || auth.apiKeyRecord?.userId;
     const creatorWalletAddress = auth.walletAddress || auth.apiKeyRecord?.walletAddress;
@@ -168,7 +170,11 @@ export async function POST(req: Request) {
       amountINR: `₹ ${amountINR.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
       amountINRRaw: amountINR,
       estimatedUsdc: `${totalUsdc.toFixed(2)} USDC`,
+      usdcPrincipal: usdcPrincipal.toFixed(2),
       feeUsdc: `${feeUsdc.toFixed(2)} USDC`,
+      protocolFeeUsdc: `${protocolFeeUsdc.toFixed(2)} USDC`,
+      isSmallOrder,
+      gasSponsorship: "Sponsored by ZkPay (Pimlico Paymaster)",
       rate: sellPrice.toFixed(2),
       recipientUpi,
       type,

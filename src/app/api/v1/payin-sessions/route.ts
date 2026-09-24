@@ -18,7 +18,7 @@ const DIAMOND_ADDRESS = (process.env.NEXT_PUBLIC_DIAMOND_ADDRESS ||
 const USDC_ADDRESS = (process.env.NEXT_PUBLIC_USDC_ADDRESS ||
   "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913") as `0x${string}`;
 const TREASURY_ADDRESS = (process.env.NEXT_PUBLIC_TREASURY_ADDRESS ||
-  "0x4747883abdf84ad96565415514de298e3a3fd3e1") as `0x${string}`;
+  "0xb856b24fb054135deba5e0309edd31ed6a8afbe2") as `0x${string}`;
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
 const PLATFORM_FEE_BPS = 100; // 1%
 
@@ -113,10 +113,12 @@ export async function POST(req: Request) {
     }
     const sellPrice = Number(priceResult.value.sellPrice) / 1e6;
 
-    // 2. Calculate USDC required (principal + 1% fee)
+    // 2. Calculate USDC required (principal + 1% fee + protocol small order fee if <= 10 USDC)
     const usdcPrincipal = amountINR / sellPrice;
     const feeUsdc = usdcPrincipal * (PLATFORM_FEE_BPS / 10000);
-    const totalUsdc = usdcPrincipal + feeUsdc;
+    const isSmallOrder = usdcPrincipal > 0 && usdcPrincipal <= 10;
+    const protocolFeeUsdc = isSmallOrder ? 0.10 : 0;
+    const totalUsdc = usdcPrincipal + feeUsdc + protocolFeeUsdc;
 
     // 3. Generate a dedicated ephemeral deposit keypair on Base
     const privateKey = generatePrivateKey();
@@ -161,11 +163,15 @@ export async function POST(req: Request) {
       contractAddress: USDC_ADDRESS,
       payinAddress,
       expectedAmountUsdc: totalUsdc.toFixed(2),
+      usdcPrincipal: usdcPrincipal.toFixed(2),
+      feeUsdc: feeUsdc.toFixed(2),
+      protocolFeeUsdc: protocolFeeUsdc.toFixed(2),
+      isSmallOrder,
+      gasSponsorship: "Sponsored by ZkPay (Pimlico Paymaster)",
       fiatAmount: `₹ ${amountINR.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
       fiatAmountRaw: amountINR,
       recipientUpi,
       rate: sellPrice.toFixed(2),
-      feeUsdc: feeUsdc.toFixed(2),
       expiresAt,
       expiresInSeconds: 1800,
       qrCodeUrl,
