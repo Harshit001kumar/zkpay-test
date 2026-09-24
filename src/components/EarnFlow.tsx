@@ -9,6 +9,7 @@ import { useReadContract } from "wagmi";
 import { CONTRACTS, EARN_CONFIG } from "@/lib/constants";
 import { ERC20_ABI, ERC4626_ABI } from "@/lib/abi";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
+import { floorTo2Decimals } from "@/lib/format";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
 import { ShinyText } from "@/components/ui/ShinyText";
 import { ShimmerButton } from "@/components/ui/ShimmerButton";
@@ -63,7 +64,7 @@ export default function EarnFlow() {
     },
   });
 
-  const availableUsdc = rawBal !== undefined ? Number(formatUnits(rawBal as bigint, 6)) : 0;
+  const availableUsdc = rawBal !== undefined ? floorTo2Decimals(rawBal as bigint) : 0;
 
   const activeVaultAddress = (vault?.address as `0x${string}`) || CONTRACTS.EARN_VAULT;
 
@@ -82,7 +83,7 @@ export default function EarnFlow() {
 
   const effectiveAssetsInVault =
     onChainVaultAssets !== undefined
-      ? Number(formatUnits(onChainVaultAssets as bigint, 6))
+      ? floorTo2Decimals(onChainVaultAssets as bigint)
       : (position?.assetsInVault ?? 0);
 
   // Resolve target wallet ID: Prefer the Privy embedded wallet ID from linkedAccounts

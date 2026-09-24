@@ -7,8 +7,9 @@ import CashoutFlow from "@/components/CashoutFlow";
 import PaymentHistory from "@/components/PaymentHistory";
 import dynamic from "next/dynamic";
 import { base } from "viem/chains";
-import { formatUnits, erc20Abi } from "viem";
+import { erc20Abi } from "viem";
 import { CONTRACTS, CHAIN } from "@/lib/constants";
+import { truncateTo2Decimals } from "@/lib/format";
 
 import PayLinkModal from "@/components/PayLinkModal";
 import { CountUp } from "@/components/ui/CountUp";
@@ -39,7 +40,7 @@ export default function Dashboard() {
     }
   });
 
-  const balance = bal !== undefined ? Number(formatUnits(bal as bigint, 6)).toFixed(2) : "0.00";
+  const balance = bal !== undefined ? truncateTo2Decimals(bal as bigint) : "0.00";
 
   const switchTab = (tab: ActiveTab) => {
     setActiveTab(tab);

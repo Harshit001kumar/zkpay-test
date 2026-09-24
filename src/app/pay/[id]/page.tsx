@@ -11,6 +11,7 @@ import { CONTRACTS, CHAIN } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
 import { saveTransaction } from "@/lib/history";
 import { parseP2PError } from "@/lib/p2pkit";
+import { floorTo2Decimals, truncateTo2Decimals } from "@/lib/format";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
 import { ShinyText } from "@/components/ui/ShinyText";
 import { ShimmerButton } from "@/components/ui/ShimmerButton";
@@ -62,7 +63,7 @@ export default function PayPage() {
     },
   });
 
-  const availableUsdc = rawBal !== undefined ? Number(formatUnits(rawBal as bigint, 6)) : 0;
+  const availableUsdc = rawBal !== undefined ? floorTo2Decimals(rawBal as bigint) : 0;
   const usdcAmount = linkData ? parseFloat(linkData.estimatedUsdc.replace(/[^0-9.]/g, "")) || 0 : 0;
   const isBalanceSufficient = availableUsdc >= usdcAmount;
 
@@ -142,7 +143,7 @@ export default function PayPage() {
 
       // Pre-flight balance validation
       if (rawBal !== undefined && (rawBal as bigint) < usdcWei) {
-        const balFmt = Number(formatUnits(rawBal as bigint, 6)).toFixed(2);
+        const balFmt = truncateTo2Decimals(rawBal as bigint);
         setError(
           `Insufficient USDC balance on Base. Your wallet (${activeAddress.slice(0, 6)}...${activeAddress.slice(-4)}) has $${balFmt} USDC, but this invoice requires $${targetUsdc.toFixed(2)} USDC. Please fund your wallet to continue.`
         );

@@ -24,6 +24,7 @@ import {
   P2P_SMALL_ORDER_FEE_BIGINT,
 } from "@/lib/p2pkit";
 import { saveTransaction } from "@/lib/history";
+import { floorTo2Decimals, truncateTo2Decimals } from "@/lib/format";
 
 import { 
   ArrowLeft, 
@@ -79,7 +80,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
     },
   });
 
-  const availableUsdc = rawBal !== undefined ? Number(formatUnits(rawBal as bigint, 6)) : 0;
+  const availableUsdc = rawBal !== undefined ? floorTo2Decimals(rawBal as bigint) : 0;
 
   // Keypad Handlers
   const handleKeypadChange = (newVal: string) => {
@@ -95,12 +96,20 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   const handleSetMax = () => {
     if (!sellPrice || availableUsdc <= 0) return;
     const rate = Number(sellPrice) / 1_000_000;
-    // maxAffordable = availableUsdc / 1.01 (accounting for 1% fee)
-    const maxAffordableUsdc = availableUsdc / 1.01;
-    const maxInr = maxAffordableUsdc * rate;
-    // Also consider maxSellable
-    const effectiveMaxUsdc = maxSellable ? Math.min(maxAffordableUsdc, maxSellable) : maxAffordableUsdc;
-    const finalInr = Math.max(0, effectiveMaxUsdc * rate);
+    
+    // Total USDC required = principal + 1% fee + protocol fee (0.10 if principal <= 10)
+    let maxPrincipalUsdc = 0;
+    if (availableUsdc > 10.20) {
+      maxPrincipalUsdc = availableUsdc / 1.01;
+    } else if (availableUsdc > 0.11) {
+      maxPrincipalUsdc = Math.max(0, (availableUsdc - 0.10) / 1.01);
+    } else {
+      maxPrincipalUsdc = 0;
+    }
+
+    const effectiveMaxUsdc = maxSellable ? Math.min(maxPrincipalUsdc, maxSellable) : maxPrincipalUsdc;
+    // Floor INR to 2 decimal places so that we never round up into insufficient funds
+    const finalInr = Math.max(0, Math.floor(effectiveMaxUsdc * rate * 100) / 100);
     setAmountInr(finalInr.toFixed(2));
   };
 
@@ -214,7 +223,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
           ? ` ($${(Number(usdcPrincipalBigInt) / 1e6).toFixed(2)} payment + $${(Number(usdcFeeBigInt) / 1e6).toFixed(2)} 1% fee + $${(Number(protocolFeeBigInt) / 1e6).toFixed(2)} protocol fee)`
           : ` ($${(Number(usdcPrincipalBigInt) / 1e6).toFixed(2)} payment + $${(Number(usdcFeeBigInt) / 1e6).toFixed(2)} 1% fee)`;
         throw new Error(
-          `Insufficient USDC balance on Base. You have $${balFloat.toFixed(2)} USDC, but this payment requires $${reqFloat.toFixed(2)} USDC${feeDetail}.`
+          `Insufficient USDC balance on Base. You have $${truncateTo2Decimals(balFloat)} USDC, but this payment requires $${reqFloat.toFixed(2)} USDC${feeDetail}.`
         );
       }
 

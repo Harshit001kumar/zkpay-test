@@ -19,6 +19,7 @@ import {
   getPublicClient,
   calculateOrderFees,
 } from "@/lib/p2pkit";
+import { truncateTo2Decimals } from "@/lib/format";
 
 
 type CashoutStatus = "input" | "processing" | "matching" | "paying" | "completed" | "error";
@@ -294,7 +295,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
           ? ` ($${amountUsdc.toFixed(2)} cashout + $${feeUsdc.toFixed(2)} 1% fee + $${protocolFeeUsdc.toFixed(2)} protocol fee)`
           : ` ($${amountUsdc.toFixed(2)} cashout + $${feeUsdc.toFixed(2)} 1% fee)`;
         throw new Error(
-          `Insufficient USDC balance on Base. You have $${balFloat.toFixed(2)} USDC, but this cashout requires $${reqFloat.toFixed(2)} USDC${feeDetail}.`
+          `Insufficient USDC balance on Base. You have $${truncateTo2Decimals(balFloat)} USDC, but this cashout requires $${reqFloat.toFixed(2)} USDC${feeDetail}.`
         );
       }
       

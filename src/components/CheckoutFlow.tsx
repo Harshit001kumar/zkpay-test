@@ -22,6 +22,7 @@ import {
   P2P_SMALL_ORDER_THRESHOLD_BIGINT,
   P2P_SMALL_ORDER_FEE_BIGINT,
 } from "@/lib/p2pkit";
+import { truncateTo2Decimals } from "@/lib/format";
 
 
 interface CheckoutFlowProps {
@@ -276,7 +277,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
           ? ` ($${(Number(usdcPrincipalBigInt) / 1e6).toFixed(2)} payment + $${(Number(usdcFeeBigInt) / 1e6).toFixed(2)} 1% fee + $${(Number(protocolFeeBigInt) / 1e6).toFixed(2)} protocol fee)`
           : ` ($${(Number(usdcPrincipalBigInt) / 1e6).toFixed(2)} payment + $${(Number(usdcFeeBigInt) / 1e6).toFixed(2)} 1% fee)`;
         throw new Error(
-          `Insufficient USDC balance on Base. You have $${balFloat.toFixed(2)} USDC, but this payment requires $${reqFloat.toFixed(2)} USDC${feeDetail}.`
+          `Insufficient USDC balance on Base. You have $${truncateTo2Decimals(balFloat)} USDC, but this payment requires $${reqFloat.toFixed(2)} USDC${feeDetail}.`
         );
       }
 

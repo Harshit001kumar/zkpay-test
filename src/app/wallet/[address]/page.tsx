@@ -10,6 +10,7 @@ import { useReadContract, useBalance } from "wagmi";
 import { CONTRACTS, CHAIN } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
 import { parseP2PError, getPublicClient } from "@/lib/p2pkit";
+import { floorTo2Decimals } from "@/lib/format";
 
 import { 
   ArrowLeft, 
@@ -89,7 +90,7 @@ export default function WalletAddressPage() {
     },
   });
 
-  const usdcBalance = usdcBalRaw !== undefined ? Number(formatUnits(usdcBalRaw as bigint, 6)) : 0;
+  const usdcBalance = usdcBalRaw !== undefined ? floorTo2Decimals(usdcBalRaw as bigint) : 0;
   const ethBalance = ethBalRaw ? Number(formatUnits(ethBalRaw.value, ethBalRaw.decimals)).toFixed(4) : "0.0000";
 
   const handleCopy = () => {

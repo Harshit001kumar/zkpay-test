@@ -7,7 +7,7 @@ const ONECLICK_API = "https://1click.chaindefuser.com/v0";
 // Base USDC destination asset (NEAR Intents assetId)
 const DESTINATION_ASSET = "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near";
 
-import { resolveRefundAddress } from "./estimate/route";
+import { resolveRefundAddress } from "@/lib/refundAddress";
 
 // ZkPay fee: 175 bps (1.75%)
 const APP_FEE_BPS = 175;
