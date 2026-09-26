@@ -7,7 +7,9 @@ import { MongoClient, Db } from "mongodb";
  * If MONGODB_URI is not set, returns null to allow graceful fallback to local storage.
  */
 
-const uri = process.env.MONGODB_URI;
+const rawUri = process.env.MONGODB_URI;
+// Trim accidental spaces (e.g. from copy-pasting)
+const uri = rawUri ? rawUri.trim().replace(/\s+/g, "") : undefined;
 const dbName = process.env.MONGODB_DB || "zkpay";
 
 let client: MongoClient | null = null;
@@ -20,19 +22,40 @@ declare global {
 
 export function isMongoConfigured(): boolean {
   if (!uri) return false;
-  // Ignore dummy/placeholder templates from .env.example
+  
+  // Ignore dummy/placeholder templates
   if (
     uri.includes("username:password") ||
     uri.includes("<password>") ||
-    uri.includes("your-") ||
-    uri.includes("cluster0.mongodb.net") && uri.includes("username")
+    uri.includes("<username>") ||
+    uri.includes("your-")
   ) {
     return false;
   }
+
+  // Detect incomplete Atlas placeholder without a cluster shard subdomain.
+  // Real MongoDB Atlas URLs are structured as: cluster0.<unique-id>.mongodb.net
+  // A URL pointing directly to cluster0.mongodb.net cannot resolve via DNS SRV.
+  const isBareCluster0 = /(@|\/\/)cluster0\.mongodb\.net(?::\d+)?(?:\/|\?|$)/i.test(uri);
+  if (isBareCluster0) {
+    console.warn(
+      "[MongoDB] Warning: MONGODB_URI uses bare 'cluster0.mongodb.net' missing the Atlas cluster ID (e.g. cluster0.abcde.mongodb.net). Falling back to local storage."
+    );
+    return false;
+  }
+
   return true;
 }
 
 export async function getMongoClient(): Promise<MongoClient | null> {
+  // Do not attempt database connection during Next.js build/static page generation
+  const isBuildPhase =
+    process.env.NEXT_PHASE === "phase-production-build" ||
+    process.env.npm_lifecycle_event === "build";
+  if (isBuildPhase) {
+    return null;
+  }
+
   if (!isMongoConfigured() || !uri) {
     return null;
   }
@@ -57,6 +80,10 @@ export async function getMongoClient(): Promise<MongoClient | null> {
     return await clientPromise;
   } catch (err) {
     console.error("[MongoDB] Failed to connect to cluster:", err);
+    clientPromise = null;
+    if (process.env.NODE_ENV === "development") {
+      global._mongoClientPromise = undefined;
+    }
     return null;
   }
 }

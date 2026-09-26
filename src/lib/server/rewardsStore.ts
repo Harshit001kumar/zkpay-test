@@ -194,7 +194,12 @@ async function initMongoStorage() {
 
 // Initial hydration
 initFileStorage();
-initMongoStorage().catch(() => {});
+const isBuildPhase =
+  process.env.NEXT_PHASE === "phase-production-build" ||
+  process.env.npm_lifecycle_event === "build";
+if (!isBuildPhase) {
+  initMongoStorage().catch(() => {});
+}
 
 /**
  * Get current calendar cycle string: YYYY-MM

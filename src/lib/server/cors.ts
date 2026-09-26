@@ -15,10 +15,16 @@ const CORS_HEADERS = {
 /**
  * Wraps a NextResponse with CORS headers for public API routes.
  */
-export function corsJson(data: any, init?: { status?: number }) {
+export function corsJson(
+  data: any,
+  init?: { status?: number; headers?: Record<string, string> }
+) {
   return NextResponse.json(data, {
     status: init?.status || 200,
-    headers: CORS_HEADERS,
+    headers: {
+      ...CORS_HEADERS,
+      ...(init?.headers || {}),
+    },
   });
 }
 
