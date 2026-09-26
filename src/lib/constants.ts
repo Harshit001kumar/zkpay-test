@@ -61,7 +61,7 @@ export const CURRENCIES = [
 export const PLATFORM_FEE_BPS = 100; // 100 basis points = 1%
 
 export const APP_NAME = "ZkPay";
-export const APP_DESCRIPTION = "Crypto to Fiat — Scan and Pay";
+export const APP_DESCRIPTION = "Crypto to Fiat - Scan and Pay";
 
 // NEAR Intents 1Click API — supported deposit assets
 // assetId values sourced from GET https://1click.chaindefuser.com/v0/tokens

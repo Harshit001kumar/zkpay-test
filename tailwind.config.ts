@@ -58,15 +58,16 @@ const config: Config = {
         "surface-variant": "#353436",
       },
       fontFamily: {
-        sans: ["Hanken Grotesk", "system-ui", "sans-serif"],
-        display: ["Hanken Grotesk", "system-ui", "sans-serif"],
-        "numeric-display": ["Hanken Grotesk"],
-        "h1": ["Hanken Grotesk"],
-        "body-md": ["Hanken Grotesk"],
-        "body-lg": ["Hanken Grotesk"],
-        "h1-mobile": ["Hanken Grotesk"],
-        "label-caps": ["Hanken Grotesk"],
-        "h2": ["Hanken Grotesk"]
+        sans: ["var(--font-sans)", "Hanken Grotesk", "system-ui", "-apple-system", "sans-serif"],
+        display: ["var(--font-sans)", "Hanken Grotesk", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "JetBrains Mono", "ui-monospace", "monospace"],
+        "numeric-display": ["var(--font-mono)", "var(--font-sans)", "monospace"],
+        "h1": ["var(--font-sans)", "sans-serif"],
+        "body-md": ["var(--font-sans)", "sans-serif"],
+        "body-lg": ["var(--font-sans)", "sans-serif"],
+        "h1-mobile": ["var(--font-sans)", "sans-serif"],
+        "label-caps": ["var(--font-sans)", "sans-serif"],
+        "h2": ["var(--font-sans)", "sans-serif"]
       },
       fontSize: {
         "display-xl": ["80px", {"lineHeight": "88px", "letterSpacing": "-0.04em", "fontWeight": "800"}],

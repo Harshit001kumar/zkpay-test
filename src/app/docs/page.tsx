@@ -358,7 +358,7 @@ bot.command('pay', async (ctx) => {
                 Crypto Payments <span className="text-[#c6c6cd]/50 font-extralight">&amp; Swap API</span>
               </h1>
               <p className="text-sm md:text-base text-[#c6c6cd] max-w-2xl font-body-lg mb-8">
-                Accept crypto payments with instant fiat settlement, or embed our multi-chain Swap API to earn revenue on every trade. Route swaps across BTC, ETH, SOL, and 8+ blockchains with a built-in 50/50 fee split — you set the fee, we handle settlement.
+                Accept crypto payments with instant fiat settlement, or embed our multi-chain Swap API to earn revenue on every trade. Route swaps across BTC, ETH, SOL, and 8+ blockchains with a built-in 50/50 fee split: you set the fee, we handle settlement.
               </p>
 
               {/* Status Chips */}
@@ -435,7 +435,7 @@ bot.command('pay', async (ctx) => {
           <div className="bg-white/5 backdrop-blur-[40px] border border-white/15 rounded-xl p-8 md:p-10 shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
             <div className="flex items-center gap-3 mb-6">
               <span className="font-label-caps text-[#c0c6de] text-[10px] tracking-[0.25em] font-bold">
-                SWAP API — 50/50 FEE SPLIT
+                SWAP API - 50/50 FEE SPLIT
               </span>
               <div className="h-px w-8 bg-white/20" />
             </div>
