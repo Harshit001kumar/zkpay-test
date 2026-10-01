@@ -33,7 +33,8 @@ export interface FeeSplitResult {
   zkpayFeeBps: number;
   partnerFeeBps: number;
   partnerFeeRecipient: string | null;
-  nearIntentsProtocolFeeBps: number;
+  networkProtocolFeeBps: number;
+  nearIntentsProtocolFeeBps?: number;
   totalDeductionsBps: number;
   appFees: { recipient: string; fee: number }[];
 }
@@ -81,6 +82,7 @@ export function calculateFeeSplit(
     zkpayFeeBps,
     partnerFeeBps,
     partnerFeeRecipient: cleanPartnerRecipient,
+    networkProtocolFeeBps: NEAR_INTENTS_PROTOCOL_FEE_BPS,
     nearIntentsProtocolFeeBps: NEAR_INTENTS_PROTOCOL_FEE_BPS,
     totalDeductionsBps: NEAR_INTENTS_PROTOCOL_FEE_BPS + totalCustom,
     appFees,
@@ -401,6 +403,7 @@ export interface SwapQuoteParams {
   toAsset?: string;
   chain?: string | null;
   originChain?: string | null;
+  destinationChain?: string | null;
   amount: string;
   feeRecipient?: string | null;
   totalFeeBps?: number | null;
@@ -418,7 +421,7 @@ export async function getSwapQuote(params: SwapQuoteParams) {
 
   const originAssetId = await resolveAssetId(fromAsset, chainHint);
   const destinationAssetId = params.toAsset
-    ? await resolveAssetId(params.toAsset)
+    ? await resolveAssetId(params.toAsset, params.destinationChain)
     : TARGET_ASSET.assetId;
 
   // Validate atomic units and minimum volume threshold
@@ -472,7 +475,7 @@ export async function getSwapQuote(params: SwapQuoteParams) {
     minAmountOut: quote.minAmountOut,
     minAmountOutFormatted: quote.minAmountOutFormatted,
     feeBreakdown: {
-      nearIntentsProtocolFeeBps: feeSplit.nearIntentsProtocolFeeBps,
+      networkProtocolFeeBps: feeSplit.networkProtocolFeeBps,
       totalCustomFeeBps: feeSplit.totalCustomFeeBps,
       split: {
         zkpayFeeBps: feeSplit.zkpayFeeBps,
@@ -492,6 +495,7 @@ export interface CreateSwapParams {
   toAsset?: string;
   chain?: string | null;
   originChain?: string | null;
+  destinationChain?: string | null;
   amount: string;
   recipient: string;
   refundTo?: string | null;
@@ -515,7 +519,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
   const chainHint = params.chain || params.originChain;
   const originAssetId = await resolveAssetId(fromAsset, chainHint);
   const destinationAssetId = params.toAsset
-    ? await resolveAssetId(params.toAsset)
+    ? await resolveAssetId(params.toAsset, params.destinationChain)
     : TARGET_ASSET.assetId;
 
   // Validate atomic units and minimum volume threshold
@@ -577,7 +581,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
       zkpayFeeBps: feeSplit.zkpayFeeBps,
       partnerFeeBps: feeSplit.partnerFeeBps,
       partnerFeeRecipient: feeSplit.partnerFeeRecipient,
-      nearIntentsProtocolFeeBps: feeSplit.nearIntentsProtocolFeeBps,
+      networkProtocolFeeBps: feeSplit.networkProtocolFeeBps,
       totalDeductionsBps: feeSplit.totalDeductionsBps,
     },
   };

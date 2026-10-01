@@ -5,14 +5,14 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/v1/swap
  * 
- * Discovery endpoint for ZkPay Cross-Chain Swap API (powered by NEAR Intents 1Click engine).
+ * Discovery endpoint for ZkPay Cross-Chain Swap API.
  */
 export async function GET() {
   return corsJson({
     success: true,
     name: "ZkPay Cross-Chain Swap API",
     version: "v1",
-    engine: "NEAR Intents 1Click Protocol",
+    engine: "ZkPay Solver Network",
     endpoints: {
       tokens: {
         method: "GET",
@@ -22,12 +22,12 @@ export async function GET() {
       quote: {
         method: "GET | POST",
         path: "/api/v1/swap/quote",
-        description: "Generate a dry-run swap quote with transparent 50/50 fee breakdown. Pass amount in atomic units (e.g. lamports/wei).",
+        description: "Generate a dry-run swap quote with transparent partner fee breakdown. Supports crypto-to-crypto across any supported pair. Pass amount in atomic units.",
       },
       create: {
         method: "POST",
         path: "/api/v1/swap/create",
-        description: "Commit a swap order and obtain a single-use cross-chain deposit address.",
+        description: "Commit a swap order and obtain a single-use cross-chain deposit address. Supports crypto-to-crypto, partner revenue share, and origin-chain refund protection.",
       },
       status: {
         method: "GET",

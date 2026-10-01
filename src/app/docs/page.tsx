@@ -125,7 +125,7 @@ const ENDPOINTS: Endpoint[] = [
     title: "Supported Swap Tokens",
     category: "swap",
     rateLimit: "60 req/min (IP) · 300 req/min (API Key)",
-    description: "Returns all supported input tokens across 8 blockchains. To avoid multi-chain collisions for tokens like USDC/USDT, filter by ?chain=base|sol|eth|btc|tron|arb|bsc.",
+    description: "Returns all supported tokens across 8 blockchains. Tokens can be used as either origin (fromAsset) or destination (toAsset). Filter by ?chain=base|sol|eth|btc|tron|arb|bsc.",
     response: {
       success: true,
       count: 10,
@@ -139,27 +139,27 @@ const ENDPOINTS: Endpoint[] = [
   },
   {
     method: "GET",
-    path: "/api/v1/swap/quote?fromAsset=SOL&amount=1000000000&chain=sol",
+    path: "/api/v1/swap/quote?fromAsset=ETH&toAsset=SOL&amount=10000000000000000&chain=eth&destinationChain=sol",
     title: "Get Swap Quote (Dry Run)",
     category: "swap",
     rateLimit: "30 req/min (IP) · 120 req/min (API Key)",
-    description: "Preview real-time swap pricing with transparent 50/50 fee breakdown. IMPORTANT: 'amount' must be an integer string in ATOMIC UNITS (smallest denomination, e.g. 1000000000 for 1 SOL). Never pass human decimals like '1.0'. Minimum trade size is ~$1.00 USD. Pass 'chain' (e.g. sol, arb, base) to disambiguate multi-chain assets.",
+    description: "Preview real-time crypto-to-crypto pricing with transparent partner fee breakdown. Pass 'toAsset' (e.g. SOL, ETH, USDC) and optional 'destinationChain' (e.g. sol, base, arb). Defaults to Base USDC if omitted. IMPORTANT: 'amount' must be an integer string in ATOMIC UNITS (smallest denomination, e.g. 10000000000000000 for 0.01 ETH). Never pass human decimals like '0.01'. Minimum trade size is ~$1.00 USD.",
     response: {
       success: true,
       quote: {
         quoteId: "q_1727382000000",
-        originAsset: "nep141:sol.omft.near",
-        destinationAsset: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
-        amountIn: "1000000000",
-        amountInFormatted: "1.0",
-        amountOut: "142100000",
-        amountOutFormatted: "142.10",
-        minAmountOut: "140680000",
-        minAmountOutFormatted: "140.68",
+        originAsset: "nep141:eth.omft.near",
+        destinationAsset: "nep141:sol.omft.near",
+        amountIn: "10000000000000000",
+        amountInFormatted: "0.01",
+        amountOut: "241500000",
+        amountOutFormatted: "0.2415",
+        minAmountOut: "239085000",
+        minAmountOutFormatted: "0.2391",
         feeBreakdown: {
-          nearIntentsProtocolFeeBps: 25,
+          networkProtocolFeeBps: 25,
           totalCustomFeeBps: 100,
-          split: { zkpayFeeBps: 50, partnerFeeBps: 50, partnerFeeRecipient: "0xPartner..." },
+          split: { zkpayFeeBps: 50, partnerFeeBps: 50, partnerFeeRecipient: "0xPartnerPayoutAddress" },
           totalDeductionsBps: 125,
         },
         timeEstimateSeconds: 45,
@@ -173,12 +173,15 @@ const ENDPOINTS: Endpoint[] = [
     title: "Create Swap Order",
     category: "swap",
     rateLimit: "10 req/min (IP) · 60 req/min (API Key)",
-    description: "Commits a cross-chain swap and generates a single-use deposit address. Fees are split 50/50 between ZkPay Treasury and your feeRecipient, settled atomically on-chain. Provide amount in raw atomic units (e.g. 1000000000 for 1 SOL, 1000000 for 1 USDC). Specify 'chain' for multi-chain tokens.",
+    description: "Commits a cross-chain crypto-to-crypto swap order and generates a single-use deposit address. Fees are split 50/50 between ZkPay Treasury and your feeRecipient. Always pass 'refundTo' with the user's origin-chain address to guarantee automatic refunds if order expires or slips beyond tolerance.",
     body: {
-      fromAsset: "SOL",
-      chain: "sol",
-      amount: "1000000000",
-      recipient: "0xUserBaseAddress",
+      fromAsset: "ETH",
+      chain: "eth",
+      toAsset: "SOL",
+      destinationChain: "sol",
+      amount: "10000000000000000",
+      recipient: "7vN24xV8y...SolanaRecipientAddress",
+      refundTo: "0xUserEthRefundAddress",
       feeRecipient: "0xPartnerPayoutAddress",
       totalFeeBps: 100,
     },
@@ -188,15 +191,16 @@ const ENDPOINTS: Endpoint[] = [
         swapId: "swp_1727382000000",
         status: "PENDING_DEPOSIT",
         deposit: {
-          address: "6vN24xV8...SolanaDepositAddress",
+          address: "0x89c1...EthereumDepositAddress",
           memo: null,
-          amount: "1.0",
+          amount: "0.01",
           deadline: "2026-10-01T15:15:00.000Z",
         },
         settlement: {
-          recipient: "0xUserBaseAddress",
-          estimatedAmountOut: "142.10",
-          minAmountOut: "140.68",
+          recipient: "7vN24xV8y...SolanaRecipientAddress",
+          destinationAsset: "nep141:sol.omft.near",
+          estimatedAmountOut: "0.2415",
+          minAmountOut: "0.2391",
           timeEstimateSeconds: 60,
         },
         feeSplit: {
@@ -204,7 +208,7 @@ const ENDPOINTS: Endpoint[] = [
           zkpayFeeBps: 50,
           partnerFeeBps: 50,
           partnerFeeRecipient: "0xPartnerPayoutAddress",
-          nearIntentsProtocolFeeBps: 25,
+          networkProtocolFeeBps: 25,
           totalDeductionsBps: 125,
         },
       },
@@ -212,20 +216,20 @@ const ENDPOINTS: Endpoint[] = [
   },
   {
     method: "GET",
-    path: "/api/v1/swap/status?depositAddress=6vN24xV8...",
+    path: "/api/v1/swap/status?depositAddress=0x89c1...",
     title: "Track Swap Status",
     category: "swap",
     rateLimit: "60 req/min (IP) · 240 req/min (API Key)",
-    description: "Polls real-time swap execution across source and destination chains. Returns mapped status: pending → processing → settled / failed / refunded. For automated webhooks instead of polling, configure your webhookUrl.",
+    description: "Polls real-time swap execution across source and destination chains. Returns mapped status: pending → processing → settled / failed / refunded. If a swap fails or times out, status transitions to 'refunded' and funds return to 'refundTo'.",
     response: {
       success: true,
-      depositAddress: "6vN24xV8...SolanaDepositAddress",
+      depositAddress: "0x89c1...EthereumDepositAddress",
       status: "settled",
       rawStatus: "SUCCESS",
-      depositedAmount: "1.0 SOL",
-      settledAmount: "142.12 USDC",
-      destinationTxHash: "0x89c1...baseTxHash",
-      destinationExplorerUrl: "https://basescan.org/tx/0x89c1...",
+      depositedAmount: "0.01 ETH",
+      settledAmount: "0.2415 SOL",
+      destinationTxHash: "5KtP...solanaTxSignature",
+      destinationExplorerUrl: "https://solscan.io/tx/5KtP...",
       updatedAt: "2026-10-01T15:02:15.000Z",
     },
   },
@@ -451,11 +455,11 @@ bot.command('pay', async (ctx) => {
               Earn Revenue on Every Swap
             </h2>
             <p className="text-sm text-[#c6c6cd] max-w-3xl mb-8 leading-relaxed">
-              Embed multi-chain token swaps (BTC, ETH, SOL, USDT, BNB → Base USDC) into your app or bot.
+              Embed multi-chain crypto-to-crypto token swaps (BTC, ETH, SOL, USDT, USDC across 8+ blockchains) into your app or bot.
               You provide your payout address (<code className="text-[#c0c6de] bg-white/5 px-1.5 py-0.5 rounded">feeRecipient</code>)
               and set the fee (<code className="text-[#c0c6de] bg-white/5 px-1.5 py-0.5 rounded">totalFeeBps</code>).
               The fee is split <strong className="text-[#e5e2e3]">50% to you</strong> and <strong className="text-[#e5e2e3]">50% to ZkPay</strong>,
-              settled atomically on-chain by the NEAR Intents solver network.
+              settled atomically on-chain by decentralized solver networks.
             </p>
 
             {/* Fee Breakdown Table */}
@@ -472,11 +476,11 @@ bot.command('pay', async (ctx) => {
                 </thead>
                 <tbody className="text-[#e5e2e3]">
                   <tr className="border-b border-white/5">
-                    <td className="py-3 pr-4 text-[#909097]">NEAR Intents Protocol</td>
+                    <td className="py-3 pr-4 text-[#909097]">Network Protocol Fee</td>
                     <td className="py-3 pr-4 font-mono">25</td>
                     <td className="py-3 pr-4">0.25%</td>
                     <td className="py-3 pr-4 font-mono">$2.50</td>
-                    <td className="py-3 text-[#909097]">Protocol Solvers</td>
+                    <td className="py-3 text-[#909097]">Network Solvers</td>
                   </tr>
                   <tr className="border-b border-white/5">
                     <td className="py-3 pr-4 text-[#c0c6de] font-medium">Your Partner Share</td>
@@ -503,7 +507,7 @@ bot.command('pay', async (ctx) => {
               </table>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
                 <span className="font-label-caps text-[9px] text-[#c0c6de] tracking-[0.2em] font-bold">MIN FEE</span>
                 <p className="text-sm font-medium text-[#e5e2e3]">20 bps (0.20%)</p>
@@ -512,12 +516,58 @@ bot.command('pay', async (ctx) => {
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
                 <span className="font-label-caps text-[9px] text-[#c0c6de] tracking-[0.2em] font-bold">MAX FEE</span>
                 <p className="text-sm font-medium text-[#e5e2e3]">450 bps (4.50%)</p>
-                <p className="text-xs text-[#909097]">Stays within NEAR Intents 500 bps cap</p>
+                <p className="text-xs text-[#909097]">Stays within 500 bps router limit</p>
               </div>
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
                 <span className="font-label-caps text-[9px] text-[#c0c6de] tracking-[0.2em] font-bold">NO PARTNER</span>
                 <p className="text-sm font-medium text-[#e5e2e3]">100% → ZkPay</p>
                 <p className="text-xs text-[#909097]">If no feeRecipient, entire fee goes to treasury</p>
+              </div>
+            </div>
+
+            {/* Partner Integration & Refund Protection Guide */}
+            <div className="border-t border-white/10 pt-8 mt-4 space-y-6">
+              <div className="flex items-center gap-3">
+                <span className="font-label-caps text-[#c0c6de] text-[10px] tracking-[0.25em] font-bold">
+                  PARTNER INTEGRATION &amp; REFUND PROTECTION
+                </span>
+                <div className="h-px w-8 bg-white/20" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-emerald-400 text-base">payments</span>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">1. Partner Fee Sharing</h4>
+                  </div>
+                  <p className="text-xs text-[#c6c6cd] leading-relaxed">
+                    Pass your Base address in <code className="text-[#c0c6de] font-mono">feeRecipient</code> and your desired fee in <code className="text-[#c0c6de] font-mono">totalFeeBps</code> (e.g. 100 for 1.00%).
+                    Every trade atomically distributes 50% of the custom fee directly to your wallet upon settlement on Base Mainnet.
+                  </p>
+                </div>
+
+                <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-sky-400 text-base">security</span>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">2. User Refund Protection</h4>
+                  </div>
+                  <p className="text-xs text-[#c6c6cd] leading-relaxed">
+                    Always include <code className="text-[#c0c6de] font-mono">refundTo</code> with the user's origin-chain address (e.g. their Ethereum address when depositing ETH, Solana address for SOL).
+                    If a trade exceeds slippage or the deposit deadline passes, 100% of user deposit is automatically refunded back to <code className="text-[#c0c6de] font-mono">refundTo</code> on the origin chain.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-purple-400 text-base">sync_alt</span>
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">3. Any-to-Any Crypto Routing</h4>
+                </div>
+                <p className="text-xs text-[#c6c6cd] leading-relaxed">
+                  ZkPay supports full cross-chain swaps between any supported tokens (e.g. ETH → SOL, BTC → SOL, SOL → Base USDC).
+                  Specify <code className="text-[#c0c6de] font-mono">toAsset</code> and optional <code className="text-[#c0c6de] font-mono">destinationChain</code>.
+                  If <code className="text-[#c0c6de] font-mono">toAsset</code> is omitted, it seamlessly defaults to Base USDC for backwards compatibility.
+                </p>
               </div>
             </div>
           </div>

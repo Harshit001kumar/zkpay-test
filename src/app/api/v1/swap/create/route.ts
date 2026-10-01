@@ -30,6 +30,8 @@ export async function POST(req: Request) {
       destinationAsset,
       chain,
       originChain,
+      destinationChain,
+      toChain,
       amount,
       recipient,
       refundTo,
@@ -44,6 +46,7 @@ export async function POST(req: Request) {
     const sourceAsset = fromAsset || originAsset;
     const targetAsset = toAsset || destinationAsset;
     const resolvedChain = chain || originChain || undefined;
+    const resolvedDestinationChain = destinationChain || toChain || undefined;
     const resolvedFeeRecipient = rawFeeRecipient || partnerAddress || partnerFeeRecipient;
     const resolvedFeeBps = typeof totalFeeBps === "number" ? totalFeeBps : (feeBps ? Number(feeBps) : undefined);
 
@@ -63,6 +66,7 @@ export async function POST(req: Request) {
       toAsset: targetAsset,
       chain: resolvedChain,
       originChain: resolvedChain,
+      destinationChain: resolvedDestinationChain,
       amount: String(amount),
       recipient,
       refundTo,

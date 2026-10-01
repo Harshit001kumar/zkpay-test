@@ -167,7 +167,7 @@ export default function PrivacyPolicyPage() {
                 <strong className="text-white">Privy Auth:</strong> Non-custodial embedded wallet authentication enabling secure social and email logins using secure multi-party computation (MPC).
               </li>
               <li>
-                <strong className="text-white">NEAR Intents:</strong> Cross-chain swap protocol used for deposit routing (e.g., converting BTC/ETH/SOL to Base USDC). No personal data is shared - only blockchain addresses and transaction amounts.
+                <strong className="text-white">Cross-Chain Solver Network:</strong> Cross-chain routing protocols and solver networks used for deposit routing and swaps (e.g., converting BTC/ETH/SOL to destination assets). No personal data is shared - only blockchain addresses and transaction amounts.
               </li>
             </ul>
           </section>

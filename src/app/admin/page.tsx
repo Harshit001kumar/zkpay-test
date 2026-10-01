@@ -178,25 +178,6 @@ export default function AdminPage() {
     }
   };
 
-  const handleLookupShift = async () => {
-    if (!shiftIdInput.trim()) return;
-    setIsSearchingShift(true);
-    setShiftError(null);
-    setShiftData(null);
-    try {
-      const res = await fetch(`/api/v1/swap/status?depositAddress=${encodeURIComponent(shiftIdInput.trim())}`);
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setShiftError(data.message || data.error || "Shift not found");
-      } else {
-        setShiftData(data);
-      }
-    } catch (err: any) {
-      setShiftError(err.message || "Failed to query solver network");
-    } finally {
-      setIsSearchingShift(false);
-    }
-  };
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -1749,7 +1730,7 @@ export default function AdminPage() {
                     Cross-Chain Solver Order Tracker
                   </h3>
                   <p className="text-xs text-[#909097] font-mono mt-0.5">
-                    Query real-time deposit and settlement status on the NEAR Intents 1Click solver network
+                    Query real-time deposit and settlement status on the cross-chain solver network
                   </p>
                 </div>
               </div>
