@@ -77,6 +77,13 @@ interface AdminStats {
     healthy: boolean;
     error?: string;
   };
+  sweeper?: {
+    configured: boolean;
+    address: string | null;
+    balanceEth: string;
+    healthy: boolean;
+    error?: string;
+  };
   paylinksSummary?: {
     total: number;
     paid: number;
@@ -143,6 +150,53 @@ export default function AdminPage() {
   const [shiftData, setShiftData] = useState<any>(null);
   const [isSearchingShift, setIsSearchingShift] = useState(false);
   const [shiftError, setShiftError] = useState<string | null>(null);
+
+  // Sweeper State
+  const [isSweeping, setIsSweeping] = useState(false);
+  const [sweepResult, setSweepResult] = useState<any>(null);
+
+  const handleSweepAll = async () => {
+    setIsSweeping(true);
+    setSweepResult(null);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch("/api/admin/sweeper", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      setSweepResult(data);
+      loadAdminData();
+    } catch (err: any) {
+      setSweepResult({ success: false, error: err.message });
+    } finally {
+      setIsSweeping(false);
+    }
+  };
+
+  const handleLookupShift = async () => {
+    if (!shiftIdInput.trim()) return;
+    setIsSearchingShift(true);
+    setShiftError(null);
+    setShiftData(null);
+    try {
+      const res = await fetch(`/api/v1/swap/status?depositAddress=${encodeURIComponent(shiftIdInput.trim())}`);
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setShiftError(data.message || data.error || "Shift not found");
+      } else {
+        setShiftData(data);
+      }
+    } catch (err: any) {
+      setShiftError(err.message || "Failed to query solver network");
+    } finally {
+      setIsSearchingShift(false);
+    }
+  };
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -640,24 +694,86 @@ export default function AdminPage() {
         {activeTab === "overview" && (
           <div className="space-y-6 animate-in fade-in duration-300">
             
-            {/* Paymaster Gas Sponsorship Pill Banner */}
-            <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/20 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
-                  <Zap className="w-4 h-4" />
+            {/* Infrastructure & Gas Sponsorship Banners */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {/* Pimlico Paymaster Banner */}
+              <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/20 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                    <Zap className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-bold text-emerald-300">
+                      Pimlico ERC-4337 Gas Sponsorship
+                    </h4>
+                    <p className="text-[11px] text-emerald-400/80 font-mono">
+                      100% of UserOps sponsored on Base Mainnet
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-xs sm:text-sm font-bold text-emerald-300">
-                    Pimlico ERC-4337 Gas Sponsorship
-                  </h4>
-                  <p className="text-[11px] text-emerald-400/80 font-mono">
-                    100% of UserOps sponsored on Base Mainnet (Chain ID 8453)
-                  </p>
-                </div>
+                <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold shrink-0">
+                  ACTIVE
+                </span>
               </div>
-              <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold shrink-0">
-                ACTIVE
-              </span>
+
+              {/* Sweeper Wallet Card */}
+              <div className="p-4 rounded-2xl bg-[#141418] border border-white/10 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                    <Layers className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs sm:text-sm font-bold text-white">
+                        Deposit Sweeper Wallet
+                      </h4>
+                      <span className="text-[10px] font-mono text-[#909097]">
+                        ({stats?.sweeper?.balanceEth || "0.0000"} ETH)
+                      </span>
+                    </div>
+                    {stats?.sweeper?.address ? (
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[11px] font-mono text-[#909097] truncate max-w-[140px] sm:max-w-[200px]">
+                          {stats.sweeper.address}
+                        </span>
+                        <button
+                          onClick={() => copyToClipboard(stats!.sweeper!.address!, "sweeper")}
+                          className="text-[#c0c6de] hover:text-white transition-colors"
+                          title="Copy Sweeper Address"
+                        >
+                          {copiedKey === "sweeper" ? (
+                            <Check className="w-3 h-3 text-emerald-400" />
+                          ) : (
+                            <Copy className="w-3 h-3" />
+                          )}
+                        </button>
+                        <a
+                          href={`https://basescan.org/address/${stats.sweeper.address}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[#909097] hover:text-white"
+                          title="View on Basescan"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-amber-400/80 font-mono">
+                        SWEEPER_PRIVATE_KEY not configured
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <span
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold shrink-0 ${
+                    stats?.sweeper?.configured
+                      ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                      : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                  }`}
+                >
+                  {stats?.sweeper?.configured ? "SWEEPER READY" : "SETUP KEY"}
+                </span>
+              </div>
             </div>
 
             {/* KPI Cards Grid */}
@@ -1525,6 +1641,179 @@ export default function AdminPage() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        {/* ────────────── TAB 4: TOOLS & SWEEPER ────────────── */}
+        {activeTab === "tools" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Tool 1: Gasless Pay-In Sweeper Control */}
+            <div className="obsidian-glass rounded-2xl p-5 sm:p-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+                    <Layers className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+                      Pay-In Deposit Sweeper
+                    </h3>
+                    <p className="text-xs text-[#909097] font-mono mt-0.5">
+                      Pure EIP-3009 Gasless Relay: Sweeps USDC directly to Treasury (0 ETH sent to deposit address)
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleSweepAll}
+                  disabled={isSweeping || !stats?.sweeper?.configured}
+                  className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95 shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSweeping ? "animate-spin" : ""}`} />
+                  <span>{isSweeping ? "Sweeping Deposits..." : "Sweep All Settled Deposits"}</span>
+                </button>
+              </div>
+
+              {/* Sweeper Wallet Status */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 text-xs font-mono">
+                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
+                  <span className="text-[#909097] text-[10px] uppercase font-bold block">Sweeper Address</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-white truncate">
+                      {stats?.sweeper?.address || "Not Configured"}
+                    </span>
+                    {stats?.sweeper?.address && (
+                      <button
+                        onClick={() => copyToClipboard(stats!.sweeper!.address!, "tool_sweeper")}
+                        className="text-[#909097] hover:text-white"
+                      >
+                        {copiedKey === "tool_sweeper" ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
+                  <span className="text-[#909097] text-[10px] uppercase font-bold block">Gas Tank Balance</span>
+                  <span className="text-base font-bold text-white">
+                    {stats?.sweeper?.balanceEth || "0.0000"} ETH
+                  </span>
+                  <span className="text-[10px] text-[#909097] block">Base Mainnet</span>
+                </div>
+
+                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
+                  <span className="text-[#909097] text-[10px] uppercase font-bold block">Operational Status</span>
+                  <span className={`text-base font-bold ${stats?.sweeper?.healthy ? "text-emerald-400" : "text-amber-400"}`}>
+                    {stats?.sweeper?.configured ? (stats?.sweeper?.healthy ? "Ready & Funded" : "Low Balance") : "Requires Key"}
+                  </span>
+                  <span className="text-[10px] text-[#909097] block">
+                    SWEEPER_PRIVATE_KEY in env
+                  </span>
+                </div>
+              </div>
+
+              {/* Sweep Result Feedback */}
+              {sweepResult && (
+                <div className={`p-4 rounded-xl text-xs font-mono ${
+                  sweepResult.success
+                    ? "bg-emerald-950/30 border border-emerald-500/30 text-emerald-300"
+                    : "bg-red-950/30 border border-red-500/30 text-red-300"
+                }`}>
+                  <p className="font-bold mb-1">
+                    {sweepResult.success
+                      ? `Successfully swept ${sweepResult.sweptCount || (sweepResult.result?.success ? 1 : 0)} deposit(s)!`
+                      : `Sweep Failed: ${sweepResult.error || "Unknown error"}`}
+                  </p>
+                  {sweepResult.result?.txHash && (
+                    <a
+                      href={`https://basescan.org/tx/${sweepResult.result.txHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-white underline inline-flex items-center gap-1 mt-1"
+                    >
+                      <span>View Transaction on Basescan</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Tool 2: Cross-Chain Solver Transaction Tracker */}
+            <div className="obsidian-glass rounded-2xl p-5 sm:p-6 space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-white/10">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shrink-0">
+                  <Search className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+                    Cross-Chain Solver Order Tracker
+                  </h3>
+                  <p className="text-xs text-[#909097] font-mono mt-0.5">
+                    Query real-time deposit and settlement status on the NEAR Intents 1Click solver network
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2.5">
+                <input
+                  type="text"
+                  placeholder="Enter Deposit Address (e.g. 6vN24xV8... or 0x...)"
+                  value={shiftIdInput}
+                  onChange={(e) => setShiftIdInput(e.target.value)}
+                  className="flex-1 px-4 py-3 rounded-xl bg-black/40 border border-white/10 text-xs font-mono text-white placeholder-[#909097] focus:outline-none focus:border-[#c0c6de]"
+                />
+                <button
+                  onClick={handleLookupShift}
+                  disabled={isSearchingShift || !shiftIdInput.trim()}
+                  className="px-5 py-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white font-mono text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95"
+                >
+                  <Search className={`w-3.5 h-3.5 ${isSearchingShift ? "animate-spin" : ""}`} />
+                  <span>{isSearchingShift ? "Searching..." : "Track Status"}</span>
+                </button>
+              </div>
+
+              {shiftError && (
+                <div className="p-3.5 rounded-xl bg-red-950/30 border border-red-500/20 text-[#ffb4ab] text-xs font-mono">
+                  {shiftError}
+                </div>
+              )}
+
+              {shiftData && (
+                <div className="p-4 rounded-xl bg-black/40 border border-white/10 text-xs font-mono space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                    <span className="text-[#909097]">Status:</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-300">
+                      {shiftData.status || shiftData.rawStatus || "UNKNOWN"}
+                    </span>
+                  </div>
+                  {shiftData.depositedAmount && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[#909097]">Deposited:</span>
+                      <span className="text-white font-bold">{shiftData.depositedAmount}</span>
+                    </div>
+                  )}
+                  {shiftData.settledAmount && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[#909097]">Settled:</span>
+                      <span className="text-emerald-400 font-bold">{shiftData.settledAmount}</span>
+                    </div>
+                  )}
+                  {shiftData.destinationTxHash && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[#909097]">Base TX:</span>
+                      <a
+                        href={shiftData.destinationExplorerUrl || `https://basescan.org/tx/${shiftData.destinationTxHash}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[#c0c6de] hover:underline flex items-center gap-1"
+                      >
+                        <span className="truncate max-w-[180px]">{shiftData.destinationTxHash}</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}

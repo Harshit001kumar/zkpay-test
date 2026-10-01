@@ -5,6 +5,9 @@
  * - 50/50 custom fee split between ZkPay Treasury and Partner Recipient
  * - Fixed NEAR Intents protocol fee accounting (25 bps overhead without key)
  * - Safe clamping to guarantee compliance with NEAR Intents 500 bps appFees limit
+ * - Atomic units validation & pre-flight sanity checks
+ * - Sanitized upstream solver error handling (no HTML/Cloudflare leaks)
+ * - Multi-chain token collision resolution via chain parameter
  * - In-memory caching for token metadata
  */
 
@@ -44,7 +47,6 @@ export function calculateFeeSplit(
   requestedFeeBps?: number | null,
   partnerFeeRecipient?: string | null
 ): FeeSplitResult {
-  // Clamp requested custom fee within [MIN_CUSTOM_FEE_BPS, MAX_CUSTOM_FEE_BPS]
   let totalCustom = typeof requestedFeeBps === "number" && !isNaN(requestedFeeBps)
     ? Math.round(requestedFeeBps)
     : DEFAULT_CUSTOM_FEE_BPS;
@@ -99,13 +101,30 @@ export interface SwapToken {
 let tokenCache: { tokens: SwapToken[]; timestamp: number } | null = null;
 const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+export function normalizeChain(chain?: string | null): string | undefined {
+  if (!chain) return undefined;
+  const c = chain.trim().toLowerCase();
+  if (c === "sol" || c === "solana") return "sol";
+  if (c === "eth" || c === "ethereum" || c === "mainnet") return "eth";
+  if (c === "base") return "base";
+  if (c === "arb" || c === "arbitrum") return "arb";
+  if (c === "bsc" || c === "binance" || c === "bnb") return "bsc";
+  if (c === "tron" || c === "trx") return "tron";
+  if (c === "btc" || c === "bitcoin") return "btc";
+  if (c === "polygon" || c === "matic") return "polygon";
+  if (c === "near") return "near";
+  return c;
+}
+
 /**
  * Fetches supported tokens from NEAR Intents and augments with local icons and metadata.
  */
 export async function getSupportedTokens(chain?: string | null): Promise<SwapToken[]> {
   const now = Date.now();
+  const normalizedTargetChain = normalizeChain(chain);
+
   if (tokenCache && now - tokenCache.timestamp < TOKEN_CACHE_TTL_MS) {
-    return filterTokensByChain(tokenCache.tokens, chain);
+    return filterTokensByChain(tokenCache.tokens, normalizedTargetChain);
   }
 
   const localDefaults: SwapToken[] = DEPOSIT_ASSETS.map((d) => ({
@@ -131,54 +150,57 @@ export async function getSupportedTokens(chain?: string | null): Promise<SwapTok
   try {
     const res = await fetch(`${ONECLICK_API}/tokens`, {
       method: "GET",
-      headers: { "Content-Type": "application/json" },
+      headers: buildSolverHeaders(),
       next: { revalidate: 300 },
     });
 
     if (res.ok) {
-      const data = await res.json();
-      const rawList: any[] = Array.isArray(data) ? data : data?.tokens || [];
-      const remoteTokens: SwapToken[] = rawList.map((t: any) => ({
-        assetId: t.assetId,
-        symbol: t.symbol?.toUpperCase() || "UNKNOWN",
-        name: t.name || t.symbol || "Token",
-        blockchain: t.blockchain?.toLowerCase() || "unknown",
-        decimals: Number(t.decimals) || 18,
-        contractAddress: t.contractAddress,
-        priceUsd: typeof t.price === "number" ? t.price : undefined,
-        iconUrl: t.iconUrl || `https://assets.zkpay.top/tokens/${(t.symbol || "").toLowerCase()}.svg`,
-      }));
+      const text = await res.text();
+      if (!text.trim().startsWith("<") && !text.includes("<!DOCTYPE")) {
+        const data = JSON.parse(text);
+        const rawList: any[] = Array.isArray(data) ? data : data?.tokens || [];
+        const remoteTokens: SwapToken[] = rawList.map((t: any) => ({
+          assetId: t.assetId,
+          symbol: t.symbol?.toUpperCase() || "UNKNOWN",
+          name: t.name || t.symbol || "Token",
+          blockchain: t.blockchain?.toLowerCase() || "unknown",
+          decimals: Number(t.decimals) || 18,
+          contractAddress: t.contractAddress,
+          priceUsd: typeof t.price === "number" ? t.price : undefined,
+          iconUrl: t.iconUrl || `https://assets.zkpay.top/tokens/${(t.symbol || "").toLowerCase()}.svg`,
+        }));
 
-      // Merge: remote tokens + local defaults without duplicate assetIds
-      const mergedMap = new Map<string, SwapToken>();
-      for (const t of [...localDefaults, ...remoteTokens]) {
-        if (t.assetId && !mergedMap.has(t.assetId)) {
-          mergedMap.set(t.assetId, t);
+        const mergedMap = new Map<string, SwapToken>();
+        for (const t of [...localDefaults, ...remoteTokens]) {
+          if (t.assetId && !mergedMap.has(t.assetId)) {
+            mergedMap.set(t.assetId, t);
+          }
         }
-      }
 
-      const allTokens = Array.from(mergedMap.values());
-      tokenCache = { tokens: allTokens, timestamp: now };
-      return filterTokensByChain(allTokens, chain);
+        const allTokens = Array.from(mergedMap.values());
+        tokenCache = { tokens: allTokens, timestamp: now };
+        return filterTokensByChain(allTokens, normalizedTargetChain);
+      }
     }
   } catch (err) {
-    console.warn("[SwapRouter] Failed to fetch remote tokens, using fallback:", err);
+    console.warn("[SwapRouter] Remote tokens query skipped, using local defaults:", err);
   }
 
   tokenCache = { tokens: localDefaults, timestamp: now };
-  return filterTokensByChain(localDefaults, chain);
+  return filterTokensByChain(localDefaults, normalizedTargetChain);
 }
 
 function filterTokensByChain(tokens: SwapToken[], chain?: string | null): SwapToken[] {
   if (!chain || chain.trim() === "" || chain === "all") return tokens;
-  const targetChain = chain.trim().toLowerCase();
-  return tokens.filter((t) => t.blockchain.toLowerCase() === targetChain);
+  const targetChain = normalizeChain(chain) || chain.trim().toLowerCase();
+  return tokens.filter((t) => normalizeChain(t.blockchain) === targetChain);
 }
 
 /**
  * Resolves symbol or partial asset identifier to full NEAR Intents assetId.
+ * Supports chainHint to resolve multi-chain token collisions (e.g. USDC on Solana vs Arbitrum).
  */
-export async function resolveAssetId(symbolOrAssetId: string, chainHint?: string): Promise<string> {
+export async function resolveAssetId(symbolOrAssetId: string, chainHint?: string | null): Promise<string> {
   const query = symbolOrAssetId.trim();
   if (query.startsWith("nep141:") || query.startsWith("nep245:")) {
     return query;
@@ -186,31 +208,199 @@ export async function resolveAssetId(symbolOrAssetId: string, chainHint?: string
 
   const allTokens = await getSupportedTokens();
   const upper = query.toUpperCase();
+  const normalizedChain = normalizeChain(chainHint);
 
-  // Try matching symbol and chain hint if given
-  if (chainHint) {
+  // 1. Try matching symbol AND normalized chain hint if provided
+  if (normalizedChain) {
     const matchWithChain = allTokens.find(
-      (t) => t.symbol === upper && t.blockchain.toLowerCase() === chainHint.toLowerCase()
+      (t) => t.symbol === upper && normalizeChain(t.blockchain) === normalizedChain
     );
     if (matchWithChain) return matchWithChain.assetId;
   }
 
-  // Exact symbol match
+  // 2. Specific preferred defaults for multi-chain symbols if chain is provided or omitted
+  if (upper === "USDC") {
+    if (normalizedChain === "sol") {
+      const solUsdc = allTokens.find((t) => t.symbol === "USDC" && normalizeChain(t.blockchain) === "sol");
+      if (solUsdc) return solUsdc.assetId;
+    }
+    if (normalizedChain === "arb") {
+      const arbUsdc = allTokens.find((t) => t.symbol === "USDC" && normalizeChain(t.blockchain) === "arb");
+      if (arbUsdc) return arbUsdc.assetId;
+    }
+    if (normalizedChain === "base" || !normalizedChain) {
+      return TARGET_ASSET.assetId; // Base USDC default
+    }
+  }
+
+  if (upper === "USDT") {
+    if (normalizedChain) {
+      const matchUsdt = allTokens.find((t) => t.symbol === "USDT" && normalizeChain(t.blockchain) === normalizedChain);
+      if (matchUsdt) return matchUsdt.assetId;
+    }
+  }
+
+  // 3. Fallback defaults for common coins
+  if (upper === "BTC") return "nep141:btc.omft.near";
+  if (upper === "ETH") {
+    if (normalizedChain === "base") {
+      const baseEth = allTokens.find((t) => t.symbol === "ETH" && normalizeChain(t.blockchain) === "base");
+      if (baseEth) return baseEth.assetId;
+    }
+    return "nep141:eth.omft.near";
+  }
+  if (upper === "SOL") return "nep141:sol.omft.near";
+
+  // 4. Exact symbol match from supported tokens list
   const match = allTokens.find((t) => t.symbol === upper);
   if (match) return match.assetId;
 
-  // Fallback defaults for common coins
-  if (upper === "BTC") return "nep141:btc.omft.near";
-  if (upper === "ETH") return "nep141:eth.omft.near";
-  if (upper === "SOL") return "nep141:sol.omft.near";
-  if (upper === "USDC") return TARGET_ASSET.assetId;
+  throw new Error(
+    `Asset '${symbolOrAssetId}' not found. Use GET /api/v1/swap/tokens to inspect supported assetIds, or pass 'chain' parameter (e.g. ?fromAsset=${symbolOrAssetId}&chain=sol).`
+  );
+}
 
-  throw new Error(`Asset '${symbolOrAssetId}' not found. Use GET /api/v1/swap/tokens to inspect supported assetIds.`);
+/**
+ * Validates that the amount is provided in valid atomic units (positive integer string)
+ * and meets the minimum solver volume threshold (~$1.00 USD).
+ */
+export function validateSwapAmount(amountStr: string, originAssetId: string): void {
+  const clean = (amountStr || "").trim();
+
+  // Guard against human decimal floats (e.g. "1.5" or "0.5")
+  if (clean.includes(".")) {
+    const err: any = new Error(
+      "Amount is below minimum trade threshold (~$1.00 USD) or provided in human units instead of atomic units (e.g. lamports/wei). Expected atomic units as an integer string (e.g. '1000000000' for 1 SOL, '1000000' for 1 USDC)."
+    );
+    err.code = "AMOUNT_BELOW_MINIMUM";
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (!clean || !/^\d+$/.test(clean) || clean === "0") {
+    const err: any = new Error("Amount must be a positive non-zero integer string in atomic units.");
+    err.code = "INVALID_AMOUNT";
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Pre-flight check against tiny human-unit inputs (e.g. "1" or "10" passed instead of lamports/wei)
+  const val = BigInt(clean);
+  const assetLower = originAssetId.toLowerCase();
+
+  // SOL (9 decimals): 1 SOL = 1e9 (~$150). $1.00 USD is ~6,500,000 lamports
+  if (assetLower.includes("sol") && val < 5_000_000n) {
+    const err: any = new Error(
+      "Amount is below minimum trade threshold (~$1.00 USD) or provided in human units instead of atomic units (e.g. lamports/wei). Expected atomic units as an integer string (e.g. '1000000000' for 1 SOL)."
+    );
+    err.code = "AMOUNT_BELOW_MINIMUM";
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // ETH (18 decimals): 1 ETH = 1e18 (~$2,500). $1.00 USD is ~4e14 wei
+  if (assetLower.includes("eth") && !assetLower.includes("usdc") && !assetLower.includes("usdt") && val < 200_000_000_000_000n) {
+    const err: any = new Error(
+      "Amount is below minimum trade threshold (~$1.00 USD) or provided in human units instead of atomic units (e.g. wei). Expected atomic units as an integer string (e.g. '10000000000000000' for 0.01 ETH)."
+    );
+    err.code = "AMOUNT_BELOW_MINIMUM";
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // BTC (8 decimals): 1 BTC = 1e8 (~$65,000). $1.00 USD is ~1,500 satoshis
+  if (assetLower.includes("btc") && val < 1_000n) {
+    const err: any = new Error(
+      "Amount is below minimum trade threshold (~$1.00 USD) or provided in human units instead of atomic units (e.g. satoshis). Expected atomic units as an integer string (e.g. '100000' for 0.001 BTC)."
+    );
+    err.code = "AMOUNT_BELOW_MINIMUM";
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // USDC / USDT (6 decimals): 1 USDC = 1e6 ($1.00). Must be >= 1,000,000
+  if ((assetLower.includes("usdc") || assetLower.includes("usdt")) && val < 1_000_000n) {
+    const err: any = new Error(
+      "Amount is below minimum trade threshold ($1.00 USD) or provided in human units instead of atomic units (6 decimals). Expected atomic units as an integer string (e.g. '1000000' for 1 USDC)."
+    );
+    err.code = "AMOUNT_BELOW_MINIMUM";
+    err.statusCode = 400;
+    throw err;
+  }
+}
+
+function buildSolverHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 ZkPay/1.0",
+  };
+  if (process.env.NEAR_INTENTS_API_KEY) {
+    headers["X-API-Key"] = process.env.NEAR_INTENTS_API_KEY;
+    headers["Authorization"] = `Bearer ${process.env.NEAR_INTENTS_API_KEY}`;
+  }
+  return headers;
+}
+
+/**
+ * Robust fetch wrapper that guarantees no HTML or Cloudflare errors leak to the client.
+ */
+async function fetchSolverApi(endpoint: string, options: RequestInit): Promise<any> {
+  let response: Response;
+  try {
+    response = await fetch(endpoint, options);
+  } catch (networkErr: any) {
+    const err: any = new Error("The decentralized solver network is currently unreachable. Please retry shortly.");
+    err.code = "SOLVER_NETWORK_BUSY";
+    err.statusCode = 503;
+    throw err;
+  }
+
+  const responseText = await response.text();
+  const trimmed = responseText.trim();
+
+  // Catch upstream HTML / Cloudflare error pages (521 Origin Down, 502/503/504, bot challenges)
+  if (
+    response.status === 521 ||
+    response.status === 502 ||
+    response.status === 503 ||
+    response.status === 504 ||
+    trimmed.startsWith("<") ||
+    trimmed.includes("<!DOCTYPE") ||
+    trimmed.includes("<html")
+  ) {
+    const err: any = new Error("The decentralized solver network is temporarily unavailable. Please retry in a moment.");
+    err.code = "SOLVER_NETWORK_BUSY";
+    err.statusCode = 503;
+    throw err;
+  }
+
+  let data: any;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    const err: any = new Error("The decentralized solver network returned an unexpected response format. Please retry in a moment.");
+    err.code = "SOLVER_NETWORK_BUSY";
+    err.statusCode = 502;
+    throw err;
+  }
+
+  if (!response.ok) {
+    const msg = data.message || (typeof data.error === "string" ? data.error : "Failed to execute request on solver network.");
+    const err: any = new Error(msg);
+    err.code = data.code || (response.status === 400 ? "SOLVER_REJECTED" : "SOLVER_ERROR");
+    err.statusCode = response.status >= 400 && response.status < 500 ? response.status : 502;
+    throw err;
+  }
+
+  return data;
 }
 
 export interface SwapQuoteParams {
   fromAsset: string;
   toAsset?: string;
+  chain?: string | null;
+  originChain?: string | null;
   amount: string;
   feeRecipient?: string | null;
   totalFeeBps?: number | null;
@@ -224,10 +414,15 @@ export interface SwapQuoteParams {
  */
 export async function getSwapQuote(params: SwapQuoteParams) {
   const { fromAsset, amount, feeRecipient, totalFeeBps, slippageBps } = params;
-  const originAssetId = await resolveAssetId(fromAsset);
+  const chainHint = params.chain || params.originChain;
+
+  const originAssetId = await resolveAssetId(fromAsset, chainHint);
   const destinationAssetId = params.toAsset
     ? await resolveAssetId(params.toAsset)
     : TARGET_ASSET.assetId;
+
+  // Validate atomic units and minimum volume threshold
+  validateSwapAmount(amount, originAssetId);
 
   const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient);
   const effectiveRecipient = params.recipientAddress || ZKPAY_TREASURY_ADDRESS;
@@ -243,7 +438,7 @@ export async function getSwapQuote(params: SwapQuoteParams) {
     depositType: "ORIGIN_CHAIN",
     destinationAsset: destinationAssetId,
     recipientType: "DESTINATION_CHAIN",
-    amount,
+    amount: amount.trim(),
     recipient: effectiveRecipient,
     refundTo: effectiveRefundTo,
     refundType: "ORIGIN_CHAIN",
@@ -251,27 +446,17 @@ export async function getSwapQuote(params: SwapQuoteParams) {
     appFees: feeSplit.appFees,
   };
 
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (process.env.NEAR_INTENTS_API_KEY) {
-    headers["X-API-Key"] = process.env.NEAR_INTENTS_API_KEY;
-  }
-
-  const response = await fetch(`${ONECLICK_API}/quote`, {
+  const data = await fetchSolverApi(`${ONECLICK_API}/quote`, {
     method: "POST",
-    headers,
+    headers: buildSolverHeaders(),
     body: JSON.stringify(payload),
   });
 
-  const responseText = await response.text();
-  let data: any;
-  try {
-    data = JSON.parse(responseText);
-  } catch {
-    throw new Error(`NEAR Intents API returned invalid response: ${responseText.slice(0, 150)}`);
-  }
-
-  if (!response.ok || !data.quote) {
-    throw new Error(data.message || `Failed to fetch quote from solver: ${JSON.stringify(data)}`);
+  if (!data.quote) {
+    const err: any = new Error("Solver network did not return a valid quote.");
+    err.code = "NO_QUOTE_RETURNED";
+    err.statusCode = 502;
+    throw err;
   }
 
   const quote = data.quote;
@@ -305,6 +490,8 @@ export async function getSwapQuote(params: SwapQuoteParams) {
 export interface CreateSwapParams {
   fromAsset: string;
   toAsset?: string;
+  chain?: string | null;
+  originChain?: string | null;
   amount: string;
   recipient: string;
   refundTo?: string | null;
@@ -319,13 +506,20 @@ export interface CreateSwapParams {
 export async function createSwapOrder(params: CreateSwapParams) {
   const { fromAsset, amount, recipient, feeRecipient, totalFeeBps, slippageBps } = params;
   if (!recipient || recipient.trim() === "") {
-    throw new Error("Missing required 'recipient' address for destination chain.");
+    const err: any = new Error("Missing required 'recipient' address for destination chain.");
+    err.code = "INVALID_RECIPIENT";
+    err.statusCode = 400;
+    throw err;
   }
 
-  const originAssetId = await resolveAssetId(fromAsset);
+  const chainHint = params.chain || params.originChain;
+  const originAssetId = await resolveAssetId(fromAsset, chainHint);
   const destinationAssetId = params.toAsset
     ? await resolveAssetId(params.toAsset)
     : TARGET_ASSET.assetId;
+
+  // Validate atomic units and minimum volume threshold
+  validateSwapAmount(amount, originAssetId);
 
   const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient);
   const effectiveRefundTo = resolveRefundAddress(originAssetId, params.refundTo, recipient);
@@ -339,7 +533,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
     depositType: "ORIGIN_CHAIN",
     destinationAsset: destinationAssetId,
     recipientType: "DESTINATION_CHAIN",
-    amount,
+    amount: amount.trim(),
     recipient: recipient.trim(),
     refundTo: effectiveRefundTo,
     refundType: "ORIGIN_CHAIN",
@@ -347,27 +541,17 @@ export async function createSwapOrder(params: CreateSwapParams) {
     appFees: feeSplit.appFees,
   };
 
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (process.env.NEAR_INTENTS_API_KEY) {
-    headers["X-API-Key"] = process.env.NEAR_INTENTS_API_KEY;
-  }
-
-  const response = await fetch(`${ONECLICK_API}/quote`, {
+  const data = await fetchSolverApi(`${ONECLICK_API}/quote`, {
     method: "POST",
-    headers,
+    headers: buildSolverHeaders(),
     body: JSON.stringify(payload),
   });
 
-  const responseText = await response.text();
-  let data: any;
-  try {
-    data = JSON.parse(responseText);
-  } catch {
-    throw new Error(`API returned invalid JSON: ${responseText.slice(0, 150)}`);
-  }
-
-  if (!response.ok || !data.quote || !data.quote.depositAddress) {
-    throw new Error(data.message || "Failed to create swap order or generate deposit address.");
+  if (!data.quote || !data.quote.depositAddress) {
+    const err: any = new Error(data.message || "Failed to create swap order or generate deposit address.");
+    err.code = "DEPOSIT_ADDRESS_FAILED";
+    err.statusCode = 502;
+    throw err;
   }
 
   const quote = data.quote;
@@ -426,27 +610,10 @@ export async function getSwapStatus(depositAddress: string) {
   const url = new URL(`${ONECLICK_API}/status`);
   url.searchParams.set("depositAddress", depositAddress.trim());
 
-  const headers: Record<string, string> = {};
-  if (process.env.NEAR_INTENTS_API_KEY) {
-    headers["X-API-Key"] = process.env.NEAR_INTENTS_API_KEY;
-  }
-
-  const response = await fetch(url.toString(), {
+  const data = await fetchSolverApi(url.toString(), {
     method: "GET",
-    headers,
+    headers: buildSolverHeaders(),
   });
-
-  const responseText = await response.text();
-  let data: any;
-  try {
-    data = JSON.parse(responseText);
-  } catch {
-    throw new Error(`Status API returned non-JSON: ${responseText.slice(0, 150)}`);
-  }
-
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to fetch swap status");
-  }
 
   const swapDetails = data.swapDetails || {};
 

@@ -15,27 +15,7 @@ const PLATFORM_FEE_BPS = 100;
 const PUBLIC_APP_BASE_URL = process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || "https://zkpay.top";
 const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 
-let _publicClient: any = null;
-function getPublicClient() {
-  if (!_publicClient) {
-    _publicClient = createPublicClient({
-      chain: base,
-      transport: http(RPC_URL),
-    });
-  }
-  return _publicClient;
-}
-
-let _pricesClient: any = null;
-function getPricesClient() {
-  if (!_pricesClient) {
-    _pricesClient = createPrices({
-      publicClient: getPublicClient(),
-      diamondAddress: DIAMOND_ADDRESS,
-    });
-  }
-  return _pricesClient;
-}
+import { getLiveFiatRate } from "@/lib/server/p2pRates";
 
 function getPublicBaseUrl(): string {
   try {
@@ -122,16 +102,14 @@ export async function POST(req: Request) {
       );
     }
 
-    // Fetch live rate directly from P2P contract
-    const pricesClient = getPricesClient();
-    const priceResult = await pricesClient.getPriceConfig({ currency: "INR" });
-    if (priceResult.isErr() || !priceResult.value?.sellPrice) {
+    // Fetch live rate directly with multi-RPC failover and TTL caching
+    const sellPrice = await getLiveFiatRate("INR");
+    if (!sellPrice || sellPrice <= 0) {
       return corsJson(
         { error: "Could not fetch live INR exchange rate from P2P Diamond contract." },
         { status: 503 }
       );
     }
-    const sellPrice = Number(priceResult.value.sellPrice) / 1e6;
 
     // Calculate USDC required (principal + 1% fee + protocol small order fee if <= 10 USDC)
     const usdcPrincipal = amountINR / sellPrice;

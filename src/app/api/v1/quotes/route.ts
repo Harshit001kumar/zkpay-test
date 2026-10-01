@@ -9,27 +9,7 @@ const DIAMOND_ADDRESS = (process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0x4cad6eC90
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
 const PLATFORM_FEE_BPS = 100; // 1%
 
-let _publicClient: any = null;
-function getPublicClient() {
-  if (!_publicClient) {
-    _publicClient = createPublicClient({
-      chain: base,
-      transport: http(RPC_URL),
-    });
-  }
-  return _publicClient;
-}
-
-let _pricesClient: any = null;
-function getPricesClient() {
-  if (!_pricesClient) {
-    _pricesClient = createPrices({
-      publicClient: getPublicClient(),
-      diamondAddress: DIAMOND_ADDRESS,
-    });
-  }
-  return _pricesClient;
-}
+import { getLiveFiatRate } from "@/lib/server/p2pRates";
 
 /**
  * POST /api/v1/quotes
@@ -57,23 +37,13 @@ export async function POST(req: Request) {
       );
     }
 
-    // Fetch live rate directly from P2P contract
-    const pricesClient = getPricesClient();
-    const priceResult = await pricesClient.getPriceConfig({ currency });
+    // Fetch live rate directly with multi-RPC failover and TTL caching
+    const sellPrice = await getLiveFiatRate(currency);
 
-    if (priceResult.isErr() || !priceResult.value?.sellPrice) {
+    if (!sellPrice || sellPrice <= 0) {
       return corsJson(
-        { error: `Currency "${currency}" is not available on the P2P Diamond contract.` },
+        { error: `Currency "${currency}" rate is not available on the P2P Diamond contract.` },
         { status: 404 }
-      );
-    }
-
-    const sellPrice = Number(priceResult.value.sellPrice) / 1e6;
-
-    if (sellPrice <= 0) {
-      return corsJson(
-        { error: `Invalid price configuration on-chain for ${currency}.` },
-        { status: 503 }
       );
     }
 

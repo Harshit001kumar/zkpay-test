@@ -21,16 +21,8 @@ function getServerPublicClient() {
   return _publicClient;
 }
 
-let _pricesClient: any = null;
-function getPricesClient() {
-  if (!_pricesClient) {
-    _pricesClient = createPrices({
-      publicClient: getServerPublicClient(),
-      diamondAddress: CONTRACTS.DIAMOND as `0x${string}`,
-    });
-  }
-  return _pricesClient;
-}
+import { getLiveFiatRate } from "@/lib/server/p2pRates";
+import { getRelayerAddress, getRelayerBalance } from "@/lib/server/relayer";
 
 export async function GET(req: Request) {
   const auth = await verifyAdminRequest(req);
@@ -74,10 +66,9 @@ export async function GET(req: Request) {
     // 3. Fetch Live INR/USDC P2P Price Feed Rate
     let inrSellPrice = "N/A";
     try {
-      const pricesClient = getPricesClient();
-      const priceResult = await pricesClient.getPriceConfig({ currency: "INR" });
-      if (priceResult.isOk() && priceResult.value?.sellPrice) {
-        inrSellPrice = (Number(priceResult.value.sellPrice) / 1_000_000).toFixed(2);
+      const rate = await getLiveFiatRate("INR");
+      if (rate && rate > 0) {
+        inrSellPrice = rate.toFixed(2);
       }
     } catch (err) {
       console.warn("[Admin Stats] Failed to read P2P INR price feed:", err);
@@ -92,12 +83,40 @@ export async function GET(req: Request) {
       policy: "100% Gas Sponsored for Smart Accounts",
     };
 
-    // Backward-compatible relayer telemetry (reporting active Pimlico sponsorship)
+    // 5. Backend Sweeper Wallet Telemetry (For gasless payin sweeps to Treasury)
+    let sweeperStats = {
+      configured: false,
+      address: null as string | null,
+      balanceEth: "0.0000",
+      healthy: false,
+      error: undefined as string | undefined,
+    };
+    try {
+      const sweeperAddr = getRelayerAddress();
+      const sweeperBal = await getRelayerBalance();
+      sweeperStats = {
+        configured: true,
+        address: sweeperAddr,
+        balanceEth: (Number(sweeperBal) / 1e18).toFixed(4),
+        healthy: sweeperBal > 500000000000000n, // > 0.0005 ETH
+        error: undefined,
+      };
+    } catch (err: any) {
+      sweeperStats = {
+        configured: false,
+        address: null,
+        balanceEth: "0.0000",
+        healthy: false,
+        error: err.message || "Sweeper private key not set",
+      };
+    }
+
+    // Backward-compatible relayer telemetry
     const relayerStats = {
-      address: "Pimlico Paymaster (ERC-4337)",
-      balanceEth: "Active",
-      healthy: true,
-      error: undefined,
+      address: sweeperStats.address || "Pimlico Paymaster (ERC-4337)",
+      balanceEth: sweeperStats.configured ? `${sweeperStats.balanceEth} ETH` : "Active",
+      healthy: sweeperStats.configured ? sweeperStats.healthy : true,
+      error: sweeperStats.error,
     };
 
     // 5. Privy Earn Vault Telemetry
@@ -169,6 +188,7 @@ export async function GET(req: Request) {
         vault: earnVaultStats.address,
       },
       relayer: relayerStats,
+      sweeper: sweeperStats,
       gasSponsorship,
       earnVault: earnVaultStats,
       paylinksSummary: {

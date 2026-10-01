@@ -185,7 +185,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
         setDepositError(data.error || "Failed to create deposit address. Please try again.");
       }
     } catch (error) {
-      setDepositError("Network error — could not reach exchange service.");
+      setDepositError("Network error: could not reach exchange service.");
     }
     setIsCreating(false);
   };

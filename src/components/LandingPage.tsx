@@ -18,15 +18,12 @@ import {
   Sparkles,
   ExternalLink,
   CreditCard,
-  Layers,
-  Zap,
   Lock,
-  ChevronRight,
-  Wallet
+  Zap,
+  Layers,
+  ChevronRight
 } from "lucide-react";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
-import { ShimmerButton } from "@/components/ui/ShimmerButton";
-import { ShinyText } from "@/components/ui/ShinyText";
 import { CountUp } from "@/components/ui/CountUp";
 import { DecryptedText } from "@/components/ui/DecryptedText";
 import { ScrollReveal } from "@/components/ui/ScrollReveal";
@@ -47,7 +44,7 @@ export default function LandingPage({ login }: LandingPageProps) {
   const [selectedInr, setSelectedInr] = useState<number>(500);
   const [customInr, setCustomInr] = useState<string>("");
   const [waitlistJoined, setWaitlistJoined] = useState<boolean>(false);
-  const [waitlistCount, setWaitlistCount] = useState<number>(42109);
+  const [waitlistCount, setWaitlistCount] = useState<number>(1250);
 
   // 3D Card Tilt with Framer Motion (GPU-accelerated, zero React re-renders)
   const cardRef = useRef<HTMLDivElement>(null);
@@ -89,7 +86,7 @@ export default function LandingPage({ login }: LandingPageProps) {
   const totalDebit = Number((usdcEquivalent + feeEquivalent).toFixed(2));
 
   return (
-    <div className="min-h-[100dvh] bg-[#0e0e0f] text-[#e5e2e3] flex flex-col items-center selection:bg-[#c0c6de]/25 selection:text-white relative overflow-x-hidden font-sans">
+    <div className="min-h-[100dvh] bg-[#0e0e10] text-[#e5e2e3] flex flex-col items-center selection:bg-[#c0c6de]/25 selection:text-white relative overflow-x-hidden font-sans">
       {/* ─── Ambient Glow Mesh ─── */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute top-[-15%] left-1/2 -translate-x-1/2 w-[720px] h-[720px] rounded-full bg-gradient-to-b from-[#c0c6de]/10 via-[#909097]/5 to-transparent blur-[140px]" />
@@ -97,15 +94,15 @@ export default function LandingPage({ login }: LandingPageProps) {
         <div className="absolute bottom-[5%] left-[-10%] w-[500px] h-[500px] rounded-full bg-gradient-to-tr from-[#909097]/5 to-transparent blur-[120px]" />
       </div>
 
-      {/* ─── 1. Sticky Navigation Bar (64px) ─── */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-[#131315]/85 backdrop-blur-[40px] border-b border-white/[0.08]">
-        <div className="max-w-7xl mx-auto h-16 px-4 sm:px-6 lg:px-8 flex items-center justify-between">
+      {/* ─── 01. Fluid Island Navigation (Floating Glass Pill) ─── */}
+      <header className="fixed top-4 sm:top-6 left-0 right-0 z-50 px-4 pointer-events-none">
+        <div className="max-w-5xl mx-auto flex items-center justify-between bg-[#131315]/85 backdrop-blur-3xl border border-white/10 shadow-[0_16px_36px_rgba(0,0,0,0.6)] rounded-full px-4 sm:px-6 py-2.5 sm:py-3 pointer-events-auto transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]">
           {/* Brand Logo */}
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-9 h-9 rounded-xl bg-white/[0.06] border border-white/15 flex items-center justify-center text-[#c0c6de] group-hover:border-[#c0c6de]/40 transition-colors shadow-sm">
-              <ShieldCheck className="w-5 h-5 text-[#c0c6de]" strokeWidth={1.5} />
+            <div className="w-8 h-8 rounded-xl bg-white/[0.06] border border-white/15 flex items-center justify-center text-[#c0c6de] group-hover:border-[#c0c6de]/40 transition-colors shadow-sm">
+              <ShieldCheck className="w-4 h-4 text-[#c0c6de]" strokeWidth={1.5} />
             </div>
-            <span className="font-bold text-lg tracking-tight text-white">ZkPay</span>
+            <span className="font-bold text-base sm:text-lg tracking-tight text-white">ZkPay</span>
           </Link>
 
           {/* Navigation Links & Action */}
@@ -124,7 +121,7 @@ export default function LandingPage({ login }: LandingPageProps) {
 
             <button
               onClick={login}
-              className="text-xs sm:text-sm font-semibold text-[#131315] bg-[#e5e2e3] hover:bg-white active:scale-95 transition-all rounded-xl px-4 py-2 shadow-[0_0_20px_rgba(229,226,227,0.15)] hover:shadow-[0_0_25px_rgba(255,255,255,0.25)]"
+              className="text-xs sm:text-sm font-semibold text-[#131315] bg-[#e5e2e3] hover:bg-white active:scale-95 transition-all rounded-full px-4 sm:px-5 py-2 shadow-[0_0_20px_rgba(229,226,227,0.15)] hover:shadow-[0_0_25px_rgba(255,255,255,0.25)]"
             >
               Launch App
             </button>
@@ -132,52 +129,55 @@ export default function LandingPage({ login }: LandingPageProps) {
         </div>
       </header>
 
-      {/* ─── Page Container ─── */}
-      <div className="w-full max-w-7xl relative z-10 px-4 sm:px-6 lg:px-8 pt-24 sm:pt-32 pb-24 flex flex-col gap-24 sm:gap-32">
-        {/* ─── 2. Asymmetric Split Hero Section ─── */}
-        <section className="min-h-[calc(100dvh-120px)] flex items-center py-8">
+      {/* ─── Page Container (Macro-Spacing) ─── */}
+      <div className="w-full max-w-6xl relative z-10 px-4 sm:px-6 lg:px-8 pt-32 sm:pt-40 pb-28 flex flex-col gap-32 sm:gap-40">
+        
+        {/* ─── 02. Attention: Cinematic Hero & Asymmetric Reticle ─── */}
+        <section className="min-h-[calc(100dvh-160px)] flex items-center py-6">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center w-full">
-            {/* Left Column: Value Prop, Headline, and CTAs (7 cols) */}
+            {/* Left Column: 2-Line H1, Microcopy, and Button-in-Button CTA (7 cols) */}
             <div className="lg:col-span-7 flex flex-col items-start gap-6 text-left">
-              {/* Single Eyebrow Pill */}
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.04] border border-white/15 text-xs font-mono text-[#c0c6de]">
+              {/* Single Eyebrow Badge */}
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.04] border border-white/15 text-[11px] font-mono text-[#c0c6de]">
                 <Sparkles className="w-3.5 h-3.5 text-[#c0c6de]" strokeWidth={1.5} />
                 <DecryptedText text="ZERO KYC UNDER $100 • 2-STEP ESCROW" speed={30} />
               </div>
 
-              {/* Display Headline */}
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold tracking-tight text-white leading-[1.08]">
+              {/* Display Headline constrained to 2-3 lines max */}
+              <h1 className="max-w-xl md:max-w-2xl text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-[1.08]">
                 Pay any UPI merchant with{" "}
                 <span className="bg-gradient-to-r from-white via-[#c0c6de] to-[#909097] bg-clip-text text-transparent">
                   crypto in seconds.
                 </span>
               </h1>
 
-              {/* Concise Subtext (under 20 words) */}
+              {/* Subtext under 20 words */}
               <p className="text-base sm:text-lg text-[#909097] max-w-xl leading-relaxed">
                 Scan any UPI QR code. Pay instantly in USDC settled natively on Base with zero KYC friction.
               </p>
 
-              {/* Primary & Secondary Action CTAs */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5 w-full sm:w-auto pt-2">
-                <ShimmerButton
+              {/* Button-in-Button Nested Icon CTA Architecture */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full sm:w-auto pt-2">
+                <button
                   onClick={login}
-                  className="py-4 px-8 rounded-xl font-bold tracking-wider text-xs shadow-[0_10px_30px_rgba(192,198,222,0.15)]"
+                  className="rounded-full pl-7 pr-2.5 py-2.5 bg-[#e5e2e3] text-[#131315] font-bold text-xs uppercase tracking-wider hover:bg-white transition-all duration-300 shadow-[0_10px_30px_rgba(229,226,227,0.18)] active:scale-[0.98] group flex items-center justify-between sm:justify-start gap-4"
                 >
-                  <QrCode className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                  LAUNCH APP &amp; SCAN QR
-                </ShimmerButton>
+                  <span>LAUNCH APP &amp; SCAN QR</span>
+                  <div className="w-9 h-9 rounded-full bg-[#131315] text-white flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5 shadow-sm">
+                    <QrCode className="w-4 h-4 text-[#c0c6de]" strokeWidth={1.5} />
+                  </div>
+                </button>
 
                 <Link
                   href="/docs"
-                  className="px-6 py-4 rounded-xl border border-white/15 bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/25 active:scale-95 transition-all text-xs font-semibold text-[#e5e2e3] flex items-center justify-center gap-2"
+                  className="px-6 py-3.5 rounded-full border border-white/15 bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/25 active:scale-95 transition-all text-xs font-semibold text-[#e5e2e3] flex items-center justify-center gap-2"
                 >
                   <span>Explore Documentation</span>
                   <ArrowRight className="w-4 h-4 text-[#c0c6de]" strokeWidth={1.5} />
                 </Link>
               </div>
 
-              {/* Protocol Trust Proof Row */}
+              {/* Assurance Metric Strip */}
               <div className="grid grid-cols-3 gap-4 pt-6 sm:pt-8 border-t border-white/10 w-full max-w-lg">
                 <div className="flex flex-col">
                   <span className="text-white font-mono text-sm sm:text-base font-bold">~0.5s</span>
@@ -194,69 +194,45 @@ export default function LandingPage({ login }: LandingPageProps) {
               </div>
             </div>
 
-            {/* Right Column: Interactive HUD Scanner Preview Card (5 cols) */}
-            <div className="lg:col-span-5 w-full">
-              <SpotlightCard className="p-5 sm:p-6 border-white/15 bg-[#131315]/90 rounded-3xl relative overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.8)]">
-                {/* Viewport Reticle Box */}
-                <div className="relative aspect-square w-full rounded-2xl bg-[#0e0e10] border border-white/10 flex items-center justify-center overflow-hidden">
-                  {/* Razor Reticle Corner Brackets */}
-                  <div className="absolute top-4 left-4 w-6 h-6 border-t-2 border-l-2 border-[#c0c6de] rounded-tl-sm pointer-events-none" />
-                  <div className="absolute top-4 right-4 w-6 h-6 border-t-2 border-r-2 border-[#c0c6de] rounded-tr-sm pointer-events-none" />
-                  <div className="absolute bottom-4 left-4 w-6 h-6 border-b-2 border-l-2 border-[#c0c6de] rounded-bl-sm pointer-events-none" />
-                  <div className="absolute bottom-4 right-4 w-6 h-6 border-b-2 border-r-2 border-[#c0c6de] rounded-br-sm pointer-events-none" />
+            {/* Right Column: Mobile Scanner Display (imagegen-frontend-mobile) */}
+            <div className="lg:col-span-5 w-full flex justify-center">
+              {/* Outer Shell: Double-Bezel Hardware Tray */}
+              <div className="w-full max-w-[380px] p-2 sm:p-2.5 rounded-[2.5rem] bg-white/[0.03] border border-white/10 ring-1 ring-white/5 shadow-[0_25px_60px_rgba(0,0,0,0.85)] group">
+                {/* Inner Core: Machined dark container with inset highlight */}
+                <div className="rounded-[calc(2.5rem-0.625rem)] bg-[#0e0e10] p-2.5 sm:p-3 relative overflow-hidden shadow-[inset_0_1px_1px_rgba(255,255,255,0.15)] flex flex-col gap-3">
+                  {/* Phone Mockup Image Container */}
+                  <div className="relative w-full rounded-2xl overflow-hidden aspect-[9/16] bg-black flex items-center justify-center border border-white/10 shadow-2xl">
+                    <img
+                      src="/scanner-mockup.jpg"
+                      alt="ZkPay Live Mobile Scanner HUD"
+                      className="w-full h-full object-cover object-top transition-transform duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:scale-[1.03]"
+                    />
 
-                  {/* Scanning Laser Sweep */}
-                  <div className="scanner-laser" />
-
-                  {/* Matrix QR Preview */}
-                  <div className="opacity-20 flex flex-col items-center gap-3 pointer-events-none">
-                    <QrCode className="w-36 h-36 text-[#c0c6de]" strokeWidth={1.5} />
-                    <span className="font-mono text-[10px] text-[#c0c6de] tracking-widest uppercase">
-                      UPI // PROTOCOL_READY
-                    </span>
+                    {/* Ambient Obsidian Rim Sheen */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#0e0e10]/60 via-transparent to-transparent pointer-events-none opacity-40 group-hover:opacity-20 transition-opacity" />
                   </div>
 
-                  {/* Real-time Transaction Readout Overlay */}
-                  <div className="absolute bottom-4 left-4 right-4 bg-[#131315]/95 backdrop-blur-xl border border-white/20 rounded-2xl p-4 text-left shadow-2xl">
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-                        <span className="font-semibold text-xs sm:text-sm text-white">Chai Point, Indiranagar</span>
-                      </div>
-                      <span className="font-mono text-xs sm:text-sm font-bold text-[#c0c6de]">₹150.00</span>
-                    </div>
-
-                    <div className="w-full h-px bg-white/10 my-2.5" />
-
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-[#909097] font-mono">Settling on Base</span>
-                      <span className="text-white font-mono font-bold">≈ 1.71 USDC</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Instant Action Button */}
-                <div className="mt-5">
+                  {/* Reticle Test Action */}
                   <button
                     onClick={login}
-                    className="w-full py-4 rounded-xl font-bold tracking-wider text-xs font-mono uppercase bg-white/[0.06] hover:bg-white/[0.12] border border-white/20 text-white flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                    className="w-full py-3 rounded-xl font-bold tracking-wider text-xs font-mono uppercase bg-white/[0.04] hover:bg-white/[0.08] border border-white/15 text-white flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
                   >
                     <QrCode className="w-4 h-4 text-[#c0c6de]" strokeWidth={1.5} />
                     Test Live Scanner Reticle
                   </button>
                 </div>
-              </SpotlightCard>
+              </div>
             </div>
           </div>
         </section>
 
-        {/* ─── 3. Social Proof Strip (Horizontal Protocol Wall) ─── */}
+        {/* ─── 03. Protocol Trust & Security Strip ─── */}
         <ScrollReveal>
-          <div className="w-full py-8 px-6 rounded-2xl bg-white/[0.02] border border-white/[0.08] flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="w-full py-8 px-6 sm:px-8 rounded-3xl bg-white/[0.02] border border-white/[0.08] flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
             <span className="text-xs font-mono uppercase tracking-widest text-[#909097] text-center md:text-left shrink-0">
               Secured by &amp; built upon
             </span>
-            <div className="flex flex-wrap items-center justify-center md:justify-end gap-6 sm:gap-10 text-[#c6c6cd]/70 text-xs sm:text-sm font-mono">
+            <div className="flex flex-wrap items-center justify-center md:justify-end gap-6 sm:gap-10 text-[#c6c6cd]/75 text-xs sm:text-sm font-mono">
               <span className="flex items-center gap-2 hover:text-white transition-colors">
                 <span className="w-2 h-2 rounded-full bg-[#0052FF]" />
                 Base
@@ -281,7 +257,7 @@ export default function LandingPage({ login }: LandingPageProps) {
           </div>
         </ScrollReveal>
 
-        {/* ─── 4. How It Works (Vertical Step Progression) ─── */}
+        {/* ─── 04. Interest: 2-Step Precision Timeline ─── */}
         <ScrollReveal>
           <div className="flex flex-col gap-10 max-w-4xl mx-auto w-full">
             <div className="flex flex-col gap-2">
@@ -294,7 +270,7 @@ export default function LandingPage({ login }: LandingPageProps) {
             </div>
 
             <div className="divide-y divide-white/10 border-y border-white/10">
-              {/* Step 1 */}
+              {/* Step 01 */}
               <div className="py-8 grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
                 <div className="md:col-span-4 flex items-center gap-4">
                   <span className="font-mono text-3xl font-extralight text-[#c0c6de]/60">01</span>
@@ -313,7 +289,7 @@ export default function LandingPage({ login }: LandingPageProps) {
                 </div>
               </div>
 
-              {/* Step 2 */}
+              {/* Step 02 */}
               <div className="py-8 grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
                 <div className="md:col-span-4 flex items-center gap-4">
                   <span className="font-mono text-3xl font-extralight text-[#c0c6de]/60">02</span>
@@ -335,7 +311,7 @@ export default function LandingPage({ login }: LandingPageProps) {
           </div>
         </ScrollReveal>
 
-        {/* ─── 5. Features (Asymmetric Bento Grid) ─── */}
+        {/* ─── 05. Interest: Gapless Bento Grid (Doppelrand Enclosures) ─── */}
         <ScrollReveal>
           <div className="flex flex-col gap-8 w-full">
             <div className="flex flex-col gap-2">
@@ -347,166 +323,180 @@ export default function LandingPage({ login }: LandingPageProps) {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+            {/* Gapless Grid with grid-flow-dense */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 grid-flow-dense">
               {/* Feature 1 (Wide: 7 cols) */}
               <div className="md:col-span-7">
-                <SpotlightCard className="p-8 rounded-3xl border-white/10 bg-white/[0.02] flex flex-col justify-between h-full min-h-[260px]">
-                  <div className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-[#c0c6de]">
-                    <QrCode className="w-6 h-6" strokeWidth={1.5} />
-                  </div>
-                  <div className="flex flex-col gap-2 mt-8">
-                    <h3 className="text-xl font-bold text-white">Universal UPI Scanner</h3>
-                    <p className="text-sm text-[#909097] leading-relaxed">
-                      Point and scan any QR code across India - Google Pay, PhonePe, Paytm, BHIM, Cred, and merchant soundboxes. Decodes UPI payloads with 100% standard compliance.
-                    </p>
-                  </div>
-                </SpotlightCard>
+                <div className="p-2 rounded-[2rem] bg-white/[0.03] border border-white/10 ring-1 ring-white/5 h-full">
+                  <SpotlightCard className="p-7 rounded-[calc(2rem-0.5rem)] border-white/10 bg-[#0e0e10] flex flex-col justify-between h-full min-h-[260px] shadow-[inset_0_1px_1px_rgba(255,255,255,0.12)]">
+                    <div className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-[#c0c6de]">
+                      <QrCode className="w-6 h-6" strokeWidth={1.5} />
+                    </div>
+                    <div className="flex flex-col gap-2 mt-8">
+                      <h3 className="text-xl font-bold text-white">Universal UPI Scanner</h3>
+                      <p className="text-sm text-[#909097] leading-relaxed">
+                        Point and scan any QR code across India - Google Pay, PhonePe, Paytm, BHIM, Cred, and merchant soundboxes. Decodes UPI payloads with 100% standard compliance.
+                      </p>
+                    </div>
+                  </SpotlightCard>
+                </div>
               </div>
 
               {/* Feature 2 (5 cols) */}
               <div className="md:col-span-5">
-                <SpotlightCard className="p-8 rounded-3xl border-white/10 bg-white/[0.02] flex flex-col justify-between h-full min-h-[260px]">
-                  <div className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-[#c0c6de]">
-                    <ShieldCheck className="w-6 h-6" strokeWidth={1.5} />
-                  </div>
-                  <div className="flex flex-col gap-2 mt-8">
-                    <h3 className="text-xl font-bold text-white">Zero KYC Under $100</h3>
-                    <p className="text-sm text-[#909097] leading-relaxed">
-                      Pay small daily merchant tabs instantly. No passport scans, no document uploads, no waiting for verification queues.
-                    </p>
-                  </div>
-                </SpotlightCard>
+                <div className="p-2 rounded-[2rem] bg-white/[0.03] border border-white/10 ring-1 ring-white/5 h-full">
+                  <SpotlightCard className="p-7 rounded-[calc(2rem-0.5rem)] border-white/10 bg-[#0e0e10] flex flex-col justify-between h-full min-h-[260px] shadow-[inset_0_1px_1px_rgba(255,255,255,0.12)]">
+                    <div className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-[#c0c6de]">
+                      <ShieldCheck className="w-6 h-6" strokeWidth={1.5} />
+                    </div>
+                    <div className="flex flex-col gap-2 mt-8">
+                      <h3 className="text-xl font-bold text-white">Zero KYC Under $100</h3>
+                      <p className="text-sm text-[#909097] leading-relaxed">
+                        Pay small daily merchant tabs instantly. No passport scans, no document uploads, no waiting for verification queues.
+                      </p>
+                    </div>
+                  </SpotlightCard>
+                </div>
               </div>
 
               {/* Feature 3 (5 cols) */}
               <div className="md:col-span-5">
-                <SpotlightCard className="p-8 rounded-3xl border-white/10 bg-white/[0.02] flex flex-col justify-between h-full min-h-[260px]">
-                  <div className="flex items-center justify-between">
-                    <div className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-[#c0c6de]">
-                      <TrendingUp className="w-6 h-6" strokeWidth={1.5} />
+                <div className="p-2 rounded-[2rem] bg-white/[0.03] border border-white/10 ring-1 ring-white/5 h-full">
+                  <SpotlightCard className="p-7 rounded-[calc(2rem-0.5rem)] border-white/10 bg-[#0e0e10] flex flex-col justify-between h-full min-h-[260px] shadow-[inset_0_1px_1px_rgba(255,255,255,0.12)]">
+                    <div className="flex items-center justify-between">
+                      <div className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-[#c0c6de]">
+                        <TrendingUp className="w-6 h-6" strokeWidth={1.5} />
+                      </div>
+                      <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                        5.51% APY
+                      </span>
                     </div>
-                    <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                      5.51% APY
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-2 mt-8">
-                    <h3 className="text-xl font-bold text-white">Morpho Vault Yield</h3>
-                    <p className="text-sm text-[#909097] leading-relaxed">
-                      Idle USDC in your account continuously compounds via Steakhouse Prime Morpho vaults on Base. Earn passive return until you tap to pay.
-                    </p>
-                  </div>
-                </SpotlightCard>
+                    <div className="flex flex-col gap-2 mt-8">
+                      <h3 className="text-xl font-bold text-white">Morpho Vault Yield</h3>
+                      <p className="text-sm text-[#909097] leading-relaxed">
+                        Idle USDC in your account continuously compounds via Steakhouse Prime Morpho vaults on Base. Earn passive return until you tap to pay.
+                      </p>
+                    </div>
+                  </SpotlightCard>
+                </div>
               </div>
 
               {/* Feature 4 (Wide: 7 cols) */}
               <div className="md:col-span-7">
-                <SpotlightCard className="p-8 rounded-3xl border-white/10 bg-white/[0.02] flex flex-col justify-between h-full min-h-[260px]">
-                  <div className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-[#c0c6de]">
-                    <ArrowRightLeft className="w-6 h-6" strokeWidth={1.5} />
-                  </div>
-                  <div className="flex flex-col gap-2 mt-8">
-                    <h3 className="text-xl font-bold text-white">Instant P2P Cashout</h3>
-                    <p className="text-sm text-[#909097] leading-relaxed">
-                      Need cash in your own bank account? Off-ramp USDC directly to your personal UPI VPA with zero platform lock-in. Settlements process in under 60 seconds.
-                    </p>
-                  </div>
-                </SpotlightCard>
+                <div className="p-2 rounded-[2rem] bg-white/[0.03] border border-white/10 ring-1 ring-white/5 h-full">
+                  <SpotlightCard className="p-7 rounded-[calc(2rem-0.5rem)] border-white/10 bg-[#0e0e10] flex flex-col justify-between h-full min-h-[260px] shadow-[inset_0_1px_1px_rgba(255,255,255,0.12)]">
+                    <div className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-[#c0c6de]">
+                      <ArrowRightLeft className="w-6 h-6" strokeWidth={1.5} />
+                    </div>
+                    <div className="flex flex-col gap-2 mt-8">
+                      <h3 className="text-xl font-bold text-white">Instant P2P Cashout</h3>
+                      <p className="text-sm text-[#909097] leading-relaxed">
+                        Need cash in your own bank account? Off-ramp USDC directly to your personal UPI VPA with zero platform lock-in. Settlements process in under 60 seconds.
+                      </p>
+                    </div>
+                  </SpotlightCard>
+                </div>
               </div>
             </div>
           </div>
         </ScrollReveal>
 
-        {/* ─── 6. Live Interactive Calculator ─── */}
+        {/* ─── 06. Desire: Live Oracle Rate Calculator (Doppelrand) ─── */}
         <ScrollReveal>
           <div className="max-w-4xl mx-auto w-full">
-            <SpotlightCard className="p-6 sm:p-10 rounded-3xl border-white/15 bg-white/[0.02] shadow-[0_20px_50px_rgba(0,0,0,0.7)] flex flex-col gap-8">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/10 pb-6">
-                <div>
-                  <h2 className="text-2xl sm:text-3xl font-bold text-white">Live Rate Calculator</h2>
-                  <p className="text-xs sm:text-sm text-[#909097] mt-1">
-                    Direct oracle exchange rate with 1% fixed protocol fee
-                  </p>
-                </div>
-                <div className="px-3.5 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-xs font-mono text-[#c0c6de]">
-                  1 USDC = ₹87.50 INR
-                </div>
-              </div>
-
-              {/* Preset Chips & Input */}
-              <div className="flex flex-col gap-4">
-                <label className="text-xs font-mono uppercase tracking-wider text-[#909097]">
-                  Select or enter INR amount
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                  {PRESET_AMOUNTS.map((item) => (
-                    <button
-                      key={item.inr}
-                      onClick={() => {
-                        setSelectedInr(item.inr);
-                        setCustomInr("");
-                      }}
-                      className={`py-3 px-4 rounded-xl flex flex-col items-center justify-center transition-all border ${
-                        !customInr && selectedInr === item.inr
-                          ? "bg-white/[0.12] border-[#c0c6de] text-white shadow-sm scale-[1.02]"
-                          : "bg-white/[0.02] border-white/10 text-[#909097] hover:border-white/20"
-                      }`}
-                    >
-                      <span className="font-mono text-sm font-bold">{item.label}</span>
-                      <span className="font-mono text-[11px] text-[#c0c6de] mt-0.5">
-                        ${(item.inr / usdcRate).toFixed(2)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-
-                {/* Custom Amount Input */}
-                <div className="relative mt-2">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 font-mono text-sm text-[#909097]">
-                    ₹
-                  </span>
-                  <input
-                    type="number"
-                    placeholder="Or enter custom INR amount..."
-                    value={customInr}
-                    onChange={(e) => setCustomInr(e.target.value)}
-                    className="w-full pl-8 pr-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/10 text-sm font-mono text-white placeholder:text-[#909097]/60 focus:outline-none focus:border-[#c0c6de] transition-colors"
-                  />
-                </div>
-              </div>
-
-              {/* Transparent Breakdown Strip */}
-              <div className="p-5 sm:p-6 rounded-2xl bg-white/[0.03] border border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-6 font-mono">
-                <div className="flex flex-col gap-1">
-                  <span className="text-[#909097] text-xs">Merchant receives</span>
-                  <span className="text-white font-bold text-lg sm:text-xl">₹{activeInr.toLocaleString()}</span>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <span className="text-[#909097] text-xs">Protocol fee (1%)</span>
-                  <span className="text-[#c0c6de] font-bold text-lg sm:text-xl">${feeEquivalent.toFixed(2)} USDC</span>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <span className="text-[#909097] text-xs">Total USDC debit</span>
-                  <div className="text-white font-bold text-lg sm:text-xl flex items-center gap-1.5">
-                    <CountUp to={totalDebit} decimals={2} />
-                    <span className="text-xs text-[#909097] font-normal">USDC</span>
+            <div className="p-2 sm:p-2.5 rounded-[2.5rem] bg-white/[0.03] border border-white/10 ring-1 ring-white/5 shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
+              <SpotlightCard className="p-6 sm:p-10 rounded-[calc(2.5rem-0.625rem)] border-white/15 bg-[#0e0e10] shadow-[inset_0_1px_1px_rgba(255,255,255,0.15)] flex flex-col gap-8">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/10 pb-6">
+                  <div>
+                    <h2 className="text-2xl sm:text-3xl font-bold text-white">Live Rate Calculator</h2>
+                    <p className="text-xs sm:text-sm text-[#909097] mt-1">
+                      Direct oracle exchange rate with 1% fixed protocol fee
+                    </p>
+                  </div>
+                  <div className="px-3.5 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-xs font-mono text-[#c0c6de]">
+                    1 USDC = ₹87.50 INR
                   </div>
                 </div>
-              </div>
 
-              {/* Execution CTA */}
-              <ShimmerButton
-                onClick={login}
-                className="w-full py-4 rounded-xl text-xs font-bold tracking-wider"
-              >
-                PAY ₹{activeInr.toLocaleString()} VIA ZKPAY
-              </ShimmerButton>
-            </SpotlightCard>
+                {/* Preset Chips & Input */}
+                <div className="flex flex-col gap-4">
+                  <label className="text-xs font-mono uppercase tracking-wider text-[#909097]">
+                    Select or enter INR amount
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    {PRESET_AMOUNTS.map((item) => (
+                      <button
+                        key={item.inr}
+                        onClick={() => {
+                          setSelectedInr(item.inr);
+                          setCustomInr("");
+                        }}
+                        className={`py-3 px-4 rounded-xl flex flex-col items-center justify-center transition-all border ${
+                          !customInr && selectedInr === item.inr
+                            ? "bg-white/[0.12] border-[#c0c6de] text-white shadow-sm scale-[1.02]"
+                            : "bg-white/[0.02] border-white/10 text-[#909097] hover:border-white/20"
+                        }`}
+                      >
+                        <span className="font-mono text-sm font-bold">{item.label}</span>
+                        <span className="font-mono text-[11px] text-[#c0c6de] mt-0.5">
+                          ${(item.inr / usdcRate).toFixed(2)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Custom Amount Input */}
+                  <div className="relative mt-2">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-mono text-sm text-[#909097]">
+                      ₹
+                    </span>
+                    <input
+                      type="number"
+                      placeholder="Or enter custom INR amount..."
+                      value={customInr}
+                      onChange={(e) => setCustomInr(e.target.value)}
+                      className="w-full pl-8 pr-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/10 text-sm font-mono text-white placeholder:text-[#909097]/60 focus:outline-none focus:border-[#c0c6de] transition-colors"
+                    />
+                  </div>
+                </div>
+
+                {/* Transparent Breakdown Strip */}
+                <div className="p-5 sm:p-6 rounded-2xl bg-white/[0.03] border border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-6 font-mono">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[#909097] text-xs">Merchant receives</span>
+                    <span className="text-white font-bold text-lg sm:text-xl">₹{activeInr.toLocaleString()}</span>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[#909097] text-xs">Protocol fee (1%)</span>
+                    <span className="text-[#c0c6de] font-bold text-lg sm:text-xl">${feeEquivalent.toFixed(2)} USDC</span>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[#909097] text-xs">Total USDC debit</span>
+                    <div className="text-white font-bold text-lg sm:text-xl flex items-center gap-1.5">
+                      <CountUp to={totalDebit} decimals={2} />
+                      <span className="text-xs text-[#909097] font-normal">USDC</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Button-in-Button Execution CTA */}
+                <button
+                  onClick={login}
+                  className="rounded-full pl-7 pr-2.5 py-2.5 bg-[#e5e2e3] text-[#131315] font-bold text-xs uppercase tracking-wider hover:bg-white transition-all duration-300 shadow-[0_10px_30px_rgba(229,226,227,0.18)] active:scale-[0.98] group flex items-center justify-between sm:justify-start gap-4"
+                >
+                  <span>PAY ₹{activeInr.toLocaleString()} VIA ZKPAY</span>
+                  <div className="w-9 h-9 rounded-full bg-[#131315] text-white flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5">
+                    <ChevronRight className="w-4 h-4 text-[#c0c6de]" strokeWidth={1.5} />
+                  </div>
+                </button>
+              </SpotlightCard>
+            </div>
           </div>
         </ScrollReveal>
 
-        {/* ─── 7. Obsidian Card 3D Showcase (GPU Accelerated) ─── */}
+        {/* ─── 07. Desire: The Obsidian 3D Titanium Card Showcase ─── */}
         <ScrollReveal>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center max-w-5xl mx-auto w-full">
             {/* Left: 3D Interactive Card (6 cols) */}
@@ -593,7 +583,7 @@ export default function LandingPage({ login }: LandingPageProps) {
                     {waitlistJoined ? (
                       <span className="text-emerald-400 font-semibold">You are on the list! #{waitlistCount}</span>
                     ) : (
-                      <span>{waitlistCount.toLocaleString()} members in queue</span>
+                      <span>{waitlistCount.toLocaleString()}+ members in queue</span>
                     )}
                   </span>
                 </div>
@@ -601,7 +591,7 @@ export default function LandingPage({ login }: LandingPageProps) {
                 <button
                   onClick={handleJoinWaitlist}
                   disabled={waitlistJoined}
-                  className={`px-5 py-2.5 rounded-xl text-xs font-bold font-mono transition-all shrink-0 ${
+                  className={`px-5 py-2.5 rounded-full text-xs font-bold font-mono transition-all shrink-0 ${
                     waitlistJoined
                       ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
                       : "bg-white text-[#131315] hover:bg-[#e5e2e3] active:scale-95 shadow-sm"
@@ -614,7 +604,7 @@ export default function LandingPage({ login }: LandingPageProps) {
           </div>
         </ScrollReveal>
 
-        {/* ─── 8. Minimal 2-Column Footer ─── */}
+        {/* ─── 08. Action: Minimalist 2-Column Footer ─── */}
         <footer className="pt-12 border-t border-white/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-8 text-xs text-[#909097]">
           {/* Left Column: Brand & Description */}
           <div className="flex flex-col gap-2 max-w-sm">
@@ -654,16 +644,18 @@ export default function LandingPage({ login }: LandingPageProps) {
         </footer>
       </div>
 
-      {/* ─── Sticky Mobile Action Bar (Hidden on Desktop) ─── */}
+      {/* ─── Sticky Mobile Action Bar (Thumb-Accessible, Hidden on Desktop) ─── */}
       <div className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-[#131315]/95 backdrop-blur-[40px] border-t border-white/[0.08] p-3 pb-[calc(14px+env(safe-area-inset-bottom))] shadow-[0_-10px_30px_rgba(0,0,0,0.8)]">
         <div className="max-w-md mx-auto">
-          <ShimmerButton
+          <button
             onClick={login}
-            className="w-full py-3.5 rounded-xl text-xs font-bold tracking-wider"
+            className="w-full rounded-full pl-6 pr-2 py-2 bg-[#e5e2e3] text-[#131315] font-bold text-xs uppercase tracking-wider hover:bg-white active:scale-[0.98] transition-all flex items-center justify-between shadow-md"
           >
-            <QrCode className="w-4 h-4 mr-2" strokeWidth={1.5} />
-            LAUNCH APP &amp; SCAN QR
-          </ShimmerButton>
+            <span>LAUNCH APP &amp; SCAN QR</span>
+            <div className="w-8 h-8 rounded-full bg-[#131315] text-white flex items-center justify-center">
+              <QrCode className="w-4 h-4 text-[#c0c6de]" strokeWidth={1.5} />
+            </div>
+          </button>
         </div>
       </div>
     </div>

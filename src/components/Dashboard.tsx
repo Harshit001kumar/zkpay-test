@@ -10,6 +10,16 @@ import { base } from "viem/chains";
 import { erc20Abi } from "viem";
 import { CONTRACTS, CHAIN } from "@/lib/constants";
 import { truncateTo2Decimals } from "@/lib/format";
+import {
+  ScanLine,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Link2,
+  ExternalLink,
+  Terminal,
+  Download,
+  Shield,
+} from "lucide-react";
 
 import PayLinkModal from "@/components/PayLinkModal";
 import { CountUp } from "@/components/ui/CountUp";
@@ -55,8 +65,8 @@ export default function Dashboard() {
       {/* Hero Section */}
       <section className="mb-8">
         <div className="bg-[#1a1a1d]/80 backdrop-blur-md border border-white/15 rounded-xl p-8 md:p-12 relative overflow-hidden shadow-2xl transition-all hover:border-white/25 group">
-          <div className="absolute top-0 right-0 p-6 opacity-10 pointer-events-none">
-            <span className="material-symbols-outlined text-[160px] leading-none text-white font-light">security</span>
+          <div className="absolute top-4 right-4 md:top-6 md:right-8 opacity-10 pointer-events-none">
+            <Shield className="w-32 h-32 md:w-44 md:h-44 text-white stroke-[1]" />
           </div>
           <div className="relative z-10">
             <div className="flex items-center gap-3 mb-8">
@@ -85,19 +95,19 @@ export default function Dashboard() {
       <section className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-12">
         <div className="md:col-span-8 grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
           <button onClick={() => switchTab("pay")} className="bg-[#1a1a1d]/75 backdrop-blur-md shadow-lg p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-[#222226] transition-all border border-white/10 hover:border-white/20 text-[#e5e2e3]">
-            <span className="material-symbols-outlined text-2xl group-hover:scale-110 transition-transform">qr_code_scanner</span>
+            <ScanLine className="w-6 h-6 text-[#c0c6de] group-hover:scale-110 transition-transform" />
             <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">SCAN & PAY</span>
           </button>
           <button onClick={() => switchTab("cashout")} className="bg-[#1a1a1d]/75 backdrop-blur-md shadow-lg p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-[#222226] transition-all border border-white/10 hover:border-white/20 text-[#e5e2e3]">
-            <span className="material-symbols-outlined text-2xl group-hover:scale-110 transition-transform">north_east</span>
+            <ArrowUpRight className="w-6 h-6 text-[#c0c6de] group-hover:scale-110 transition-transform" />
             <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">CASH OUT</span>
           </button>
           <button onClick={() => switchTab("deposit")} className="bg-[#1a1a1d]/75 backdrop-blur-md shadow-lg p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-[#222226] transition-all border border-white/10 hover:border-white/20 text-[#e5e2e3]">
-            <span className="material-symbols-outlined text-2xl group-hover:scale-110 transition-transform">south_west</span>
+            <ArrowDownLeft className="w-6 h-6 text-[#c0c6de] group-hover:scale-110 transition-transform" />
             <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">DEPOSIT</span>
           </button>
           <button onClick={() => setIsPayLinkOpen(true)} className="bg-[#1a1a1d]/75 backdrop-blur-md shadow-lg p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-[#222226] transition-all border border-white/10 hover:border-white/20 text-[#e5e2e3]">
-            <span className="material-symbols-outlined text-2xl text-[#c0c6de] group-hover:scale-110 transition-transform">link</span>
+            <Link2 className="w-6 h-6 text-[#c0c6de] group-hover:scale-110 transition-transform" />
             <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">PAY LINK</span>
           </button>
         </div>
@@ -105,11 +115,11 @@ export default function Dashboard() {
           <div>
             <p className="font-label-caps text-[9px] text-[#c6c6cd] mb-1 tracking-[0.25em] font-bold">DEVELOPER API</p>
             <a href="/docs" target="_blank" className="font-headline-md text-base text-[#e5e2e3] hover:text-white font-semibold tracking-tight flex items-center gap-1.5 transition-colors">
-              Docs & Bots <span className="material-symbols-outlined text-sm text-[#c0c6de]">open_in_new</span>
+              Docs & Bots <ExternalLink className="w-3.5 h-3.5 text-[#c0c6de]" />
             </a>
           </div>
           <a href="/docs" target="_blank" className="w-12 h-12 rounded-xl border border-white/15 flex items-center justify-center bg-white/5 group-hover:bg-white/10 transition-colors">
-            <span className="material-symbols-outlined text-[#c0c6de] text-xl">terminal</span>
+            <Terminal className="w-5 h-5 text-[#c0c6de]" />
           </a>
         </div>
       </section>
@@ -132,7 +142,7 @@ export default function Dashboard() {
         </div>
         <div className="mt-8 flex justify-center">
           <button className="font-label-caps text-[9px] font-bold text-[#c6c6cd] hover:text-[#c0c6de] transition-all flex items-center gap-3 tracking-[0.3em]">
-             EXPORT AUDIT LOG <span className="material-symbols-outlined text-[14px]">download</span>
+             EXPORT AUDIT LOG <Download className="w-3.5 h-3.5" />
           </button>
         </div>
       </section>

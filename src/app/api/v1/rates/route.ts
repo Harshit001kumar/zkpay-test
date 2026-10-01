@@ -5,30 +5,7 @@ import { base } from "viem/chains";
 
 export const dynamic = "force-dynamic";
 
-const DIAMOND_ADDRESS = (process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0x4cad6eC90e65baBec9335cAd728DDC610c316368") as `0x${string}`;
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
-
-let _publicClient: any = null;
-function getPublicClient() {
-  if (!_publicClient) {
-    _publicClient = createPublicClient({
-      chain: base,
-      transport: http(RPC_URL),
-    });
-  }
-  return _publicClient;
-}
-
-let _pricesClient: any = null;
-function getPricesClient() {
-  if (!_pricesClient) {
-    _pricesClient = createPrices({
-      publicClient: getPublicClient(),
-      diamondAddress: DIAMOND_ADDRESS,
-    });
-  }
-  return _pricesClient;
-}
+import { getPricesClient } from "@/lib/server/p2pRates";
 
 const SUPPORTED_CURRENCIES = ["INR", "USD", "EUR", "GBP"];
 

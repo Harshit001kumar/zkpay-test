@@ -4,6 +4,7 @@ import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getTransactions, timeAgo, TransactionRecord } from "@/lib/history";
+import { ScanLine, Building2, Wallet, Receipt } from "lucide-react";
 
 export default function PaymentHistory() {
   const { ready, authenticated, address } = useActiveAccount();
@@ -67,12 +68,12 @@ export default function PaymentHistory() {
     );
   }
 
-  const getIcon = (type: string) => {
+  const renderIcon = (type: string) => {
     switch (type) {
-      case "payment": return "qr_code_scanner";
-      case "cashout": return "account_balance";
-      case "deposit": return "account_balance_wallet";
-      default: return "receipt_long";
+      case "payment": return <ScanLine className="w-5 h-5" />;
+      case "cashout": return <Building2 className="w-5 h-5" />;
+      case "deposit": return <Wallet className="w-5 h-5" />;
+      default: return <Receipt className="w-5 h-5" />;
     }
   };
 
@@ -105,7 +106,7 @@ export default function PaymentHistory() {
           <div className="col-span-7 md:col-span-6 flex items-center gap-4">
             <div className={`w-[2px] h-[40px] rounded-sm ${getStatusColor(tx.type, tx.status)}`}></div>
             <div className={`w-12 h-12 rounded-sm flex items-center justify-center border ${tx.type === "deposit" ? "bg-[#c0c6de]/10 border-[#c0c6de]/20 text-[#c0c6de]" : "bg-white/[0.05] border-white/10 text-[#e5e2e3]"}`}>
-              <span className="material-symbols-outlined">{getIcon(tx.type)}</span>
+              {renderIcon(tx.type)}
             </div>
             <div>
               <span className={`block font-medium tracking-tight text-lg mb-0.5 ${tx.type === "deposit" ? "text-[#c0c6de]" : "text-[#e5e2e3]"}`}>{tx.title}</span>

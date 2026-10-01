@@ -28,6 +28,8 @@ export async function POST(req: Request) {
       originAsset,
       toAsset,
       destinationAsset,
+      chain,
+      originChain,
       amount,
       recipient,
       refundTo,
@@ -41,6 +43,7 @@ export async function POST(req: Request) {
 
     const sourceAsset = fromAsset || originAsset;
     const targetAsset = toAsset || destinationAsset;
+    const resolvedChain = chain || originChain || undefined;
     const resolvedFeeRecipient = rawFeeRecipient || partnerAddress || partnerFeeRecipient;
     const resolvedFeeBps = typeof totalFeeBps === "number" ? totalFeeBps : (feeBps ? Number(feeBps) : undefined);
 
@@ -48,7 +51,8 @@ export async function POST(req: Request) {
       return corsJson(
         {
           success: false,
-          error: "Missing required fields: 'fromAsset', 'amount', and destination 'recipient'.",
+          error: "MISSING_REQUIRED_FIELDS",
+          message: "Missing required fields: 'fromAsset', 'amount', and destination 'recipient'.",
         },
         { status: 400, headers: rateLimit.headers }
       );
@@ -57,6 +61,8 @@ export async function POST(req: Request) {
     const order = await createSwapOrder({
       fromAsset: sourceAsset,
       toAsset: targetAsset,
+      chain: resolvedChain,
+      originChain: resolvedChain,
       amount: String(amount),
       recipient,
       refundTo,
@@ -73,10 +79,15 @@ export async function POST(req: Request) {
       { headers: rateLimit.headers }
     );
   } catch (err: any) {
-    console.error("[SwapCreate] Error:", err);
+    console.error("[SwapCreate] Error:", err.message || err);
+    const statusCode = err.statusCode || (err.code === "AMOUNT_BELOW_MINIMUM" || err.code === "INVALID_AMOUNT" || err.code === "INVALID_RECIPIENT" ? 400 : 503);
     return corsJson(
-      { success: false, error: err.message || "Failed to create swap order" },
-      { status: 400, headers: rateLimit.headers }
+      {
+        success: false,
+        error: err.code || "SOLVER_NETWORK_BUSY",
+        message: err.message || "Failed to create swap order",
+      },
+      { status: statusCode, headers: rateLimit.headers }
     );
   }
 }

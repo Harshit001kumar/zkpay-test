@@ -3,7 +3,7 @@
 import { useEffect, useCallback, useState, useRef } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { MerchantData } from "@/lib/types";
-import { Loader2, CameraOff } from "lucide-react";
+import { Loader2, CameraOff, ArrowLeft } from "lucide-react";
 
 interface ScannerProps {
   onScan: (data: MerchantData) => void;
@@ -251,7 +251,7 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
       {/* Top Navigation */}
       <header className="w-full flex justify-between items-center px-6 py-6 absolute top-0 z-50">
         <button onClick={onCancel} className="text-[#e5e2e3] hover:opacity-80 transition-opacity flex items-center gap-2 active:scale-95">
-          <span className="material-symbols-outlined">arrow_back</span>
+          <ArrowLeft className="w-5 h-5" />
           <span className="font-label-caps tracking-[0.15em] font-bold">BACK</span>
         </button>
       </header>

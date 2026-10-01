@@ -1,15 +1,33 @@
 import crypto from "crypto";
 
 export interface WebhookPayload {
-  event: "payin.detected" | "payin.settled" | "payin.failed" | "paylink.paid";
+  event:
+    | "payin.detected"
+    | "payin.settled"
+    | "payin.failed"
+    | "paylink.paid"
+    | "swap.deposit_detected"
+    | "swap.settled"
+    | "swap.failed"
+    | "swap.refunded";
   sessionId?: string;
   linkId?: string;
-  recipientUpi: string;
-  fiatAmount: number;
-  currency: string;
-  amountUsdc: string;
+  recipientUpi?: string;
+  fiatAmount?: number;
+  currency?: string;
+  amountUsdc?: string;
   txHash?: string;
   p2pOrderId?: string;
+  // Cross-chain swap event fields
+  swapId?: string;
+  depositAddress?: string;
+  originAsset?: string;
+  destinationAsset?: string;
+  depositedAmount?: string;
+  settledAmount?: string;
+  originTxHash?: string;
+  destinationTxHash?: string;
+  recipient?: string;
   timestamp: number;
 }
 

@@ -10,6 +10,7 @@ import { createPrices } from "@p2pdotme/sdk/prices";
 import { createPublicClient, http, parseAbi } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
+import { sweepPayInSession } from "@/lib/server/sweeper";
 
 export const dynamic = "force-dynamic";
 
@@ -27,26 +28,10 @@ const ERC20_ABI = parseAbi([
   "function transfer(address to, uint256 amount) returns (bool)",
 ]);
 
-let _publicClient: any = null;
-function getPublicClient() {
-  if (!_publicClient) {
-    _publicClient = createPublicClient({
-      chain: base,
-      transport: http(RPC_URL),
-    });
-  }
-  return _publicClient;
-}
+import { getLiveFiatRate, getResilientPublicClient } from "@/lib/server/p2pRates";
 
-let _pricesClient: any = null;
-function getPricesClient() {
-  if (!_pricesClient) {
-    _pricesClient = createPrices({
-      publicClient: getPublicClient(),
-      diamondAddress: DIAMOND_ADDRESS,
-    });
-  }
-  return _pricesClient;
+function getPublicClient() {
+  return getResilientPublicClient();
 }
 
 /**
@@ -102,16 +87,14 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Fetch live rate directly from P2P contract
-    const pricesClient = getPricesClient();
-    const priceResult = await pricesClient.getPriceConfig({ currency: "INR" });
-    if (priceResult.isErr() || !priceResult.value?.sellPrice) {
+    // 1. Fetch live rate directly with multi-RPC failover and TTL caching
+    const sellPrice = await getLiveFiatRate("INR");
+    if (!sellPrice || sellPrice <= 0) {
       return corsJson(
         { error: "Could not fetch live INR exchange rate from P2P Diamond contract." },
         { status: 503 }
       );
     }
-    const sellPrice = Number(priceResult.value.sellPrice) / 1e6;
 
     // 2. Calculate USDC required (principal + 1% fee + protocol small order fee if <= 10 USDC)
     const usdcPrincipal = amountINR / sellPrice;
@@ -238,6 +221,11 @@ export async function GET(req: Request) {
             status: "SETTLED",
             receivedUsdc: balanceUsdc.toFixed(2),
           });
+
+          // Trigger automatic gasless sweep to Treasury via EIP-3009 relay in background
+          sweepPayInSession(updated || session).catch((sweepErr) =>
+            console.warn(`[PayInSession] Automatic background sweep failed for ${session.id}:`, sweepErr)
+          );
 
           // Dispatch Webhook if registered
           if (session.webhookUrl) {

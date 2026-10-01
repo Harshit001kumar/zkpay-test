@@ -558,7 +558,7 @@ export async function parseP2PError(error: any) {
     if (errorCode === "ENCRYPTION_FAILED") {
       return {
         code: "ENCRYPTION_FAILED",
-        message: "Encryption failed — waiting for merchant to publish acceptance key.",
+        message: "Encryption failed: waiting for merchant to publish acceptance key.",
       };
     }
 

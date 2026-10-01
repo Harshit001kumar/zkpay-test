@@ -1,7 +1,8 @@
-import { createWalletClient, createPublicClient, http, parseEther, formatEther, parseAbi } from "viem";
+import { createWalletClient, http, fallback, parseEther, formatEther, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 import { CHAIN, CONTRACTS } from "@/lib/constants";
+import { getResilientPublicClient } from "@/lib/server/p2pRates";
 
 // ─────────────────────────────────────────────────────
 // Enterprise-Grade Backend Gas Relayer ("Gas Tank")
@@ -40,6 +41,7 @@ let hourlyGlobalDispatched: { timestamp: number; amount: bigint }[] = [];
 
 function getRelayerPrivateKey(): `0x${string}` {
   const raw =
+    process.env.SWEEPER_PRIVATE_KEY ||
     process.env.RELAYER_PRIVATE_KEY ||
     process.env.GAS_RELAYER_PRIVATE_KEY ||
     process.env.GAS_TANK_PRIVATE_KEY;
@@ -72,24 +74,29 @@ function getRelayerAccount() {
 let _walletClient: any = null;
 function getWalletClient() {
   if (!_walletClient) {
+    const transports = [
+      ...(process.env.NEXT_PUBLIC_RPC_URL ? [http(process.env.NEXT_PUBLIC_RPC_URL)] : []),
+      http(CHAIN.rpcUrl),
+      http("https://mainnet.base.org"),
+      http("https://base-rpc.publicnode.com"),
+      http("https://base.llamarpc.com"),
+    ];
+
     _walletClient = createWalletClient({
       account: getRelayerAccount(),
       chain: base,
-      transport: http(CHAIN.rpcUrl),
+      transport: fallback(transports, { rank: false }),
     });
   }
   return _walletClient;
 }
 
-let _publicClient: any = null;
+export function getRelayerWalletClient() {
+  return getWalletClient();
+}
+
 function getPublicClient() {
-  if (!_publicClient) {
-    _publicClient = createPublicClient({
-      chain: base,
-      transport: http(CHAIN.rpcUrl),
-    });
-  }
-  return _publicClient;
+  return getResilientPublicClient();
 }
 
 export function getRelayerAddress(): `0x${string}` {

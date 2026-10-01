@@ -121,36 +121,41 @@ const ENDPOINTS: Endpoint[] = [
   // ── Swap API ──
   {
     method: "GET",
-    path: "/api/v1/swap/tokens",
+    path: "/api/v1/swap/tokens?chain=sol",
     title: "Supported Swap Tokens",
     category: "swap",
     rateLimit: "60 req/min (IP) · 300 req/min (API Key)",
-    description: "Returns all supported input tokens across 8 blockchains (BTC, ETH, SOL, USDT, BNB, LTC, USDC variants). Filter by ?chain=base|sol|eth|btc|tron|arb|bsc.",
+    description: "Returns all supported input tokens across 8 blockchains. To avoid multi-chain collisions for tokens like USDC/USDT, filter by ?chain=base|sol|eth|btc|tron|arb|bsc.",
     response: {
       success: true,
       count: 10,
       tokens: [
+        { assetId: "nep141:sol.omft.near", symbol: "SOL", name: "Solana", blockchain: "sol", decimals: 9 },
+        { assetId: "nep141:sol-5ce3bf3a...omft.near", symbol: "USDC", name: "USD Coin (Solana)", blockchain: "sol", decimals: 6 },
         { assetId: "nep141:btc.omft.near", symbol: "BTC", name: "Bitcoin", blockchain: "btc", decimals: 8 },
         { assetId: "nep141:eth.omft.near", symbol: "ETH", name: "Ethereum", blockchain: "eth", decimals: 18 },
-        { assetId: "nep141:sol.omft.near", symbol: "SOL", name: "Solana", blockchain: "sol", decimals: 9 },
       ],
     },
   },
   {
     method: "GET",
-    path: "/api/v1/swap/quote?fromAsset=SOL&amount=1000000000",
+    path: "/api/v1/swap/quote?fromAsset=SOL&amount=1000000000&chain=sol",
     title: "Get Swap Quote (Dry Run)",
     category: "swap",
     rateLimit: "30 req/min (IP) · 120 req/min (API Key)",
-    description: "Preview real-time swap pricing with transparent 50/50 fee breakdown. Supports GET query params or POST body. Add feeRecipient to enable partner revenue split.",
+    description: "Preview real-time swap pricing with transparent 50/50 fee breakdown. IMPORTANT: 'amount' must be an integer string in ATOMIC UNITS (smallest denomination, e.g. 1000000000 for 1 SOL). Never pass human decimals like '1.0'. Minimum trade size is ~$1.00 USD. Pass 'chain' (e.g. sol, arb, base) to disambiguate multi-chain assets.",
     response: {
       success: true,
       quote: {
         quoteId: "q_1727382000000",
         originAsset: "nep141:sol.omft.near",
         destinationAsset: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+        amountIn: "1000000000",
+        amountInFormatted: "1.0",
+        amountOut: "142100000",
         amountOutFormatted: "142.10",
         minAmountOut: "140680000",
+        minAmountOutFormatted: "140.68",
         feeBreakdown: {
           nearIntentsProtocolFeeBps: 25,
           totalCustomFeeBps: 100,
@@ -158,6 +163,7 @@ const ENDPOINTS: Endpoint[] = [
           totalDeductionsBps: 125,
         },
         timeEstimateSeconds: 45,
+        expiresAt: "2026-10-01T15:00:00.000Z",
       },
     },
   },
@@ -167,9 +173,10 @@ const ENDPOINTS: Endpoint[] = [
     title: "Create Swap Order",
     category: "swap",
     rateLimit: "10 req/min (IP) · 60 req/min (API Key)",
-    description: "Commits a cross-chain swap and generates a single-use deposit address. Fees are split 50/50 between ZkPay Treasury and your feeRecipient, settled atomically on-chain.",
+    description: "Commits a cross-chain swap and generates a single-use deposit address. Fees are split 50/50 between ZkPay Treasury and your feeRecipient, settled atomically on-chain. Provide amount in raw atomic units (e.g. 1000000000 for 1 SOL, 1000000 for 1 USDC). Specify 'chain' for multi-chain tokens.",
     body: {
       fromAsset: "SOL",
+      chain: "sol",
       amount: "1000000000",
       recipient: "0xUserBaseAddress",
       feeRecipient: "0xPartnerPayoutAddress",
@@ -184,7 +191,7 @@ const ENDPOINTS: Endpoint[] = [
           address: "6vN24xV8...SolanaDepositAddress",
           memo: null,
           amount: "1.0",
-          deadline: "2026-09-27T00:15:00.000Z",
+          deadline: "2026-10-01T15:15:00.000Z",
         },
         settlement: {
           recipient: "0xUserBaseAddress",
@@ -209,7 +216,7 @@ const ENDPOINTS: Endpoint[] = [
     title: "Track Swap Status",
     category: "swap",
     rateLimit: "60 req/min (IP) · 240 req/min (API Key)",
-    description: "Polls real-time swap execution across source and destination chains. Returns mapped status: pending → processing → settled / failed / refunded.",
+    description: "Polls real-time swap execution across source and destination chains. Returns mapped status: pending → processing → settled / failed / refunded. For automated webhooks instead of polling, configure your webhookUrl.",
     response: {
       success: true,
       depositAddress: "6vN24xV8...SolanaDepositAddress",
@@ -219,7 +226,7 @@ const ENDPOINTS: Endpoint[] = [
       settledAmount: "142.12 USDC",
       destinationTxHash: "0x89c1...baseTxHash",
       destinationExplorerUrl: "https://basescan.org/tx/0x89c1...",
-      updatedAt: "2026-09-27T00:02:15.000Z",
+      updatedAt: "2026-10-01T15:02:15.000Z",
     },
   },
 ];
@@ -487,7 +494,7 @@ bot.command('pay', async (ctx) => {
                   </tr>
                   <tr className="bg-white/5">
                     <td className="py-3 pr-4 font-medium">Net User Receives</td>
-                    <td className="py-3 pr-4 font-mono">—</td>
+                    <td className="py-3 pr-4 font-mono">N/A</td>
                     <td className="py-3 pr-4">98.75%</td>
                     <td className="py-3 pr-4 font-mono font-medium">$987.50</td>
                     <td className="py-3">User Recipient Wallet</td>
@@ -514,6 +521,74 @@ bot.command('pay', async (ctx) => {
               </div>
             </div>
           </div>
+
+          {/* Atomic Units & Multi-Chain Disambiguation Guide */}
+          <div className="mt-6 bg-amber-950/20 border border-amber-500/20 rounded-xl p-5 md:p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-amber-400 text-lg">info</span>
+              <h3 className="text-sm font-bold text-amber-300 font-label-caps tracking-[0.15em]">
+                CRITICAL INTEGRATION RULES: ATOMIC UNITS & MULTI-CHAIN TOKENS
+              </h3>
+            </div>
+            <p className="text-xs text-[#c6c6cd] leading-relaxed">
+              <strong className="text-white">1. Atomic Units Required:</strong> All swap endpoints (<code className="text-amber-300 font-mono">/swap/quote</code> and <code className="text-amber-300 font-mono">/swap/create</code>) require <code className="text-amber-300 font-mono">amount</code> in raw base/atomic integer units. Never pass human decimals (e.g. <code className="text-red-400">"1.5"</code> or <code className="text-red-400">"0.5"</code>). If an amount is below the solver volume threshold (~$1.00 USD), the API returns <code className="text-amber-300 font-mono">AMOUNT_BELOW_MINIMUM</code> (HTTP 400).
+            </p>
+            <p className="text-xs text-[#c6c6cd] leading-relaxed">
+              <strong className="text-white">2. Multi-Chain Disambiguation:</strong> Tokens like <code className="text-[#c0c6de] font-mono">USDC</code> and <code className="text-[#c0c6de] font-mono">USDT</code> exist across 8+ blockchains. Pass the optional <code className="text-[#c0c6de] font-mono">chain</code> parameter (e.g. <code className="text-white font-mono">chain: "sol"</code>, <code className="text-white font-mono">chain: "arb"</code>, <code className="text-white font-mono">chain: "base"</code>) or specify the full <code className="text-[#c0c6de] font-mono">assetId</code> to prevent chain mismatch.
+            </p>
+
+            {/* Quick Reference Table */}
+            <div className="overflow-x-auto pt-2">
+              <table className="w-full text-left font-mono text-[11px] text-[#c6c6cd] border-collapse">
+                <thead>
+                  <tr className="border-b border-white/10 text-[#909097] text-[10px] uppercase tracking-wider">
+                    <th className="py-2 pr-4 font-bold">Asset</th>
+                    <th className="py-2 pr-4 font-bold">Chain</th>
+                    <th className="py-2 pr-4 font-bold">Decimals</th>
+                    <th className="py-2 pr-4 font-bold">1 Token (Atomic Units)</th>
+                    <th className="py-2 font-bold">Min Solver Trade (~$1.00 USD)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  <tr>
+                    <td className="py-2 pr-4 text-white font-bold">SOL</td>
+                    <td className="py-2 pr-4 text-[#c0c6de]">sol</td>
+                    <td className="py-2 pr-4">9</td>
+                    <td className="py-2 pr-4 text-amber-300">1000000000</td>
+                    <td className="py-2">5000000 (~0.005 SOL)</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 pr-4 text-white font-bold">USDC</td>
+                    <td className="py-2 pr-4 text-[#c0c6de]">sol / base / arb</td>
+                    <td className="py-2 pr-4">6</td>
+                    <td className="py-2 pr-4 text-amber-300">1000000</td>
+                    <td className="py-2">1000000 ($1.00 USDC)</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 pr-4 text-white font-bold">USDT</td>
+                    <td className="py-2 pr-4 text-[#c0c6de]">tron / sol / bsc</td>
+                    <td className="py-2 pr-4">6</td>
+                    <td className="py-2 pr-4 text-amber-300">1000000</td>
+                    <td className="py-2">1000000 ($1.00 USDT)</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 pr-4 text-white font-bold">BTC</td>
+                    <td className="py-2 pr-4 text-[#c0c6de]">btc</td>
+                    <td className="py-2 pr-4">8</td>
+                    <td className="py-2 pr-4 text-amber-300">100000000</td>
+                    <td className="py-2">1500 (~0.000015 BTC)</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 pr-4 text-white font-bold">ETH</td>
+                    <td className="py-2 pr-4 text-[#c0c6de]">eth / base</td>
+                    <td className="py-2 pr-4">18</td>
+                    <td className="py-2 pr-4 text-amber-300">1000000000000000000</td>
+                    <td className="py-2">400000000000000 (~0.0004 ETH)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </section>
 
         {/* 2-Column API Explorer */}
@@ -536,7 +611,7 @@ bot.command('pay', async (ctx) => {
                       : "bg-white/5 text-[#c6c6cd] border-white/10 hover:bg-white/[0.08]"
                   }`}
                 >
-                  {cat === "swap" ? "⚡ SWAP API" : "💳 PAYMENTS"}
+                  {cat === "swap" ? "SWAP API" : "PAYMENTS"}
                 </button>
               ))}
             </div>
@@ -712,21 +787,87 @@ bot.command('pay', async (ctx) => {
               </div>
             </div>
 
-            {/* Webhook HMAC Security Section */}
-            <div className="bg-white/5 backdrop-blur-[40px] border border-white/15 rounded-xl p-6 md:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
-              <div className="flex items-center gap-2 text-[#e5e2e3] font-semibold text-base mb-2">
-                <span className="material-symbols-outlined text-[#c0c6de]">security</span>
-                <span className="font-label-caps text-[10px] text-[#c0c6de] tracking-[0.25em] font-bold">
-                  WEBHOOK SECURITY & HMAC VERIFICATION
-                </span>
+            {/* Webhook HMAC Security & Event Schema Section */}
+            <div className="bg-white/5 backdrop-blur-[40px] border border-white/15 rounded-xl p-6 md:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.8)] space-y-6">
+              <div>
+                <div className="flex items-center gap-2 text-[#e5e2e3] font-semibold text-base mb-2">
+                  <span className="material-symbols-outlined text-[#c0c6de]">security</span>
+                  <span className="font-label-caps text-[10px] text-[#c0c6de] tracking-[0.25em] font-bold">
+                    WEBHOOK SECURITY & HMAC SHA-256 VERIFICATION
+                  </span>
+                </div>
+                <p className="text-xs text-[#c6c6cd] leading-relaxed mb-3 font-body-md">
+                  Every webhook event dispatched to your <code className="text-[#c0c6de] font-mono">webhookUrl</code> includes an <code className="text-[#c0c6de] font-mono">X-ZkPay-Signature</code> header formatted as <code className="text-[#c0c6de] font-mono">t=timestamp,v1=signature</code>. Always verify this signature against your webhook secret before fulfilling orders.
+                </p>
+                <div className="rounded-xl bg-[#0e0e0f] border border-white/10 p-4 font-mono text-xs text-[#c6c6cd] overflow-x-auto">
+                  <pre>{`// Verify X-ZkPay-Signature header in Node.js
+const header = req.headers['x-zkpay-signature']; // "t=1727382000000,v1=abc123..."
+const [tPart, vPart] = header.split(',');
+const timestamp = tPart.split('=')[1];
+const signature = vPart.split('=')[1];
+
+const expected = crypto
+  .createHmac('sha256', process.env.WEBHOOK_SECRET)
+  .update(\`\${timestamp}.\${rawBody}\`)
+  .digest('hex');
+
+const isValid = crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));`}</pre>
+                </div>
               </div>
-              <p className="text-xs text-[#c6c6cd] leading-relaxed mb-4 font-body-md">
-                Every webhook event includes an <code className="text-[#c0c6de] font-mono">X-ZkPay-Signature</code> header formatted as <code className="text-[#c0c6de] font-mono">t=timestamp,v1=signature</code>. Verify the HMAC SHA-256 hash using your secret key to prevent replay and spoofing attacks.
-              </p>
-              <div className="rounded-xl bg-[#0e0e0f] border border-white/10 p-4 font-mono text-xs text-[#c6c6cd]">
-                <code>
-                  {"const hmac = crypto.createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');"}
-                </code>
+
+              {/* Webhook Events Reference Table */}
+              <div>
+                <span className="font-label-caps text-[9px] text-[#c0c6de] tracking-[0.25em] font-bold block mb-2">
+                  SUPPORTED WEBHOOK EVENT TYPES
+                </span>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left font-mono text-[11px] text-[#c6c6cd] border-collapse">
+                    <thead>
+                      <tr className="border-b border-white/10 text-[#909097] text-[10px] uppercase tracking-wider">
+                        <th className="py-2 pr-4 font-bold">Event Name</th>
+                        <th className="py-2 pr-4 font-bold">Category</th>
+                        <th className="py-2 font-bold">Description</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      <tr>
+                        <td className="py-2 pr-4 text-emerald-400 font-bold">payin.detected</td>
+                        <td className="py-2 pr-4 text-[#909097]">Fiat Payin</td>
+                        <td className="py-2">Incoming USDC transfer detected on Base deposit address.</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 pr-4 text-emerald-400 font-bold">payin.settled</td>
+                        <td className="py-2 pr-4 text-[#909097]">Fiat Payin</td>
+                        <td className="py-2">P2P order matched and fiat successfully disbursed to merchant UPI.</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 pr-4 text-red-400 font-bold">payin.failed</td>
+                        <td className="py-2 pr-4 text-[#909097]">Fiat Payin</td>
+                        <td className="py-2">Deposit session expired or banking transaction failed.</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 pr-4 text-cyan-400 font-bold">swap.deposit_detected</td>
+                        <td className="py-2 pr-4 text-[#909097]">Cross-Chain Swap</td>
+                        <td className="py-2">Solver network observed deposit transaction on origin chain.</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 pr-4 text-cyan-400 font-bold">swap.settled</td>
+                        <td className="py-2 pr-4 text-[#909097]">Cross-Chain Swap</td>
+                        <td className="py-2">Swap fulfilled and destination tokens delivered to recipient.</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 pr-4 text-red-400 font-bold">swap.failed</td>
+                        <td className="py-2 pr-4 text-[#909097]">Cross-Chain Swap</td>
+                        <td className="py-2">Swap order could not be filled by solver network.</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 pr-4 text-amber-400 font-bold">swap.refunded</td>
+                        <td className="py-2 pr-4 text-[#909097]">Cross-Chain Swap</td>
+                        <td className="py-2">Incomplete deposit refunded to origin chain refund address.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>

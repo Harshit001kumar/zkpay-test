@@ -394,7 +394,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       let errMsg = e?.message || "Transaction failed";
       
       if (e?.code === "CIRCLE_SELECTION_FAILED") {
-        errMsg = "No merchants available right now — try again shortly";
+        errMsg = "No merchants available right now. Please try again shortly.";
       } else if (e?.cause || e?.code === "TX_REVERTED") {
         try {
           const parsed = await parseP2PError(e);

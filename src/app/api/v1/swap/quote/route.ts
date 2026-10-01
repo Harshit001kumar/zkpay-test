@@ -13,6 +13,8 @@ async function extractQuoteParams(req: Request): Promise<SwapQuoteParams> {
     return {
       fromAsset: body.fromAsset || body.originAsset,
       toAsset: body.toAsset || body.destinationAsset,
+      chain: body.chain || body.originChain || undefined,
+      originChain: body.originChain || body.chain || undefined,
       amount: String(body.amount || ""),
       feeRecipient: body.feeRecipient || body.partnerAddress || body.partnerFeeRecipient,
       totalFeeBps: typeof body.totalFeeBps === "number" ? body.totalFeeBps : (body.feeBps ? Number(body.feeBps) : undefined),
@@ -26,6 +28,8 @@ async function extractQuoteParams(req: Request): Promise<SwapQuoteParams> {
   return {
     fromAsset: searchParams.get("fromAsset") || searchParams.get("originAsset") || "",
     toAsset: searchParams.get("toAsset") || searchParams.get("destinationAsset") || undefined,
+    chain: searchParams.get("chain") || searchParams.get("originChain") || undefined,
+    originChain: searchParams.get("originChain") || searchParams.get("chain") || undefined,
     amount: searchParams.get("amount") || "",
     feeRecipient: searchParams.get("feeRecipient") || searchParams.get("partnerAddress") || searchParams.get("partnerFeeRecipient") || undefined,
     totalFeeBps: searchParams.get("totalFeeBps") ? Number(searchParams.get("totalFeeBps")) : (searchParams.get("feeBps") ? Number(searchParams.get("feeBps")) : undefined),
@@ -47,7 +51,8 @@ async function handleQuote(req: Request) {
       return corsJson(
         {
           success: false,
-          error: "Missing required fields: 'fromAsset' and 'amount' (in smallest units).",
+          error: "MISSING_REQUIRED_FIELDS",
+          message: "Missing required fields: 'fromAsset' and 'amount' (in atomic units).",
         },
         { status: 400, headers: rateLimit.headers }
       );
@@ -63,10 +68,15 @@ async function handleQuote(req: Request) {
       { headers: rateLimit.headers }
     );
   } catch (err: any) {
-    console.error("[SwapQuote] Error:", err);
+    console.error("[SwapQuote] Error:", err.message || err);
+    const statusCode = err.statusCode || (err.code === "AMOUNT_BELOW_MINIMUM" || err.code === "INVALID_AMOUNT" ? 400 : 503);
     return corsJson(
-      { success: false, error: err.message || "Failed to generate swap quote" },
-      { status: 400, headers: rateLimit.headers }
+      {
+        success: false,
+        error: err.code || "SOLVER_NETWORK_BUSY",
+        message: err.message || "Failed to generate swap quote",
+      },
+      { status: statusCode, headers: rateLimit.headers }
     );
   }
 }

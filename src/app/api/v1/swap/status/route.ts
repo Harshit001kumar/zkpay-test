@@ -42,10 +42,15 @@ export async function GET(req: Request) {
       { headers: rateLimit.headers }
     );
   } catch (err: any) {
-    console.error("[SwapStatus] Error:", err);
+    console.error("[SwapStatus] Error:", err.message || err);
+    const statusCode = err.statusCode || 503;
     return corsJson(
-      { success: false, error: err.message || "Failed to fetch swap status" },
-      { status: 400, headers: rateLimit.headers }
+      {
+        success: false,
+        error: err.code || "SOLVER_NETWORK_BUSY",
+        message: err.message || "Failed to fetch swap status",
+      },
+      { status: statusCode, headers: rateLimit.headers }
     );
   }
 }
