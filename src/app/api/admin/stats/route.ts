@@ -7,6 +7,7 @@ import { getRelayerAddress, getRelayerBalance } from "@/lib/server/relayer";
 import { listPayLinks, getActivePayInSessions } from "@/lib/server/payStore";
 import { createPublicClient, http, formatEther } from "viem";
 import { base } from "viem/chains";
+import { getLiveFiatRate } from "@/lib/server/p2pRates";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +21,6 @@ function getServerPublicClient() {
   }
   return _publicClient;
 }
-
-import { getLiveFiatRate } from "@/lib/server/p2pRates";
-import { getRelayerAddress, getRelayerBalance } from "@/lib/server/relayer";
 
 export async function GET(req: Request) {
   const auth = await verifyAdminRequest(req);

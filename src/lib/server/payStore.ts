@@ -1,9 +1,4 @@
-/**
- * ZkPay Pay Links & Pay-In Sessions — Server-side data store.
- * 
- * Uses a Map (in-process memory) for MVP. In production this can be
- * swapped for Redis / Postgres / KV without changing the API surface.
- */
+import crypto from "crypto";
 
 export interface PayLink {
   id: string;
@@ -27,13 +22,16 @@ export interface PayLink {
 
 export interface PayInSession {
   id: string;
+  clientSecret?: string; // Secret token for public checkout polling
   recipientUpi: string;
   amountINR: number;
   expectedUsdc: string;
   feeUsdc: string;
   rate: number;
   payinAddress: string;
-  payinPrivateKey: string; // Server-only, never exposed
+  encryptedPrivateKey?: string; // AES-256-GCM encrypted ephemeral key (raw key is NEVER stored)
+  payinPrivateKey?: string; // Backwards-compatible property (deprecated)
+  sweepLock?: boolean; // Concurrency lock for EIP-3009 relay
   status: "AWAITING_PAYMENT" | "DETECTED" | "PROCESSING" | "SETTLED" | "EXPIRED";
   webhookUrl?: string;
   createdAt: number;
@@ -46,13 +44,94 @@ export interface PayInSession {
   apiKeyId?: string;
 }
 
-// In-memory stores — MVP, replace with persistent DB in production
+// In-memory stores — MVP, with TTL and secure key isolation
 const payLinks = new Map<string, PayLink>();
 const payInSessions = new Map<string, PayInSession>();
 
+// Generates master 256-bit encryption key from environment secret
+function getMasterEncryptionKey(): Buffer {
+  const secret =
+    process.env.PAYIN_MASTER_SECRET ||
+    process.env.AUTH_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    "zkpay_ephemeral_vault_key_2026_base";
+  return crypto.createHash("sha256").update(secret).digest();
+}
+
+/**
+ * Encrypts private key using AES-256-GCM with unique 96-bit initialization vector.
+ */
+export function encryptKey(plainKey: string): string {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", getMasterEncryptionKey(), iv);
+  let encrypted = cipher.update(plainKey, "utf8", "hex");
+  encrypted += cipher.final("hex");
+  const tag = cipher.getAuthTag();
+  return `${iv.toString("hex")}:${tag.toString("hex")}:${encrypted}`;
+}
+
+/**
+ * Decrypts AES-256-GCM cipher payload on-the-fly for off-chain message signing.
+ */
+export function decryptKey(cipherPayload: string): string {
+  if (cipherPayload.startsWith("0x") && !cipherPayload.includes(":")) {
+    return cipherPayload;
+  }
+  const parts = cipherPayload.split(":");
+  if (parts.length !== 3) {
+    throw new Error("Invalid encrypted key format");
+  }
+  const [ivHex, tagHex, encryptedHex] = parts;
+  const decipher = crypto.createDecipheriv(
+    "aes-256-gcm",
+    getMasterEncryptionKey(),
+    Buffer.from(ivHex, "hex")
+  );
+  decipher.setAuthTag(Buffer.from(tagHex, "hex"));
+  let decrypted = decipher.update(encryptedHex, "hex", "utf8");
+  decrypted += decipher.final("utf8");
+  return decrypted;
+}
+
+/**
+ * Retrieves and temporarily decrypts payin private key for off-chain EIP-712 signing.
+ */
+export function getDecryptedPayinKey(session: PayInSession): `0x${string}` {
+  if (session.encryptedPrivateKey) {
+    let key = decryptKey(session.encryptedPrivateKey).trim();
+    if (!key.startsWith("0x")) key = `0x${key}`;
+    return key as `0x${string}`;
+  }
+  if (session.payinPrivateKey) {
+    let key = session.payinPrivateKey.trim();
+    if (!key.startsWith("0x")) key = `0x${key}`;
+    return key as `0x${string}`;
+  }
+  throw new Error(`No private key found for session ${session.id}`);
+}
+
+/**
+ * Atomically acquires a sweep mutex lock for this session.
+ */
+export function acquireSessionSweepLock(id: string): boolean {
+  const session = payInSessions.get(id);
+  if (!session || session.sweepLock) return false;
+  session.sweepLock = true;
+  return true;
+}
+
+/**
+ * Releases the sweep mutex lock for this session.
+ */
+export function releaseSessionSweepLock(id: string): void {
+  const session = payInSessions.get(id);
+  if (session) {
+    session.sweepLock = false;
+  }
+}
+
 // Generates a cryptographically-secure unique ID with prefix
 function generateId(prefix: string): string {
-  // crypto.randomUUID() is available in Node 19+ and all modern runtimes
   const uuid = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
   return `${prefix}_${uuid}`;
 }
@@ -99,10 +178,23 @@ export function listPayLinks(): PayLink[] {
 
 // ────────────────── Pay-In Sessions ──────────────────
 
-export function createPayInSession(data: Omit<PayInSession, "id" | "status" | "createdAt">): PayInSession {
+export function createPayInSession(
+  data: Omit<PayInSession, "id" | "status" | "createdAt"> & {
+    payinPrivateKey?: string;
+  }
+): PayInSession {
+  const clientSecret = data.clientSecret || crypto.randomUUID().replace(/-/g, "");
+  const rawKey = data.payinPrivateKey;
+  const encryptedPrivateKey = rawKey ? encryptKey(rawKey) : data.encryptedPrivateKey;
+
+  // Clone data and omit raw private key to ensure it is NEVER stored in plaintext memory
+  const { payinPrivateKey: _raw, ...safeData } = data;
+
   const session: PayInSession = {
-    ...data,
+    ...safeData,
     id: generateId("ses"),
+    clientSecret,
+    encryptedPrivateKey,
     status: "AWAITING_PAYMENT",
     createdAt: Date.now(),
   };

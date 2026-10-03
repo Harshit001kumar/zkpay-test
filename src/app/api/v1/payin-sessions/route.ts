@@ -4,23 +4,17 @@ import {
   getPayInSession,
   updatePayInSession,
 } from "@/lib/server/payStore";
-import { dispatchWebhook, isSafeWebhookUrl } from "@/lib/server/webhooks";
-import { requirePublicApiKey } from "@/lib/server/publicApiAuth";
-import { createPrices } from "@p2pdotme/sdk/prices";
-import { createPublicClient, http, parseAbi } from "viem";
+import { dispatchWebhook, isSafeWebhookUrlAsync } from "@/lib/server/webhooks";
+import { requirePublicApiKey, resolvePublicApiAuth } from "@/lib/server/publicApiAuth";
+import { parseAbi, parseUnits, formatUnits } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { base } from "viem/chains";
 import { sweepPayInSession } from "@/lib/server/sweeper";
+import { getLiveFiatRate, getResilientPublicClient } from "@/lib/server/p2pRates";
 
 export const dynamic = "force-dynamic";
 
-const DIAMOND_ADDRESS = (process.env.NEXT_PUBLIC_DIAMOND_ADDRESS ||
-  "0x4cad6eC90e65baBec9335cAd728DDC610c316368") as `0x${string}`;
 const USDC_ADDRESS = (process.env.NEXT_PUBLIC_USDC_ADDRESS ||
   "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913") as `0x${string}`;
-const TREASURY_ADDRESS = (process.env.NEXT_PUBLIC_TREASURY_ADDRESS ||
-  "0xb856b24fb054135deba5e0309edd31ed6a8afbe2") as `0x${string}`;
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
 const PLATFORM_FEE_BPS = 100; // 1%
 
 const ERC20_ABI = parseAbi([
@@ -28,10 +22,15 @@ const ERC20_ABI = parseAbi([
   "function transfer(address to, uint256 amount) returns (bool)",
 ]);
 
-import { getLiveFiatRate, getResilientPublicClient } from "@/lib/server/p2pRates";
-
 function getPublicClient() {
   return getResilientPublicClient();
+}
+
+function maskUpi(upi: string): string {
+  const [user, handle] = upi.split("@");
+  if (!handle) return "***";
+  const visible = user.length > 2 ? user.slice(0, 2) : user.slice(0, 1);
+  return `${visible}***@${handle}`;
 }
 
 /**
@@ -57,7 +56,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const recipientUpi = (body.recipientUpi || body.upi || "").trim();
     const amountINR = Number(body.amountINR || body.amount);
-    const webhookUrl = body.webhookUrl;
+    const webhookUrl = body.webhookUrl ? String(body.webhookUrl).trim() : undefined;
 
     if (!recipientUpi || !recipientUpi.includes("@")) {
       return corsJson(
@@ -80,11 +79,14 @@ export async function POST(req: Request) {
       );
     }
 
-    if (webhookUrl && !isSafeWebhookUrl(String(webhookUrl))) {
-      return corsJson(
-        { error: "webhookUrl must be a valid public HTTPS URL." },
-        { status: 400 }
-      );
+    if (webhookUrl) {
+      const safe = await isSafeWebhookUrlAsync(webhookUrl);
+      if (!safe) {
+        return corsJson(
+          { error: "webhookUrl must be a valid, publicly resolvable HTTPS URL (SSRF protected)." },
+          { status: 400 }
+        );
+      }
     }
 
     // 1. Fetch live rate directly with multi-RPC failover and TTL caching
@@ -113,7 +115,7 @@ export async function POST(req: Request) {
     const validityMs = 30 * 60 * 1000; // 30 minutes
     const expiresAt = now + validityMs;
 
-    // 5. Store session
+    // 5. Store session with encrypted private key and ephemeral clientSecret token
     const session = createPayInSession({
       recipientUpi,
       amountINR,
@@ -130,7 +132,6 @@ export async function POST(req: Request) {
     });
 
     // 6. Build Direct USDC Transfer QR code on Base (EIP-681)
-    // 6 decimals: e.g. 5.76 USDC = 5760000 units
     const usdcUnits = Math.round(totalUsdc * 1_000_000);
     const eip681Uri = `ethereum:${USDC_ADDRESS}@8453/transfer?address=${payinAddress}&uint256=${usdcUnits}`;
     const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
@@ -140,6 +141,8 @@ export async function POST(req: Request) {
     return corsJson({
       success: true,
       sessionId: session.id,
+      clientSecret: session.clientSecret,
+      statusUrl: `/api/v1/payin-sessions?id=${session.id}&token=${session.clientSecret}`,
       status: session.status,
       network: "Base Mainnet (Chain ID: 8453)",
       asset: "USDC",
@@ -168,7 +171,7 @@ export async function POST(req: Request) {
 }
 
 /**
- * GET /api/v1/payin-sessions?id=ses_abc123
+ * GET /api/v1/payin-sessions?id=ses_abc123&token=...
  *
  * Checks live status of a deposit session.
  * Actively checks the on-chain USDC balance of the deposit address.
@@ -177,6 +180,7 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
+    const token = searchParams.get("token");
 
     if (!id) {
       return corsJson({ error: "Missing ?id= query parameter." }, { status: 400 });
@@ -186,6 +190,18 @@ export async function GET(req: Request) {
     if (!session) {
       return corsJson({ error: "Pay-in session not found." }, { status: 404 });
     }
+
+    // Scoped access control: determine if caller has full merchant/creator access
+    const auth = await resolvePublicApiAuth(req);
+    const isAuthorizedMerchant = auth.ok && (
+      auth.isEnvKey ||
+      (session.apiKeyId && auth.apiKeyRecord?.id === session.apiKeyId) ||
+      (session.creatorUserId && auth.userId === session.creatorUserId) ||
+      (session.creatorWalletAddress && auth.walletAddress?.toLowerCase() === session.creatorWalletAddress.toLowerCase())
+    );
+    const hasValidClientToken = Boolean(token && session.clientSecret && token === session.clientSecret);
+    const isFullAccess = isAuthorizedMerchant || hasValidClientToken;
+    const displayUpi = isFullAccess ? session.recipientUpi : maskUpi(session.recipientUpi);
 
     const now = Date.now();
 
@@ -201,57 +217,80 @@ export async function GET(req: Request) {
     }
 
     // If still awaiting, actively poll on-chain balance on Base
-    if (session.status === "AWAITING_PAYMENT") {
+    if (session.status === "AWAITING_PAYMENT" || session.status === "PROCESSING") {
       const client = getPublicClient();
       try {
-        const balanceWei = await client.readContract({
+        const balanceWei = (await client.readContract({
           address: USDC_ADDRESS,
           abi: ERC20_ABI,
           functionName: "balanceOf",
           args: [session.payinAddress as `0x${string}`],
-        });
+        })) as bigint;
 
-        const balanceUsdc = Number(balanceWei) / 1e6;
-        const expectedUsdc = parseFloat(session.expectedUsdc);
+        const expectedUsdcWei = parseUnits(session.expectedUsdc, 6);
+        // Require at least 99.5% of expected amount (50 bps max slippage tolerance)
+        const minRequiredWei = (expectedUsdcWei * 995n) / 1000n;
 
-        // If funds have arrived (at least 98% of expected amount to tolerate tiny rounding)
-        if (balanceUsdc >= expectedUsdc * 0.98) {
-          // Update status to DETECTED / SETTLING
-          const updated = updatePayInSession(session.id, {
-            status: "SETTLED",
-            receivedUsdc: balanceUsdc.toFixed(2),
+        if (balanceWei >= minRequiredWei) {
+          const balanceUsdcStr = formatUnits(balanceWei, 6);
+
+          // Mark as PROCESSING while sweep executes
+          updatePayInSession(session.id, {
+            status: "PROCESSING",
+            receivedUsdc: balanceUsdcStr,
           });
 
-          // Trigger automatic gasless sweep to Treasury via EIP-3009 relay in background
-          sweepPayInSession(updated || session).catch((sweepErr) =>
-            console.warn(`[PayInSession] Automatic background sweep failed for ${session.id}:`, sweepErr)
-          );
+          // Await on-chain EIP-3009 gasless sweep to Treasury
+          const sweep = await sweepPayInSession(session);
+          if (sweep.success) {
+            updatePayInSession(session.id, {
+              status: "SETTLED",
+              receivedUsdc: balanceUsdcStr,
+              txHash: sweep.txHash,
+            });
 
-          // Dispatch Webhook if registered
-          if (session.webhookUrl) {
-            dispatchWebhook(session.webhookUrl, {
-              event: "payin.settled",
+            // Dispatch Webhook if registered
+            if (session.webhookUrl) {
+              dispatchWebhook(session.webhookUrl, {
+                event: "payin.settled",
+                sessionId: session.id,
+                recipientUpi: session.recipientUpi,
+                fiatAmount: session.amountINR,
+                currency: "INR",
+                amountUsdc: balanceUsdcStr,
+                txHash: sweep.txHash,
+                timestamp: Date.now(),
+              }).catch((err) => console.warn("[Webhook] Auto dispatch err:", err));
+            }
+
+            return corsJson({
+              success: true,
               sessionId: session.id,
-              recipientUpi: session.recipientUpi,
-              fiatAmount: session.amountINR,
-              currency: "INR",
-              amountUsdc: balanceUsdc.toFixed(2),
-              timestamp: Date.now(),
-            }).catch((err) => console.warn("[Webhook] Auto dispatch err:", err));
+              status: "SETTLED",
+              recipientUpi: displayUpi,
+              fiatAmount: `₹ ${session.amountINR.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
+              receivedUsdc: `${balanceUsdcStr} USDC`,
+              payinAddress: session.payinAddress,
+              network: "Base Mainnet",
+              txHash: sweep.txHash,
+              createdAt: session.createdAt,
+              message: `Payment of ${balanceUsdcStr} USDC confirmed and swept to treasury.`,
+            });
+          } else {
+            console.warn(`[PayInSession] Sweep in-flight or delayed for ${session.id}: ${sweep.error}`);
+            return corsJson({
+              success: true,
+              sessionId: session.id,
+              status: "PROCESSING",
+              recipientUpi: displayUpi,
+              fiatAmount: `₹ ${session.amountINR.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
+              receivedUsdc: `${balanceUsdcStr} USDC`,
+              payinAddress: session.payinAddress,
+              network: "Base Mainnet",
+              createdAt: session.createdAt,
+              message: "Payment detected on Base. Sweeper is relaying settlement...",
+            });
           }
-
-          return corsJson({
-            success: true,
-            sessionId: session.id,
-            status: "SETTLED",
-            recipientUpi: session.recipientUpi,
-            fiatAmount: `₹ ${session.amountINR.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
-            receivedUsdc: `${balanceUsdc.toFixed(2)} USDC`,
-            payinAddress: session.payinAddress,
-            network: "Base Mainnet",
-            createdAt: session.createdAt,
-            message: `Payment of ${balanceUsdc.toFixed(2)} USDC received! Order completed for ${session.recipientUpi}.`,
-          });
         }
       } catch (err: any) {
         console.warn(`[PayInSession] Balance check failed for ${session.payinAddress}:`, err.message);
@@ -262,13 +301,14 @@ export async function GET(req: Request) {
       success: true,
       sessionId: session.id,
       status: session.status,
-      recipientUpi: session.recipientUpi,
+      recipientUpi: displayUpi,
       fiatAmount: `₹ ${session.amountINR.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
       expectedAmountUsdc: `${session.expectedUsdc} USDC`,
       receivedUsdc: session.receivedUsdc,
       payinAddress: session.payinAddress,
       network: "Base Mainnet",
       rate: session.rate,
+      txHash: session.txHash,
       expiresAt: session.expiresAt,
       expiresInSeconds: Math.max(0, Math.floor((session.expiresAt - now) / 1000)),
       createdAt: session.createdAt,

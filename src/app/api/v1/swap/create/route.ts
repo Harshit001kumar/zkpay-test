@@ -14,11 +14,12 @@ export const dynamic = "force-dynamic";
  * Rate limits: 10 req/min for unauthenticated callers, 60 req/min with API Key.
  */
 export async function POST(req: Request) {
-  const directKey = req.headers.get("x-api-key") || req.headers.get("authorization");
   const auth = await resolvePublicApiAuth(req);
-  const effectiveApiKey = auth.ok && auth.apiKeyRecord ? auth.apiKeyRecord.id : directKey;
+  const validatedKeyId = auth.ok
+    ? (auth.apiKeyRecord?.id || (auth.isEnvKey ? "admin_env" : auth.userId || "auth_user"))
+    : undefined;
 
-  const { response: rateLimitResp, rateLimit } = enforceRateLimit(req, "create", effectiveApiKey);
+  const { response: rateLimitResp, rateLimit } = enforceRateLimit(req, "create", validatedKeyId);
   if (rateLimitResp) return rateLimitResp;
 
   try {

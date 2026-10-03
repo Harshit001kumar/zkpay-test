@@ -93,6 +93,8 @@ const ENDPOINTS: Endpoint[] = [
       success: true,
       sessionId: "ses_live_8f7a2c9b1d",
       status: "AWAITING_PAYMENT",
+      clientSecret: "sec_8f7a2c9b1d",
+      statusUrl: "/api/v1/payin-sessions?id=ses_live_8f7a2c9b1d&token=sec_8f7a2c9b1d",
       payinAddress: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
       network: "Base Mainnet",
       expectedAmountUsdc: "5.76",
@@ -104,10 +106,10 @@ const ENDPOINTS: Endpoint[] = [
   },
   {
     method: "GET",
-    path: "/api/v1/payin-sessions?id=ses_live_8f7a2c9b1d",
+    path: "/api/v1/payin-sessions?id=ses_live_8f7a2c9b1d&token=sec_8f7a2c9b1d",
     title: "Check Session Status",
     category: "payments",
-    description: "Actively checks on-chain USDC balance on Base Mainnet and updates session state upon deposit detection.",
+    description: "Actively checks on-chain USDC balance on Base Mainnet and updates session state upon deposit detection. Provide ?token= (clientSecret returned at creation) or merchant X-API-Key header for full unmasked recipient details.",
     response: {
       success: true,
       sessionId: "ses_live_8f7a2c9b1d",

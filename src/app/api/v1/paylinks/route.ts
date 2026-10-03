@@ -1,7 +1,8 @@
 import { corsJson, corsOptions } from "@/lib/server/cors";
 import { createPayLink, findPayLinkByTxHash, getPayLink, updatePayLink } from "@/lib/server/payStore";
-import { dispatchWebhook, isSafeWebhookUrl } from "@/lib/server/webhooks";
+import { dispatchWebhook, isSafeWebhookUrl, isSafeWebhookUrlAsync } from "@/lib/server/webhooks";
 import { resolvePublicApiAuth } from "@/lib/server/publicApiAuth";
+import { enforceRateLimit } from "@/lib/server/rateLimit";
 import { createPrices } from "@p2pdotme/sdk/prices";
 import { createPublicClient, decodeEventLog, http, isHex, parseAbiItem, parseUnits } from "viem";
 import { base } from "viem/chains";
@@ -58,6 +59,13 @@ export async function POST(req: Request) {
       return corsJson({ error: auth.error }, { status: auth.status || 401 });
     }
 
+    const validatedKeyId = auth.ok
+      ? (auth.apiKeyRecord?.id || (auth.isEnvKey ? "admin_env" : auth.userId || "auth_user"))
+      : undefined;
+
+    const { response: rateLimitResp, rateLimit } = enforceRateLimit(req, "create", validatedKeyId);
+    if (rateLimitResp) return rateLimitResp;
+
     const body = await req.json();
     const title = (body.title || "ZkPay Payment").trim().slice(0, 100);
     const amountINR = Number(body.amountINR || body.amount);
@@ -69,30 +77,33 @@ export async function POST(req: Request) {
     if (!recipientUpi || !recipientUpi.includes("@")) {
       return corsJson(
         { error: "recipientUpi is required and must be a valid UPI ID (e.g. name@okaxis)." },
-        { status: 400 }
+        { status: 400, headers: rateLimit.headers }
       );
     }
 
     if (!amountINR || amountINR <= 0) {
       return corsJson(
         { error: "amountINR is required and must be a positive number." },
-        { status: 400 }
+        { status: 400, headers: rateLimit.headers }
       );
     }
 
     if (amountINR > 8500) {
       return corsJson(
         { error: "amountINR exceeds maximum single transaction limit of ₹8,500 (100 USDC no-KYC tier)." },
-        { status: 400 }
+        { status: 400, headers: rateLimit.headers }
       );
     }
 
-    // SSRF validation on webhook URL
-    if (webhookUrl && !isSafeWebhookUrl(webhookUrl)) {
-      return corsJson(
-        { error: "webhookUrl must be a valid public HTTPS URL." },
-        { status: 400 }
-      );
+    // SSRF validation on webhook URL with DNS rebinding protection
+    if (webhookUrl) {
+      const safe = await isSafeWebhookUrlAsync(webhookUrl);
+      if (!safe) {
+        return corsJson(
+          { error: "webhookUrl must be a valid, publicly resolvable HTTPS URL (SSRF protected)." },
+          { status: 400, headers: rateLimit.headers }
+        );
+      }
     }
 
     if (redirectUrl && !isSafeRedirectUrl(redirectUrl)) {
@@ -139,26 +150,29 @@ export async function POST(req: Request) {
     const payUrl = `${getPublicBaseUrl()}/pay/${link.id}`;
     const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(payUrl)}`;
 
-    return corsJson({
-      success: true,
-      linkId: link.id,
-      title: link.title,
-      payUrl,
-      qrCodeUrl,
-      amountINR: `₹ ${amountINR.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
-      amountINRRaw: amountINR,
-      estimatedUsdc: `${totalUsdc.toFixed(2)} USDC`,
-      usdcPrincipal: usdcPrincipal.toFixed(2),
-      feeUsdc: `${feeUsdc.toFixed(2)} USDC`,
-      protocolFeeUsdc: `${protocolFeeUsdc.toFixed(2)} USDC`,
-      isSmallOrder,
-      gasSponsorship: "Sponsored by ZkPay (Pimlico Paymaster)",
-      rate: sellPrice.toFixed(2),
-      recipientUpi,
-      type,
-      status: link.status,
-      createdAt: link.createdAt,
-    });
+    return corsJson(
+      {
+        success: true,
+        linkId: link.id,
+        title: link.title,
+        payUrl,
+        qrCodeUrl,
+        amountINR: `₹ ${amountINR.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
+        amountINRRaw: amountINR,
+        estimatedUsdc: `${totalUsdc.toFixed(2)} USDC`,
+        usdcPrincipal: usdcPrincipal.toFixed(2),
+        feeUsdc: `${feeUsdc.toFixed(2)} USDC`,
+        protocolFeeUsdc: `${protocolFeeUsdc.toFixed(2)} USDC`,
+        isSmallOrder,
+        gasSponsorship: "Sponsored by ZkPay (Pimlico Paymaster)",
+        rate: sellPrice.toFixed(2),
+        recipientUpi,
+        type,
+        status: link.status,
+        createdAt: link.createdAt,
+      },
+      { headers: rateLimit.headers }
+    );
   } catch (err: any) {
     console.error("[PayLinks] Create Error:", err);
     return corsJson({ error: err.message || "Failed to create pay link" }, { status: 500 });

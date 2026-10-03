@@ -1,6 +1,7 @@
 import { corsJson, corsOptions } from "@/lib/server/cors";
 import { enforceRateLimit } from "@/lib/server/rateLimit";
 import { getSwapQuote, SwapQuoteParams } from "@/lib/server/swapRouter";
+import { resolvePublicApiAuth } from "@/lib/server/publicApiAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -42,8 +43,12 @@ async function extractQuoteParams(req: Request): Promise<SwapQuoteParams> {
 }
 
 async function handleQuote(req: Request) {
-  const apiKey = req.headers.get("x-api-key") || req.headers.get("authorization");
-  const { response: rateLimitResp, rateLimit } = enforceRateLimit(req, "quote", apiKey);
+  const auth = await resolvePublicApiAuth(req);
+  const validatedKeyId = auth.ok
+    ? (auth.apiKeyRecord?.id || (auth.isEnvKey ? "admin_env" : auth.userId || "auth_user"))
+    : undefined;
+
+  const { response: rateLimitResp, rateLimit } = enforceRateLimit(req, "quote", validatedKeyId);
   if (rateLimitResp) return rateLimitResp;
 
   try {

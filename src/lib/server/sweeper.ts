@@ -12,7 +12,13 @@ import {
   getRelayerBalance,
   getRelayerWalletClient,
 } from "@/lib/server/relayer";
-import { PayInSession, updatePayInSession } from "@/lib/server/payStore";
+import {
+  PayInSession,
+  updatePayInSession,
+  getDecryptedPayinKey,
+  acquireSessionSweepLock,
+  releaseSessionSweepLock,
+} from "@/lib/server/payStore";
 
 const USDC_ADDRESS = getAddress(CONTRACTS.USDC);
 const TREASURY_ADDRESS = getAddress(
@@ -59,6 +65,18 @@ export async function sweepPayInSession(
   const payinAddress = getAddress(session.payinAddress as `0x${string}`);
   const destinationAddress = getAddress(destination);
 
+  if (!acquireSessionSweepLock(session.id)) {
+    return {
+      success: false,
+      method: "eip-3009-relay",
+      sessionId: session.id,
+      payinAddress,
+      amountUsdc: "0.00",
+      destination: destinationAddress,
+      error: "Sweep operation currently in-flight for this session.",
+    };
+  }
+
   try {
     // 1. Verify current USDC balance on Base Mainnet
     const balanceWei = (await publicClient.readContract({
@@ -82,15 +100,9 @@ export async function sweepPayInSession(
 
     const amountUsdc = (Number(balanceWei) / 1e6).toFixed(2);
 
-    // 2. Parse and validate ephemeral private key
-    let rawKey = session.payinPrivateKey.trim();
-    if ((rawKey.startsWith('"') && rawKey.endsWith('"')) || (rawKey.startsWith("'") && rawKey.endsWith("'"))) {
-      rawKey = rawKey.slice(1, -1);
-    }
-    if (!rawKey.startsWith("0x")) {
-      rawKey = `0x${rawKey}`;
-    }
-    const depositAccount = privateKeyToAccount(rawKey as `0x${string}`);
+    // 2. Safely decrypt ephemeral private key on-the-fly for signing (never exposed in memory store)
+    const rawKey = getDecryptedPayinKey(session);
+    const depositAccount = privateKeyToAccount(rawKey);
 
     // Verify derived account matches payinAddress (critical safety check)
     if (getAddress(depositAccount.address) !== payinAddress) {
@@ -209,6 +221,8 @@ export async function sweepPayInSession(
       destination: destinationAddress,
       error: err.message || "Failed to sweep deposit balance via EIP-3009 relay.",
     };
+  } finally {
+    releaseSessionSweepLock(session.id);
   }
 }
 
