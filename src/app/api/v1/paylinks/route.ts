@@ -15,8 +15,19 @@ const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
 const PLATFORM_FEE_BPS = 100;
 const PUBLIC_APP_BASE_URL = process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || "https://zkpay.top";
 const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
+let _publicClient: ReturnType<typeof createPublicClient> | null = null;
 
 import { getLiveFiatRate } from "@/lib/server/p2pRates";
+
+function getPublicClient() {
+  if (!_publicClient) {
+    _publicClient = createPublicClient({
+      chain: base,
+      transport: http(RPC_URL),
+    });
+  }
+  return _publicClient;
+}
 
 function getPublicBaseUrl(): string {
   try {
