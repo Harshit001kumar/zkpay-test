@@ -379,7 +379,7 @@ export default function AdminPage() {
         const data = encodeFunctionData({
           abi: ERC20_ABI,
           functionName: "transfer",
-          args: [u.userAddress as `0x${string}`, amountWei],
+          args: [u.userAddress as any, amountWei],
         });
 
         const txHash = await provider.request({
