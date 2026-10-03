@@ -1624,6 +1624,8 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
+        )}
+
         {/* ────────────── TAB 4: TOOLS & SWEEPER ────────────── */}
         {activeTab === "tools" && (
           <div className="space-y-6 animate-in fade-in duration-300">
