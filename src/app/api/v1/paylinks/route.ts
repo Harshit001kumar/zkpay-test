@@ -4,7 +4,15 @@ import { dispatchWebhook, isSafeWebhookUrl, isSafeWebhookUrlAsync } from "@/lib/
 import { resolvePublicApiAuth } from "@/lib/server/publicApiAuth";
 import { enforceRateLimit } from "@/lib/server/rateLimit";
 import { createPrices } from "@p2pdotme/sdk/prices";
-import { createPublicClient, decodeEventLog, http, isHex, parseAbiItem, parseUnits } from "viem";
+import {
+  createPublicClient,
+  decodeEventLog,
+  http,
+  isHex,
+  parseAbiItem,
+  parseUnits,
+  type PublicClient,
+} from "viem";
 import { base } from "viem/chains";
 import { CONTRACTS } from "@/lib/constants";
 
@@ -15,7 +23,7 @@ const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
 const PLATFORM_FEE_BPS = 100;
 const PUBLIC_APP_BASE_URL = process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || "https://zkpay.top";
 const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
-let _publicClient: ReturnType<typeof createPublicClient> | null = null;
+let _publicClient: PublicClient | null = null;
 
 import { getLiveFiatRate } from "@/lib/server/p2pRates";
 
