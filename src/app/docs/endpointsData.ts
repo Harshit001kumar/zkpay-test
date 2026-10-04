@@ -738,7 +738,7 @@ bot.command('status', async (ctx) => {
     \`• *Session ID:* \`\${data.sessionId}\`\\n\` +
     \`• *Amount:* \${data.fiatAmount} (\${data.receivedUsdc || data.expectedAmountUsdc})\\n\` +
     \`• *Merchant UPI:* \`\${data.recipientUpi}\`\\n\` +
-    \`• *Deposit Address:* \`\${data.payinAddress}\``,
+    \`• *Deposit Address:* \`\${data.payinAddress}\`\`,
     { parse_mode: 'Markdown' }
   );
 });`
