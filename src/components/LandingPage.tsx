@@ -24,25 +24,15 @@ import {
   ChevronRight
 } from "lucide-react";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
-import { CountUp } from "@/components/ui/CountUp";
 import { DecryptedText } from "@/components/ui/DecryptedText";
 import { ScrollReveal } from "@/components/ui/ScrollReveal";
+import { SettlementSimulator } from "@/components/SettlementSimulator";
 
 interface LandingPageProps {
   login: () => void;
 }
 
-const PRESET_AMOUNTS = [
-  { inr: 100, label: "₹100" },
-  { inr: 500, label: "₹500" },
-  { inr: 1000, label: "₹1,000" },
-  { inr: 2500, label: "₹2,500" },
-  { inr: 5000, label: "₹5,000" },
-];
-
 export default function LandingPage({ login }: LandingPageProps) {
-  const [selectedInr, setSelectedInr] = useState<number>(500);
-  const [customInr, setCustomInr] = useState<string>("");
   const [waitlistJoined, setWaitlistJoined] = useState<boolean>(false);
   const [waitlistCount, setWaitlistCount] = useState<number>(1250);
 
@@ -78,12 +68,6 @@ export default function LandingPage({ login }: LandingPageProps) {
       setWaitlistCount((prev) => prev + 1);
     }
   };
-
-  const activeInr = customInr ? Math.max(1, Number(customInr) || 0) : selectedInr;
-  const usdcRate = 87.5;
-  const usdcEquivalent = Number((activeInr / usdcRate).toFixed(2));
-  const feeEquivalent = Number((usdcEquivalent * 0.01).toFixed(2));
-  const totalDebit = Number((usdcEquivalent + feeEquivalent).toFixed(2));
 
   return (
     <div className="min-h-[100dvh] bg-[#0e0e10] text-[#e5e2e3] flex flex-col items-center selection:bg-[#c0c6de]/25 selection:text-white relative overflow-x-hidden font-sans">
@@ -401,99 +385,9 @@ export default function LandingPage({ login }: LandingPageProps) {
           </div>
         </ScrollReveal>
 
-        {/* ─── 06. Desire: Live Oracle Rate Calculator (Doppelrand) ─── */}
+        {/* ─── 06. Desire: Interactive Real-Time Settlement Simulator (ReactBits Inspired) ─── */}
         <ScrollReveal>
-          <div className="max-w-4xl mx-auto w-full">
-            <div className="p-2 sm:p-2.5 rounded-[2.5rem] bg-white/[0.03] border border-white/10 ring-1 ring-white/5 shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
-              <SpotlightCard className="p-6 sm:p-10 rounded-[calc(2.5rem-0.625rem)] border-white/15 bg-[#0e0e10] shadow-[inset_0_1px_1px_rgba(255,255,255,0.15)] flex flex-col gap-8">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/10 pb-6">
-                  <div>
-                    <h2 className="text-2xl sm:text-3xl font-bold text-white">Live Rate Calculator</h2>
-                    <p className="text-xs sm:text-sm text-[#909097] mt-1">
-                      Direct oracle exchange rate with 1% fixed protocol fee
-                    </p>
-                  </div>
-                  <div className="px-3.5 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-xs font-mono text-[#c0c6de]">
-                    1 USDC = ₹87.50 INR
-                  </div>
-                </div>
-
-                {/* Preset Chips & Input */}
-                <div className="flex flex-col gap-4">
-                  <label className="text-xs font-mono uppercase tracking-wider text-[#909097]">
-                    Select or enter INR amount
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                    {PRESET_AMOUNTS.map((item) => (
-                      <button
-                        key={item.inr}
-                        onClick={() => {
-                          setSelectedInr(item.inr);
-                          setCustomInr("");
-                        }}
-                        className={`py-3 px-4 rounded-xl flex flex-col items-center justify-center transition-all border ${
-                          !customInr && selectedInr === item.inr
-                            ? "bg-white/[0.12] border-[#c0c6de] text-white shadow-sm scale-[1.02]"
-                            : "bg-white/[0.02] border-white/10 text-[#909097] hover:border-white/20"
-                        }`}
-                      >
-                        <span className="font-mono text-sm font-bold">{item.label}</span>
-                        <span className="font-mono text-[11px] text-[#c0c6de] mt-0.5">
-                          ${(item.inr / usdcRate).toFixed(2)}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Custom Amount Input */}
-                  <div className="relative mt-2">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-mono text-sm text-[#909097]">
-                      ₹
-                    </span>
-                    <input
-                      type="number"
-                      placeholder="Or enter custom INR amount..."
-                      value={customInr}
-                      onChange={(e) => setCustomInr(e.target.value)}
-                      className="w-full pl-8 pr-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/10 text-sm font-mono text-white placeholder:text-[#909097]/60 focus:outline-none focus:border-[#c0c6de] transition-colors"
-                    />
-                  </div>
-                </div>
-
-                {/* Transparent Breakdown Strip */}
-                <div className="p-5 sm:p-6 rounded-2xl bg-white/[0.03] border border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-6 font-mono">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[#909097] text-xs">Merchant receives</span>
-                    <span className="text-white font-bold text-lg sm:text-xl">₹{activeInr.toLocaleString()}</span>
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[#909097] text-xs">Protocol fee (1%)</span>
-                    <span className="text-[#c0c6de] font-bold text-lg sm:text-xl">${feeEquivalent.toFixed(2)} USDC</span>
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[#909097] text-xs">Total USDC debit</span>
-                    <div className="text-white font-bold text-lg sm:text-xl flex items-center gap-1.5">
-                      <CountUp to={totalDebit} decimals={2} />
-                      <span className="text-xs text-[#909097] font-normal">USDC</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Button-in-Button Execution CTA */}
-                <button
-                  onClick={login}
-                  className="rounded-full pl-7 pr-2.5 py-2.5 bg-[#e5e2e3] text-[#131315] font-bold text-xs uppercase tracking-wider hover:bg-white transition-all duration-300 shadow-[0_10px_30px_rgba(229,226,227,0.18)] active:scale-[0.98] group flex items-center justify-between sm:justify-start gap-4"
-                >
-                  <span>PAY ₹{activeInr.toLocaleString()} VIA ZKPAY</span>
-                  <div className="w-9 h-9 rounded-full bg-[#131315] text-white flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5">
-                    <ChevronRight className="w-4 h-4 text-[#c0c6de]" strokeWidth={1.5} />
-                  </div>
-                </button>
-              </SpotlightCard>
-            </div>
-          </div>
+          <SettlementSimulator onLaunchApp={login} />
         </ScrollReveal>
 
         {/* ─── 07. Desire: The Obsidian 3D Titanium Card Showcase ─── */}
