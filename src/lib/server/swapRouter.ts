@@ -264,7 +264,7 @@ export async function resolveAssetId(symbolOrAssetId: string, chainHint?: string
 
 /**
  * Validates that the amount is provided in valid atomic units (positive integer string)
- * and meets the minimum solver volume threshold (~$1.00 USD).
+ * and meets the minimum solver volume threshold (~$0.05 USD).
  */
 export function validateSwapAmount(amountStr: string, originAssetId: string): void {
   const clean = (amountStr || "").trim();
@@ -272,7 +272,7 @@ export function validateSwapAmount(amountStr: string, originAssetId: string): vo
   // Guard against human decimal floats (e.g. "1.5" or "0.5")
   if (clean.includes(".")) {
     const err: any = new Error(
-      "Amount is below minimum trade threshold (~$1.00 USD) or provided in human units instead of atomic units (e.g. lamports/wei). Expected atomic units as an integer string (e.g. '1000000000' for 1 SOL, '1000000' for 1 USDC)."
+      "Amount is below minimum trade threshold (~$0.05 USD) or provided in human units instead of atomic units (e.g. lamports/wei). Expected atomic units as an integer string (e.g. '1000000000' for 1 SOL, '50000' for 0.05 USDC)."
     );
     err.code = "AMOUNT_BELOW_MINIMUM";
     err.statusCode = 400;
@@ -290,40 +290,40 @@ export function validateSwapAmount(amountStr: string, originAssetId: string): vo
   const val = BigInt(clean);
   const assetLower = originAssetId.toLowerCase();
 
-  // SOL (9 decimals): 1 SOL = 1e9 (~$150). $1.00 USD is ~6,500,000 lamports
-  if (assetLower.includes("sol") && val < 5_000_000n) {
+  // SOL (9 decimals): 1 SOL = 1e9 (~$150). $0.05 USD is ~250,000 lamports
+  if (assetLower.includes("sol") && val < 200_000n) {
     const err: any = new Error(
-      "Amount is below minimum trade threshold (~$1.00 USD) or provided in human units instead of atomic units (e.g. lamports/wei). Expected atomic units as an integer string (e.g. '1000000000' for 1 SOL)."
+      "Amount is below minimum trade threshold (~$0.05 USD) or provided in human units instead of atomic units (e.g. lamports/wei). Expected atomic units as an integer string (e.g. '1000000000' for 1 SOL, '250000' for ~0.00025 SOL)."
     );
     err.code = "AMOUNT_BELOW_MINIMUM";
     err.statusCode = 400;
     throw err;
   }
 
-  // ETH (18 decimals): 1 ETH = 1e18 (~$2,500). $1.00 USD is ~4e14 wei
-  if (assetLower.includes("eth") && !assetLower.includes("usdc") && !assetLower.includes("usdt") && val < 200_000_000_000_000n) {
+  // ETH (18 decimals): 1 ETH = 1e18 (~$2,500). $0.05 USD is ~2e13 wei
+  if (assetLower.includes("eth") && !assetLower.includes("usdc") && !assetLower.includes("usdt") && val < 10_000_000_000_000n) {
     const err: any = new Error(
-      "Amount is below minimum trade threshold (~$1.00 USD) or provided in human units instead of atomic units (e.g. wei). Expected atomic units as an integer string (e.g. '10000000000000000' for 0.01 ETH)."
+      "Amount is below minimum trade threshold (~$0.05 USD) or provided in human units instead of atomic units (e.g. wei). Expected atomic units as an integer string (e.g. '10000000000000000' for 0.01 ETH, '20000000000000' for ~0.00002 ETH)."
     );
     err.code = "AMOUNT_BELOW_MINIMUM";
     err.statusCode = 400;
     throw err;
   }
 
-  // BTC (8 decimals): 1 BTC = 1e8 (~$65,000). $1.00 USD is ~1,500 satoshis
-  if (assetLower.includes("btc") && val < 1_000n) {
+  // BTC (8 decimals): 1 BTC = 1e8 (~$65,000). $0.05 USD is ~50-80 satoshis
+  if (assetLower.includes("btc") && val < 50n) {
     const err: any = new Error(
-      "Amount is below minimum trade threshold (~$1.00 USD) or provided in human units instead of atomic units (e.g. satoshis). Expected atomic units as an integer string (e.g. '100000' for 0.001 BTC)."
+      "Amount is below minimum trade threshold (~$0.05 USD) or provided in human units instead of atomic units (e.g. satoshis). Expected atomic units as an integer string (e.g. '100000' for 0.001 BTC, '50' for ~0.0000005 BTC)."
     );
     err.code = "AMOUNT_BELOW_MINIMUM";
     err.statusCode = 400;
     throw err;
   }
 
-  // USDC / USDT (6 decimals): 1 USDC = 1e6 ($1.00). Must be >= 1,000,000
-  if ((assetLower.includes("usdc") || assetLower.includes("usdt")) && val < 1_000_000n) {
+  // USDC / USDT (6 decimals): 1 USDC = 1e6 ($1.00). $0.05 USD is 50,000 atomic units
+  if ((assetLower.includes("usdc") || assetLower.includes("usdt")) && val < 50_000n) {
     const err: any = new Error(
-      "Amount is below minimum trade threshold ($1.00 USD) or provided in human units instead of atomic units (6 decimals). Expected atomic units as an integer string (e.g. '1000000' for 1 USDC)."
+      "Amount is below minimum trade threshold ($0.05 USD) or provided in human units instead of atomic units (6 decimals). Expected atomic units as an integer string (e.g. '50000' for 0.05 USDC)."
     );
     err.code = "AMOUNT_BELOW_MINIMUM";
     err.statusCode = 400;
