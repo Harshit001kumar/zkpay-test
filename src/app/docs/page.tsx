@@ -3,239 +3,7 @@
 import { useState } from "react";
 import { CHAIN } from "@/lib/constants";
 
-interface Endpoint {
-  method: "GET" | "POST";
-  path: string;
-  title: string;
-  description: string;
-  category: "payments" | "swap";
-  rateLimit?: string;
-  body?: Record<string, any>;
-  response: Record<string, any>;
-}
-
-const ENDPOINTS: Endpoint[] = [
-  // ── Payments API ──
-  {
-    method: "GET",
-    path: "/api/v1/rates",
-    title: "Live Exchange Rates",
-    category: "payments",
-    description: "Returns live on-chain exchange rates for all supported fiat currencies (INR, USD, EUR, GBP) queried directly from Base Mainnet.",
-    response: {
-      success: true,
-      rates: {
-        USDC_INR: { sell: 87.5, buy: 88.2, spread: 0.7, lastUpdated: 1755500000 },
-        USDC_USD: { sell: 1.0, buy: 1.01, spread: 0.01, lastUpdated: 1755500000 },
-      },
-      network: "Base Mainnet",
-      chainId: 8453,
-    },
-  },
-  {
-    method: "POST",
-    path: "/api/v1/quotes",
-    title: "Fee & Payout Calculator",
-    category: "payments",
-    description: "Computes exact USDC principal, 1% ZkPay fee, total required, and validates 100 USDC no-KYC tier limits.",
-    body: {
-      amount: 1000,
-      currency: "INR",
-    },
-    response: {
-      success: true,
-      fiatAmount: "₹ 1,000.00",
-      usdcPrincipal: "11.43",
-      feeUsdc: "0.11",
-      totalUsdc: "11.54",
-      rate: "87.50",
-      feeBps: 100,
-      currency: "INR",
-      withinNoKycLimit: true,
-      expiresAt: 1755500300,
-    },
-  },
-  {
-    method: "POST",
-    path: "/api/v1/paylinks",
-    title: "Create Shareable Pay Link",
-    category: "payments",
-    description: "Generates a hosted payment URL with 1-click wallet connect and QR view.",
-    body: {
-      title: "Invoice #104 - Freelance Work",
-      amountINR: 2500,
-      recipientUpi: "merchant@okaxis",
-      type: "one_time",
-      webhookUrl: "https://mysite.com/api/zkpay-webhook",
-    },
-    response: {
-      success: true,
-      linkId: "pl_live_9a8f2c",
-      payUrl: "https://zkpay.top/pay/pl_live_9a8f2c",
-      amountINR: "₹ 2,500.00",
-      estimatedUsdc: "28.57 USDC",
-      status: "ACTIVE",
-      qrCodeUrl: "https://api.qrserver.com/...",
-    },
-  },
-  {
-    method: "POST",
-    path: "/api/v1/payin-sessions",
-    title: "Dynamic Deposit Session (Bots)",
-    category: "payments",
-    description: "Generates a 30-minute unique Base deposit address for Telegram/Discord bots with automated on-chain listener.",
-    body: {
-      recipientUpi: "merchant@okaxis",
-      amountINR: 500,
-      webhookUrl: "https://my-bot.com/webhook",
-    },
-    response: {
-      success: true,
-      sessionId: "ses_live_8f7a2c9b1d",
-      status: "AWAITING_PAYMENT",
-      clientSecret: "sec_8f7a2c9b1d",
-      statusUrl: "/api/v1/payin-sessions?id=ses_live_8f7a2c9b1d&token=sec_8f7a2c9b1d",
-      payinAddress: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
-      network: "Base Mainnet",
-      expectedAmountUsdc: "5.76",
-      fiatAmount: "₹ 500.00",
-      recipientUpi: "merchant@okaxis",
-      expiresInSeconds: 1800,
-      qrCodeUrl: "https://api.qrserver.com/...",
-    },
-  },
-  {
-    method: "GET",
-    path: "/api/v1/payin-sessions?id=ses_live_8f7a2c9b1d&token=sec_8f7a2c9b1d",
-    title: "Check Session Status",
-    category: "payments",
-    description: "Actively checks on-chain USDC balance on Base Mainnet and updates session state upon deposit detection. Provide ?token= (clientSecret returned at creation) or merchant X-API-Key header for full unmasked recipient details.",
-    response: {
-      success: true,
-      sessionId: "ses_live_8f7a2c9b1d",
-      status: "SETTLED",
-      recipientUpi: "merchant@okaxis",
-      fiatAmount: "₹ 500.00",
-      receivedUsdc: "5.76 USDC",
-      payinAddress: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
-    },
-  },
-  // ── Swap API ──
-  {
-    method: "GET",
-    path: "/api/v1/swap/tokens?chain=sol",
-    title: "Supported Swap Tokens",
-    category: "swap",
-    rateLimit: "60 req/min (IP) · 300 req/min (API Key)",
-    description: "Returns all supported tokens across 8 blockchains. Tokens can be used as either origin (fromAsset) or destination (toAsset). Filter by ?chain=base|sol|eth|btc|tron|arb|bsc.",
-    response: {
-      success: true,
-      count: 10,
-      tokens: [
-        { assetId: "nep141:sol.omft.near", symbol: "SOL", name: "Solana", blockchain: "sol", decimals: 9 },
-        { assetId: "nep141:sol-5ce3bf3a...omft.near", symbol: "USDC", name: "USD Coin (Solana)", blockchain: "sol", decimals: 6 },
-        { assetId: "nep141:btc.omft.near", symbol: "BTC", name: "Bitcoin", blockchain: "btc", decimals: 8 },
-        { assetId: "nep141:eth.omft.near", symbol: "ETH", name: "Ethereum", blockchain: "eth", decimals: 18 },
-      ],
-    },
-  },
-  {
-    method: "GET",
-    path: "/api/v1/swap/quote?fromAsset=ETH&toAsset=SOL&amount=10000000000000000&chain=eth&destinationChain=sol",
-    title: "Get Swap Quote (Dry Run)",
-    category: "swap",
-    rateLimit: "30 req/min (IP) · 120 req/min (API Key)",
-    description: "Preview real-time crypto-to-crypto pricing with transparent partner fee breakdown. Pass 'toAsset' (e.g. SOL, ETH, USDC) and optional 'destinationChain' (e.g. sol, base, arb). Defaults to Base USDC if omitted. IMPORTANT: 'amount' must be an integer string in ATOMIC UNITS (smallest denomination, e.g. 10000000000000000 for 0.01 ETH). Never pass human decimals like '0.01'. Minimum trade size is ~$0.05 USD.",
-    response: {
-      success: true,
-      quote: {
-        quoteId: "q_1727382000000",
-        originAsset: "nep141:eth.omft.near",
-        destinationAsset: "nep141:sol.omft.near",
-        amountIn: "10000000000000000",
-        amountInFormatted: "0.01",
-        amountOut: "241500000",
-        amountOutFormatted: "0.2415",
-        minAmountOut: "239085000",
-        minAmountOutFormatted: "0.2391",
-        feeBreakdown: {
-          networkProtocolFeeBps: 25,
-          totalCustomFeeBps: 100,
-          split: { zkpayFeeBps: 50, partnerFeeBps: 50, partnerFeeRecipient: "0xPartnerPayoutAddress" },
-          totalDeductionsBps: 125,
-        },
-        timeEstimateSeconds: 45,
-        expiresAt: "2026-10-01T15:00:00.000Z",
-      },
-    },
-  },
-  {
-    method: "POST",
-    path: "/api/v1/swap/create",
-    title: "Create Swap Order",
-    category: "swap",
-    rateLimit: "10 req/min (IP) · 60 req/min (API Key)",
-    description: "Commits a cross-chain crypto-to-crypto swap order and generates a single-use deposit address. Fees are split 50/50 between ZkPay Treasury and your feeRecipient. Always pass 'refundTo' with the user's origin-chain address to guarantee automatic refunds if order expires or slips beyond tolerance.",
-    body: {
-      fromAsset: "ETH",
-      chain: "eth",
-      toAsset: "SOL",
-      destinationChain: "sol",
-      amount: "10000000000000000",
-      recipient: "7vN24xV8y...SolanaRecipientAddress",
-      refundTo: "0xUserEthRefundAddress",
-      feeRecipient: "0xPartnerPayoutAddress",
-      totalFeeBps: 100,
-    },
-    response: {
-      success: true,
-      order: {
-        swapId: "swp_1727382000000",
-        status: "PENDING_DEPOSIT",
-        deposit: {
-          address: "0x89c1...EthereumDepositAddress",
-          memo: null,
-          amount: "0.01",
-          deadline: "2026-10-01T15:15:00.000Z",
-        },
-        settlement: {
-          recipient: "7vN24xV8y...SolanaRecipientAddress",
-          destinationAsset: "nep141:sol.omft.near",
-          estimatedAmountOut: "0.2415",
-          minAmountOut: "0.2391",
-          timeEstimateSeconds: 60,
-        },
-        feeSplit: {
-          totalCustomFeeBps: 100,
-          zkpayFeeBps: 50,
-          partnerFeeBps: 50,
-          partnerFeeRecipient: "0xPartnerPayoutAddress",
-          networkProtocolFeeBps: 25,
-          totalDeductionsBps: 125,
-        },
-      },
-    },
-  },
-  {
-    method: "GET",
-    path: "/api/v1/swap/status?depositAddress=0x89c1...",
-    title: "Track Swap Status",
-    category: "swap",
-    rateLimit: "60 req/min (IP) · 240 req/min (API Key)",
-    description: "Polls real-time swap execution across source and destination chains. Returns mapped status: pending → processing → settled / failed / refunded. If a swap fails or times out, status transitions to 'refunded' and funds return to 'refundTo'.",
-    response: {
-      success: true,
-      depositAddress: "0x89c1...EthereumDepositAddress",
-      status: "settled",
-      rawStatus: "SUCCESS",
-      depositedAmount: "0.01 ETH",
-      settledAmount: "0.2415 SOL",
-      destinationTxHash: "5KtP...solanaTxSignature",
-      destinationExplorerUrl: "https://solscan.io/tx/5KtP...",
-      updatedAt: "2026-10-01T15:02:15.000Z",
-    },
-  },
-];
+import { ENDPOINTS, Endpoint } from "./endpointsData";
 
 type ApiCategory = "payments" | "swap";
 
@@ -617,82 +385,7 @@ Verify with:
   };
 
   const getCodeSnippet = (ep: Endpoint, lang: "curl" | "js" | "python" | "telegram") => {
-    const url = `https://zkpay.top${ep.path}`;
-
-    if (lang === "curl") {
-      if (ep.method === "GET") {
-        return `curl -X GET "${url}" \\
-  -H "Accept: application/json"`;
-      }
-      return `curl -X POST "${url}" \\
-  -H "X-API-Key: YOUR_ZKPAY_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '${JSON.stringify(ep.body, null, 2)}'`;
-    }
-
-    if (lang === "js") {
-      if (ep.method === "GET") {
-        return `const res = await fetch("${url}");
-const data = await res.json();
-console.log(data);`;
-      }
-      return `const res = await fetch("${url}", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "X-API-Key": "YOUR_ZKPAY_API_KEY"
-  },
-  body: JSON.stringify(${JSON.stringify(ep.body, null, 4)})
-});
-const data = await res.json();
-console.log(data);`;
-    }
-
-    if (lang === "python") {
-      if (ep.method === "GET") {
-        return `import requests
-
-res = requests.get("${url}")
-print(res.json())`;
-      }
-      return `import requests
-
-payload = ${JSON.stringify(ep.body, null, 4).replace(/true/g, "True").replace(/false/g, "False")}
-
-headers = {
-    "X-API-Key": "YOUR_ZKPAY_API_KEY",
-    "Content-Type": "application/json"
-}
-res = requests.post("${url}", json=payload, headers=headers)
-print(res.json())`;
-    }
-
-    if (lang === "telegram") {
-      return `// Node.js Telegram Bot Example (telegraf)
-bot.command('pay', async (ctx) => {
-  const [amount, upiId] = ctx.message.text.split(' ').slice(1);
-  
-  const res = await fetch('https://zkpay.top/api/v1/payin-sessions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      recipientUpi: upiId,
-      amountINR: Number(amount),
-      webhookUrl: 'https://my-bot.com/zkpay-webhook'
-    })
-  });
-  const data = await res.json();
-  
-  await ctx.replyWithPhoto(data.qrCodeUrl, {
-    caption: \`💳 Send \${data.expectedAmountUsdc} USDC on Base to:\\n\` +
-             \`\\\`\${data.payinAddress}\\\`\\n\\n\` +
-             \`Settles ₹\${amount} to \${upiId} in under 3 mins.\`,
-    parse_mode: 'Markdown'
-  });
-});`;
-    }
-
-    return "";
+    return ep.codeExamples[lang];
   };
 
   return (
@@ -1300,9 +993,64 @@ bot.command('pay', async (ctx) => {
                   </span>
                 </div>
               )}
-              <p className="text-xs md:text-sm text-[#c6c6cd] mb-8 leading-relaxed font-body-md">
+              <p className="text-xs md:text-sm text-[#c6c6cd] mb-6 leading-relaxed font-body-md">
                 {endpoint.description}
               </p>
+
+              {/* Request Parameters & Headers Reference */}
+              {endpoint.parameters && endpoint.parameters.length > 0 && (
+                <div className="mb-8">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="font-label-caps text-[10px] text-[#c0c6de] tracking-[0.2em] font-bold">
+                      REQUEST PARAMETERS &amp; HEADERS
+                    </span>
+                    <span className="text-[9px] font-mono text-[#909097] bg-white/5 px-2 py-0.5 rounded border border-white/10">
+                      {endpoint.parameters.length} parameters
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto rounded-xl border border-white/10 bg-black/40">
+                    <table className="w-full text-left font-mono text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-white/10 text-[#909097] text-[10px] uppercase tracking-wider bg-white/[0.02]">
+                          <th className="py-2.5 px-4 font-bold">Parameter</th>
+                          <th className="py-2.5 px-3 font-bold">Type</th>
+                          <th className="py-2.5 px-3 font-bold">Location</th>
+                          <th className="py-2.5 px-3 font-bold">Requirement</th>
+                          <th className="py-2.5 px-4 font-bold">Description</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5 text-[#c6c6cd]">
+                        {endpoint.parameters.map((p) => (
+                          <tr key={p.name} className="hover:bg-white/[0.02] transition-colors">
+                            <td className="py-2.5 px-4 text-white font-bold">{p.name}</td>
+                            <td className="py-2.5 px-3 text-[#c0c6de] text-[11px]">{p.type}</td>
+                            <td className="py-2.5 px-3 text-[10px] uppercase tracking-wider text-[#909097]">{p.location}</td>
+                            <td className="py-2.5 px-3">
+                              {p.required ? (
+                                <span className="text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded text-[9px] font-bold">
+                                  REQUIRED
+                                </span>
+                              ) : (
+                                <span className="text-[#909097] bg-white/5 border border-white/10 px-1.5 py-0.5 rounded text-[9px]">
+                                  OPTIONAL
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-4 text-xs font-sans text-[#c6c6cd] leading-relaxed">
+                              {p.description}
+                              {p.example && (
+                                <span className="block font-mono text-[10px] text-[#909097] mt-0.5">
+                                  Example: <code className="text-[#c0c6de]">{p.example}</code>
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
               {/* Language Selector Bar */}
               <div className="flex items-center justify-between pb-3 mb-4 border-b border-white/10">
