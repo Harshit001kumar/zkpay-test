@@ -63,26 +63,63 @@ export const PLATFORM_FEE_BPS = 100; // 100 basis points = 1%
 export const APP_NAME = "ZkPay";
 export const APP_DESCRIPTION = "Crypto to Fiat - Scan and Pay";
 
-// NEAR Intents 1Click API — supported deposit assets
+// ─── SWAP API: Curated Token Allowlist ───
 // assetId values sourced from GET https://1click.chaindefuser.com/v0/tokens
-export const DEPOSIT_ASSETS = [
-  { symbol: "BTC",  name: "Bitcoin",          assetId: "nep141:btc.omft.near",                                              blockchain: "btc",  decimals: 8 },
-  { symbol: "ETH",  name: "Ethereum",         assetId: "nep141:eth.omft.near",                                              blockchain: "eth",  decimals: 18 },
-  { symbol: "SOL",  name: "Solana",           assetId: "nep141:sol.omft.near",                                              blockchain: "sol",  decimals: 9 },
-  { symbol: "USDT", name: "Tether (TRC20)",   assetId: "nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near",     blockchain: "tron", decimals: 6 },
-  { symbol: "USDC", name: "USDC (Ethereum)",  assetId: "nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near",   blockchain: "eth",  decimals: 6 },
-  { symbol: "USDC", name: "USDC (Solana)",    assetId: "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near",      blockchain: "sol",  decimals: 6 },
-  { symbol: "USDC", name: "USDC (Arbitrum)",  assetId: "nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near",   blockchain: "arb",  decimals: 6 },
-  { symbol: "BNB",  name: "BNB (BSC)",        assetId: "nep245:v2_1.omni.hot.tg:56_11111111111111111111",                    blockchain: "bsc",  decimals: 18 },
-  { symbol: "LTC",  name: "Litecoin",         assetId: "nep141:ltc.omft.near",                                              blockchain: "ltc",  decimals: 8 },
+// Only tokens listed here are exposed by ZkPay's /swap/tokens endpoint and accepted by /swap/quote + /swap/create.
+export const SWAP_ALLOWED_TOKENS = [
+  // ── BTC ──
+  { symbol: "BTC",  name: "Bitcoin",              assetId: "nep141:btc.omft.near",                                              blockchain: "btc",  decimals: 8 },
+  // ── ETH ──
+  { symbol: "ETH",  name: "Ethereum",             assetId: "nep141:eth.omft.near",                                              blockchain: "eth",  decimals: 18 },
+  { symbol: "ETH",  name: "Ethereum (Base)",      assetId: "nep141:base.omft.near",                                             blockchain: "base", decimals: 18 },
+  { symbol: "ETH",  name: "Ethereum (Arbitrum)",  assetId: "nep141:arb.omft.near",                                              blockchain: "arb",  decimals: 18 },
+  // ── SOL ──
+  { symbol: "SOL",  name: "Solana",               assetId: "nep141:sol.omft.near",                                              blockchain: "sol",  decimals: 9 },
+  // ── Stablecoins: USDC ──
+  { symbol: "USDC", name: "USDC (Base)",           assetId: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",  blockchain: "base", decimals: 6 },
+  { symbol: "USDC", name: "USDC (Ethereum)",       assetId: "nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near",   blockchain: "eth",  decimals: 6 },
+  { symbol: "USDC", name: "USDC (Solana)",         assetId: "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near",      blockchain: "sol",  decimals: 6 },
+  { symbol: "USDC", name: "USDC (Arbitrum)",       assetId: "nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near",   blockchain: "arb",  decimals: 6 },
+  // ── Stablecoins: USDT ──
+  { symbol: "USDT", name: "Tether (Ethereum)",     assetId: "nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near",    blockchain: "eth",  decimals: 6 },
+  { symbol: "USDT", name: "Tether (Solana)",       assetId: "nep141:sol-c800a4bd850783ccb82c2b2c7e84175443606352.omft.near",     blockchain: "sol",  decimals: 6 },
+  { symbol: "USDT", name: "Tether (TRC20)",        assetId: "nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near",    blockchain: "tron", decimals: 6 },
+  // ── Other majors ──
+  { symbol: "BNB",  name: "BNB (BSC)",             assetId: "nep245:v2_1.omni.hot.tg:56_11111111111111111111",                   blockchain: "bsc",  decimals: 18 },
+  { symbol: "ARB",  name: "Arbitrum",              assetId: "nep141:arb-0x912ce59144191c1204e64559fe8253a0e49e6548.omft.near",   blockchain: "arb",  decimals: 18 },
+  { symbol: "TRX",  name: "Tron",                  assetId: "nep141:tron.omft.near",                                            blockchain: "tron", decimals: 6 },
+  { symbol: "LTC",  name: "Litecoin",              assetId: "nep141:ltc.omft.near",                                             blockchain: "ltc",  decimals: 8 },
 ] as const;
 
-// Base USDC — the destination asset for all cross-chain deposits
+// Legacy alias — some existing code references DEPOSIT_ASSETS
+export const DEPOSIT_ASSETS = SWAP_ALLOWED_TOKENS;
+
+// Chains ZkPay officially supports for swaps
+export const SWAP_ALLOWED_CHAINS = new Set(["btc", "eth", "base", "sol", "arb", "bsc", "tron", "ltc"]);
+
+// Base USDC — default destination asset when toAsset is omitted
 export const TARGET_ASSET = {
   coin: "USDC",
   network: "base",
   assetId: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
   decimals: 6,
+};
+
+// ─── SWAP FEE TREASURY ADDRESSES ───
+// Fees are paid in the DESTINATION ASSET of the swap, to the recipient on the destination chain.
+// ZkPay must have a treasury address for each supported destination chain.
+// Partners are responsible for providing their own destination-chain-compatible fee address.
+export const TREASURY_ADDRESSES: Record<string, string> = {
+  // EVM chains (all use the same 0x address)
+  eth:   process.env.TREASURY_ETH   || TREASURY,
+  base:  process.env.TREASURY_BASE  || TREASURY,
+  arb:   process.env.TREASURY_ARB   || TREASURY,
+  bsc:   process.env.TREASURY_BSC   || TREASURY,
+  // Non-EVM chains (must be configured per chain)
+  sol:   process.env.TREASURY_SOL   || "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
+  btc:   process.env.TREASURY_BTC   || "bc1qg52t5l20hfhmk7nkwe62s4xt3qr2fedwqmu6up",
+  tron:  process.env.TREASURY_TRON  || "TSsMeYZRBVp2oSocHbbZJJPSWLFKaAy28j",
+  ltc:   process.env.TREASURY_LTC   || "LdmUa92dDxtp84nwJQgdjmayJqE1ESKza4",
 };
 
 // Cross-chain deposit fee (1.75% — charged via NEAR Intents appFees)

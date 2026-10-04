@@ -17,29 +17,36 @@ export default function DocsPage() {
 
   const SWAP_API_PROMPT = `# ZkPay Swap API — Integration Context for AI Agents
 
-You are helping a developer integrate ZkPay's cross-chain Swap API. This API enables crypto-to-crypto swaps across 8+ blockchains (BTC, ETH, SOL, Tron, BSC, Arbitrum, Base, Litecoin) with a built-in 50/50 revenue share for partners.
+You are helping a developer integrate ZkPay's cross-chain Swap API. This API enables non-custodial crypto-to-crypto swaps across 8 supported blockchains (Bitcoin, Ethereum, Base, Solana, Arbitrum, BSC, Tron, Litecoin) with a built-in 50/50 revenue share for partners.
 
 Base URL: https://zkpay.top
-Settlement Network: Base Mainnet (Chain ID 8453)
+Supported Chains: btc, eth, base, sol, arb, bsc, tron, ltc
 
 ## Authentication
 - GET endpoints: No auth required
 - POST endpoints: Pass API key via \`X-API-Key: zkpay_live_...\` header or \`Authorization: Bearer zkpay_live_...\`
 - Get your key at zkpay.top → Profile → Merchant & Bot API Keys
 
+## CRITICAL: Fee Settlement Architecture
+- Fees are paid out in the DESTINATION ASSET of the swap on the DESTINATION CHAIN.
+- ZkPay Treasury automatically routes its 50% cut to ZkPay's dedicated treasury address on the target destination chain.
+- PARTNERS MUST provide a \`feeRecipient\` address that matches the destination chain (e.g., Solana Base58 address if destination is SOL, Bitcoin address if destination is BTC, EVM 0x address if destination is Base/ETH/Arb/BSC, Tron address if destination is TRC20).
+- WARNING: If a partner provides an address from the wrong chain (e.g., an Ethereum 0x address when destination is Solana), the fee will be permanently lost on-chain. It is the partner's responsibility to validate this.
+
 ## Endpoints
 
 ### 1. GET /api/v1/swap/tokens?chain={chain}
-Lists all supported tokens. Filter by chain: base, sol, eth, btc, tron, arb, bsc.
+Lists all supported tokens. Filter by chain: base, sol, eth, btc, tron, arb, bsc, ltc.
 Rate limit: 60 req/min (IP) · 300 req/min (API Key)
 
 Response:
 {
   "success": true,
-  "count": 10,
+  "count": 17,
   "tokens": [
     { "assetId": "nep141:sol.omft.near", "symbol": "SOL", "name": "Solana", "blockchain": "sol", "decimals": 9 },
-    { "assetId": "nep141:eth.omft.near", "symbol": "ETH", "name": "Ethereum", "blockchain": "eth", "decimals": 18 }
+    { "assetId": "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near", "symbol": "USDC", "name": "USDC (Base)", "blockchain": "base", "decimals": 6 },
+    { "assetId": "nep141:btc.omft.near", "symbol": "BTC", "name": "Bitcoin", "blockchain": "btc", "decimals": 8 }
   ]
 }
 
@@ -49,10 +56,12 @@ Rate limit: 30 req/min (IP) · 120 req/min (API Key)
 
 Query params:
 - fromAsset (required): Token symbol like "ETH", "SOL", "BTC"
-- toAsset (required): Destination token symbol like "SOL", "USDC"
+- toAsset (optional): Destination token symbol like "SOL", "USDC". Defaults to Base USDC if omitted.
 - amount (required): Integer string in ATOMIC UNITS (see conversion table below)
-- chain (required): Source chain e.g. "eth", "sol", "btc"
-- destinationChain (optional): Target chain e.g. "sol", "base". Defaults to Base USDC if omitted.
+- chain (optional): Source chain e.g. "eth", "sol", "btc"
+- destinationChain (optional): Target chain e.g. "sol", "base". Defaults to Base if omitted.
+- feeRecipient (optional): Partner's destination-chain address for 50% revenue share.
+- totalFeeBps (optional): Total fee in bps (range: 20–450 bps, default 100 = 1.00%).
 
 Response:
 {
@@ -70,7 +79,7 @@ Response:
     "feeBreakdown": {
       "networkProtocolFeeBps": 25,
       "totalCustomFeeBps": 100,
-      "split": { "zkpayFeeBps": 50, "partnerFeeBps": 50, "partnerFeeRecipient": "0xYourAddress" },
+      "split": { "zkpayFeeBps": 50, "partnerFeeBps": 50, "partnerFeeRecipient": "7vN24xV8y...SolanaPayoutAddress" },
       "totalDeductionsBps": 125
     },
     "timeEstimateSeconds": 45,
@@ -89,15 +98,15 @@ Request body:
   "toAsset": "SOL",
   "destinationChain": "sol",
   "amount": "10000000000000000",
-  "recipient": "7vN24xV8y...SolanaAddress",
+  "recipient": "7vN24xV8y...SolanaUserAddress",
   "refundTo": "0xUserEthAddress",
-  "feeRecipient": "0xYourPayoutAddress",
+  "feeRecipient": "7vN24xV8y...SolanaPartnerAddress",
   "totalFeeBps": 100
 }
 
 - recipient: User's destination-chain wallet address
 - refundTo: User's origin-chain wallet address (for automatic refund on failure/expiry)
-- feeRecipient: Your Base address to receive 50% of the custom fee
+- feeRecipient: Partner's payout address on the DESTINATION CHAIN (must match destinationChain format!)
 - totalFeeBps: Your desired fee in basis points (range: 20–450 bps)
 
 Response:
@@ -107,12 +116,12 @@ Response:
     "swapId": "swp_1727382000000",
     "status": "PENDING_DEPOSIT",
     "deposit": {
-      "address": "0x89c1...DepositAddress",
+      "address": "0x89c1...EthereumDepositAddress",
       "amount": "0.01",
       "deadline": "2026-10-01T15:15:00.000Z"
     },
     "settlement": {
-      "recipient": "7vN24xV8y...SolanaAddress",
+      "recipient": "7vN24xV8y...SolanaUserAddress",
       "estimatedAmountOut": "0.2415",
       "minAmountOut": "0.2391",
       "timeEstimateSeconds": 60
@@ -121,7 +130,9 @@ Response:
       "totalCustomFeeBps": 100,
       "zkpayFeeBps": 50,
       "partnerFeeBps": 50,
-      "partnerFeeRecipient": "0xYourPayoutAddress"
+      "partnerFeeRecipient": "7vN24xV8y...SolanaPartnerAddress",
+      "treasuryAddress": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
+      "feeSettlementNote": "Fees are paid in the destination asset to the recipient on the destination chain."
     }
   }
 }
@@ -145,23 +156,18 @@ Response:
 ## Integration Flow
 1. Call /swap/tokens to discover supported assets
 2. Call /swap/quote to preview rate & fees (show user the quote)
-3. Call /swap/create to get deposit address
-4. User sends crypto to the deposit address on source chain
-5. Poll /swap/status until status is "settled", "failed", or "refunded"
+3. Validate user's destination recipient and your feeRecipient for destination chain compatibility
+4. Call /swap/create to get deposit address
+5. User sends crypto to the deposit address on source chain
+6. Poll /swap/status until status is "settled", "failed", or "refunded"
 
-## Fee Structure (50/50 Revenue Share)
+## Fee Structure (50/50 Revenue Share in Destination Asset)
 - Network Protocol Fee: 25 bps (0.25%) — goes to solver network
-- Your Partner Share: 50% of totalFeeBps → your feeRecipient wallet
-- ZkPay Treasury Share: 50% of totalFeeBps → ZkPay treasury
+- Your Partner Share: 50% of totalFeeBps → settled in DESTINATION ASSET to feeRecipient
+- ZkPay Treasury Share: 50% of totalFeeBps → settled in DESTINATION ASSET to ZkPay treasury
 - Minimum totalFeeBps: 20 (0.20%)
 - Maximum totalFeeBps: 450 (4.50%)
-- If no feeRecipient provided: 100% goes to ZkPay treasury
-
-Example at totalFeeBps=100 on a $1,000 swap:
-- Network fee: $2.50 → Solvers
-- Partner share: $5.00 → Your wallet
-- ZkPay share: $5.00 → Treasury
-- User receives: $987.50
+- If no feeRecipient provided: 100% of custom fee goes to ZkPay treasury
 
 ## CRITICAL: Atomic Units Conversion Table
 ALL amounts MUST be integer strings in atomic/base units. NEVER pass decimals like "0.01".
@@ -169,13 +175,16 @@ ALL amounts MUST be integer strings in atomic/base units. NEVER pass decimals li
 | Asset | Chain          | Decimals | 1 Token (Atomic)     | ~$0.05 Minimum       |
 |-------|----------------|----------|----------------------|-----------------------|
 | SOL   | sol            | 9        | 1000000000           | 250000 (~0.00025 SOL) |
-| USDC  | sol/base/arb   | 6        | 1000000              | 50000 ($0.05 USDC)    |
-| USDT  | tron/sol/bsc   | 6        | 1000000              | 50000 ($0.05 USDT)    |
+| USDC  | base/eth/sol/arb| 6       | 1000000              | 50000 ($0.05 USDC)    |
+| USDT  | eth/sol/tron   | 6        | 1000000              | 50000 ($0.05 USDT)    |
 | BTC   | btc            | 8        | 100000000            | 50 (~0.0000005 BTC)   |
-| ETH   | eth/base       | 18       | 1000000000000000000  | 20000000000000        |
+| ETH   | eth/base/arb   | 18       | 1000000000000000000  | 20000000000000        |
+| BNB   | bsc            | 18       | 1000000000000000000  | 80000000000000        |
+| LTC   | ltc            | 8        | 100000000            | 50000 (~0.0005 LTC)   |
+| TRX   | tron           | 6        | 1000000              | 300000 (~0.3 TRX)     |
 
 ## Multi-Chain Token Disambiguation
-Tokens like USDC and USDT exist on multiple chains. Always pass the "chain" parameter (e.g. "sol", "arb", "base") or use the full assetId from /swap/tokens to avoid chain mismatch errors.
+Tokens like USDC and USDT exist on multiple chains. Always pass the "chain" / "destinationChain" parameter (e.g. "sol", "arb", "base") or use the full assetId from /swap/tokens to avoid chain mismatch errors.
 
 ## Webhook Events (Swap)
 If you provided a webhookUrl, you'll receive these events with HMAC SHA-256 signatures:
@@ -185,10 +194,11 @@ If you provided a webhookUrl, you'll receive these events with HMAC SHA-256 sign
 - swap.refunded — Deposit refunded to refundTo address
 
 ## Error Codes
-- AMOUNT_BELOW_MINIMUM (400) — Amount is below ~$0.05 USD solver threshold
-- INVALID_ASSET (400) — Unrecognized token symbol or assetId
-- RATE_LIMITED (429) — Too many requests, back off
-- QUOTE_EXPIRED (400) — Quote has expired, fetch a new one`;
+- AMOUNT_BELOW_MINIMUM (400) — Amount is below ~$0.05 USD solver threshold or passed as float
+- INVALID_AMOUNT (400) — Amount is not a valid positive integer string
+- INVALID_RECIPIENT (400) — Missing or invalid destination recipient address
+- SOLVER_NETWORK_BUSY (503) — Upstream solver network temporary unavailability, safe to retry
+- RATE_LIMITED (429) — Too many requests, back off`;
 
   const PAYMENTS_API_PROMPT = `# ZkPay Payments API — Integration Context for AI Agents
 

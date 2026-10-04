@@ -13,11 +13,12 @@ export async function GET() {
     name: "ZkPay Cross-Chain Swap API",
     version: "v1",
     engine: "ZkPay Solver Network",
+    supportedChains: ["btc", "eth", "base", "sol", "arb", "bsc", "tron", "ltc"],
     endpoints: {
       tokens: {
         method: "GET",
         path: "/api/v1/swap/tokens",
-        description: "List supported cross-chain tokens across 8 blockchains. Supports ?chain=base|sol|eth|btc|tron|arb|bsc.",
+        description: "List supported cross-chain tokens. Supports ?chain=base|sol|eth|btc|tron|arb|bsc|ltc.",
       },
       quote: {
         method: "GET | POST",
@@ -34,6 +35,12 @@ export async function GET() {
         path: "/api/v1/swap/status?depositAddress=...",
         description: "Poll real-time swap execution and settlement status by deposit address.",
       },
+    },
+    feeSettlement: {
+      note: "Fees are paid in the DESTINATION ASSET of the swap to the recipient on the destination chain.",
+      partnerWarning: "Partner feeRecipient address MUST be compatible with the destination chain (e.g. 0x for EVM, Base58 for Solana). Incorrect addresses may result in lost fees.",
+      defaultFeeBps: 100,
+      feeSplitModel: "50/50 between ZkPay Treasury and Partner",
     },
     documentation: "https://zkpay.top/docs",
     unitsNotice: "All 'amount' parameters must be provided in atomic integer units (e.g. 1000000000 for 1 SOL, 1000000 for 1 USDC).",

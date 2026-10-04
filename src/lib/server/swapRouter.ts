@@ -3,6 +3,8 @@
  * 
  * Routes multi-chain swaps through NEAR Intents 1Click protocol with:
  * - 50/50 custom fee split between ZkPay Treasury and Partner Recipient
+ * - Destination-chain-aware treasury addresses (fees paid in destination asset)
+ * - Curated token allowlist (only ZkPay-approved tokens exposed)
  * - Fixed NEAR Intents protocol fee accounting (25 bps overhead without key)
  * - Safe clamping to guarantee compliance with NEAR Intents 500 bps appFees limit
  * - Atomic units validation & pre-flight sanity checks
@@ -11,7 +13,7 @@
  * - In-memory caching for token metadata
  */
 
-import { DEPOSIT_ASSETS, TARGET_ASSET, CONTRACTS } from "@/lib/constants";
+import { SWAP_ALLOWED_TOKENS, SWAP_ALLOWED_CHAINS, TARGET_ASSET, CONTRACTS, TREASURY_ADDRESSES } from "@/lib/constants";
 import { resolveRefundAddress } from "@/lib/refundAddress";
 
 const ONECLICK_API = "https://1click.chaindefuser.com/v0";
@@ -22,11 +24,23 @@ export const DEFAULT_CUSTOM_FEE_BPS = 100;        // 1.00% default
 export const MIN_CUSTOM_FEE_BPS = 20;             // 0.20% minimum custom fee
 export const MAX_CUSTOM_FEE_BPS = 450;            // 4.50% max custom fee (leaves headroom for 25 bps overhead < 500 bps cap)
 
+// Default EVM treasury address (used when destination chain isn't specified or is EVM)
 export const ZKPAY_TREASURY_ADDRESS =
   process.env.NEXT_PUBLIC_DEPOSIT_FEE_RECIPIENT ||
   process.env.NEXT_PUBLIC_TREASURY_ADDRESS ||
   CONTRACTS.TREASURY ||
   "0xb856b24fb054135deba5e0309edd31ed6a8afbe2";
+
+/**
+ * Resolves the correct ZkPay treasury address for the given destination chain.
+ * Fees are paid in the DESTINATION ASSET — so the treasury must have an address on that chain.
+ */
+export function getTreasuryAddressForChain(destinationChain?: string | null): string {
+  if (!destinationChain) return ZKPAY_TREASURY_ADDRESS;
+  const chain = normalizeChain(destinationChain);
+  if (!chain) return ZKPAY_TREASURY_ADDRESS;
+  return TREASURY_ADDRESSES[chain] || ZKPAY_TREASURY_ADDRESS;
+}
 
 export interface FeeSplitResult {
   totalCustomFeeBps: number;
@@ -37,16 +51,23 @@ export interface FeeSplitResult {
   nearIntentsProtocolFeeBps?: number;
   totalDeductionsBps: number;
   appFees: { recipient: string; fee: number }[];
+  treasuryAddress: string;
+  feeSettlementNote: string;
 }
 
 /**
- * Computes 50/50 fee split between ZkPay Treasury and Partner:
- * - If partner recipient is provided, custom fee is split 50/50.
+ * Computes 50/50 fee split between ZkPay Treasury and Partner.
+ * 
+ * IMPORTANT: Fees are paid in the DESTINATION ASSET of the swap.
+ * - ZkPay treasury address is resolved per destination chain (e.g. SOL address for SOL swaps).
+ * - Partner must provide an address compatible with the destination chain.
+ * - If partner provides an incompatible address, the fee may be lost (partner's responsibility).
  * - If no partner recipient is provided, 100% of custom fee goes to ZkPay Treasury.
  */
 export function calculateFeeSplit(
   requestedFeeBps?: number | null,
-  partnerFeeRecipient?: string | null
+  partnerFeeRecipient?: string | null,
+  destinationChain?: string | null
 ): FeeSplitResult {
   let totalCustom = typeof requestedFeeBps === "number" && !isNaN(requestedFeeBps)
     ? Math.round(requestedFeeBps)
@@ -55,6 +76,7 @@ export function calculateFeeSplit(
   totalCustom = Math.max(MIN_CUSTOM_FEE_BPS, Math.min(MAX_CUSTOM_FEE_BPS, totalCustom));
 
   const cleanPartnerRecipient = partnerFeeRecipient?.trim() || null;
+  const treasuryAddress = getTreasuryAddressForChain(destinationChain);
 
   let zkpayFeeBps: number;
   let partnerFeeBps: number;
@@ -70,7 +92,7 @@ export function calculateFeeSplit(
   }
 
   const appFees: { recipient: string; fee: number }[] = [
-    { recipient: ZKPAY_TREASURY_ADDRESS, fee: zkpayFeeBps },
+    { recipient: treasuryAddress, fee: zkpayFeeBps },
   ];
 
   if (cleanPartnerRecipient && partnerFeeBps > 0) {
@@ -86,6 +108,8 @@ export function calculateFeeSplit(
     nearIntentsProtocolFeeBps: NEAR_INTENTS_PROTOCOL_FEE_BPS,
     totalDeductionsBps: NEAR_INTENTS_PROTOCOL_FEE_BPS + totalCustom,
     appFees,
+    treasuryAddress,
+    feeSettlementNote: "Fees are paid in the destination asset to the recipient on the destination chain.",
   };
 }
 
@@ -118,8 +142,12 @@ export function normalizeChain(chain?: string | null): string | undefined {
   return c;
 }
 
+// Build the allowlist assetId set for fast lookups
+const ALLOWED_ASSET_IDS = new Set(SWAP_ALLOWED_TOKENS.map((t) => t.assetId));
+
 /**
- * Fetches supported tokens from NEAR Intents and augments with local icons and metadata.
+ * Fetches supported tokens from NEAR Intents, then filters against ZkPay's curated allowlist.
+ * Only tokens in SWAP_ALLOWED_TOKENS (constants.ts) are returned.
  */
 export async function getSupportedTokens(chain?: string | null): Promise<SwapToken[]> {
   const now = Date.now();
@@ -129,7 +157,8 @@ export async function getSupportedTokens(chain?: string | null): Promise<SwapTok
     return filterTokensByChain(tokenCache.tokens, normalizedTargetChain);
   }
 
-  const localDefaults: SwapToken[] = DEPOSIT_ASSETS.map((d) => ({
+  // Start with our curated allowlist as the base
+  const allowlistTokens: SwapToken[] = SWAP_ALLOWED_TOKENS.map((d) => ({
     assetId: d.assetId,
     symbol: d.symbol,
     name: d.name,
@@ -138,18 +167,8 @@ export async function getSupportedTokens(chain?: string | null): Promise<SwapTok
     iconUrl: `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/${d.blockchain}/info/logo.png`,
   }));
 
-  // Add Base USDC destination token
-  localDefaults.push({
-    assetId: TARGET_ASSET.assetId,
-    symbol: "USDC",
-    name: "USD Coin (Base)",
-    blockchain: "base",
-    decimals: TARGET_ASSET.decimals,
-    contractAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    iconUrl: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/assets/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913/logo.png",
-  });
-
   try {
+    // Fetch remote tokens to enrich with live data (icons, prices, contract addresses)
     const res = await fetch(`${ONECLICK_API}/tokens`, {
       method: "GET",
       headers: buildSolverHeaders(),
@@ -161,41 +180,63 @@ export async function getSupportedTokens(chain?: string | null): Promise<SwapTok
       if (!text.trim().startsWith("<") && !text.includes("<!DOCTYPE")) {
         const data = JSON.parse(text);
         const rawList: any[] = Array.isArray(data) ? data : data?.tokens || [];
-        const remoteTokens: SwapToken[] = rawList.map((t: any) => ({
-          assetId: t.assetId,
-          symbol: t.symbol?.toUpperCase() || "UNKNOWN",
-          name: t.name || t.symbol || "Token",
-          blockchain: t.blockchain?.toLowerCase() || "unknown",
-          decimals: Number(t.decimals) || 18,
-          contractAddress: t.contractAddress,
-          priceUsd: typeof t.price === "number" ? t.price : undefined,
-          iconUrl: t.iconUrl || `https://assets.zkpay.top/tokens/${(t.symbol || "").toLowerCase()}.svg`,
-        }));
 
-        const mergedMap = new Map<string, SwapToken>();
-        for (const t of [...localDefaults, ...remoteTokens]) {
-          if (t.assetId && !mergedMap.has(t.assetId)) {
-            mergedMap.set(t.assetId, t);
-          }
+        // Build a map of remote token data keyed by assetId
+        const remoteMap = new Map<string, any>();
+        for (const t of rawList) {
+          if (t.assetId) remoteMap.set(t.assetId, t);
         }
 
-        const allTokens = Array.from(mergedMap.values());
-        tokenCache = { tokens: allTokens, timestamp: now };
-        return filterTokensByChain(allTokens, normalizedTargetChain);
+        // Enrich our allowlist tokens with remote data (icons, prices, contract addresses)
+        const enrichedTokens: SwapToken[] = allowlistTokens.map((local) => {
+          const remote = remoteMap.get(local.assetId);
+          if (!remote) return local;
+          return {
+            ...local,
+            contractAddress: remote.contractAddress || undefined,
+            priceUsd: typeof remote.price === "number" ? remote.price : undefined,
+            iconUrl: remote.iconUrl || local.iconUrl,
+          };
+        });
+
+        tokenCache = { tokens: enrichedTokens, timestamp: now };
+        return filterTokensByChain(enrichedTokens, normalizedTargetChain);
       }
     }
   } catch (err) {
-    console.warn("[SwapRouter] Remote tokens query skipped, using local defaults:", err);
+    console.warn("[SwapRouter] Remote tokens query skipped, using allowlist defaults:", err);
   }
 
-  tokenCache = { tokens: localDefaults, timestamp: now };
-  return filterTokensByChain(localDefaults, normalizedTargetChain);
+  tokenCache = { tokens: allowlistTokens, timestamp: now };
+  return filterTokensByChain(allowlistTokens, normalizedTargetChain);
 }
 
 function filterTokensByChain(tokens: SwapToken[], chain?: string | null): SwapToken[] {
   if (!chain || chain.trim() === "" || chain === "all") return tokens;
   const targetChain = normalizeChain(chain) || chain.trim().toLowerCase();
   return tokens.filter((t) => normalizeChain(t.blockchain) === targetChain);
+}
+
+/**
+ * Extracts the destination blockchain from a NEAR Intents assetId.
+ * Uses the curated allowlist first, then falls back to pattern matching.
+ */
+export function resolveChainFromAssetId(assetId: string): string | null {
+  // Check our curated allowlist first
+  const match = SWAP_ALLOWED_TOKENS.find((t) => t.assetId === assetId);
+  if (match) return match.blockchain;
+
+  // Fallback pattern matching on assetId prefixes
+  const lower = assetId.toLowerCase();
+  if (lower.includes(":base")) return "base";
+  if (lower.includes(":eth")) return "eth";
+  if (lower.includes(":arb")) return "arb";
+  if (lower.includes(":sol")) return "sol";
+  if (lower.includes(":btc")) return "btc";
+  if (lower.includes(":tron")) return "tron";
+  if (lower.includes(":ltc")) return "ltc";
+  if (lower.includes(":56_")) return "bsc"; // BSC chain ID
+  return null;
 }
 
 /**
@@ -424,10 +465,13 @@ export async function getSwapQuote(params: SwapQuoteParams) {
     ? await resolveAssetId(params.toAsset, params.destinationChain)
     : TARGET_ASSET.assetId;
 
+  // Resolve the destination chain for fee routing
+  const resolvedDestChain = params.destinationChain || resolveChainFromAssetId(destinationAssetId);
+
   // Validate atomic units and minimum volume threshold
   validateSwapAmount(amount, originAssetId);
 
-  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient);
+  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedDestChain);
   const effectiveRecipient = params.recipientAddress || ZKPAY_TREASURY_ADDRESS;
   const effectiveRefundTo = resolveRefundAddress(originAssetId, params.refundTo, effectiveRecipient);
 
@@ -522,10 +566,13 @@ export async function createSwapOrder(params: CreateSwapParams) {
     ? await resolveAssetId(params.toAsset, params.destinationChain)
     : TARGET_ASSET.assetId;
 
+  // Resolve the destination chain for fee routing
+  const resolvedDestChain = params.destinationChain || resolveChainFromAssetId(destinationAssetId);
+
   // Validate atomic units and minimum volume threshold
   validateSwapAmount(amount, originAssetId);
 
-  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient);
+  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedDestChain);
   const effectiveRefundTo = resolveRefundAddress(originAssetId, params.refundTo, recipient);
   const deadline = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
@@ -583,6 +630,8 @@ export async function createSwapOrder(params: CreateSwapParams) {
       partnerFeeRecipient: feeSplit.partnerFeeRecipient,
       networkProtocolFeeBps: feeSplit.networkProtocolFeeBps,
       totalDeductionsBps: feeSplit.totalDeductionsBps,
+      treasuryAddress: feeSplit.treasuryAddress,
+      feeSettlementNote: feeSplit.feeSettlementNote,
     },
   };
 }
