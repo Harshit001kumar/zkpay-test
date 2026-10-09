@@ -529,10 +529,11 @@ export async function getUserRewardsSummary(rawAddress: string, queryCycle?: str
           $or: [{ _id: address as any }, { referee: address }],
         });
         if (binding && binding.referrer) {
-          referredBy = binding.referrer.toLowerCase();
+          const referrerAddr: string = String(binding.referrer).toLowerCase();
+          referredBy = referrerAddr;
           dbData.referralBindings[address] = {
             referee: address,
-            referrer: referredBy,
+            referrer: referrerAddr,
             boundAt: binding.boundAt || Date.now(),
           };
         }
