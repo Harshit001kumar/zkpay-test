@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createConfig, WagmiProvider } from "@privy-io/wagmi";
 import { fallback, http } from "viem";
 import { BASE_RPC_URLS } from "@/lib/constants";
+import ReferralTracker from "@/components/ReferralTracker";
 
 const queryClient = new QueryClient();
 
@@ -59,6 +60,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       }) as any}
     >
       <SmartWalletsProvider>
+        <ReferralTracker />
         <QueryClientProvider client={queryClient}>
           <WagmiProvider config={wagmiConfig}>
             {children}

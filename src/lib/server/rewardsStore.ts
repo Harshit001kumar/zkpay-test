@@ -255,7 +255,7 @@ export function getReferralCodeForAddress(rawAddress: string): string {
 /**
  * Resolve a referral code or address string to canonical lowercase wallet address
  */
-export function resolveReferrerAddress(codeOrAddress: string): string | null {
+export async function resolveReferrerAddress(codeOrAddress: string): Promise<string | null> {
   if (!codeOrAddress) return null;
   const query = codeOrAddress.trim();
 
@@ -270,6 +270,22 @@ export function resolveReferrerAddress(codeOrAddress: string): string | null {
     return dbData.referralCodes[upperCode];
   }
 
+  // Check MongoDB directly
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const doc = await db.collection("referral_codes").findOne({
+        $or: [{ _id: upperCode as any }, { code: upperCode }],
+      });
+      if (doc && doc.address) {
+        dbData.referralCodes[upperCode] = doc.address.toLowerCase();
+        return doc.address.toLowerCase();
+      }
+    }
+  } catch (err) {
+    console.warn("[RewardsStore] Error checking referral code in Mongo:", err);
+  }
+
   return null;
 }
 
@@ -279,27 +295,56 @@ export function resolveReferrerAddress(codeOrAddress: string): string | null {
  * - No self-referral
  * - Immutable once bound (cannot overwrite existing referrer)
  */
-export function bindReferral(refereeAddress: string, referrerCodeOrAddress: string): { success: boolean; referrer?: string; error?: string } {
+export async function bindReferral(
+  refereeAddress: string,
+  referrerCodeOrAddress: string
+): Promise<{ success: boolean; referrer?: string; alreadyBound?: boolean; error?: string }> {
   const referee = refereeAddress?.toLowerCase().trim();
   if (!referee || !/^0x[a-fA-F0-9]{40}$/.test(referee)) {
     return { success: false, error: "Invalid referee wallet address" };
   }
 
-  const referrer = resolveReferrerAddress(referrerCodeOrAddress);
+  // Check in-memory cache first
+  if (dbData.referralBindings[referee]) {
+    return {
+      success: true,
+      referrer: dbData.referralBindings[referee].referrer,
+      alreadyBound: true,
+    };
+  }
+
+  // Check MongoDB for existing binding
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const existing = await db.collection("referral_bindings").findOne({
+        $or: [{ _id: referee as any }, { referee }],
+      });
+      if (existing && existing.referrer) {
+        const existingReferrer = existing.referrer.toLowerCase();
+        dbData.referralBindings[referee] = {
+          referee,
+          referrer: existingReferrer,
+          boundAt: existing.boundAt || Date.now(),
+        };
+        return {
+          success: true,
+          referrer: existingReferrer,
+          alreadyBound: true,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("[RewardsStore] MongoDB lookup error in bindReferral:", err);
+  }
+
+  const referrer = await resolveReferrerAddress(referrerCodeOrAddress);
   if (!referrer) {
     return { success: false, error: "Referral code or address not found" };
   }
 
   if (referee === referrer) {
     return { success: false, error: "Cannot refer yourself" };
-  }
-
-  // Check if already bound
-  if (dbData.referralBindings[referee]) {
-    return {
-      success: true,
-      referrer: dbData.referralBindings[referee].referrer,
-    };
   }
 
   const binding: ReferralBinding = {
@@ -312,17 +357,20 @@ export function bindReferral(refereeAddress: string, referrerCodeOrAddress: stri
   persistFileStorage();
 
   // Async persist to MongoDB
-  getMongoDb().then((db) => {
+  try {
+    const db = await getMongoDb();
     if (db) {
-      db.collection("referral_bindings").updateOne(
+      await db.collection("referral_bindings").updateOne(
         { _id: referee as any },
         { $set: binding },
         { upsert: true }
-      ).catch((err) => console.warn("[MongoDB] Failed to write referral binding:", err));
+      );
     }
-  }).catch(() => {});
+  } catch (err) {
+    console.warn("[MongoDB] Failed to write referral binding:", err);
+  }
 
-  return { success: true, referrer };
+  return { success: true, referrer, alreadyBound: false };
 }
 
 /**
@@ -331,18 +379,23 @@ export function bindReferral(refereeAddress: string, referrerCodeOrAddress: stri
  */
 export function recordScanAndPayReward(params: {
   txHash: string;
+  feeTxHash?: string;
   orderId: string;
   userAddress: string;
   principalUsdc: number;
   feeUsdc: number;
   cycle?: string;
 }): { success: boolean; entry?: ScanRewardEntry; error?: string } {
-  const { txHash, orderId, principalUsdc, feeUsdc } = params;
+  const { txHash, feeTxHash, orderId, principalUsdc, feeUsdc } = params;
   const userAddress = params.userAddress.toLowerCase().trim();
   const cycle = params.cycle || getCurrentCycle();
 
   if (dbData.processedTxHashes[txHash.toLowerCase()]) {
     return { success: false, error: "Transaction already processed for rewards" };
+  }
+
+  if (feeTxHash && dbData.processedTxHashes[feeTxHash.toLowerCase()]) {
+    return { success: false, error: "Fee transaction already processed for rewards" };
   }
 
   // Economic formula:
@@ -366,8 +419,11 @@ export function recordScanAndPayReward(params: {
     timestamp: Date.now(),
   };
 
-  // Mark tx processed
+  // Mark tx and feeTx processed
   dbData.processedTxHashes[txHash.toLowerCase()] = true;
+  if (feeTxHash) {
+    dbData.processedTxHashes[feeTxHash.toLowerCase()] = true;
+  }
   dbData.scanRewardLogs.push(entry);
 
   // Initialize cycle container if not exists
@@ -449,12 +505,40 @@ export function recordScanAndPayReward(params: {
 /**
  * Get rewards summary for a specific user (for Profile tab)
  */
-export function getUserRewardsSummary(rawAddress: string, queryCycle?: string) {
+export async function getUserRewardsSummary(rawAddress: string, queryCycle?: string) {
   const address = rawAddress.toLowerCase().trim();
   const currentCycle = queryCycle || getCurrentCycle();
 
+  // If MongoDB is available and not yet initialized, initialize
+  if (!isMongoInitialized) {
+    try {
+      await initMongoStorage();
+    } catch {}
+  }
+
   // User's referral code
   const referralCode = getReferralCodeForAddress(address);
+
+  // If referredBy is not in cache, check MongoDB
+  let referredBy = dbData.referralBindings[address]?.referrer || null;
+  if (!referredBy) {
+    try {
+      const db = await getMongoDb();
+      if (db) {
+        const binding = await db.collection("referral_bindings").findOne({
+          $or: [{ _id: address as any }, { referee: address }],
+        });
+        if (binding && binding.referrer) {
+          referredBy = binding.referrer.toLowerCase();
+          dbData.referralBindings[address] = {
+            referee: address,
+            referrer: referredBy,
+            boundAt: binding.boundAt || Date.now(),
+          };
+        }
+      }
+    } catch {}
+  }
 
   // Friends invited count
   const friendsInvited = Object.values(dbData.referralBindings).filter(
@@ -503,6 +587,7 @@ export function getUserRewardsSummary(rawAddress: string, queryCycle?: string) {
     address,
     referralCode,
     referralLink: `https://zkpay.in/?ref=${referralCode}`,
+    referredBy,
     friendsInvited,
     currentCycle,
     thisMonth: {

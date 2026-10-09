@@ -5,6 +5,7 @@ export interface UserAuthResult {
   status: number;
   userId?: string;
   walletAddress?: string;
+  walletAddresses?: string[];
   error?: string;
 }
 
@@ -27,6 +28,7 @@ export async function verifyUserRequest(req: Request): Promise<UserAuthResult> {
     }
 
     let walletAddress: string | undefined;
+    let walletAddresses: string[] = [];
     try {
       let user: any = null;
       if (typeof privy.users === "function" && typeof privy.users()?.get === "function") {
@@ -35,15 +37,25 @@ export async function verifyUserRequest(req: Request): Promise<UserAuthResult> {
         user = await privy.getUser(userId);
       }
 
-      const linkedWallet =
-        user?.wallet?.address ||
-        user?.linkedAccounts?.find((a: any) => a.type === "wallet" || a.type === "smart_wallet")?.address;
-      walletAddress = linkedWallet?.toLowerCase();
+      const addresses: string[] = [];
+      if (user?.wallet?.address) {
+        addresses.push(user.wallet.address.toLowerCase());
+      }
+      if (Array.isArray(user?.linkedAccounts)) {
+        for (const acc of user.linkedAccounts) {
+          if ((acc.type === "wallet" || acc.type === "smart_wallet") && acc.address) {
+            addresses.push(acc.address.toLowerCase());
+          }
+        }
+      }
+      walletAddresses = Array.from(new Set(addresses));
+      walletAddress = walletAddresses[0];
     } catch {
       walletAddress = undefined;
+      walletAddresses = [];
     }
 
-    return { authorized: true, status: 200, userId, walletAddress };
+    return { authorized: true, status: 200, userId, walletAddress, walletAddresses };
   } catch {
     return { authorized: false, status: 401, error: "Unauthorized — invalid or expired token" };
   }

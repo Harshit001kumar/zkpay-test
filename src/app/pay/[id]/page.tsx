@@ -10,7 +10,15 @@ import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { CONTRACTS, CHAIN } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
 import { saveTransaction } from "@/lib/history";
-import { parseP2PError } from "@/lib/p2pkit";
+import {
+  parseP2PError,
+  prepareOfframpOrder,
+  getOfframpPrice,
+  parseOrderIdFromReceipt,
+  sendPayoutAddress,
+  getOrderStatus,
+  getPublicClient,
+} from "@/lib/p2pkit";
 import { floorTo2Decimals, truncateTo2Decimals } from "@/lib/format";
 import { SpotlightCard } from "@/components/ui/SpotlightCard";
 import { ShinyText } from "@/components/ui/ShinyText";
@@ -169,64 +177,117 @@ export default function PayPage() {
         linkData.creatorWalletAddress.startsWith("0x") &&
         linkData.creatorWalletAddress.toLowerCase() !== activeAddress.toLowerCase();
 
-      const secondCallData = hasDirectMerchantWallet
-        ? encodeFunctionData({
+      let txH = "";
+      let parsedOrderId: bigint | null = null;
+      const calls: { to: `0x${string}`; data: `0x${string}`; value: bigint }[] = [];
+
+      // 1. Fee goes to ZkPay Treasury
+      calls.push({
+        to: CONTRACTS.USDC as `0x${string}`,
+        data: feeData,
+        value: 0n,
+      });
+
+      if (hasDirectMerchantWallet) {
+        // Direct crypto transfer to merchant wallet
+        calls.push({
+          to: CONTRACTS.USDC as `0x${string}`,
+          data: encodeFunctionData({
             abi: ERC20_ABI,
             functionName: "transfer",
             args: [linkData.creatorWalletAddress as `0x${string}`, principalWei],
-          })
-        : encodeFunctionData({
+          }),
+          value: 0n,
+        });
+      } else {
+        // P2P protocol UPI offramp settlement
+        const priceCfg = await getOfframpPrice("INR");
+        const liveSellPrice = priceCfg?.sellPrice || parseUnits(linkData.rate || "90", 6);
+
+        const orderCall = await prepareOfframpOrder({
+          userAddress: activeAddress,
+          currency: "INR",
+          usdcAmount: principalWei,
+          sellPrice: liveSellPrice,
+        });
+
+        // Approve Diamond for principal
+        calls.push({
+          to: CONTRACTS.USDC as `0x${string}`,
+          data: encodeFunctionData({
             abi: ERC20_ABI,
             functionName: "approve",
             args: [CONTRACTS.DIAMOND, principalWei],
-          });
+          }),
+          value: 0n,
+        });
 
-      let txH = "";
+        // Place order call into Diamond escrow
+        calls.push({
+          to: orderCall.to as `0x${string}`,
+          data: orderCall.data as `0x${string}`,
+          value: 0n,
+        });
+      }
 
       if (smartClient) {
-        txH = await smartClient.sendTransaction({
-          calls: [
-            {
-              to: CONTRACTS.USDC as `0x${string}`,
-              data: feeData,
-              value: 0n,
-            },
-            {
-              to: CONTRACTS.USDC as `0x${string}`,
-              data: secondCallData,
-              value: 0n,
-            },
-          ],
-        });
+        txH = await smartClient.sendTransaction({ calls });
       } else if (primaryWallet) {
         const provider = await primaryWallet.getEthereumProvider();
-        const feeTxHash = await provider.request({
-          method: "eth_sendTransaction",
-          params: [
-            {
-              from: activeAddress,
-              to: CONTRACTS.USDC,
-              data: feeData,
-            },
-          ],
-        });
-
-        await provider.request({
-          method: "eth_sendTransaction",
-          params: [
-            {
-              from: activeAddress,
-              to: CONTRACTS.USDC,
-              data: secondCallData,
-            },
-          ],
-        });
-        txH = (feeTxHash as string) || "";
+        for (let i = 0; i < calls.length; i++) {
+          const call = calls[i];
+          const hash = await provider.request({
+            method: "eth_sendTransaction",
+            params: [
+              {
+                from: activeAddress,
+                to: call.to,
+                data: call.data,
+              },
+            ],
+          });
+          txH = (hash as string) || "";
+        }
       } else {
         throw new Error("No wallet connected to execute transaction.");
       }
 
       setTxHash(txH);
+
+      // Parse orderId from receipt if P2P order
+      if (!hasDirectMerchantWallet) {
+        try {
+          const client = getPublicClient();
+          const receipt = await client.waitForTransactionReceipt({ hash: txH as `0x${string}` });
+          parsedOrderId = await parseOrderIdFromReceipt(receipt, activeAddress);
+          if (parsedOrderId) {
+            // Asynchronously wait for match and deliver UPI payout address to merchant
+            (async () => {
+              try {
+                for (let i = 0; i < 40; i++) {
+                  const currentOrder = await getOrderStatus(parsedOrderId!);
+                  if (currentOrder.status === "accepted" && currentOrder.pubkey) {
+                    if (smartClient) {
+                      await sendPayoutAddress(smartClient as any, {
+                        orderId: parsedOrderId!,
+                        paymentAddress: linkData.recipientUpi,
+                        merchantPublicKey: currentOrder.pubkey,
+                      });
+                    }
+                    break;
+                  }
+                  if (currentOrder.status === "completed") break;
+                  await new Promise((r) => setTimeout(r, 3000));
+                }
+              } catch (deliverErr) {
+                console.warn("[PayPage] UPI payout delivery error:", deliverErr);
+              }
+            })();
+          }
+        } catch (receiptErr) {
+          console.warn("[PayPage] Receipt parse error:", receiptErr);
+        }
+      }
 
       // Record transaction in user history
       const parsedInr = parseFloat(linkData.amountINR.replace(/[^0-9.]/g, "")) || 0;
@@ -238,11 +299,12 @@ export default function PayPage() {
         amountUSDC: targetUsdc,
         fee: targetUsdc * 0.01,
         recipient: linkData.recipientUpi,
+        orderId: parsedOrderId ? parsedOrderId.toString() : undefined,
         network: "Base Mainnet",
         timestamp: Date.now(),
       });
 
-      // Confirm settlement with on-chain transaction hash
+      // Confirm settlement with on-chain transaction hash and orderId
       try {
         await fetch("/api/v1/paylinks", {
           method: "PATCH",
@@ -251,6 +313,7 @@ export default function PayPage() {
             id: linkId,
             status: "PAID",
             txHash: txH,
+            p2pOrderId: parsedOrderId ? parsedOrderId.toString() : undefined,
           }),
         });
       } catch (confirmErr) {

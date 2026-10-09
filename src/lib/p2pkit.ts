@@ -73,22 +73,24 @@ export function getP2PPrices() {
 }
 
 export async function getOfframpLimits(address: `0x${string}`, currency: string) {
+  const normCurrency = (currency || "INR").toUpperCase();
+  const fallbackFloor = normCurrency === "INR" ? 100n : 200n;
   try {
     const profile = getP2PProfile();
     const limits = await profile.getTxLimits({
       address,
-      currency,
+      currency: normCurrency,
     });
     
     if (limits.isErr()) {
-      console.warn("[p2pkit] limits.isErr, fallback to 100 USDC baseline floor:", limits.error);
-      return { sellLimit: 100n, buyLimit: 0n };
+      console.warn(`[p2pkit] limits.isErr, fallback to ${fallbackFloor} USDC baseline floor:`, limits.error);
+      return { sellLimit: fallbackFloor, buyLimit: 0n };
     }
     
     return limits.value;
   } catch (err) {
-    console.warn("[p2pkit] getTxLimits error, fallback to 100 USDC baseline floor:", err);
-    return { sellLimit: 100n, buyLimit: 0n };
+    console.warn(`[p2pkit] getTxLimits error, fallback to ${fallbackFloor} USDC baseline floor:`, err);
+    return { sellLimit: fallbackFloor, buyLimit: 0n };
   }
 }
 

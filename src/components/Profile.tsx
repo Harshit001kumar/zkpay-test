@@ -73,17 +73,77 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [keyError, setKeyError] = useState<string | null>(null);
 
+  // Manual Referral Code State
+  const [manualRefCode, setManualRefCode] = useState("");
+  const [isBindingRef, setIsBindingRef] = useState(false);
+  const [refBindingMsg, setRefBindingMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const handleApplyReferral = async () => {
+    if (!manualRefCode.trim() || !address) return;
+    try {
+      setIsBindingRef(true);
+      setRefBindingMsg(null);
+      const token = await getAccessToken();
+      const res = await fetch("/api/referrals/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          userAddress: address,
+          referrerCodeOrAddress: manualRefCode.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRefBindingMsg({
+          type: "success",
+          text: data.alreadyBound ? "Referrer already linked to your account." : "Referral code bound successfully!",
+        });
+        setRewardsData((prev: any) => ({
+          ...prev,
+          referredBy: data.referrer,
+        }));
+        setManualRefCode("");
+      } else {
+        setRefBindingMsg({ type: "error", text: data.error || "Failed to apply referral code" });
+      }
+    } catch (err: any) {
+      setRefBindingMsg({ type: "error", text: err.message || "Failed to bind referral" });
+    } finally {
+      setIsBindingRef(false);
+    }
+  };
+
   useEffect(() => {
     if (!address) return;
-    setIsLoadingRewards(true);
-    fetch(`/api/rewards/user?address=${address}`)
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success) setRewardsData(json.data);
-      })
-      .catch((err) => console.warn("[Profile] Failed to fetch rewards:", err))
-      .finally(() => setIsLoadingRewards(false));
-  }, [address]);
+    let cancelled = false;
+
+    async function loadRewards() {
+      setIsLoadingRewards(true);
+      try {
+        const token = await getAccessToken();
+        if (cancelled) return;
+        const res = await fetch(`/api/rewards/user?address=${address}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const json = await res.json();
+        if (json.success && !cancelled) {
+          setRewardsData(json.data);
+        }
+      } catch (err) {
+        console.warn("[Profile] Failed to fetch rewards:", err);
+      } finally {
+        if (!cancelled) setIsLoadingRewards(false);
+      }
+    }
+
+    loadRewards();
+    return () => {
+      cancelled = true;
+    };
+  }, [address, getAccessToken]);
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -345,6 +405,64 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
                 <span>Telegram</span>
               </a>
             </div>
+          </section>
+
+          {/* Referrer Status & Manual Binding Card */}
+          <section className="monolith-card rounded-[28px] p-6 md:p-8 space-y-4">
+            <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#c6c6cd] uppercase tracking-wider">
+              <Gift className="w-4 h-4 text-[#c0c6de]" />
+              <span>Your Referrer Status</span>
+            </div>
+
+            {rewardsData?.referredBy ? (
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+                    <CheckCircle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-mono font-bold text-white block">Bound to Referrer</span>
+                    <span className="text-[11px] font-mono text-emerald-400">
+                      {rewardsData.referredBy.slice(0, 6)}...{rewardsData.referredBy.slice(-4)}
+                    </span>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold">
+                  ACTIVE
+                </span>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs font-mono text-[#909097] leading-relaxed">
+                  Have a friend&apos;s referral code or address? Enter it once below to link your account and earn cashback.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={manualRefCode}
+                    onChange={(e) => setManualRefCode(e.target.value)}
+                    placeholder="Enter code (e.g. ZK12AB)"
+                    className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs font-mono text-white placeholder-[#606067] focus:outline-none focus:border-[#c0c6de] uppercase"
+                  />
+                  <button
+                    onClick={handleApplyReferral}
+                    disabled={isBindingRef || !manualRefCode.trim()}
+                    className="px-5 py-3 rounded-xl bg-gradient-to-r from-[#c0c6de] to-white text-[#131315] font-mono font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center gap-1.5"
+                  >
+                    {isBindingRef ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "Apply"}
+                  </button>
+                </div>
+                {refBindingMsg && (
+                  <p
+                    className={`text-[11px] font-mono ${
+                      refBindingMsg.type === "success" ? "text-emerald-400" : "text-rose-400"
+                    }`}
+                  >
+                    {refBindingMsg.text}
+                  </p>
+                )}
+              </div>
+            )}
           </section>
 
           {/* Quick Stats Grid */}

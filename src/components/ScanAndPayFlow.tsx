@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
+import { usePrivy } from "@privy-io/react-auth";
 import { formatUnits, encodeFunctionData, createWalletClient, custom, maxUint256 } from "viem";
 import { base } from "viem/chains";
 import { useReadContract } from "wagmi";
@@ -56,6 +57,7 @@ const PRESET_AMOUNTS = [100, 250, 500, 1000, 2000];
 export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   const router = useRouter();
   const { address, smartClient, primaryWallet: wallet, login, ready, authenticated } = useActiveAccount();
+  const { getAccessToken } = usePrivy();
   const activeAddress = (address || undefined) as `0x${string}` | undefined;
 
 
@@ -554,18 +556,25 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
             // Record monthly rewards for Scan & Pay (cashback & referral)
             if (activeAddress) {
-              fetch("/api/rewards/record", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  txHash,
-                  feeTxHash,
-                  orderId: orderId ? orderId.toString() : "",
-                  principalUsdc: usdcAmountNum,
-                  feeUsdc: platformFeeUsdc,
-                  userAddress: activeAddress,
-                }),
-              }).catch((err) => console.warn("[RewardsRecord] Ping error:", err));
+              getAccessToken()
+                .then((token) => {
+                  return fetch("/api/rewards/record", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                    body: JSON.stringify({
+                      txHash,
+                      feeTxHash,
+                      orderId: orderId ? orderId.toString() : "",
+                      principalUsdc: usdcAmountNum,
+                      feeUsdc: platformFeeUsdc,
+                      userAddress: activeAddress,
+                    }),
+                  });
+                })
+                .catch((err) => console.warn("[RewardsRecord] Ping error:", err));
             }
 
             break;

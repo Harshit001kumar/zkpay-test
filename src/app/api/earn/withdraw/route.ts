@@ -3,6 +3,7 @@ import {
   getPrivyClient,
   getPrivyAuthPrivateKey,
   resolveEmbeddedWalletId,
+  verifyUserOwnsWalletId,
   parsePrivyEarnError,
 } from "@/lib/server/privyEarn";
 
@@ -60,6 +61,18 @@ export async function POST(request: Request) {
 
     // ── 3. Resolve Target Privy Embedded Wallet ID ──
     let targetWalletId = rawWalletId;
+    if (targetWalletId) {
+      const isOwned = await verifyUserOwnsWalletId(userId, targetWalletId);
+      if (!isOwned) {
+        return NextResponse.json(
+          { error: "Forbidden — specified wallet does not belong to the authenticated user." },
+          { status: 403 }
+        );
+      }
+    } else {
+      targetWalletId = await resolveEmbeddedWalletId(userId);
+    }
+
     if (!targetWalletId || targetWalletId.startsWith("0x")) {
       targetWalletId = await resolveEmbeddedWalletId(userId);
     }

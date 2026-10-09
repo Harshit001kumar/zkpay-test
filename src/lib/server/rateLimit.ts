@@ -68,16 +68,22 @@ function purgeExpiredWindows(now: number) {
  * Extracts a client identifier from IP headers or fallback.
  */
 export function getClientIp(req: Request): string {
+  // 1. Cloudflare connecting IP (trusted header populated by CF edge)
+  const cfIp = req.headers.get("cf-connecting-ip");
+  if (cfIp && cfIp.trim()) return cfIp.trim();
+
+  // 2. Standard single reverse proxy IP (Render / Nginx)
+  const realIp = req.headers.get("x-real-ip");
+  if (realIp && realIp.trim()) return realIp.trim();
+
+  // 3. Fallback to rightmost IP in X-Forwarded-For (appended by the closest trusted proxy)
   const forwarded = req.headers.get("x-forwarded-for");
   if (forwarded) {
-    const firstIp = forwarded.split(",")[0].trim();
-    if (firstIp) return firstIp;
+    const ips = forwarded.split(",").map((ip) => ip.trim()).filter(Boolean);
+    if (ips.length > 0) {
+      return ips[ips.length - 1];
+    }
   }
-  const cfIp = req.headers.get("cf-connecting-ip");
-  if (cfIp) return cfIp.trim();
-
-  const realIp = req.headers.get("x-real-ip");
-  if (realIp) return realIp.trim();
 
   return "anonymous";
 }

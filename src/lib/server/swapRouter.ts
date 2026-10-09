@@ -429,10 +429,36 @@ async function fetchSolverApi(endpoint: string, options: RequestInit): Promise<a
   }
 
   if (!response.ok) {
-    const msg = data.message || (typeof data.error === "string" ? data.error : "Failed to execute request on solver network.");
-    const err: any = new Error(msg);
-    err.code = data.code || (response.status === 400 ? "SOLVER_REJECTED" : "SOLVER_ERROR");
+    const rawMsg = data.message || (typeof data.error === "string" ? data.error : "Failed to execute request on solver network.");
+    const err: any = new Error(rawMsg);
     err.statusCode = response.status >= 400 && response.status < 500 ? response.status : 502;
+    err.rawMessage = rawMsg;
+
+    // Granular solver error classification
+    const lowerMsg = rawMsg.toLowerCase();
+    const minMatch = rawMsg.match(/try at least\s+(\d+)/i) || rawMsg.match(/minimum\s+.*?(\d+)/i);
+    if (minMatch) {
+      err.code = "AMOUNT_BELOW_MINIMUM";
+      err.minAmountRequired = minMatch[1];
+      err.message = `Amount is below solver bridge threshold. Minimum required is ${minMatch[1]} atomic units.`;
+    } else if (lowerMsg.includes("amount is too low") || lowerMsg.includes("amount below")) {
+      err.code = "AMOUNT_BELOW_MINIMUM";
+    } else if (lowerMsg.includes("recipient is not valid") || lowerMsg.includes("invalid recipient")) {
+      err.code = "INVALID_RECIPIENT";
+      err.message = "Destination recipient address is invalid for the target blockchain.";
+    } else if (lowerMsg.includes("refundto") || lowerMsg.includes("refund address")) {
+      err.code = "INVALID_REFUND_ADDRESS";
+      err.message = "Origin refund address is invalid for the source blockchain.";
+    } else if (lowerMsg.includes("appfee") || lowerMsg.includes("fee recipient")) {
+      err.code = "INVALID_FEE_RECIPIENT";
+      err.message = "Partner fee recipient address is invalid for the destination blockchain.";
+    } else if (lowerMsg.includes("no route") || lowerMsg.includes("liquidity") || lowerMsg.includes("cannot find quote") || lowerMsg.includes("no quote")) {
+      err.code = "NO_SOLVER_LIQUIDITY";
+      err.message = "Temporary lack of solver liquidity for this token pair or amount. Please adjust trade amount or retry shortly.";
+    } else {
+      err.code = data.code || (response.status === 400 ? "SOLVER_REJECTED" : "SOLVER_ERROR");
+    }
+
     throw err;
   }
 
@@ -472,8 +498,12 @@ export async function getSwapQuote(params: SwapQuoteParams) {
   validateSwapAmount(amount, originAssetId);
 
   const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedDestChain);
-  const effectiveRecipient = params.recipientAddress || ZKPAY_TREASURY_ADDRESS;
-  const effectiveRefundTo = resolveRefundAddress(originAssetId, params.refundTo, effectiveRecipient);
+  // Ensure effectiveRecipient is ALWAYS valid for the destination chain
+  const effectiveRecipient =
+    params.recipientAddress?.trim() ||
+    feeSplit.partnerFeeRecipient ||
+    getTreasuryAddressForChain(resolvedDestChain);
+  const effectiveRefundTo = resolveRefundAddress(originAssetId, params.refundTo, effectiveRecipient, { isDryRun: true });
 
   const deadline = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
@@ -573,7 +603,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
   validateSwapAmount(amount, originAssetId);
 
   const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedDestChain);
-  const effectiveRefundTo = resolveRefundAddress(originAssetId, params.refundTo, recipient);
+  const effectiveRefundTo = resolveRefundAddress(originAssetId, params.refundTo, recipient, { isDryRun: false });
   const deadline = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
   const payload = {

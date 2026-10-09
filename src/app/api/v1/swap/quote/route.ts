@@ -76,15 +76,24 @@ async function handleQuote(req: Request) {
     );
   } catch (err: any) {
     console.error("[SwapQuote] Error:", err.message || err);
-    const statusCode = err.statusCode || (err.code === "AMOUNT_BELOW_MINIMUM" || err.code === "INVALID_AMOUNT" ? 400 : 503);
-    return corsJson(
-      {
-        success: false,
-        error: err.code || "SOLVER_NETWORK_BUSY",
-        message: err.message || "Failed to generate swap quote",
-      },
-      { status: statusCode, headers: rateLimit.headers }
-    );
+    const isClientError =
+      err.code === "AMOUNT_BELOW_MINIMUM" ||
+      err.code === "INVALID_AMOUNT" ||
+      err.code === "INVALID_RECIPIENT" ||
+      err.code === "INVALID_REFUND_ADDRESS" ||
+      err.code === "INVALID_FEE_RECIPIENT" ||
+      err.code === "NO_SOLVER_LIQUIDITY" ||
+      err.code === "SOLVER_REJECTED";
+    const statusCode = err.statusCode || (isClientError ? 400 : 503);
+    const body: Record<string, any> = {
+      success: false,
+      error: err.code || "SOLVER_NETWORK_BUSY",
+      message: err.message || "Failed to generate swap quote",
+    };
+    if (err.minAmountRequired) {
+      body.minAmountRequired = err.minAmountRequired;
+    }
+    return corsJson(body, { status: statusCode, headers: rateLimit.headers });
   }
 }
 

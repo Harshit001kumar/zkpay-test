@@ -9,12 +9,14 @@ import CardsWaitlist from "./CardsWaitlist";
 import Profile from "./Profile";
 import { Shield } from "lucide-react";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
+import { usePrivy } from "@privy-io/react-auth";
 
 export default function AppShell() {
   const [activeTab, setActiveTab] = useState<BottomNavTab>("home");
   const { address, authenticated } = useActiveAccount();
+  const { getAccessToken } = usePrivy();
 
-  // Capture ?ref= or ?tab= query parameter
+  // Capture ?tab= or ?ref= query parameter
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -23,37 +25,8 @@ export default function AppShell() {
       if (tabParam && ["home", "earn", "cards", "profile"].includes(tabParam)) {
         setActiveTab(tabParam);
       }
-      const refParam = urlParams.get("ref");
-      if (refParam && refParam.trim()) {
-        localStorage.setItem("zkpay_pending_ref", refParam.trim());
-      }
     } catch {}
   }, []);
-
-  // When user connects wallet, register referral if pending
-  useEffect(() => {
-    if (!authenticated || !address) return;
-    try {
-      const pendingRef = localStorage.getItem("zkpay_pending_ref");
-      if (pendingRef) {
-        fetch("/api/referrals/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userAddress: address,
-            referrerCodeOrAddress: pendingRef,
-          }),
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.success) {
-              localStorage.removeItem("zkpay_pending_ref");
-            }
-          })
-          .catch((err) => console.warn("[Referral] Registration ping failed:", err));
-      }
-    } catch {}
-  }, [authenticated, address]);
 
   return (
     <div className="min-h-screen bg-[#131315] text-[#e5e2e3]">

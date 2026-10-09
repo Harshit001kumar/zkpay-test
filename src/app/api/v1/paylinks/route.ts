@@ -333,7 +333,7 @@ export async function PATCH(req: Request) {
         if (decoded.eventName !== "Transfer") return false;
         const to = String((decoded.args as any).to || "").toLowerCase();
         const value = (decoded.args as any).value as bigint;
-        return to === treasuryLower && value === expectedFeeUnits;
+        return to === treasuryLower && value >= (expectedFeeUnits * 95n) / 100n;
       } catch {
         return false;
       }

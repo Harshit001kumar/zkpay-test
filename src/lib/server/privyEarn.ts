@@ -170,6 +170,61 @@ export async function resolveEmbeddedWalletId(userId: string): Promise<string | 
   }
 }
 
+/**
+ * Validates that a candidate wallet ID or address is strictly owned by the authenticated user.
+ * Prevents IDOR attacks where an attacker submits another user's wallet ID.
+ */
+export async function verifyUserOwnsWalletId(userId: string, walletId: string): Promise<boolean> {
+  try {
+    const cleanId = walletId.trim();
+    const privy = getPrivyClient() as any;
+    let privyUser: any = null;
+
+    if (typeof privy.users === "function" && typeof privy.users()?.get === "function") {
+      privyUser = await privy.users().get(userId);
+    } else if (typeof privy.users?.get === "function") {
+      privyUser = await privy.users.get({ id: userId });
+    } else if (typeof privy.getUser === "function") {
+      privyUser = await privy.getUser(userId);
+    }
+
+    const linked = privyUser?.linkedAccounts || [];
+    const isOwned = linked.some(
+      (acc: any) =>
+        acc.id === cleanId ||
+        (acc.address && acc.address.toLowerCase() === cleanId.toLowerCase())
+    );
+    if (isOwned) return true;
+
+    // Fallback: Check via Privy REST API
+    const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+    const appSecret = process.env.PRIVY_APP_SECRET;
+    if (appId && appSecret) {
+      const basicAuth = Buffer.from(`${appId}:${appSecret}`).toString("base64");
+      const res = await fetch(`https://api.privy.io/api/v1/users/${encodeURIComponent(userId)}`, {
+        headers: {
+          "privy-app-id": appId,
+          Authorization: `Basic ${basicAuth}`,
+        },
+      });
+      if (res.ok) {
+        const userData = await res.json();
+        const accounts = userData?.linked_accounts || userData?.linkedAccounts || [];
+        return accounts.some(
+          (acc: any) =>
+            acc.id === cleanId ||
+            (acc.address && acc.address.toLowerCase() === cleanId.toLowerCase())
+        );
+      }
+    }
+
+    return false;
+  } catch (err: any) {
+    console.error("[PrivyEarn] Error verifying wallet ownership:", err?.message || err);
+    return false;
+  }
+}
+
 export function parsePrivyEarnError(error: any): string {
   const rawMsg =
     error?.response?.data?.error ||

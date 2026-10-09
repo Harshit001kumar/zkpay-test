@@ -6,7 +6,7 @@ import {
   getRelayerBalance,
   checkUsdcActivity,
 } from "@/lib/server/relayer";
-import { getPrivyClient } from "@/lib/server/privyEarn";
+import { verifyUserRequest } from "@/lib/server/userAuth";
 
 // ──────────────────────────────────────────────
 // POST /api/relayer/prefund
@@ -17,22 +17,11 @@ import { getPrivyClient } from "@/lib/server/privyEarn";
 export async function POST(request: Request) {
   try {
     // ── 1. Security Check: Authenticate Caller via Privy JWT ──
-    const authHeader = request.headers.get("authorization");
-    const accessToken = authHeader?.replace("Bearer ", "");
-
-    if (!accessToken) {
+    const userAuth = await verifyUserRequest(request);
+    if (!userAuth.authorized || !userAuth.userId) {
       return NextResponse.json(
-        { error: "Unauthorized — no access token provided" },
-        { status: 401 }
-      );
-    }
-
-    try {
-      await getPrivyClient().utils().auth().verifyAccessToken(accessToken);
-    } catch {
-      return NextResponse.json(
-        { error: "Unauthorized — invalid or expired token" },
-        { status: 401 }
+        { error: userAuth.error || "Unauthorized — valid session required to access gas relayer" },
+        { status: userAuth.status || 401 }
       );
     }
 
@@ -44,6 +33,21 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Invalid address format" },
         { status: 400 }
+      );
+    }
+
+    const targetAddress = address.toLowerCase();
+
+    // Verify caller owns the target wallet to prevent relayer drainage
+    const authorizedWallets = new Set([
+      ...(userAuth.walletAddresses || []).map((a) => a.toLowerCase()),
+      ...(userAuth.walletAddress ? [userAuth.walletAddress.toLowerCase()] : []),
+    ]);
+
+    if (authorizedWallets.size > 0 && !authorizedWallets.has(targetAddress)) {
+      return NextResponse.json(
+        { error: "Forbidden — prefund target address does not belong to authenticated user" },
+        { status: 403 }
       );
     }
 

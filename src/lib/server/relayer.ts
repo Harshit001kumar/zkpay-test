@@ -191,7 +191,7 @@ export async function checkUsdcActivity(address: `0x${string}`): Promise<boolean
     return balance >= MIN_USDC_FOR_PREFUND;
   } catch (err) {
     console.warn("[Relayer Security] USDC balance check failed:", err);
-    return true; // Don't block legitimate users if RPC fails
+    return false; // Fail closed to prevent gas tank drainage during RPC disruptions
   }
 }
 

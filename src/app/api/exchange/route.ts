@@ -21,7 +21,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing required fields: originAssetId, amount, settleAddress" }, { status: 400 });
     }
 
-    const effectiveRefundTo = resolveRefundAddress(originAssetId, userRefundTo, settleAddress);
+    const effectiveRefundTo = resolveRefundAddress(originAssetId, userRefundTo, settleAddress, { isDryRun: false });
 
     // Fee recipient — treasury or env override
     const feeRecipient = process.env.NEXT_PUBLIC_DEPOSIT_FEE_RECIPIENT ||
