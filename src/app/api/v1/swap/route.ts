@@ -37,8 +37,9 @@ export async function GET() {
       },
     },
     feeSettlement: {
-      note: "Fees are paid in the DESTINATION ASSET of the swap to the recipient on the destination chain.",
-      partnerWarning: "Partner feeRecipient address MUST be compatible with the destination chain (e.g. 0x for EVM, Base58 for Solana). Incorrect addresses may result in lost fees.",
+      mechanism: "DIRECT_ON_CHAIN",
+      note: "Fees are carved out of the INPUT TOKEN on the ORIGIN CHAIN for exact-input swaps and settled directly on-chain into wallet addresses ($0 minimum threshold, zero pooling delay).",
+      partnerGuidance: "Partner feeRecipient address MUST be compatible with the origin chain of the swap (e.g. Base58 Solana address when swapping from SOL, Bech32/Base58 Bitcoin address when swapping from BTC, 0x address for EVM origins).",
       defaultFeeBps: 100,
       feeSplitModel: "50/50 between ZkPay Treasury and Partner",
     },

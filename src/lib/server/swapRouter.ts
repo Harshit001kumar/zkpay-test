@@ -13,8 +13,17 @@
  * - In-memory caching for token metadata
  */
 
-import { SWAP_ALLOWED_TOKENS, SWAP_ALLOWED_CHAINS, TARGET_ASSET, CONTRACTS, TREASURY_ADDRESSES } from "@/lib/constants";
-import { resolveRefundAddress } from "@/lib/refundAddress";
+import {
+  SWAP_ALLOWED_TOKENS,
+  SWAP_ALLOWED_CHAINS,
+  TARGET_ASSET,
+  CONTRACTS,
+  TREASURY_ADDRESSES,
+  resolveChainFromAssetId,
+  getTreasuryAddressForChain,
+  normalizeChain,
+} from "@/lib/constants";
+import { resolveRefundAddress, isValidAddressForOriginAsset } from "@/lib/refundAddress";
 
 const ONECLICK_API = "https://1click.chaindefuser.com/v0";
 
@@ -24,23 +33,15 @@ export const DEFAULT_CUSTOM_FEE_BPS = 100;        // 1.00% default
 export const MIN_CUSTOM_FEE_BPS = 20;             // 0.20% minimum custom fee
 export const MAX_CUSTOM_FEE_BPS = 450;            // 4.50% max custom fee (leaves headroom for 25 bps overhead < 500 bps cap)
 
-// Default EVM treasury address (used when destination chain isn't specified or is EVM)
+// Default EVM treasury address (used when origin chain isn't specified or is EVM)
 export const ZKPAY_TREASURY_ADDRESS =
   process.env.NEXT_PUBLIC_DEPOSIT_FEE_RECIPIENT ||
   process.env.NEXT_PUBLIC_TREASURY_ADDRESS ||
   CONTRACTS.TREASURY ||
   "0xb856b24fb054135deba5e0309edd31ed6a8afbe2";
 
-/**
- * Resolves the correct ZkPay treasury address for the given destination chain.
- * Fees are paid in the DESTINATION ASSET — so the treasury must have an address on that chain.
- */
-export function getTreasuryAddressForChain(destinationChain?: string | null): string {
-  if (!destinationChain) return ZKPAY_TREASURY_ADDRESS;
-  const chain = normalizeChain(destinationChain);
-  if (!chain) return ZKPAY_TREASURY_ADDRESS;
-  return TREASURY_ADDRESSES[chain] || ZKPAY_TREASURY_ADDRESS;
-}
+// Re-export chain & treasury resolution helpers
+export { resolveChainFromAssetId, getTreasuryAddressForChain, normalizeChain };
 
 export interface FeeSplitResult {
   totalCustomFeeBps: number;
@@ -58,16 +59,17 @@ export interface FeeSplitResult {
 /**
  * Computes 50/50 fee split between ZkPay Treasury and Partner.
  * 
- * IMPORTANT: Fees are paid in the DESTINATION ASSET of the swap.
- * - ZkPay treasury address is resolved per destination chain (e.g. SOL address for SOL swaps).
- * - Partner must provide an address compatible with the destination chain.
- * - If partner provides an incompatible address, the fee may be lost (partner's responsibility).
+ * IMPORTANT: In 1Click API (NEAR Intents), appFees are carved directly out of the
+ * INPUT TOKEN on the ORIGIN CHAIN for exact-input swaps.
+ * - ZkPay treasury address is resolved per ORIGIN chain (e.g. native SOL address for SOL swaps).
+ * - Fees settle directly on-chain into wallets with $0 minimum threshold and zero pooling delay.
+ * - Partner must provide an address compatible with the ORIGIN chain (or a named .near account).
  * - If no partner recipient is provided, 100% of custom fee goes to ZkPay Treasury.
  */
 export function calculateFeeSplit(
   requestedFeeBps?: number | null,
   partnerFeeRecipient?: string | null,
-  destinationChain?: string | null
+  originChain?: string | null
 ): FeeSplitResult {
   let totalCustom = typeof requestedFeeBps === "number" && !isNaN(requestedFeeBps)
     ? Math.round(requestedFeeBps)
@@ -76,7 +78,7 @@ export function calculateFeeSplit(
   totalCustom = Math.max(MIN_CUSTOM_FEE_BPS, Math.min(MAX_CUSTOM_FEE_BPS, totalCustom));
 
   const cleanPartnerRecipient = partnerFeeRecipient?.trim() || null;
-  const treasuryAddress = getTreasuryAddressForChain(destinationChain);
+  const treasuryAddress = getTreasuryAddressForChain(originChain);
 
   let zkpayFeeBps: number;
   let partnerFeeBps: number;
@@ -109,7 +111,7 @@ export function calculateFeeSplit(
     totalDeductionsBps: NEAR_INTENTS_PROTOCOL_FEE_BPS + totalCustom,
     appFees,
     treasuryAddress,
-    feeSettlementNote: "Fees are paid in the destination asset to the recipient on the destination chain.",
+    feeSettlementNote: `Fees are carved from the input asset on ${originChain || "origin chain"} and settled directly on-chain to wallet addresses ($0 minimum, instant settlement).`,
   };
 }
 
@@ -127,20 +129,6 @@ export interface SwapToken {
 let tokenCache: { tokens: SwapToken[]; timestamp: number } | null = null;
 const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-export function normalizeChain(chain?: string | null): string | undefined {
-  if (!chain) return undefined;
-  const c = chain.trim().toLowerCase();
-  if (c === "sol" || c === "solana") return "sol";
-  if (c === "eth" || c === "ethereum" || c === "mainnet") return "eth";
-  if (c === "base") return "base";
-  if (c === "arb" || c === "arbitrum") return "arb";
-  if (c === "bsc" || c === "binance" || c === "bnb") return "bsc";
-  if (c === "tron" || c === "trx") return "tron";
-  if (c === "btc" || c === "bitcoin") return "btc";
-  if (c === "polygon" || c === "matic") return "polygon";
-  if (c === "near") return "near";
-  return c;
-}
 
 // Build the allowlist assetId set for fast lookups
 const ALLOWED_ASSET_IDS = new Set(SWAP_ALLOWED_TOKENS.map((t) => t.assetId));
@@ -217,27 +205,6 @@ function filterTokensByChain(tokens: SwapToken[], chain?: string | null): SwapTo
   return tokens.filter((t) => normalizeChain(t.blockchain) === targetChain);
 }
 
-/**
- * Extracts the destination blockchain from a NEAR Intents assetId.
- * Uses the curated allowlist first, then falls back to pattern matching.
- */
-export function resolveChainFromAssetId(assetId: string): string | null {
-  // Check our curated allowlist first
-  const match = SWAP_ALLOWED_TOKENS.find((t) => t.assetId === assetId);
-  if (match) return match.blockchain;
-
-  // Fallback pattern matching on assetId prefixes
-  const lower = assetId.toLowerCase();
-  if (lower.includes(":base")) return "base";
-  if (lower.includes(":eth")) return "eth";
-  if (lower.includes(":arb")) return "arb";
-  if (lower.includes(":sol")) return "sol";
-  if (lower.includes(":btc")) return "btc";
-  if (lower.includes(":tron")) return "tron";
-  if (lower.includes(":ltc")) return "ltc";
-  if (lower.includes(":56_")) return "bsc"; // BSC chain ID
-  return null;
-}
 
 /**
  * Resolves symbol or partial asset identifier to full NEAR Intents assetId.
@@ -451,7 +418,7 @@ async function fetchSolverApi(endpoint: string, options: RequestInit): Promise<a
       err.message = "Origin refund address is invalid for the source blockchain.";
     } else if (lowerMsg.includes("appfee") || lowerMsg.includes("fee recipient")) {
       err.code = "INVALID_FEE_RECIPIENT";
-      err.message = "Partner fee recipient address is invalid for the destination blockchain.";
+      err.message = "Fee recipient address is invalid for the origin blockchain (where fees are carved from input tokens).";
     } else if (lowerMsg.includes("no route") || lowerMsg.includes("liquidity") || lowerMsg.includes("cannot find quote") || lowerMsg.includes("no quote")) {
       err.code = "NO_SOLVER_LIQUIDITY";
       err.message = "Temporary lack of solver liquidity for this token pair or amount. Please adjust trade amount or retry shortly.";
@@ -491,17 +458,32 @@ export async function getSwapQuote(params: SwapQuoteParams) {
     ? await resolveAssetId(params.toAsset, params.destinationChain)
     : TARGET_ASSET.assetId;
 
-  // Resolve the destination chain for fee routing
-  const resolvedDestChain = params.destinationChain || resolveChainFromAssetId(destinationAssetId);
+  // Resolve chains for both origin (fee routing) and destination (settlement)
+  const resolvedOriginChain = params.originChain || params.chain || resolveChainFromAssetId(originAssetId) || "base";
+  const resolvedDestChain = params.destinationChain || resolveChainFromAssetId(destinationAssetId) || "base";
 
   // Validate atomic units and minimum volume threshold
   validateSwapAmount(amount, originAssetId);
 
-  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedDestChain);
+  // Fee split is resolved per ORIGIN chain because 1Click appFees carve out input tokens
+  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain);
+
+  // Validate partner fee recipient format for the origin asset if provided
+  if (
+    feeSplit.partnerFeeRecipient &&
+    !isValidAddressForOriginAsset(originAssetId, feeSplit.partnerFeeRecipient)
+  ) {
+    const err: any = new Error(
+      `Partner fee recipient address '${feeSplit.partnerFeeRecipient}' is invalid for the origin blockchain (${resolvedOriginChain}). Fees are carved in the input token directly on the origin chain.`
+    );
+    err.code = "INVALID_FEE_RECIPIENT";
+    err.statusCode = 400;
+    throw err;
+  }
+
   // Ensure effectiveRecipient is ALWAYS valid for the destination chain
   const effectiveRecipient =
     params.recipientAddress?.trim() ||
-    feeSplit.partnerFeeRecipient ||
     getTreasuryAddressForChain(resolvedDestChain);
   const effectiveRefundTo = resolveRefundAddress(originAssetId, params.refundTo, effectiveRecipient, { isDryRun: true });
 
@@ -555,8 +537,10 @@ export async function getSwapQuote(params: SwapQuoteParams) {
         zkpayFeeBps: feeSplit.zkpayFeeBps,
         partnerFeeBps: feeSplit.partnerFeeBps,
         partnerFeeRecipient: feeSplit.partnerFeeRecipient,
+        treasuryAddress: feeSplit.treasuryAddress,
       },
       totalDeductionsBps: feeSplit.totalDeductionsBps,
+      feeSettlementNote: feeSplit.feeSettlementNote,
     },
     slippageBps: payload.slippageTolerance,
     timeEstimateSeconds: quote.timeEstimate || 45,
@@ -596,13 +580,29 @@ export async function createSwapOrder(params: CreateSwapParams) {
     ? await resolveAssetId(params.toAsset, params.destinationChain)
     : TARGET_ASSET.assetId;
 
-  // Resolve the destination chain for fee routing
-  const resolvedDestChain = params.destinationChain || resolveChainFromAssetId(destinationAssetId);
+  // Resolve chains for origin (fee routing) and destination (settlement)
+  const resolvedOriginChain = params.originChain || params.chain || resolveChainFromAssetId(originAssetId) || "base";
+  const resolvedDestChain = params.destinationChain || resolveChainFromAssetId(destinationAssetId) || "base";
 
   // Validate atomic units and minimum volume threshold
   validateSwapAmount(amount, originAssetId);
 
-  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedDestChain);
+  // Fee split is resolved per ORIGIN chain because 1Click appFees carve out input tokens
+  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain);
+
+  // Validate partner fee recipient format for the origin asset if provided
+  if (
+    feeSplit.partnerFeeRecipient &&
+    !isValidAddressForOriginAsset(originAssetId, feeSplit.partnerFeeRecipient)
+  ) {
+    const err: any = new Error(
+      `Partner fee recipient address '${feeSplit.partnerFeeRecipient}' is invalid for the origin blockchain (${resolvedOriginChain}). Fees are carved in the input token directly on the origin chain.`
+    );
+    err.code = "INVALID_FEE_RECIPIENT";
+    err.statusCode = 400;
+    throw err;
+  }
+
   const effectiveRefundTo = resolveRefundAddress(originAssetId, params.refundTo, recipient, { isDryRun: false });
   const deadline = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 

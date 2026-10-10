@@ -7,11 +7,12 @@ const ONECLICK_API = "https://1click.chaindefuser.com/v0";
 // Base USDC destination asset (NEAR Intents assetId)
 const DESTINATION_ASSET = "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near";
 
-// ZkPay fee: 175 bps (1.75%)
-const APP_FEE_BPS = 175;
-
 import { resolveRefundAddress } from "@/lib/refundAddress";
-
+import {
+  DEPOSIT_FEE_BPS,
+  resolveChainFromAssetId,
+  getTreasuryAddressForChain,
+} from "@/lib/constants";
 
 export async function GET(req: Request) {
   try {
@@ -27,10 +28,10 @@ export async function GET(req: Request) {
 
     const effectiveRefundTo = resolveRefundAddress(originAssetId, userRefundTo, recipientAddress, { isDryRun: true });
 
-    // Fee recipient — treasury or env override
-    const feeRecipient = process.env.NEXT_PUBLIC_DEPOSIT_FEE_RECIPIENT ||
-                         process.env.NEXT_PUBLIC_TREASURY_ADDRESS ||
-                         "0xb856b24fb054135deba5e0309edd31ed6a8afbe2";
+    // In 1Click API (NEAR Intents), appFees are carved directly out of the INPUT TOKEN on the ORIGIN CHAIN.
+    // Resolving our native treasury address per origin chain ensures dry quotes mirror wet execution accurately.
+    const originChain = resolveChainFromAssetId(originAssetId) || "base";
+    const feeRecipient = getTreasuryAddressForChain(originChain);
 
     const deadline = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
@@ -47,7 +48,7 @@ export async function GET(req: Request) {
       refundTo: effectiveRefundTo,
       refundType: "ORIGIN_CHAIN",
       deadline,
-      appFees: [{ recipient: feeRecipient, fee: APP_FEE_BPS }],
+      appFees: [{ recipient: feeRecipient, fee: DEPOSIT_FEE_BPS }],
     };
 
     const headers: Record<string, string> = {
