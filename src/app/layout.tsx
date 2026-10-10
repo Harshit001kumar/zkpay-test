@@ -1,3 +1,4 @@
+import type { Metadata, Viewport } from "next";
 import { Outfit, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/constants";
