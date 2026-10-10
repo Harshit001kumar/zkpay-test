@@ -109,7 +109,7 @@ export async function GET(request: Request) {
 
     // Resolve on-chain vault address
     const resolvedVaultAddress =
-      (VAULT_ID.startsWith("0x") ? VAULT_ID : null) ||
+      (VAULT_ID && VAULT_ID.startsWith("0x") && VAULT_ID.toLowerCase() !== "0xbeef0e0834849acc03f0089f01f4f1eeb06873c9" ? VAULT_ID : null) ||
       vaultData?.vault_address ||
       vaultData?.address ||
       vaultData?.contract_address ||

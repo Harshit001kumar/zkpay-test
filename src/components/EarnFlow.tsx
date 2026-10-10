@@ -40,7 +40,9 @@ export default function EarnFlow() {
   const { client: smartClient } = useSmartWallets();
   const { address: activeAddress } = useActiveAccount();
 
+  const [activeTab, setActiveTab] = useState<"deposit" | "withdraw">("deposit");
   const [amount, setAmount] = useState("");
+  const [withdrawAmount, setWithdrawAmount] = useState("");
   const [isDepositing, setIsDepositing] = useState(false);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
@@ -68,7 +70,7 @@ export default function EarnFlow() {
 
   const activeVaultAddress = (vault?.address as `0x${string}`) || CONTRACTS.EARN_VAULT;
 
-  // Live on-chain staked balance if vault address is known
+  // 1. Live on-chain staked balance via maxWithdraw
   const { data: onChainVaultAssets, refetch: refetchVaultBal } = useReadContract({
     address: activeVaultAddress,
     abi: ERC4626_ABI,
@@ -81,9 +83,42 @@ export default function EarnFlow() {
     },
   });
 
+  // 2. Live on-chain share balance (steakUSDC vault tokens)
+  const { data: onChainVaultShares, refetch: refetchVaultShares } = useReadContract({
+    address: activeVaultAddress,
+    abi: ERC4626_ABI,
+    functionName: "balanceOf",
+    args: [activeAddress ?? "0x0000000000000000000000000000000000000000"],
+    chainId: base.id,
+    query: {
+      enabled: !!activeAddress && !!activeVaultAddress,
+      refetchInterval: 5000,
+    },
+  });
+
+  // 3. Live convertToAssets for accurate valuation if maxWithdraw is zero
+  const { data: onChainConvertedAssets } = useReadContract({
+    address: activeVaultAddress,
+    abi: ERC4626_ABI,
+    functionName: "convertToAssets",
+    args: [(onChainVaultShares as bigint) ?? 0n],
+    chainId: base.id,
+    query: {
+      enabled: !!activeAddress && !!activeVaultAddress && ((onChainVaultShares as bigint) ?? 0n) > 0n,
+      refetchInterval: 5000,
+    },
+  });
+
+  const bestAssetsBigInt =
+    (onChainVaultAssets as bigint | undefined) && (onChainVaultAssets as bigint) > 0n
+      ? (onChainVaultAssets as bigint)
+      : (onChainConvertedAssets as bigint | undefined) && (onChainConvertedAssets as bigint) > 0n
+      ? (onChainConvertedAssets as bigint)
+      : undefined;
+
   const effectiveAssetsInVault =
-    onChainVaultAssets !== undefined
-      ? floorTo2Decimals(onChainVaultAssets as bigint)
+    bestAssetsBigInt !== undefined
+      ? Number(formatUnits(bestAssetsBigInt, 6))
       : (position?.assetsInVault ?? 0);
 
   // Resolve target wallet ID: Prefer the Privy embedded wallet ID from linkedAccounts
@@ -146,6 +181,21 @@ export default function EarnFlow() {
   const handleSetMax = () => {
     if (availableUsdc > 0) {
       setAmount(availableUsdc.toFixed(2));
+      setError("");
+    }
+  };
+
+  const handleWithdrawAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (val === "" || /^\d*\.?\d{0,2}$/.test(val)) {
+      setWithdrawAmount(val);
+      setError("");
+    }
+  };
+
+  const handleSetMaxWithdraw = () => {
+    if (effectiveAssetsInVault > 0) {
+      setWithdrawAmount(effectiveAssetsInVault.toFixed(2));
       setError("");
     }
   };
@@ -288,10 +338,17 @@ export default function EarnFlow() {
     }
   };
 
-  const handleWithdraw = async () => {
-    const withdrawAmount = effectiveAssetsInVault;
-    if (withdrawAmount <= 0) {
-      setError("No staked balance available to withdraw.");
+  const handleWithdraw = async (overrideAmount?: number, isFullRedeem: boolean = false) => {
+    const rawTarget = overrideAmount !== undefined ? overrideAmount : (withdrawAmount ? Number(withdrawAmount) : effectiveAssetsInVault);
+    const targetAmount = isNaN(rawTarget) ? 0 : rawTarget;
+
+    if (!isFullRedeem && targetAmount <= 0) {
+      setError("Please enter a valid withdrawal amount.");
+      return;
+    }
+
+    if (!isFullRedeem && targetAmount > (effectiveAssetsInVault + 0.01)) {
+      setError(`Cannot withdraw more than deposited ($${effectiveAssetsInVault.toFixed(2)} USDC).`);
       return;
     }
 
@@ -307,18 +364,30 @@ export default function EarnFlow() {
     try {
       if (activeVaultAddress) {
         // Direct on-chain withdrawal from ERC-4626 vault
-        const withdrawUnits = parseUnits(withdrawAmount.toFixed(6), 6);
+        // If full redeem is requested (or targetAmount >= effectiveAssetsInVault) and user holds shares,
+        // use redeem(shares) to avoid rounding dust/errors.
+        const userShares = (onChainVaultShares as bigint) ?? 0n;
+        const shouldRedeemShares = (isFullRedeem || targetAmount >= effectiveAssetsInVault) && userShares > 0n;
+        const withdrawUnits = parseUnits(targetAmount.toFixed(6), 6);
+
+        const callData = shouldRedeemShares
+          ? encodeFunctionData({
+              abi: ERC4626_ABI,
+              functionName: "redeem",
+              args: [userShares, activeAddress as `0x${string}`, activeAddress as `0x${string}`],
+            })
+          : encodeFunctionData({
+              abi: ERC4626_ABI,
+              functionName: "withdraw",
+              args: [withdrawUnits, activeAddress as `0x${string}`, activeAddress as `0x${string}`],
+            });
 
         if (smartClient) {
           const txHash = await smartClient.sendTransaction({
             calls: [
               {
                 to: activeVaultAddress,
-                data: encodeFunctionData({
-                  abi: ERC4626_ABI,
-                  functionName: "withdraw",
-                  args: [withdrawUnits, activeAddress as `0x${string}`, activeAddress as `0x${string}`],
-                }),
+                data: callData,
                 value: 0n,
               },
             ],
@@ -337,23 +406,22 @@ export default function EarnFlow() {
               {
                 from: activeAddress,
                 to: activeVaultAddress,
-                data: encodeFunctionData({
-                  abi: ERC4626_ABI,
-                  functionName: "withdraw",
-                  args: [withdrawUnits, activeAddress as `0x${string}`, activeAddress as `0x${string}`],
-                }),
+                data: callData,
               },
             ],
           });
         }
 
-        setSuccess("Successfully withdrawn funds from vault!");
+        setSuccess(`Successfully withdrawn ${shouldRedeemShares ? "all" : `$${targetAmount.toFixed(2)}`} USDC from vault!`);
+        setWithdrawAmount("");
         refetchBal?.();
         refetchVaultBal?.();
+        refetchVaultShares?.();
         setTimeout(() => {
           fetchPosition();
           refetchBal?.();
           refetchVaultBal?.();
+          refetchVaultShares?.();
         }, 3000);
       } else {
         const walletId = getWalletId();
@@ -595,61 +663,140 @@ export default function EarnFlow() {
             </div>
           </div>
 
-          {/* Deposit Form Area */}
-          <div className="mt-7 space-y-6">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">
-                  DEPOSIT AMOUNT (USDC)
-                </label>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#909097] font-mono">
-                    Balance: <span className="text-[#c0c6de] font-bold">${availableUsdc.toFixed(2)}</span>
+          {/* Action Tabs: Deposit vs Withdraw */}
+          <div className="flex rounded-xl bg-white/[0.04] p-1 border border-white/10 mt-6 mb-2">
+            <button
+              type="button"
+              onClick={() => { setActiveTab("deposit"); setError(""); setSuccess(""); }}
+              className={`flex-1 py-2.5 text-xs font-bold font-label-caps uppercase tracking-wider rounded-lg transition-all ${
+                activeTab === "deposit"
+                  ? "bg-[#c0c6de] text-[#131315] shadow-md"
+                  : "text-[#c6c6cd] hover:text-white"
+              }`}
+            >
+              Deposit USDC
+            </button>
+            <button
+              type="button"
+              onClick={() => { setActiveTab("withdraw"); setError(""); setSuccess(""); }}
+              className={`flex-1 py-2.5 text-xs font-bold font-label-caps uppercase tracking-wider rounded-lg transition-all ${
+                activeTab === "withdraw"
+                  ? "bg-[#c0c6de] text-[#131315] shadow-md"
+                  : "text-[#c6c6cd] hover:text-white"
+              }`}
+            >
+              Withdraw USDC
+            </button>
+          </div>
+
+          {/* Interactive Form Area */}
+          <div className="mt-4 space-y-6">
+            {activeTab === "deposit" ? (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">
+                    DEPOSIT AMOUNT (USDC)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[#909097] font-mono">
+                      Wallet: <span className="text-[#c0c6de] font-bold">${availableUsdc.toFixed(2)}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleSetMax}
+                      disabled={availableUsdc <= 0}
+                      className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-[#c0c6de]/15 hover:bg-[#c0c6de]/25 text-[#c0c6de] transition-colors disabled:opacity-40"
+                    >
+                      MAX
+                    </button>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#c0c6de] font-bold text-lg">
+                    $
                   </span>
-                  <button
-                    type="button"
-                    onClick={handleSetMax}
-                    disabled={availableUsdc <= 0}
-                    className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-[#c0c6de]/15 hover:bg-[#c0c6de]/25 text-[#c0c6de] transition-colors disabled:opacity-40"
-                  >
-                    MAX
-                  </button>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={amount}
+                    onChange={handleAmountChange}
+                    placeholder="0.00"
+                    disabled={isLoading}
+                    className="w-full pl-9 pr-4 py-4 rounded-xl bg-white/[0.03] border border-white/15 text-[#e5e2e3] text-xl font-bold placeholder-[#909097] focus:outline-none focus:border-[#c0c6de] transition-colors tracking-tight"
+                  />
+                </div>
+
+                {/* Quick Amount Pills */}
+                <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1">
+                  {PRESET_AMOUNTS.map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setAmount(String(preset))}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all ${
+                        amount === String(preset)
+                          ? "bg-[#c0c6de] text-[#131315] font-bold shadow-md"
+                          : "bg-white/5 hover:bg-white/10 text-[#c6c6cd] border border-white/10"
+                      }`}
+                    >
+                      ${preset}
+                    </button>
+                  ))}
                 </div>
               </div>
+            ) : (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">
+                    WITHDRAW AMOUNT (USDC)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[#909097] font-mono">
+                      Staked: <span className="text-[#c0c6de] font-bold">${effectiveAssetsInVault.toFixed(2)}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleSetMaxWithdraw}
+                      disabled={effectiveAssetsInVault <= 0}
+                      className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-[#c0c6de]/15 hover:bg-[#c0c6de]/25 text-[#c0c6de] transition-colors disabled:opacity-40"
+                    >
+                      MAX
+                    </button>
+                  </div>
+                </div>
 
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#c0c6de] font-bold text-lg">
-                  $
-                </span>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={amount}
-                  onChange={handleAmountChange}
-                  placeholder="0.00"
-                  disabled={isLoading}
-                  className="w-full pl-9 pr-4 py-4 rounded-xl bg-white/[0.03] border border-white/15 text-[#e5e2e3] text-xl font-bold placeholder-[#909097] focus:outline-none focus:border-[#c0c6de] transition-colors tracking-tight"
-                />
-              </div>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#c0c6de] font-bold text-lg">
+                    $
+                  </span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={withdrawAmount}
+                    onChange={handleWithdrawAmountChange}
+                    placeholder={effectiveAssetsInVault > 0 ? effectiveAssetsInVault.toFixed(2) : "0.00"}
+                    disabled={isLoading}
+                    className="w-full pl-9 pr-4 py-4 rounded-xl bg-white/[0.03] border border-white/15 text-[#e5e2e3] text-xl font-bold placeholder-[#909097] focus:outline-none focus:border-[#c0c6de] transition-colors tracking-tight"
+                  />
+                </div>
 
-              {/* Quick Amount Pills */}
-              <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1">
-                {PRESET_AMOUNTS.map((preset) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setAmount(String(preset))}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all ${
-                      amount === String(preset)
-                        ? "bg-[#c0c6de] text-[#131315] font-bold shadow-md"
-                        : "bg-white/5 hover:bg-white/10 text-[#c6c6cd] border border-white/10"
-                    }`}
-                  >
-                    ${preset}
-                  </button>
-                ))}
+                {/* Percentage Pills */}
+                <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1">
+                  {[0.25, 0.5, 0.75, 1].map((pct) => (
+                    <button
+                      key={pct}
+                      type="button"
+                      disabled={effectiveAssetsInVault <= 0}
+                      onClick={() => setWithdrawAmount((effectiveAssetsInVault * pct).toFixed(2))}
+                      className="px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all bg-white/5 hover:bg-white/10 text-[#c6c6cd] border border-white/10 disabled:opacity-40"
+                    >
+                      {pct === 1 ? "100% (ALL)" : `${pct * 100}%`}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {error && (
               <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-500/30 text-xs text-[#ffb4ab]">
@@ -663,29 +810,51 @@ export default function EarnFlow() {
               </div>
             )}
 
-            {/* Deposit CTA Button */}
+            {/* CTA Button */}
             {authenticated ? (
-              <ShimmerButton
-                onClick={handleDeposit}
-                disabled={!amount || isLoading || Number(amount) <= 0}
-                className="w-full py-4 text-xs"
-              >
-                {isDepositing ? (
-                  <div className="w-5 h-5 border-2 border-[#131315] border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <span className="material-symbols-outlined text-base">savings</span>
-                    <span>STAKE & EARN YIELD</span>
-                  </>
-                )}
-              </ShimmerButton>
+              activeTab === "deposit" ? (
+                <ShimmerButton
+                  onClick={handleDeposit}
+                  disabled={!amount || isLoading || Number(amount) <= 0}
+                  className="w-full py-4 text-xs"
+                >
+                  {isDepositing ? (
+                    <div className="w-5 h-5 border-2 border-[#131315] border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-base">savings</span>
+                      <span>STAKE & EARN YIELD</span>
+                    </>
+                  )}
+                </ShimmerButton>
+              ) : (
+                <div className="space-y-3">
+                  <ShimmerButton
+                    onClick={() => handleWithdraw(withdrawAmount ? Number(withdrawAmount) : undefined, !withdrawAmount || Number(withdrawAmount) >= effectiveAssetsInVault)}
+                    disabled={isLoading || effectiveAssetsInVault <= 0}
+                    className="w-full py-4 text-xs"
+                  >
+                    {isWithdrawing ? (
+                      <div className="w-5 h-5 border-2 border-[#131315] border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <span className="material-symbols-outlined text-base">output</span>
+                        <span>{withdrawAmount && Number(withdrawAmount) < effectiveAssetsInVault ? `WITHDRAW $${Number(withdrawAmount).toFixed(2)} USDC` : "WITHDRAW ALL TO WALLET"}</span>
+                      </>
+                    )}
+                  </ShimmerButton>
+                  <p className="text-[10px] text-center text-[#909097] font-mono">
+                    Zero lockup. Instant withdrawal back to your Base USDC wallet.
+                  </p>
+                </div>
+              )
             ) : (
               <button
                 onClick={() => login()}
                 className="w-full py-4 rounded-xl bg-[#e5e2e3] hover:bg-white text-[#131315] font-bold text-xs tracking-[0.25em] font-label-caps uppercase transition-all shadow-lg flex items-center justify-center gap-2"
               >
                 <span className="material-symbols-outlined text-base">account_balance_wallet</span>
-                <span>CONNECT WALLET TO STAKE</span>
+                <span>CONNECT WALLET</span>
               </button>
             )}
 
@@ -714,7 +883,7 @@ export default function EarnFlow() {
                 </button>
                 <span className="text-white/20">|</span>
                 <button
-                  onClick={handleWithdraw}
+                  onClick={() => handleWithdraw(undefined, true)}
                   disabled={!hasPosition || isLoading}
                   className="text-[#c6c6cd] hover:text-white font-label-caps text-[9px] uppercase tracking-[0.2em] font-bold disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
                 >

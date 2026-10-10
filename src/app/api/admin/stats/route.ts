@@ -122,7 +122,7 @@ export async function GET(req: Request) {
     let earnVaultStats: any = {
       configured: true,
       vaultId: VAULT_ID || "on-chain",
-      address: VAULT_ID?.startsWith("0x") ? VAULT_ID : CONTRACTS.EARN_VAULT,
+      address: (VAULT_ID?.startsWith("0x") && VAULT_ID.toLowerCase() !== "0xbeef0e0834849acc03f0089f01f4f1eeb06873c9") ? VAULT_ID : CONTRACTS.EARN_VAULT,
       name: EARN_CONFIG.VAULT_NAME,
       provider: EARN_CONFIG.VAULT_PROVIDER,
       apy: EARN_CONFIG.BENCHMARK_APY,
