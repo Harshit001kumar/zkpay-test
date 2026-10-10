@@ -272,15 +272,31 @@ export async function sendPayoutAddress(
     if (statusErr.message?.includes("already")) throw statusErr;
   }
 
+  // SDK v1.3.7+ renamed setSellOrderUpi → setSellOrderUpiWithFiat
+  // and changed updatedAmount (USDC bigint) → updatedFiatAmount (fiat bigint).
+  // We prefer the new method and fall back to the legacy name for older SDK versions.
+  const upiAction = orders.setSellOrderUpiWithFiat ?? orders.setSellOrderUpi;
+  if (!upiAction) {
+    throw new Error("P2P SDK: neither setSellOrderUpiWithFiat nor setSellOrderUpi is available. Update @p2pdotme/sdk.");
+  }
+
+  // Build params compatible with both old and new SDK shapes
+  const upiParams: Record<string, unknown> = {
+    orderId: params.orderId,
+    paymentAddress: params.paymentAddress,
+    merchantPublicKey: params.merchantPublicKey,
+  };
+  // New SDK uses updatedFiatAmount; legacy uses updatedAmount
+  if (orders.setSellOrderUpiWithFiat) {
+    upiParams.updatedFiatAmount = 0n;
+  } else {
+    upiParams.updatedAmount = 0n;
+  }
+
   // Strategy A: Direct calldata preparation and submission for Smart Wallets
-  if (typeof orders?.setSellOrderUpi?.prepare === "function") {
-    console.log("[p2pkit] Preparing setSellOrderUpi for order", params.orderId.toString());
-    const prepared = await orders.setSellOrderUpi.prepare({
-      orderId: params.orderId,
-      paymentAddress: params.paymentAddress,
-      merchantPublicKey: params.merchantPublicKey,
-      updatedAmount: 0n,
-    });
+  if (typeof upiAction.prepare === "function") {
+    console.log("[p2pkit] Preparing setSellOrderUpiWithFiat for order", params.orderId.toString());
+    const prepared = await upiAction.prepare(upiParams);
 
     if (prepared.isOk()) {
       const { to, data, value } = prepared.value;
@@ -295,7 +311,7 @@ export async function sendPayoutAddress(
           }],
         });
 
-        console.log("[p2pkit] setSellOrderUpi UserOp submitted:", txHash);
+        console.log("[p2pkit] setSellOrderUpiWithFiat UserOp submitted:", txHash);
         const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
         return { hash: txHash, receipt };
       }
@@ -305,13 +321,10 @@ export async function sendPayoutAddress(
   }
 
   // Strategy B: Fallback for standard Viem WalletClients (EOAs)
-  const set = await orders.setSellOrderUpi.execute({
+  const set = await upiAction.execute({
     walletClient: clientOrWallet,
     waitForReceipt: true,
-    orderId: params.orderId,
-    paymentAddress: params.paymentAddress,
-    merchantPublicKey: params.merchantPublicKey,
-    updatedAmount: 0n,
+    ...upiParams,
   });
 
   if (set.isErr()) {
