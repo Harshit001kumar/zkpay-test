@@ -28,10 +28,9 @@ export async function GET(req: Request) {
 
     const effectiveRefundTo = resolveRefundAddress(originAssetId, userRefundTo, recipientAddress, { isDryRun: true });
 
-    // In 1Click API (NEAR Intents), appFees are carved directly out of the INPUT TOKEN on the ORIGIN CHAIN.
-    // Resolving our native treasury address per origin chain ensures dry quotes mirror wet execution accurately.
-    const originChain = resolveChainFromAssetId(originAssetId) || "base";
-    const feeRecipient = getTreasuryAddressForChain(originChain);
+    // In 1Click API (NEAR Intents), appFees settle on the intents.near contract.
+    // The recipient MUST be an EVM address (0x...) or a NEAR account (*.near).
+    const feeRecipient = getTreasuryAddressForChain();
 
     const deadline = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 

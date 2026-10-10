@@ -18,12 +18,14 @@ import {
   SWAP_ALLOWED_CHAINS,
   TARGET_ASSET,
   CONTRACTS,
-  TREASURY_ADDRESSES,
+  DESTINATION_FALLBACK_ADDRESSES,
   resolveChainFromAssetId,
+  getFeeRecipientAddress,
   getTreasuryAddressForChain,
+  getFallbackDestinationAddress,
   normalizeChain,
 } from "@/lib/constants";
-import { resolveRefundAddress, isValidAddressForOriginAsset } from "@/lib/refundAddress";
+import { resolveRefundAddress } from "@/lib/refundAddress";
 
 const ONECLICK_API = "https://1click.chaindefuser.com/v0";
 
@@ -40,8 +42,34 @@ export const ZKPAY_TREASURY_ADDRESS =
   CONTRACTS.TREASURY ||
   "0xb856b24fb054135deba5e0309edd31ed6a8afbe2";
 
+/**
+ * Validates that a fee recipient address is acceptable to NEAR Intents (1Click API).
+ * NEAR Intents appFees settle on the intents.near contract ledger.
+ * Valid recipient formats:
+ * 1. EVM address: 0x followed by 40 hex chars (e.g. 0xb856b24fb054135deba5e0309edd31ed6a8afbe2)
+ * 2. Named NEAR account: ends with .near or .tg (e.g. zkpay.near)
+ * 3. Implicit NEAR account: 64 hex characters
+ * 
+ * Non-EVM native addresses (e.g. BTC, LTC, Solana) MUST NOT be used because 1Click
+ * does NOT bridge fees to those blockchains, resulting in trapped/unrecoverable funds.
+ */
+export function isValidFeeRecipient(address?: string | null): boolean {
+  if (!address || typeof address !== "string") return false;
+  const clean = address.trim();
+  if (/^0x[a-fA-F0-9]{40}$/.test(clean)) return true;
+  if (/^[a-z0-9_.-]+\.(near|tg)$/i.test(clean)) return true;
+  if (/^[a-fA-F0-9]{64}$/.test(clean)) return true;
+  return false;
+}
+
 // Re-export chain & treasury resolution helpers
-export { resolveChainFromAssetId, getTreasuryAddressForChain, normalizeChain };
+export {
+  resolveChainFromAssetId,
+  getFeeRecipientAddress,
+  getTreasuryAddressForChain,
+  getFallbackDestinationAddress,
+  normalizeChain,
+};
 
 export interface FeeSplitResult {
   totalCustomFeeBps: number;
@@ -59,17 +87,15 @@ export interface FeeSplitResult {
 /**
  * Computes 50/50 fee split between ZkPay Treasury and Partner.
  * 
- * IMPORTANT: In 1Click API (NEAR Intents), appFees are carved directly out of the
- * INPUT TOKEN on the ORIGIN CHAIN for exact-input swaps.
- * - ZkPay treasury address is resolved per ORIGIN chain (e.g. native SOL address for SOL swaps).
- * - Fees settle directly on-chain into wallets with $0 minimum threshold and zero pooling delay.
- * - Partner must provide an address compatible with the ORIGIN chain (or a named .near account).
- * - If no partner recipient is provided, 100% of custom fee goes to ZkPay Treasury.
+ * In 1Click API (NEAR Intents), appFees settle directly on the intents.near ledger.
+ * - Fees are credited instantly to the recipient's internal account ($0 minimum threshold, instant credit).
+ * - Recipients must be EVM (0x...) addresses or NEAR accounts (*.near).
+ * - Recipients can claim or withdraw anytime by connecting to app.near-intents.org.
  */
 export function calculateFeeSplit(
   requestedFeeBps?: number | null,
   partnerFeeRecipient?: string | null,
-  originChain?: string | null
+  _originChain?: string | null
 ): FeeSplitResult {
   let totalCustom = typeof requestedFeeBps === "number" && !isNaN(requestedFeeBps)
     ? Math.round(requestedFeeBps)
@@ -78,7 +104,7 @@ export function calculateFeeSplit(
   totalCustom = Math.max(MIN_CUSTOM_FEE_BPS, Math.min(MAX_CUSTOM_FEE_BPS, totalCustom));
 
   const cleanPartnerRecipient = partnerFeeRecipient?.trim() || null;
-  const treasuryAddress = getTreasuryAddressForChain(originChain);
+  const treasuryAddress = getFeeRecipientAddress();
 
   let zkpayFeeBps: number;
   let partnerFeeBps: number;
@@ -111,7 +137,7 @@ export function calculateFeeSplit(
     totalDeductionsBps: NEAR_INTENTS_PROTOCOL_FEE_BPS + totalCustom,
     appFees,
     treasuryAddress,
-    feeSettlementNote: `Fees are carved from the input asset on ${originChain || "origin chain"} and settled directly on-chain to wallet addresses ($0 minimum, instant settlement).`,
+    feeSettlementNote: `Fees settle into your NEAR Intents ledger account (${treasuryAddress.startsWith("0x") ? "EVM 0x" : ".near"}) with $0 minimum threshold. Connect your wallet to app.near-intents.org to view, swap, or withdraw accumulated fees.`,
   };
 }
 
@@ -468,13 +494,13 @@ export async function getSwapQuote(params: SwapQuoteParams) {
   // Fee split is resolved per ORIGIN chain because 1Click appFees carve out input tokens
   const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain);
 
-  // Validate partner fee recipient format for the origin asset if provided
+  // Validate partner fee recipient format if provided
   if (
     feeSplit.partnerFeeRecipient &&
-    !isValidAddressForOriginAsset(originAssetId, feeSplit.partnerFeeRecipient)
+    !isValidFeeRecipient(feeSplit.partnerFeeRecipient)
   ) {
     const err: any = new Error(
-      `Partner fee recipient address '${feeSplit.partnerFeeRecipient}' is invalid for the origin blockchain (${resolvedOriginChain}). Fees are carved in the input token directly on the origin chain.`
+      `Partner fee recipient address '${feeSplit.partnerFeeRecipient}' is invalid. NEAR Intents requires an EVM address (0x...) or a NEAR account (*.near) to collect swap fees. Non-EVM native addresses cannot receive fees.`
     );
     err.code = "INVALID_FEE_RECIPIENT";
     err.statusCode = 400;
@@ -484,7 +510,7 @@ export async function getSwapQuote(params: SwapQuoteParams) {
   // Ensure effectiveRecipient is ALWAYS valid for the destination chain
   const effectiveRecipient =
     params.recipientAddress?.trim() ||
-    getTreasuryAddressForChain(resolvedDestChain);
+    getFallbackDestinationAddress(resolvedDestChain);
   const effectiveRefundTo = resolveRefundAddress(originAssetId, params.refundTo, effectiveRecipient, { isDryRun: true });
 
   const deadline = new Date(Date.now() + 15 * 60 * 1000).toISOString();
@@ -590,13 +616,13 @@ export async function createSwapOrder(params: CreateSwapParams) {
   // Fee split is resolved per ORIGIN chain because 1Click appFees carve out input tokens
   const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain);
 
-  // Validate partner fee recipient format for the origin asset if provided
+  // Validate partner fee recipient format if provided
   if (
     feeSplit.partnerFeeRecipient &&
-    !isValidAddressForOriginAsset(originAssetId, feeSplit.partnerFeeRecipient)
+    !isValidFeeRecipient(feeSplit.partnerFeeRecipient)
   ) {
     const err: any = new Error(
-      `Partner fee recipient address '${feeSplit.partnerFeeRecipient}' is invalid for the origin blockchain (${resolvedOriginChain}). Fees are carved in the input token directly on the origin chain.`
+      `Partner fee recipient address '${feeSplit.partnerFeeRecipient}' is invalid. NEAR Intents requires an EVM address (0x...) or a NEAR account (*.near) to collect swap fees. Non-EVM native addresses cannot receive fees.`
     );
     err.code = "INVALID_FEE_RECIPIENT";
     err.statusCode = 400;

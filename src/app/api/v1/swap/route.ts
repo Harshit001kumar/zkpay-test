@@ -37,9 +37,9 @@ export async function GET() {
       },
     },
     feeSettlement: {
-      mechanism: "DIRECT_ON_CHAIN",
-      note: "Fees are carved out of the INPUT TOKEN on the ORIGIN CHAIN for exact-input swaps and settled directly on-chain into wallet addresses ($0 minimum threshold, zero pooling delay).",
-      partnerGuidance: "Partner feeRecipient address MUST be compatible with the origin chain of the swap (e.g. Base58 Solana address when swapping from SOL, Bech32/Base58 Bitcoin address when swapping from BTC, 0x address for EVM origins).",
+      mechanism: "NEAR_INTENTS_LEDGER",
+      note: "Fees are credited instantly to your feeRecipient account balance on the NEAR Intents ledger with $0 minimum threshold.",
+      partnerGuidance: "feeRecipient MUST be an EVM address (0x...) or a NEAR account (*.near). Connect your wallet to https://app.near-intents.org to view accumulated multi-token fees, bridge out, or swap directly to USDC.",
       defaultFeeBps: 100,
       feeSplitModel: "50/50 between ZkPay Treasury and Partner",
     },

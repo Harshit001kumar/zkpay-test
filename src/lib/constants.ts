@@ -105,24 +105,28 @@ export const TARGET_ASSET = {
   decimals: 6,
 };
 
-// ─── SWAP FEE TREASURY ADDRESSES ───
-// In 1Click API (NEAR Intents), appFees are carved directly out of the INPUT TOKEN on the origin chain
-// (e.g. SOL on Solana, BTC on Bitcoin, ETH/USDC on Base).
-// ZkPay configures native receiving addresses per origin chain so fees settle directly on-chain ($0 minimum, zero delay).
-export const TREASURY_ADDRESSES: Record<string, string> = {
+// ─── SWAP FEE RECIPIENT & DESTINATION FALLBACKS ───
+// In 1Click API (NEAR Intents), appFees settle internally on the intents.near ledger.
+// The recipient MUST be an EVM address (0x...) or a named NEAR account (*.near).
+// Native non-EVM addresses (BTC, LTC, SOL, TRON) MUST NOT be used as fee recipients,
+// because 1Click does NOT bridge fees to external blockchains per swap.
+export const DESTINATION_FALLBACK_ADDRESSES: Record<string, string> = {
   // EVM chains (all use the same 0x address)
   eth: process.env.TREASURY_ETH || TREASURY,
   base: process.env.TREASURY_BASE || TREASURY,
   arb: process.env.TREASURY_ARB || TREASURY,
   bsc: process.env.TREASURY_BSC || TREASURY,
   polygon: process.env.TREASURY_POLYGON || TREASURY,
-  // Non-EVM chains (must be native address per blockchain)
+  // Fallbacks used ONLY when previewing dry-run quotes without a destination address
   sol: process.env.TREASURY_SOL || "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
   btc: process.env.TREASURY_BTC || "bc1qg52t5l20hfhmk7nkwe62s4xt3qr2fedwqmu6up",
   tron: process.env.TREASURY_TRON || "TSsMeYZRBVp2oSocHbbZJJPSWLFKaAy28j",
   ltc: process.env.TREASURY_LTC || "LdmUa92dDxtp84nwJQgdjmayJqE1ESKza4",
   near: process.env.TREASURY_NEAR || "",
 };
+
+// Legacy alias
+export const TREASURY_ADDRESSES = DESTINATION_FALLBACK_ADDRESSES;
 
 /**
  * Extracts the blockchain identifier from a NEAR Intents assetId.
@@ -168,28 +172,45 @@ export function normalizeChain(chain?: string | null): string | undefined {
 }
 
 /**
- * Resolves the on-chain treasury recipient address for a given origin chain.
- * In 1Click API (NEAR Intents), appFees are carved out of the INPUT TOKEN on the ORIGIN CHAIN.
- * Providing a chain-native address allows the fee to settle directly and instantly to our wallet on-chain ($0 minimum, 0 delay).
+ * Returns the fee recipient address for NEAR Intents appFees.
+ * 1Click API credits fees to the recipient's internal account on intents.near.
+ * Always returns an EVM (0x...) address or a configured NEAR (*.near) account.
  */
-export function getTreasuryAddressForChain(chain?: string | null): string {
+export function getFeeRecipientAddress(): string {
+  if (process.env.TREASURY_NEAR && process.env.TREASURY_NEAR.trim() !== "") {
+    return process.env.TREASURY_NEAR.trim();
+  }
+  return (
+    process.env.NEXT_PUBLIC_DEPOSIT_FEE_RECIPIENT ||
+    process.env.NEXT_PUBLIC_TREASURY_ADDRESS ||
+    TREASURY
+  );
+}
+
+/**
+ * Resolves the treasury fee recipient address.
+ * Regardless of the origin chain, 1Click appFees MUST be routed to an EVM address or NEAR account.
+ */
+export function getTreasuryAddressForChain(_chain?: string | null): string {
+  return getFeeRecipientAddress();
+}
+
+/**
+ * Fallback destination address when testing dry quotes without a user recipient.
+ */
+export function getFallbackDestinationAddress(chain?: string | null): string {
   if (!chain) return TREASURY;
   const c = normalizeChain(chain);
   if (!c) return TREASURY;
-
-  if (TREASURY_ADDRESSES[c] && TREASURY_ADDRESSES[c].trim() !== "") {
-    return TREASURY_ADDRESSES[c];
-  }
-
-  // Fallback to default Base/EVM treasury
-  return TREASURY;
+  return DESTINATION_FALLBACK_ADDRESSES[c] || TREASURY;
 }
 
 // Cross-chain deposit fee (1.75% = 175 bps — charged via NEAR Intents appFees)
 // Without an API key, 1Click adds 25 bps on top → 2.0% total for users
 export const DEPOSIT_FEE_BPS = 175;
 
-// Fee recipient for NEAR Intents appFees (defaults to Treasury address)
+// Fee recipient for NEAR Intents appFees (defaults to Treasury EVM address)
 export const DEPOSIT_FEE_RECIPIENT = process.env.NEXT_PUBLIC_DEPOSIT_FEE_RECIPIENT || TREASURY;
+
 
 
