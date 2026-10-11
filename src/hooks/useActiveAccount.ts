@@ -2,41 +2,6 @@
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
-import { useMemo } from "react";
-import { CONTRACTS } from "@/lib/constants";
-
-/**
- * Wraps a Privy SmartWalletClient so that every `sendTransaction` call
- * automatically includes `paymasterContext: { token: USDC }`.
- *
- * This makes the Pimlico ERC-20 Paymaster deduct a tiny gas fee from the
- * user's USDC balance instead of requiring developer-funded gas sponsorship.
- * The user never needs to hold native ETH for gas.
- */
-function wrapSmartClientWithUSDCGas(client: any) {
-  if (!client) return null;
-
-  // Preserve all original properties and methods; only override sendTransaction
-  return new Proxy(client, {
-    get(target, prop, receiver) {
-      if (prop === "sendTransaction") {
-        return async (...args: any[]) => {
-          const [txParams, txOptions] = args;
-          // Merge our paymasterContext into the options (second arg)
-          const mergedOptions = {
-            ...(txOptions || {}),
-            paymasterContext: {
-              token: CONTRACTS.USDC,
-              ...(txOptions?.paymasterContext || {}),
-            },
-          };
-          return target.sendTransaction(txParams, mergedOptions);
-        };
-      }
-      return Reflect.get(target, prop, receiver);
-    },
-  });
-}
 
 export function useActiveAccount() {
   const { user, ready, authenticated, login, logout } = usePrivy();
@@ -61,14 +26,11 @@ export function useActiveAccount() {
 
   const primaryWallet = wallets?.[0] || null;
 
-  // Wrap the smart client so gas is paid in USDC via Pimlico ERC-20 Paymaster
-  const smartClient = useMemo(() => wrapSmartClientWithUSDCGas(client), [client]);
-
   return {
     address,
     eoaAddress,
     smartAccountAddress,
-    smartClient,
+    smartClient: client,
     isSmartWallet: !!smartAccountAddress,
     user,
     wallets,
