@@ -13,8 +13,13 @@ export const CONTRACTS = {
   TREASURY: TREASURY as `0x${string}`,
 
   // Default Base Mainnet ERC-4626 Vault (Steakhouse Prime Instant USDC on Morpho Blue on Base)
-  EARN_VAULT: (process.env.NEXT_PUBLIC_EARN_VAULT_ADDRESS || "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183") as `0x${string}`,
+  EARN_VAULT: (process.env.NEXT_PUBLIC_EARN_VAULT_ADDRESS || "0xbeef0e0834849aCC03f0089F01f4F1Eeb06873C9") as `0x${string}`,
 } as const;
+
+export const EARN_VAULT_CANDIDATES: `0x${string}`[] = [
+  "0xbeef0e0834849aCC03f0089F01f4F1Eeb06873C9",
+  "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183",
+];
 
 export const EARN_CONFIG = {
   VAULT_ADDRESS: CONTRACTS.EARN_VAULT,

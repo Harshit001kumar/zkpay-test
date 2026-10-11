@@ -38,7 +38,7 @@ export default function EarnFlow() {
   const { authenticated, login, user } = usePrivy();
   const { wallets } = useWallets();
   const { client: smartClient } = useSmartWallets();
-  const { address: activeAddress } = useActiveAccount();
+  const { address: activeAddress, smartAccountAddress, eoaAddress } = useActiveAccount();
 
   const [activeTab, setActiveTab] = useState<"deposit" | "withdraw">("deposit");
   const [amount, setAmount] = useState("");
@@ -52,6 +52,14 @@ export default function EarnFlow() {
   const [vault, setVault] = useState<VaultInfo | null>(null);
   const [position, setPosition] = useState<PositionInfo | null>(null);
   const [isLoadingPosition, setIsLoadingPosition] = useState(true);
+
+  // Address resolution: Ensure smart account (UserOp sender) is checked
+  const smartWalletFromPrivy = (user?.linkedAccounts?.find((acc: any) => acc.type === "smart_wallet") as any)?.address as `0x${string}` | undefined;
+  const resolvedSmartAddr = (smartClient?.account?.address || smartAccountAddress || smartWalletFromPrivy) as `0x${string}` | undefined;
+  const resolvedEoaAddr = (eoaAddress || user?.wallet?.address || wallets?.[0]?.address) as `0x${string}` | undefined;
+
+  const primaryHolderAddress = (resolvedSmartAddr || resolvedEoaAddr || activeAddress) as `0x${string}` | undefined;
+  const secondaryHolderAddress = (resolvedSmartAddr && resolvedEoaAddr && resolvedSmartAddr.toLowerCase() !== resolvedEoaAddr.toLowerCase()) ? resolvedEoaAddr : undefined;
 
   // Available Base USDC balance
   const { data: rawBal, refetch: refetchBal } = useReadContract({
@@ -68,52 +76,99 @@ export default function EarnFlow() {
 
   const availableUsdc = rawBal !== undefined ? floorTo2Decimals(rawBal as bigint) : 0;
 
-  const activeVaultAddress = (vault?.address as `0x${string}`) || CONTRACTS.EARN_VAULT;
-
-  // 1. Live on-chain staked balance via maxWithdraw
-  const { data: onChainVaultAssets, refetch: refetchVaultBal } = useReadContract({
-    address: activeVaultAddress,
-    abi: ERC4626_ABI,
-    functionName: "maxWithdraw",
-    args: [activeAddress ?? "0x0000000000000000000000000000000000000000"],
-    chainId: base.id,
-    query: {
-      enabled: !!activeAddress && !!activeVaultAddress,
-      refetchInterval: 5000,
-    },
-  });
-
-  // 2. Live on-chain share balance (steakUSDC vault tokens)
-  const { data: onChainVaultShares, refetch: refetchVaultShares } = useReadContract({
-    address: activeVaultAddress,
+  // 1. Check Steakhouse Prime Instant vault (0xbeef0e0834849aCC03f0089F01f4F1Eeb06873C9) for smart account
+  const { data: sharesSmartPrimary, refetch: refetchSharesSmartPrimary } = useReadContract({
+    address: CONTRACTS.EARN_VAULT,
     abi: ERC4626_ABI,
     functionName: "balanceOf",
-    args: [activeAddress ?? "0x0000000000000000000000000000000000000000"],
+    args: [(resolvedSmartAddr ?? "0x0000000000000000000000000000000000000000") as `0x${string}`],
     chainId: base.id,
     query: {
-      enabled: !!activeAddress && !!activeVaultAddress,
-      refetchInterval: 5000,
+      enabled: !!resolvedSmartAddr,
+      refetchInterval: 4000,
     },
   });
 
-  // 3. Live convertToAssets for accurate valuation if maxWithdraw is zero
+  // 2. Check Steakhouse Prime Instant vault for EOA (if different)
+  const { data: sharesEoaPrimary, refetch: refetchSharesEoaPrimary } = useReadContract({
+    address: CONTRACTS.EARN_VAULT,
+    abi: ERC4626_ABI,
+    functionName: "balanceOf",
+    args: [(resolvedEoaAddr ?? "0x0000000000000000000000000000000000000000") as `0x${string}`],
+    chainId: base.id,
+    query: {
+      enabled: !!resolvedEoaAddr && resolvedEoaAddr.toLowerCase() !== resolvedSmartAddr?.toLowerCase(),
+      refetchInterval: 4000,
+    },
+  });
+
+  // 3. Check Alt Steakhouse vault (0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183)
+  const { data: sharesAltVault, refetch: refetchSharesAlt } = useReadContract({
+    address: "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183",
+    abi: ERC4626_ABI,
+    functionName: "balanceOf",
+    args: [(primaryHolderAddress ?? "0x0000000000000000000000000000000000000000") as `0x${string}`],
+    chainId: base.id,
+    query: {
+      enabled: !!primaryHolderAddress,
+      refetchInterval: 4000,
+    },
+  });
+
+  // Resolve active vault and active holder that holds the tokens
+  let activeVaultAddress: `0x${string}` = (vault?.address as `0x${string}`) || CONTRACTS.EARN_VAULT;
+  let activeHolderAddress: `0x${string}` = (primaryHolderAddress || activeAddress || "0x0000000000000000000000000000000000000000") as `0x${string}`;
+  let isHolderSmartAccount: boolean = !!resolvedSmartAddr;
+  let onChainVaultShares: bigint = 0n;
+
+  if (sharesSmartPrimary && (sharesSmartPrimary as bigint) > 0n) {
+    activeVaultAddress = CONTRACTS.EARN_VAULT;
+    activeHolderAddress = resolvedSmartAddr!;
+    isHolderSmartAccount = true;
+    onChainVaultShares = sharesSmartPrimary as bigint;
+  } else if (sharesEoaPrimary && (sharesEoaPrimary as bigint) > 0n) {
+    activeVaultAddress = CONTRACTS.EARN_VAULT;
+    activeHolderAddress = resolvedEoaAddr!;
+    isHolderSmartAccount = false;
+    onChainVaultShares = sharesEoaPrimary as bigint;
+  } else if (sharesAltVault && (sharesAltVault as bigint) > 0n) {
+    activeVaultAddress = "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183";
+    activeHolderAddress = primaryHolderAddress!;
+    isHolderSmartAccount = !!resolvedSmartAddr && activeHolderAddress.toLowerCase() === resolvedSmartAddr.toLowerCase();
+    onChainVaultShares = sharesAltVault as bigint;
+  }
+
+  // Live convertToAssets valuation for current shares on the active vault
   const { data: onChainConvertedAssets } = useReadContract({
     address: activeVaultAddress,
     abi: ERC4626_ABI,
     functionName: "convertToAssets",
-    args: [(onChainVaultShares as bigint) ?? 0n],
+    args: [onChainVaultShares],
     chainId: base.id,
     query: {
-      enabled: !!activeAddress && !!activeVaultAddress && ((onChainVaultShares as bigint) ?? 0n) > 0n,
-      refetchInterval: 5000,
+      enabled: onChainVaultShares > 0n,
+      refetchInterval: 4000,
+    },
+  });
+
+  // Live maxWithdraw check for active holder
+  const { data: onChainVaultAssets, refetch: refetchVaultBal } = useReadContract({
+    address: activeVaultAddress,
+    abi: ERC4626_ABI,
+    functionName: "maxWithdraw",
+    args: [activeHolderAddress],
+    chainId: base.id,
+    query: {
+      enabled: !!activeHolderAddress && activeHolderAddress !== "0x0000000000000000000000000000000000000000",
+      refetchInterval: 4000,
     },
   });
 
   const bestAssetsBigInt =
-    (onChainVaultAssets as bigint | undefined) && (onChainVaultAssets as bigint) > 0n
-      ? (onChainVaultAssets as bigint)
-      : (onChainConvertedAssets as bigint | undefined) && (onChainConvertedAssets as bigint) > 0n
+    (onChainConvertedAssets as bigint | undefined) && (onChainConvertedAssets as bigint) > 0n
       ? (onChainConvertedAssets as bigint)
+      : (onChainVaultAssets as bigint | undefined) && (onChainVaultAssets as bigint) > 0n
+      ? (onChainVaultAssets as bigint)
       : undefined;
 
   const effectiveAssetsInVault =
@@ -367,22 +422,22 @@ export default function EarnFlow() {
         // If full redeem is requested (or targetAmount >= effectiveAssetsInVault) and user holds shares,
         // use redeem(shares) to avoid rounding dust/errors.
         const userShares = (onChainVaultShares as bigint) ?? 0n;
-        const shouldRedeemShares = (isFullRedeem || targetAmount >= effectiveAssetsInVault) && userShares > 0n;
+        const shouldRedeemShares = (isFullRedeem || targetAmount >= (effectiveAssetsInVault - 0.0001)) && userShares > 0n;
         const withdrawUnits = parseUnits(targetAmount.toFixed(6), 6);
 
         const callData = shouldRedeemShares
           ? encodeFunctionData({
               abi: ERC4626_ABI,
               functionName: "redeem",
-              args: [userShares, activeAddress as `0x${string}`, activeAddress as `0x${string}`],
+              args: [userShares, activeHolderAddress, activeHolderAddress],
             })
           : encodeFunctionData({
               abi: ERC4626_ABI,
               functionName: "withdraw",
-              args: [withdrawUnits, activeAddress as `0x${string}`, activeAddress as `0x${string}`],
+              args: [withdrawUnits, activeHolderAddress, activeHolderAddress],
             });
 
-        if (smartClient) {
+        if (isHolderSmartAccount && smartClient) {
           const txHash = await smartClient.sendTransaction({
             calls: [
               {
@@ -392,10 +447,10 @@ export default function EarnFlow() {
               },
             ],
           });
-          console.log("[EarnFlow] On-chain withdraw tx:", txHash);
+          console.log("[EarnFlow] On-chain smart withdraw tx:", txHash);
         } else {
           const wallet =
-            wallets?.find((w) => w.address.toLowerCase() === activeAddress?.toLowerCase()) ||
+            wallets?.find((w) => w.address.toLowerCase() === activeHolderAddress.toLowerCase()) ||
             wallets?.[0];
           if (!wallet) throw new Error("Connected wallet not found");
           const provider = await wallet.getEthereumProvider();
@@ -404,7 +459,7 @@ export default function EarnFlow() {
             method: "eth_sendTransaction",
             params: [
               {
-                from: activeAddress,
+                from: wallet.address,
                 to: activeVaultAddress,
                 data: callData,
               },
@@ -415,13 +470,17 @@ export default function EarnFlow() {
         setSuccess(`Successfully withdrawn ${shouldRedeemShares ? "all" : `$${targetAmount.toFixed(2)}`} USDC from vault!`);
         setWithdrawAmount("");
         refetchBal?.();
+        refetchSharesSmartPrimary?.();
+        refetchSharesEoaPrimary?.();
+        refetchSharesAlt?.();
         refetchVaultBal?.();
-        refetchVaultShares?.();
         setTimeout(() => {
           fetchPosition();
           refetchBal?.();
+          refetchSharesSmartPrimary?.();
+          refetchSharesEoaPrimary?.();
+          refetchSharesAlt?.();
           refetchVaultBal?.();
-          refetchVaultShares?.();
         }, 3000);
       } else {
         const walletId = getWalletId();
@@ -604,7 +663,7 @@ export default function EarnFlow() {
   const displayVaultName = vault?.name && vault.name !== "Yield Vault" ? vault.name : EARN_CONFIG.VAULT_NAME;
   const displayPosition = `$${effectiveAssetsInVault.toFixed(2)}`;
   const displayYield = position ? `+$${position.earnedYield.toFixed(2)}` : "+$0.00";
-  const hasPosition = effectiveAssetsInVault > 0;
+  const hasPosition = effectiveAssetsInVault > 0 || onChainVaultShares > 0n;
   const isLoading = isDepositing || isWithdrawing || isClaiming;
 
   return (
@@ -831,7 +890,7 @@ export default function EarnFlow() {
                 <div className="space-y-3">
                   <ShimmerButton
                     onClick={() => handleWithdraw(withdrawAmount ? Number(withdrawAmount) : undefined, !withdrawAmount || Number(withdrawAmount) >= effectiveAssetsInVault)}
-                    disabled={isLoading || effectiveAssetsInVault <= 0}
+                    disabled={isLoading || (!hasPosition && effectiveAssetsInVault <= 0)}
                     className="w-full py-4 text-xs"
                   >
                     {isWithdrawing ? (
