@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { usePrivy, useWallets, getAccessToken } from "@privy-io/react-auth";
-import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
 import { formatUnits, parseUnits, encodeFunctionData } from "viem";
 import { base } from "viem/chains";
 import { useReadContract } from "wagmi";
@@ -37,8 +36,7 @@ const PRESET_AMOUNTS = [10, 50, 100, 250];
 export default function EarnFlow() {
   const { authenticated, login, user } = usePrivy();
   const { wallets } = useWallets();
-  const { client: smartClient } = useSmartWallets();
-  const { address: activeAddress, smartAccountAddress, eoaAddress } = useActiveAccount();
+  const { address: activeAddress, smartAccountAddress, eoaAddress, smartClient } = useActiveAccount();
 
   const [activeTab, setActiveTab] = useState<"deposit" | "withdraw">("deposit");
   const [amount, setAmount] = useState("");
@@ -278,7 +276,7 @@ export default function EarnFlow() {
 
     try {
       if (activeVaultAddress) {
-        // Direct on-chain deposit via ERC-4626 standard (with Pimlico gas sponsorship)
+        // Direct on-chain deposit via ERC-4626 standard (gas paid in USDC via ERC-20 Paymaster)
         const amountUnits = parseUnits(parsedAmount.toFixed(6), 6);
 
         if (smartClient) {

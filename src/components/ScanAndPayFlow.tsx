@@ -288,7 +288,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
       let placedTxHash = "";
       let recordedFeeHash = "";
 
-      // 1-Click Batched Smart Wallet Execution (gas sponsored by Pimlico paymaster)
+      // 1-Click Batched Smart Wallet Execution (gas paid in USDC via ERC-20 Paymaster)
       if (smartClient) {
         placedTxHash = await smartClient.sendTransaction({ calls });
         recordedFeeHash = placedTxHash;

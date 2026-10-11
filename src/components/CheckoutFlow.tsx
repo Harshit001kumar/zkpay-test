@@ -342,7 +342,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
       let txHash = "";
 
-      // 1-Click Batched Smart Wallet Execution (gas sponsored by Pimlico paymaster)
+      // 1-Click Batched Smart Wallet Execution (gas paid in USDC via ERC-20 Paymaster)
       if (smartClient) {
         txHash = await smartClient.sendTransaction({ calls });
       } else if (wallet) {

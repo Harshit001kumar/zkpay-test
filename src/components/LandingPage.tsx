@@ -120,7 +120,7 @@ export default function LandingPage({ login }: LandingPageProps) {
     },
     {
       q: "What are the protocol fees?",
-      a: "ZkPay charges a flat, transparent 1% protocol fee with no hidden foreign exchange markups. Gas on Base Mainnet is sponsored via Pimlico Account Abstraction paymasters, meaning you do not even need ETH for gas.",
+      a: "ZkPay charges a flat, transparent 1% protocol fee with no hidden foreign exchange markups. Gas on Base Mainnet is paid from your USDC balance via account abstraction, meaning you never need to hold native ETH for gas.",
     },
     {
       q: "How does the Morpho yield vault work?",
@@ -360,7 +360,7 @@ export default function LandingPage({ login }: LandingPageProps) {
                   Authorize your USDC on Base with your non-custodial wallet. Funds are held in an immutable Diamond escrow contract until the payment completes.
                 </p>
                 <p className="text-xs text-[#c6c6cd]">
-                  Pimlico account abstraction pays the gas fees so you never have to hold native ETH on Base to spend your USDC balance.
+                  Gas fees on Base are negligible (~$0.001) and are automatically deducted from your USDC balance — you never need to hold native ETH.
                 </p>
               </div>
             </div>

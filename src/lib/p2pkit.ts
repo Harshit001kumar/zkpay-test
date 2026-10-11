@@ -301,7 +301,7 @@ export async function sendPayoutAddress(
     if (prepared.isOk()) {
       const { to, data, value } = prepared.value;
 
-      // Smart Wallet execution (ERC-4337 batched call sponsored by Pimlico)
+      // Smart Wallet execution (ERC-4337 batched call, gas paid in USDC via ERC-20 Paymaster)
       if (typeof clientOrWallet?.sendTransaction === "function") {
         const txHash = await clientOrWallet.sendTransaction({
           calls: [{

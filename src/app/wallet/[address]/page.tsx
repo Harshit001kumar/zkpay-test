@@ -140,7 +140,7 @@ export default function WalletAddressPage() {
 
       let hash = "";
 
-      // 1-Click Transfer via Smart Wallet (gas sponsored by Pimlico paymaster)
+      // 1-Click Transfer via Smart Wallet (gas paid in USDC via ERC-20 Paymaster)
       if (smartClient) {
         const txHash = await smartClient.sendTransaction({
           calls: [{

@@ -348,7 +348,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
 
       let hash = "";
 
-      // 1-Click Batched Smart Wallet Execution (gas sponsored by Pimlico paymaster)
+      // 1-Click Batched Smart Wallet Execution (gas paid in USDC via ERC-20 Paymaster)
       if (smartClient) {
         hash = await smartClient.sendTransaction({ calls });
       } else if (wallet) {
