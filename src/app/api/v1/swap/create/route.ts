@@ -31,8 +31,12 @@ export async function POST(req: Request) {
       destinationAsset,
       chain,
       originChain,
+      fromChain,
+      srcChain,
       destinationChain,
       toChain,
+      destChain,
+      targetChain,
       amount,
       recipient,
       refundTo,
@@ -46,8 +50,8 @@ export async function POST(req: Request) {
 
     const sourceAsset = fromAsset || originAsset;
     const targetAsset = toAsset || destinationAsset;
-    const resolvedChain = chain || originChain || undefined;
-    const resolvedDestinationChain = destinationChain || toChain || undefined;
+    const resolvedChain = originChain || fromChain || chain || srcChain || body.origin_chain || undefined;
+    const resolvedDestinationChain = destinationChain || toChain || destChain || targetChain || body.destination_chain || body.to_chain || body.dstChain || undefined;
     const resolvedFeeRecipient = rawFeeRecipient || partnerAddress || partnerFeeRecipient;
     const resolvedFeeBps = typeof totalFeeBps === "number" ? totalFeeBps : (feeBps ? Number(feeBps) : undefined);
 
@@ -92,6 +96,7 @@ export async function POST(req: Request) {
       err.code === "INVALID_REFUND_ADDRESS" ||
       err.code === "INVALID_FEE_RECIPIENT" ||
       err.code === "NO_SOLVER_LIQUIDITY" ||
+      err.code === "PAIR_UNAVAILABLE" ||
       err.code === "SOLVER_REJECTED";
     const statusCode = err.statusCode || (isClientError ? 400 : 503);
     const body: Record<string, any> = {

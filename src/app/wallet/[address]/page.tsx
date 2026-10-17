@@ -123,6 +123,11 @@ export default function WalletAddressPage() {
       return;
     }
 
+    if (smartClient && numAmount > (usdcBalance - 0.01)) {
+      setSendError(`Please leave at least $0.02 USDC to cover the network gas fee.`);
+      return;
+    }
+
     if (numAmount > usdcBalance) {
       setSendError(`Insufficient balance. You have $${usdcBalance.toFixed(2)} USDC.`);
       return;

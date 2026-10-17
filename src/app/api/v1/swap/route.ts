@@ -13,12 +13,12 @@ export async function GET() {
     name: "ZkPay Cross-Chain Swap API",
     version: "v1",
     engine: "ZkPay Solver Network",
-    supportedChains: ["btc", "eth", "base", "sol", "arb", "bsc", "tron", "ltc"],
+    supportedChains: ["btc", "eth", "base", "sol", "arb", "bsc", "tron", "ltc", "polygon"],
     endpoints: {
       tokens: {
         method: "GET",
         path: "/api/v1/swap/tokens",
-        description: "List supported cross-chain tokens. Supports ?chain=base|sol|eth|btc|tron|arb|bsc|ltc.",
+        description: "List supported cross-chain tokens. Supports ?chain=base|sol|eth|btc|tron|arb|bsc|ltc|polygon.",
       },
       quote: {
         method: "GET | POST",

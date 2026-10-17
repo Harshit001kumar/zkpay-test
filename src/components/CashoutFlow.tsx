@@ -288,12 +288,13 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         args: [activeAddr],
       })) as bigint;
 
-      if (onChainBalance < totalRequiredUsdc) {
+      const minGasBuffer = smartClient ? 10_000n : 0n; // 0.01 USDC buffer for ERC-20 paymaster gas
+      if (onChainBalance < totalRequiredUsdc + minGasBuffer) {
         const balFloat = Number(onChainBalance) / 1_000_000;
-        const reqFloat = Number(totalRequiredUsdc) / 1_000_000;
+        const reqFloat = Number(totalRequiredUsdc + minGasBuffer) / 1_000_000;
         const feeDetail = protocolFeeUsdc > 0 
-          ? ` ($${amountUsdc.toFixed(2)} cashout + $${feeUsdc.toFixed(2)} 1% fee + $${protocolFeeUsdc.toFixed(2)} protocol fee)`
-          : ` ($${amountUsdc.toFixed(2)} cashout + $${feeUsdc.toFixed(2)} 1% fee)`;
+          ? ` ($${amountUsdc.toFixed(2)} cashout + $${feeUsdc.toFixed(2)} 1% fee + $${protocolFeeUsdc.toFixed(2)} protocol fee${smartClient ? " + ~$0.01 gas" : ""})`
+          : ` ($${amountUsdc.toFixed(2)} cashout + $${feeUsdc.toFixed(2)} 1% fee${smartClient ? " + ~$0.01 gas" : ""})`;
         throw new Error(
           `Insufficient USDC balance on Base. You have $${truncateTo2Decimals(balFloat)} USDC, but this cashout requires $${reqFloat.toFixed(2)} USDC${feeDetail}.`
         );

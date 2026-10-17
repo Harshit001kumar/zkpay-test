@@ -11,12 +11,15 @@ export const dynamic = "force-dynamic";
 async function extractQuoteParams(req: Request): Promise<SwapQuoteParams> {
   if (req.method === "POST") {
     const body = await req.json().catch(() => ({}));
+    const resolvedOriginChain = body.originChain || body.fromChain || body.chain || body.origin_chain || body.srcChain || undefined;
+    const resolvedDestChain = body.destinationChain || body.toChain || body.destChain || body.targetChain || body.destination_chain || body.to_chain || body.dstChain || undefined;
+
     return {
       fromAsset: body.fromAsset || body.originAsset,
       toAsset: body.toAsset || body.destinationAsset,
-      chain: body.chain || body.originChain || undefined,
-      originChain: body.originChain || body.chain || undefined,
-      destinationChain: body.destinationChain || body.toChain || undefined,
+      chain: resolvedOriginChain,
+      originChain: resolvedOriginChain,
+      destinationChain: resolvedDestChain,
       amount: String(body.amount || ""),
       feeRecipient: body.feeRecipient || body.partnerAddress || body.partnerFeeRecipient,
       totalFeeBps: typeof body.totalFeeBps === "number" ? body.totalFeeBps : (body.feeBps ? Number(body.feeBps) : undefined),
@@ -27,12 +30,30 @@ async function extractQuoteParams(req: Request): Promise<SwapQuoteParams> {
   }
 
   const { searchParams } = new URL(req.url);
+  const resolvedOriginChain =
+    searchParams.get("originChain") ||
+    searchParams.get("fromChain") ||
+    searchParams.get("chain") ||
+    searchParams.get("origin_chain") ||
+    searchParams.get("srcChain") ||
+    undefined;
+
+  const resolvedDestChain =
+    searchParams.get("destinationChain") ||
+    searchParams.get("toChain") ||
+    searchParams.get("destChain") ||
+    searchParams.get("targetChain") ||
+    searchParams.get("destination_chain") ||
+    searchParams.get("to_chain") ||
+    searchParams.get("dstChain") ||
+    undefined;
+
   return {
     fromAsset: searchParams.get("fromAsset") || searchParams.get("originAsset") || "",
     toAsset: searchParams.get("toAsset") || searchParams.get("destinationAsset") || undefined,
-    chain: searchParams.get("chain") || searchParams.get("originChain") || undefined,
-    originChain: searchParams.get("originChain") || searchParams.get("chain") || undefined,
-    destinationChain: searchParams.get("destinationChain") || searchParams.get("toChain") || undefined,
+    chain: resolvedOriginChain,
+    originChain: resolvedOriginChain,
+    destinationChain: resolvedDestChain,
     amount: searchParams.get("amount") || "",
     feeRecipient: searchParams.get("feeRecipient") || searchParams.get("partnerAddress") || searchParams.get("partnerFeeRecipient") || undefined,
     totalFeeBps: searchParams.get("totalFeeBps") ? Number(searchParams.get("totalFeeBps")) : (searchParams.get("feeBps") ? Number(searchParams.get("feeBps")) : undefined),
@@ -83,6 +104,7 @@ async function handleQuote(req: Request) {
       err.code === "INVALID_REFUND_ADDRESS" ||
       err.code === "INVALID_FEE_RECIPIENT" ||
       err.code === "NO_SOLVER_LIQUIDITY" ||
+      err.code === "PAIR_UNAVAILABLE" ||
       err.code === "SOLVER_REJECTED";
     const statusCode = err.statusCode || (isClientError ? 400 : 503);
     const body: Record<string, any> = {

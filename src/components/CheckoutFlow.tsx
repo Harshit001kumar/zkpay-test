@@ -270,12 +270,13 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         args: [activeAddr],
       })) as bigint;
 
-      if (onChainBalance < totalRequiredUsdc) {
+      const minGasBuffer = smartClient ? 10_000n : 0n; // 0.01 USDC buffer for ERC-20 paymaster gas
+      if (onChainBalance < totalRequiredUsdc + minGasBuffer) {
         const balFloat = Number(onChainBalance) / 1_000_000;
-        const reqFloat = Number(totalRequiredUsdc) / 1_000_000;
+        const reqFloat = Number(totalRequiredUsdc + minGasBuffer) / 1_000_000;
         const feeDetail = protocolFeeBigInt > 0n
-          ? ` ($${(Number(usdcPrincipalBigInt) / 1e6).toFixed(2)} payment + $${(Number(usdcFeeBigInt) / 1e6).toFixed(2)} 1% fee + $${(Number(protocolFeeBigInt) / 1e6).toFixed(2)} protocol fee)`
-          : ` ($${(Number(usdcPrincipalBigInt) / 1e6).toFixed(2)} payment + $${(Number(usdcFeeBigInt) / 1e6).toFixed(2)} 1% fee)`;
+          ? ` ($${(Number(usdcPrincipalBigInt) / 1e6).toFixed(2)} payment + $${(Number(usdcFeeBigInt) / 1e6).toFixed(2)} 1% fee + $${(Number(protocolFeeBigInt) / 1e6).toFixed(2)} protocol fee${smartClient ? " + ~$0.01 gas" : ""})`
+          : ` ($${(Number(usdcPrincipalBigInt) / 1e6).toFixed(2)} payment + $${(Number(usdcFeeBigInt) / 1e6).toFixed(2)} 1% fee${smartClient ? " + ~$0.01 gas" : ""})`;
         throw new Error(
           `Insufficient USDC balance on Base. You have $${truncateTo2Decimals(balFloat)} USDC, but this payment requires $${reqFloat.toFixed(2)} USDC${feeDetail}.`
         );

@@ -52,11 +52,11 @@ ZkPay is a mobile-first crypto-to-fiat payment app. Users scan a UPI QR code and
 ## Swap API & Fee Settlement Architecture (Cross-Chain)
 - **Engine**: Routes multi-chain swaps via NEAR Intents 1Click solver network (`https://1click.chaindefuser.com/v0`).
 - **Endpoints**: `/api/v1/swap/tokens`, `/api/v1/swap/quote`, `/api/v1/swap/create`, `/api/v1/swap/status`.
-- **Supported Chains (Curated)**: `btc`, `eth`, `base`, `sol`, `arb`, `bsc`, `tron`, `ltc`.
-- **Curated Tokens**: BTC, ETH (eth/base/arb), SOL, USDC (base/eth/sol/arb), USDT (eth/sol/tron), BNB, ARB, TRX, LTC.
+- **Supported Chains (Curated)**: `btc`, `eth`, `base`, `sol`, `arb`, `bsc`, `tron`, `ltc`, `polygon`.
+- **Curated Tokens**: BTC, ETH (eth/base/arb), SOL, USDC (base/eth/sol/arb), USDT (eth/sol/tron/polygon), BNB, ARB, TRX, LTC.
 - **Fee Settlement Model**:
   - Fees are paid out in the **DESTINATION ASSET** of the swap on the destination chain.
   - 50/50 split between ZkPay Treasury and Partner `feeRecipient`.
   - ZkPay uses per-chain treasury addresses defined in `TREASURY_ADDRESSES` (`src/lib/constants.ts`).
-  - Partners must supply a `feeRecipient` address compatible with the destination chain (e.g. Solana address for SOL, Bitcoin address for BTC, 0x EVM address for Base/ETH/Arb/BSC, Tron address for TRC20).
+  - Partners must supply a `feeRecipient` address compatible with the destination chain (e.g. Solana address for SOL, Bitcoin address for BTC, 0x EVM address for Base/ETH/Arb/BSC/Polygon, Tron address for TRC20).
   - If a partner passes an invalid or incompatible address, the fee is lost (partner's responsibility).

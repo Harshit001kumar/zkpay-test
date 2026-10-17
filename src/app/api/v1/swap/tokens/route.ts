@@ -7,8 +7,8 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/v1/swap/tokens
  * 
- * Returns supported tokens across connected blockchains (Base, Solana, Ethereum, Arbitrum, BSC, Tron, Bitcoin).
- * Supports filtering by ?chain=base|sol|eth|btc|tron|arb|bsc.
+ * Returns supported tokens across connected blockchains (Base, Solana, Ethereum, Arbitrum, BSC, Tron, Bitcoin, Polygon, Litecoin).
+ * Supports filtering by ?chain=base|sol|eth|btc|tron|arb|bsc|polygon|ltc.
  * Rate limit: 60 req/min for IP, 300 req/min for authenticated API Key.
  */
 export async function GET(req: Request) {

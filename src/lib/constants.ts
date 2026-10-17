@@ -14,6 +14,10 @@ export const CONTRACTS = {
 
   // Default Base Mainnet ERC-4626 Vault (Steakhouse Prime Instant USDC on Morpho Blue on Base)
   EARN_VAULT: (process.env.NEXT_PUBLIC_EARN_VAULT_ADDRESS || "0xbeef0e0834849aCC03f0089F01f4F1Eeb06873C9") as `0x${string}`,
+
+  // Pimlico ERC-20 Paymaster contracts on Base Mainnet
+  PIMLICO_PAYMASTER_V6: "0x6666666666667849c56f2850848cE1C4da65c68b" as `0x${string}`,
+  PIMLICO_PAYMASTER_V7: "0x777777777777AeC03fd955926DbF81597e66834C" as `0x${string}`,
 } as const;
 
 export const EARN_VAULT_CANDIDATES: `0x${string}`[] = [
@@ -85,10 +89,12 @@ export const SWAP_ALLOWED_TOKENS = [
   { symbol: "USDC", name: "USDC (Ethereum)", assetId: "nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near", blockchain: "eth", decimals: 6 },
   { symbol: "USDC", name: "USDC (Solana)", assetId: "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near", blockchain: "sol", decimals: 6 },
   { symbol: "USDC", name: "USDC (Arbitrum)", assetId: "nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near", blockchain: "arb", decimals: 6 },
+  { symbol: "USDC", name: "USDC (Polygon)", assetId: "nep245:v2_1.omni.hot.tg:137_qiStmoQJDQPTebaPjgx5VBxZv6L", blockchain: "polygon", decimals: 6 },
   // ── Stablecoins: USDT ──
   { symbol: "USDT", name: "Tether (Ethereum)", assetId: "nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near", blockchain: "eth", decimals: 6 },
   { symbol: "USDT", name: "Tether (Solana)", assetId: "nep141:sol-c800a4bd850783ccb82c2b2c7e84175443606352.omft.near", blockchain: "sol", decimals: 6 },
   { symbol: "USDT", name: "Tether (TRC20)", assetId: "nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near", blockchain: "tron", decimals: 6 },
+  { symbol: "USDT", name: "Tether (Polygon)", assetId: "nep245:v2_1.omni.hot.tg:137_3hpYoaLtt8MP1Z2GH1U473DMRKgr", blockchain: "polygon", decimals: 6 },
   // ── Other majors ──
   { symbol: "BNB", name: "BNB (BSC)", assetId: "nep245:v2_1.omni.hot.tg:56_11111111111111111111", blockchain: "bsc", decimals: 18 },
   { symbol: "ARB", name: "Arbitrum", assetId: "nep141:arb-0x912ce59144191c1204e64559fe8253a0e49e6548.omft.near", blockchain: "arb", decimals: 18 },
@@ -100,7 +106,7 @@ export const SWAP_ALLOWED_TOKENS = [
 export const DEPOSIT_ASSETS = SWAP_ALLOWED_TOKENS;
 
 // Chains ZkPay officially supports for swaps
-export const SWAP_ALLOWED_CHAINS = new Set(["btc", "eth", "base", "sol", "arb", "bsc", "tron", "ltc"]);
+export const SWAP_ALLOWED_CHAINS = new Set(["btc", "eth", "base", "sol", "arb", "bsc", "tron", "ltc", "polygon"]);
 
 // Base USDC — default destination asset when toAsset is omitted
 export const TARGET_ASSET = {
@@ -122,6 +128,8 @@ export const DESTINATION_FALLBACK_ADDRESSES: Record<string, string> = {
   arb: process.env.TREASURY_ARB || TREASURY,
   bsc: process.env.TREASURY_BSC || TREASURY,
   polygon: process.env.TREASURY_POLYGON || TREASURY,
+  pol: process.env.TREASURY_POLYGON || TREASURY,
+  matic: process.env.TREASURY_POLYGON || TREASURY,
   // Fallbacks used ONLY when previewing dry-run quotes without a destination address
   sol: process.env.TREASURY_SOL || "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
   btc: process.env.TREASURY_BTC || "bc1qg52t5l20hfhmk7nkwe62s4xt3qr2fedwqmu6up",
@@ -152,8 +160,8 @@ export function resolveChainFromAssetId(assetId: string): string | null {
   if (lower.includes(":btc")) return "btc";
   if (lower.includes(":tron")) return "tron";
   if (lower.includes(":ltc")) return "ltc";
-  if (lower.includes(":56_")) return "bsc";
-  if (lower.includes(":polygon") || lower.includes(":matic")) return "polygon";
+  if (lower.includes(":56_") || lower.includes("56_")) return "bsc";
+  if (lower.includes(":polygon") || lower.includes(":matic") || lower.includes("137_") || lower.includes(":pol")) return "polygon";
   return null;
 }
 
@@ -170,7 +178,7 @@ export function normalizeChain(chain?: string | null): string | undefined {
   if (c === "bsc" || c === "binance" || c === "bnb") return "bsc";
   if (c === "tron" || c === "trx") return "tron";
   if (c === "btc" || c === "bitcoin") return "btc";
-  if (c === "polygon" || c === "matic") return "polygon";
+  if (c === "polygon" || c === "matic" || c === "pol" || c === "137") return "polygon";
   if (c === "ltc" || c === "litecoin") return "ltc";
   if (c === "near") return "near";
   return c;

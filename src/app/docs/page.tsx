@@ -36,7 +36,7 @@ Supported Chains: btc, eth, base, sol, arb, bsc, tron, ltc
 ## Endpoints
 
 ### 1. GET /api/v1/swap/tokens?chain={chain}
-Lists all supported tokens. Filter by chain: base, sol, eth, btc, tron, arb, bsc, ltc.
+Lists all supported tokens. Filter by chain: base, sol, eth, btc, tron, arb, bsc, ltc, polygon.
 Rate limit: 60 req/min (IP) · 300 req/min (API Key)
 
 Response:

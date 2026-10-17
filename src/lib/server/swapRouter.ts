@@ -238,7 +238,7 @@ function filterTokensByChain(tokens: SwapToken[], chain?: string | null): SwapTo
  */
 export async function resolveAssetId(symbolOrAssetId: string, chainHint?: string | null): Promise<string> {
   const query = symbolOrAssetId.trim();
-  if (query.startsWith("nep141:") || query.startsWith("nep245:")) {
+  if (query.startsWith("nep141:") || query.startsWith("nep245:") || query.startsWith("1cs_v1:")) {
     return query;
   }
 
@@ -246,7 +246,20 @@ export async function resolveAssetId(symbolOrAssetId: string, chainHint?: string
   const upper = query.toUpperCase();
   const normalizedChain = normalizeChain(chainHint);
 
-  // 1. Try matching symbol AND normalized chain hint if provided
+  // 1. Check for composite symbol_chain formats: e.g. "USDT_POLYGON", "USDC_BASE", "USDT-TRON", "USDC/SOL"
+  const separatorMatch = query.match(/^([a-zA-Z0-9$]+)[_\-\.\/]([a-zA-Z0-9]+)$/);
+  if (separatorMatch) {
+    const parsedSym = separatorMatch[1].toUpperCase();
+    const parsedChain = normalizeChain(separatorMatch[2]);
+    if (parsedChain) {
+      const match = allTokens.find(
+        (t) => t.symbol === parsedSym && normalizeChain(t.blockchain) === parsedChain
+      );
+      if (match) return match.assetId;
+    }
+  }
+
+  // 2. Try matching symbol AND normalized chain hint if provided
   if (normalizedChain) {
     const matchWithChain = allTokens.find(
       (t) => t.symbol === upper && normalizeChain(t.blockchain) === normalizedChain
@@ -254,7 +267,7 @@ export async function resolveAssetId(symbolOrAssetId: string, chainHint?: string
     if (matchWithChain) return matchWithChain.assetId;
   }
 
-  // 2. Specific preferred defaults for multi-chain symbols if chain is provided or omitted
+  // 3. Multi-chain stablecoin defaults
   if (upper === "USDC") {
     if (normalizedChain === "sol") {
       const solUsdc = allTokens.find((t) => t.symbol === "USDC" && normalizeChain(t.blockchain) === "sol");
@@ -264,9 +277,15 @@ export async function resolveAssetId(symbolOrAssetId: string, chainHint?: string
       const arbUsdc = allTokens.find((t) => t.symbol === "USDC" && normalizeChain(t.blockchain) === "arb");
       if (arbUsdc) return arbUsdc.assetId;
     }
-    if (normalizedChain === "base" || !normalizedChain) {
-      return TARGET_ASSET.assetId; // Base USDC default
+    if (normalizedChain === "polygon") {
+      const polyUsdc = allTokens.find((t) => t.symbol === "USDC" && normalizeChain(t.blockchain) === "polygon");
+      if (polyUsdc) return polyUsdc.assetId;
     }
+    if (normalizedChain === "eth") {
+      const ethUsdc = allTokens.find((t) => t.symbol === "USDC" && normalizeChain(t.blockchain) === "eth");
+      if (ethUsdc) return ethUsdc.assetId;
+    }
+    return TARGET_ASSET.assetId; // Base USDC default
   }
 
   if (upper === "USDT") {
@@ -274,9 +293,43 @@ export async function resolveAssetId(symbolOrAssetId: string, chainHint?: string
       const matchUsdt = allTokens.find((t) => t.symbol === "USDT" && normalizeChain(t.blockchain) === normalizedChain);
       if (matchUsdt) return matchUsdt.assetId;
     }
+    // Preferred default for USDT if chain is omitted: Tron TRC20 USDT
+    const tronUsdt = allTokens.find((t) => t.symbol === "USDT" && normalizeChain(t.blockchain) === "tron");
+    if (tronUsdt) return tronUsdt.assetId;
   }
 
-  // 3. Fallback defaults for common coins
+  // Composite multi-chain USDT aliases (e.g. USDT_POLYGON, USDT-POL)
+  if (
+    upper === "USDT_POLYGON" ||
+    upper === "USDT-POLYGON" ||
+    upper === "USDT_POL" ||
+    upper === "USDT-POL" ||
+    upper === "USDTPOLYGON" ||
+    upper === "USDTPOL" ||
+    upper === "USDT_MATIC" ||
+    upper === "USDT-MATIC" ||
+    upper === "USDTMATIC"
+  ) {
+    const polygonUsdt = allTokens.find((t) => t.symbol === "USDT" && normalizeChain(t.blockchain) === "polygon");
+    if (polygonUsdt) return polygonUsdt.assetId;
+  }
+
+  if (
+    upper === "USDC_POLYGON" ||
+    upper === "USDC-POLYGON" ||
+    upper === "USDC_POL" ||
+    upper === "USDC-POL" ||
+    upper === "USDCPOLYGON" ||
+    upper === "USDCPOL" ||
+    upper === "USDC_MATIC" ||
+    upper === "USDC-MATIC" ||
+    upper === "USDCMATIC"
+  ) {
+    const polygonUsdc = allTokens.find((t) => t.symbol === "USDC" && normalizeChain(t.blockchain) === "polygon");
+    if (polygonUsdc) return polygonUsdc.assetId;
+  }
+
+  // 4. Fallback defaults for common coins
   if (upper === "BTC") return "nep141:btc.omft.near";
   if (upper === "ETH") {
     if (normalizedChain === "base") {
@@ -287,12 +340,12 @@ export async function resolveAssetId(symbolOrAssetId: string, chainHint?: string
   }
   if (upper === "SOL") return "nep141:sol.omft.near";
 
-  // 4. Exact symbol match from supported tokens list
+  // 5. Exact symbol match from supported tokens list
   const match = allTokens.find((t) => t.symbol === upper);
   if (match) return match.assetId;
 
   throw new Error(
-    `Asset '${symbolOrAssetId}' not found. Use GET /api/v1/swap/tokens to inspect supported assetIds, or pass 'chain' parameter (e.g. ?fromAsset=${symbolOrAssetId}&chain=sol).`
+    `Asset '${symbolOrAssetId}' not found. Use GET /api/v1/swap/tokens to inspect supported assetIds, or pass 'chain' parameter (e.g. ?fromAsset=${symbolOrAssetId}&chain=polygon).`
   );
 }
 
@@ -354,10 +407,19 @@ export function validateSwapAmount(amountStr: string, originAssetId: string): vo
     throw err;
   }
 
-  // USDC / USDT (6 decimals): 1 USDC = 1e6 ($1.00). $0.05 USD is 50,000 atomic units
-  if ((assetLower.includes("usdc") || assetLower.includes("usdt")) && val < 50_000n) {
+  // USDC / USDT (6 decimals): 1 USDC/USDT = 1e6 ($1.00). $0.05 USD is 50,000 atomic units
+  const isUsdStable =
+    assetLower.includes("usdc") ||
+    assetLower.includes("usdt") ||
+    assetLower.includes("137_3hpyoaltt8mp1z2gh1u473dmrkgr") ||
+    assetLower.includes("137_qistmoqjdqptebapjgx5vbxzv6l") ||
+    SWAP_ALLOWED_TOKENS.some(
+      (t) => t.assetId.toLowerCase() === assetLower && (t.symbol === "USDC" || t.symbol === "USDT")
+    );
+
+  if (isUsdStable && val < 50_000n) {
     const err: any = new Error(
-      "Amount is below minimum trade threshold ($0.05 USD) or provided in human units instead of atomic units (6 decimals). Expected atomic units as an integer string (e.g. '50000' for 0.05 USDC)."
+      "Amount is below minimum trade threshold ($0.05 USD) or provided in human units instead of atomic units (6 decimals). Expected atomic units as an integer string (e.g. '50000' for 0.05 USDC/USDT)."
     );
     err.code = "AMOUNT_BELOW_MINIMUM";
     err.statusCode = 400;
@@ -448,6 +510,9 @@ async function fetchSolverApi(endpoint: string, options: RequestInit): Promise<a
     } else if (lowerMsg.includes("no route") || lowerMsg.includes("liquidity") || lowerMsg.includes("cannot find quote") || lowerMsg.includes("no quote")) {
       err.code = "NO_SOLVER_LIQUIDITY";
       err.message = "Temporary lack of solver liquidity for this token pair or amount. Please adjust trade amount or retry shortly.";
+    } else if (lowerMsg.includes("not available") || lowerMsg.includes("quoting for this pair") || lowerMsg.includes("offline")) {
+      err.code = "PAIR_UNAVAILABLE";
+      err.message = "Quoting for this token pair or destination network is currently unavailable on the solver network (the network may be temporarily offline for maintenance or lacking active solver market makers). Please try another supported chain or stablecoin (e.g. USDC on Base/Solana/Arbitrum or USDT on Tron/Solana).";
     } else {
       err.code = data.code || (response.status === 400 ? "SOLVER_REJECTED" : "SOLVER_ERROR");
     }

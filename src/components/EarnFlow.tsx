@@ -232,7 +232,11 @@ export default function EarnFlow() {
   };
 
   const handleSetMax = () => {
-    if (availableUsdc > 0) {
+    if (availableUsdc > 0.02) {
+      // Leave $0.02 USDC buffer so the ERC-20 paymaster can collect gas without failing
+      setAmount((availableUsdc - 0.02).toFixed(2));
+      setError("");
+    } else if (availableUsdc > 0) {
       setAmount(availableUsdc.toFixed(2));
       setError("");
     }
@@ -257,6 +261,11 @@ export default function EarnFlow() {
     const parsedAmount = Number(amount);
     if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
       setError("Please enter a valid deposit amount.");
+      return;
+    }
+
+    if (isHolderSmartAccount && parsedAmount > (availableUsdc - 0.01)) {
+      setError(`Please leave at least $0.02 USDC in your wallet to cover gas fees.`);
       return;
     }
 

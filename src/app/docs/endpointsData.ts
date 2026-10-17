@@ -752,14 +752,14 @@ bot.command('status', async (ctx) => {
     title: "Supported Swap Tokens",
     category: "swap",
     rateLimit: "60 req/min (IP) · 300 req/min (API Key)",
-    description: "Returns all supported tokens across 8 blockchains. Tokens can be used as either origin (fromAsset) or destination (toAsset). Filter by ?chain=base|sol|eth|btc|tron|arb|bsc|ltc.",
+    description: "Returns all supported tokens across 9 blockchains. Tokens can be used as either origin (fromAsset) or destination (toAsset). Filter by ?chain=base|sol|eth|btc|tron|arb|bsc|ltc|polygon.",
     parameters: [
       {
         name: "chain",
         type: "string",
         location: "query",
         required: false,
-        description: "Filter tokens by blockchain. Supported values: 'base', 'sol', 'eth', 'btc', 'tron', 'arb', 'bsc', 'ltc'. If omitted, returns tokens across all chains.",
+        description: "Filter tokens by blockchain. Supported values: 'base', 'sol', 'eth', 'btc', 'tron', 'arb', 'bsc', 'ltc', 'polygon'. If omitted, returns tokens across all chains.",
         example: "sol"
       },
       {

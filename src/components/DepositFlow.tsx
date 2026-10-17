@@ -313,8 +313,8 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
                 <p className="font-headline-md text-[#bcc7de] text-lg font-bold tracking-widest">{sourceAsset.symbol}</p>
               </div>
 
-              {/* Optional Refund Address for Non-EVM assets (Solana, BTC, Tron) */}
-              {sourceAsset.blockchain !== "eth" && sourceAsset.blockchain !== "arb" && sourceAsset.blockchain !== "bsc" && (
+              {/* Optional Refund Address for Non-EVM assets (Solana, BTC, Tron, LTC) */}
+              {sourceAsset.blockchain !== "eth" && sourceAsset.blockchain !== "arb" && sourceAsset.blockchain !== "bsc" && sourceAsset.blockchain !== "base" && sourceAsset.blockchain !== "polygon" && (
                 <div className="space-y-1.5 text-left w-full bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
                   <div className="flex items-center justify-between">
                     <label className="font-label-caps text-[11px] text-[#c6c6cd] uppercase tracking-[0.15em] font-bold">
