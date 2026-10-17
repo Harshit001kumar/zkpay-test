@@ -32,6 +32,9 @@ const nextConfig = {
       ...config.resolve.alias,
       "viem/tempo/zones": false,
       "viem/tempo": false,
+      // Map extensionless noble subpath imports in @noble/curves to explicit .js export targets
+      "@noble/hashes/utils$": "@noble/hashes/utils.js",
+      "@noble/hashes/hmac$": "@noble/hashes/hmac.js",
     };
 
     const plugins = [
