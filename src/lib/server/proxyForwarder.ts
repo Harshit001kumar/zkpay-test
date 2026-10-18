@@ -893,6 +893,7 @@ export async function recoverProxyDeposit(
       : balanceWei - gasCost;
 
     const txHash = await walletClient.sendTransaction({
+      account: proxyAccount,
       to: cleanDestination,
       value: sweepAmount,
     });
@@ -994,6 +995,7 @@ export async function recoverProxyDeposit(
         try {
           const relayer = getRelayerWalletClient();
           const fundTx = await relayer.sendTransaction({
+            account: relayer.account,
             to: proxyAccount.address,
             value: 30000000000000n,
           });
@@ -1012,6 +1014,7 @@ export async function recoverProxyDeposit(
     }
 
     const txHash = await walletClient.writeContract({
+      account: proxyAccount,
       address: tokenAddress,
       abi: ERC20_ABI,
       functionName: "transfer",
