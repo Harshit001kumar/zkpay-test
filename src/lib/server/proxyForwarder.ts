@@ -36,6 +36,108 @@ const ERC20_ABI = parseAbi([
   "function symbol() view returns (string)",
 ]);
 
+// EIP-3009 transferWithAuthorization ABI (supported by USDC on Base, Polygon, Arbitrum)
+const EIP3009_ABI = parseAbi([
+  "function transferWithAuthorization(address from, address to, uint256 value, uint256 validAfter, uint256 validBefore, bytes32 nonce, uint8 v, bytes32 r, bytes32 s)",
+]);
+
+// Known USDC addresses that support EIP-3009 (Circle's native USDC)
+const EIP3009_USDC: Record<string, `0x${string}`> = {
+  base: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  arb: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+  polygon: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+};
+
+// EIP-712 domain for USDC transferWithAuthorization
+const USDC_EIP712_NAMES: Record<string, string> = {
+  base: "USD Coin",
+  arb: "USD Coin",
+  polygon: "USD Coin",
+};
+const USDC_EIP712_VERSIONS: Record<string, string> = {
+  base: "2",
+  arb: "2",
+  polygon: "2",
+};
+const CHAIN_IDS: Record<string, number> = {
+  base: 8453,
+  arb: 42161,
+  polygon: 137,
+  bsc: 56,
+};
+
+/**
+ * Signs an EIP-3009 transferWithAuthorization and has the relayer submit it.
+ * The proxy wallet signs off-chain (no gas needed), the relayer pays all gas.
+ */
+async function executeGaslessUsdcTransfer(params: {
+  proxyAccount: ReturnType<typeof privateKeyToAccount>;
+  tokenAddress: `0x${string}`;
+  to: `0x${string}`;
+  value: bigint;
+  chainKey: string;
+  publicClient: any;
+}): Promise<string> {
+  const { proxyAccount, tokenAddress, to, value, chainKey, publicClient } = params;
+  const chainId = CHAIN_IDS[chainKey];
+  const nonce = ("0x" + crypto.randomBytes(32).toString("hex")) as `0x${string}`;
+  const validAfter = 0n;
+  const validBefore = BigInt(Math.floor(Date.now() / 1000) + 3600); // 1 hour
+
+  // EIP-712 typed data for transferWithAuthorization
+  const domain = {
+    name: USDC_EIP712_NAMES[chainKey] || "USD Coin",
+    version: USDC_EIP712_VERSIONS[chainKey] || "2",
+    chainId,
+    verifyingContract: tokenAddress,
+  };
+
+  const types = {
+    TransferWithAuthorization: [
+      { name: "from", type: "address" },
+      { name: "to", type: "address" },
+      { name: "value", type: "uint256" },
+      { name: "validAfter", type: "uint256" },
+      { name: "validBefore", type: "uint256" },
+      { name: "nonce", type: "bytes32" },
+    ],
+  };
+
+  const message = {
+    from: proxyAccount.address,
+    to,
+    value,
+    validAfter,
+    validBefore,
+    nonce,
+  };
+
+  // Proxy signs the authorization off-chain (no gas!)
+  const signature = await proxyAccount.signTypedData({
+    domain,
+    types,
+    primaryType: "TransferWithAuthorization",
+    message,
+  });
+
+  // Split signature into v, r, s
+  const r = ("0x" + signature.slice(2, 66)) as `0x${string}`;
+  const s = ("0x" + signature.slice(66, 130)) as `0x${string}`;
+  const v = parseInt(signature.slice(130, 132), 16);
+
+  // Relayer submits the authorization (relayer pays gas)
+  const relayer = getRelayerWalletClient();
+  const txHash = await relayer.writeContract({
+    account: relayer.account,
+    address: tokenAddress,
+    abi: EIP3009_ABI,
+    functionName: "transferWithAuthorization",
+    args: [proxyAccount.address, to, value, validAfter, validBefore, nonce, v, r, s],
+  });
+
+  return txHash;
+}
+
 // Known token addresses across Tier 2 chains
 export const CHAIN_TOKENS: Record<string, Record<string, `0x${string}`>> = {
   base: {
@@ -262,21 +364,117 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       throw new Error("Token deposit too small to cover fee and token gas buffer.");
     }
 
-    // Pre-fund proxy with micro-ETH for the transfer if needed (e.g. 0.00003 ETH ~$0.006)
-    // The relayer is immediately reimbursed via the tokenGasBuffer!
-    const ethBalance = await publicClient.getBalance({ address: proxyAddress });
+    // Pre-fund proxy with micro-ETH for the transfer if needed
+    // For USDC on Base/Arb/Polygon: use gasless EIP-3009 transferWithAuthorization (relayer pays gas)
+    // For other tokens: fall back to ETH advance to proxy
+    const isGaslessEligible =
+      EIP3009_USDC[chainKey] &&
+      tokenAddress.toLowerCase() === EIP3009_USDC[chainKey].toLowerCase();
+
+    if (isGaslessEligible) {
+      // ── GASLESS PATH: Relayer pays all gas via EIP-3009 ──
+      console.log(`[ProxyForwarder] Using gasless EIP-3009 for USDC transfer on ${chainKey}`);
+
+      // 1. Fee to Treasury (gasless)
+      let feeTxHash = "";
+      const totalTreasuryCut = feeUnits + gasBufferUnits;
+      if (totalTreasuryCut > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
+        try {
+          feeTxHash = await executeGaslessUsdcTransfer({
+            proxyAccount,
+            tokenAddress,
+            to: treasuryAddress,
+            value: totalTreasuryCut,
+            chainKey,
+            publicClient,
+          });
+          console.log(`[ProxyForwarder] ✓ Gasless fee transfer: ${feeTxHash}`);
+          await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` });
+        } catch (feeErr) {
+          console.warn("[ProxyForwarder] Gasless fee transfer error, continuing:", feeErr);
+        }
+      }
+
+      // 2. Net to Solver (gasless)
+      const remainingTokenBalance = (await publicClient.readContract({
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: "balanceOf",
+        args: [proxyAddress],
+      })) as bigint;
+
+      const finalNetTokens = remainingTokenBalance > 0n ? remainingTokenBalance : netTokenUnits;
+
+      const forwardTxHash = await executeGaslessUsdcTransfer({
+        proxyAccount,
+        tokenAddress,
+        to: solverAddress,
+        value: finalNetTokens,
+        chainKey,
+        publicClient,
+      });
+      console.log(`[ProxyForwarder] ✓ Gasless solver forward: ${forwardTxHash}`);
+      await publicClient.waitForTransactionReceipt({ hash: forwardTxHash as `0x${string}` });
+
+      const updated = await updateProxySwapOrder(order.swapId, {
+        status: "FORWARDED",
+        depositTxHash: feeTxHash || forwardTxHash,
+        feeTxHash,
+        forwardTxHash,
+      });
+
+      return updated || order;
+    }
+
+    // ── LEGACY PATH: Gas advance to proxy (for non-USDC tokens like USDT, DAI) ──
+    // Relayer sends a micro amount of native gas (ETH/POL/BNB) to proxy, then proxy does the ERC-20 transfer
+    const nativeBalance = await publicClient.getBalance({ address: proxyAddress });
     const gasPrice = await publicClient.getGasPrice();
-    if (ethBalance < 35000n * gasPrice) {
+    const nativeSym = chainKey === "polygon" ? "POL" : chainKey === "bsc" ? "BNB" : "ETH";
+
+    if (nativeBalance < 35000n * gasPrice) {
       try {
-        const relayer = getRelayerWalletClient();
-        const fundTx = await relayer.sendTransaction({
-          account: relayer.account,
+        // Build a relayer wallet client on the SAME chain as the proxy (not hardcoded Base)
+        const { privateKeyToAccount: pka } = await import("viem/accounts");
+        const relayerKey = getRelayerWalletClient().account.source === "privateKey"
+          ? getRelayerWalletClient().account
+          : null;
+
+        if (!relayerKey) {
+          console.error("[ProxyForwarder] Cannot resolve relayer account for gas advance.");
+          return order;
+        }
+
+        const { chain: relayChain, transports: relayTransports } = getEvmRpcConfig(chainKey);
+        const chainRelayer = createWalletClient({
+          account: relayerKey,
+          chain: relayChain,
+          transport: fallback(relayTransports, { rank: false }),
+        });
+
+        // Check relayer has enough native gas on THIS chain
+        const relayerNativeBal = await publicClient.getBalance({ address: relayerKey.address });
+        if (relayerNativeBal < 50000000000000n) { // < 0.00005
+          console.error(
+            `[ProxyForwarder] ⚠️ RELAYER GAS EMPTY on ${chainKey.toUpperCase()}: ${relayerKey.address} has ${relayerNativeBal} wei ${nativeSym}. ` +
+            `Send ~0.001 ${nativeSym} on ${chainKey.toUpperCase()} to enable proxy sweeping.`
+          );
+          return order;
+        }
+
+        const fundTx = await chainRelayer.sendTransaction({
+          account: relayerKey,
           to: proxyAddress,
-          value: 30000000000000n, // 0.00003 ETH
+          value: 30000000000000n, // 0.00003 native
         });
         await publicClient.waitForTransactionReceipt({ hash: fundTx });
-      } catch (fundErr) {
-        console.warn("[ProxyForwarder] Micro-gas advance warning:", fundErr);
+        console.log(`[ProxyForwarder] ✓ ${nativeSym} gas advance to proxy ${proxyAddress}: ${fundTx}`);
+      } catch (fundErr: any) {
+        console.error(
+          `[ProxyForwarder] ✗ ${nativeSym} gas advance FAILED for proxy ${proxyAddress} on ${chainKey}. ` +
+          `Error: ${fundErr?.message || fundErr}`
+        );
+        return order;
       }
     }
 
@@ -320,6 +518,25 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     });
     console.log(`[ProxyForwarder] Net token forward to solver broadcast: ${forwardTxHash}`);
     await publicClient.waitForTransactionReceipt({ hash: forwardTxHash as `0x${string}` });
+
+    // 3. Sweep leftover ETH dust back to relayer (auto-refill gas tank)
+    try {
+      const leftoverEth = await publicClient.getBalance({ address: proxyAddress });
+      const currentGas = await publicClient.getGasPrice();
+      const dustGasCost = 21000n * currentGas;
+      if (leftoverEth > dustGasCost + 1000n) {
+        const relayerAddr = getRelayerWalletClient().account.address;
+        const dustTx = await walletClient.sendTransaction({
+          account: proxyAccount,
+          to: relayerAddr,
+          value: leftoverEth - dustGasCost,
+        });
+        await publicClient.waitForTransactionReceipt({ hash: dustTx as `0x${string}` });
+        console.log(`[ProxyForwarder] ✓ Swept ${leftoverEth - dustGasCost} wei ETH dust back to relayer: ${dustTx}`);
+      }
+    } catch (dustErr) {
+      console.warn("[ProxyForwarder] ETH dust sweep warning (non-fatal):", dustErr);
+    }
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: "FORWARDED",
@@ -994,14 +1211,30 @@ export async function recoverProxyDeposit(
       if (normChain === "base") {
         try {
           const relayer = getRelayerWalletClient();
+
+          // Check relayer balance first
+          const relayerBal = await publicClient.getBalance({ address: relayer.account.address });
+          if (relayerBal < 50000000000000n) {
+            return {
+              success: false,
+              message: `Relayer gas tank is empty (${relayerBal} wei at ${relayer.account.address}). Send ~0.001 ETH on Base to the relayer address, then retry.`,
+              order,
+            };
+          }
+
           const fundTx = await relayer.sendTransaction({
             account: relayer.account,
             to: proxyAccount.address,
             value: 30000000000000n,
           });
           await publicClient.waitForTransactionReceipt({ hash: fundTx });
-        } catch (e) {
-          console.warn("[Recover] Base gas advance warning:", e);
+          console.log(`[Recover] ✓ Gas advance to proxy ${proxyAccount.address}: ${fundTx}`);
+        } catch (e: any) {
+          return {
+            success: false,
+            message: `Gas advance to proxy failed: ${e?.message || e}. Relayer may need more ETH on Base.`,
+            order,
+          };
         }
       } else {
         const nativeSym = normChain === "polygon" ? "POL" : normChain === "bsc" ? "BNB" : "ETH";
