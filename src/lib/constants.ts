@@ -184,6 +184,19 @@ export function normalizeChain(chain?: string | null): string | undefined {
   return c;
 }
 
+// Chains routed directly with 0% platform fee to protect users from high L1 network gas
+export const ZERO_FEE_CHAINS = new Set(["eth", "ethereum", "btc", "bitcoin"]);
+
+/**
+ * Checks whether a chain is configured for zero-fee direct routing (e.g. Ethereum L1, Bitcoin)
+ * to avoid burdening the user with high L1 network gas fees.
+ */
+export function isZeroFeeChain(chain?: string | null): boolean {
+  if (!chain) return false;
+  const c = normalizeChain(chain);
+  return c ? ZERO_FEE_CHAINS.has(c) : false;
+}
+
 /**
  * Returns the fee recipient address for NEAR Intents appFees.
  * 1Click API credits fees to the recipient's internal account on intents.near.
@@ -201,11 +214,17 @@ export function getFeeRecipientAddress(): string {
 }
 
 /**
- * Resolves the treasury fee recipient address.
- * Regardless of the origin chain, 1Click appFees MUST be routed to an EVM address or NEAR account.
+ * Resolves the treasury address for upfront fee collection based on the origin chain.
+ * - Solana -> Solana Treasury
+ * - Litecoin -> Litecoin Treasury
+ * - Tron -> Tron Treasury
+ * - EVMs (Base, Arbitrum, Polygon, BSC) -> Base/EVM Treasury
  */
-export function getTreasuryAddressForChain(_chain?: string | null): string {
-  return getFeeRecipientAddress();
+export function getTreasuryAddressForChain(chain?: string | null): string {
+  if (!chain) return getFeeRecipientAddress();
+  const c = normalizeChain(chain);
+  if (!c) return getFeeRecipientAddress();
+  return DESTINATION_FALLBACK_ADDRESSES[c] || getFeeRecipientAddress();
 }
 
 /**

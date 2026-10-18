@@ -19,6 +19,8 @@ import {
   TARGET_ASSET,
   CONTRACTS,
   DESTINATION_FALLBACK_ADDRESSES,
+  ZERO_FEE_CHAINS,
+  isZeroFeeChain,
   resolveChainFromAssetId,
   getFeeRecipientAddress,
   getTreasuryAddressForChain,
@@ -43,20 +45,23 @@ export const ZKPAY_TREASURY_ADDRESS =
   "0xb856b24fb054135deba5e0309edd31ed6a8afbe2";
 
 /**
- * Validates that a fee recipient address is acceptable to NEAR Intents (1Click API).
- * NEAR Intents appFees settle on the intents.near contract ledger.
- * Valid recipient formats:
- * 1. EVM address: 0x followed by 40 hex chars (e.g. 0xb856b24fb054135deba5e0309edd31ed6a8afbe2)
- * 2. Named NEAR account: ends with .near or .tg (e.g. zkpay.near)
- * 3. Implicit NEAR account: 64 hex characters
- * 
- * Non-EVM native addresses (e.g. BTC, LTC, Solana) MUST NOT be used because 1Click
- * does NOT bridge fees to those blockchains, resulting in trapped/unrecoverable funds.
+ * Validates that a fee recipient address matches the expected format for the chain.
  */
-export function isValidFeeRecipient(address?: string | null): boolean {
+export function isValidFeeRecipient(address?: string | null, chain?: string | null): boolean {
   if (!address || typeof address !== "string") return false;
   const clean = address.trim();
+  const c = normalizeChain(chain);
+  // EVM address
   if (/^0x[a-fA-F0-9]{40}$/.test(clean)) return true;
+  // Solana address (base58, 32-44 characters)
+  if ((!c || c === "sol") && /^[1-9A-HJ-NP-za-km-z]{32,44}$/.test(clean)) return true;
+  // Tron address (starts with T, base58 34 characters)
+  if ((!c || c === "tron") && /^T[a-km-zA-HJ-NP-Z1-9]{33}$/.test(clean)) return true;
+  // Litecoin address (starts with L, M, or ltc1)
+  if ((!c || c === "ltc") && /^(L|M|ltc1)[a-km-zA-HJ-NP-Z1-9]{25,43}$/.test(clean)) return true;
+  // Bitcoin address
+  if ((!c || c === "btc") && /^(1|3|bc1)[a-km-zA-HJ-NP-Z1-9]{25,62}$/.test(clean)) return true;
+  // Named NEAR account or implicit
   if (/^[a-z0-9_.-]+\.(near|tg)$/i.test(clean)) return true;
   if (/^[a-fA-F0-9]{64}$/.test(clean)) return true;
   return false;
@@ -69,7 +74,27 @@ export {
   getTreasuryAddressForChain,
   getFallbackDestinationAddress,
   normalizeChain,
+  isZeroFeeChain,
 };
+
+export interface ExecutionTransfer {
+  purpose: "PLATFORM_FEE" | "SWAP_DEPOSIT";
+  recipient: string;
+  amount: string;
+}
+
+export interface ExecutionPlan {
+  isDirectRoute: boolean;
+  type: "DIRECT_DEPOSIT" | "UPFRONT_FEE_SPLIT";
+  totalAmountIn: string;
+  netSwapAmount: string;
+  feeAmount: string;
+  feeAsset: string;
+  treasuryAddress: string | null;
+  partnerFeeRecipient: string | null;
+  depositAddress: string;
+  transfers: ExecutionTransfer[];
+}
 
 export interface FeeSplitResult {
   totalCustomFeeBps: number;
@@ -81,22 +106,44 @@ export interface FeeSplitResult {
   totalDeductionsBps: number;
   appFees: { recipient: string; fee: number }[];
   treasuryAddress: string;
+  isDirectRoute: boolean;
   feeSettlementNote: string;
 }
 
 /**
- * Computes 50/50 fee split between ZkPay Treasury and Partner.
+ * Computes upfront fee split between ZkPay Treasury and Partner.
  * 
- * In 1Click API (NEAR Intents), appFees settle directly on the intents.near ledger.
- * - Fees are credited instantly to the recipient's internal account ($0 minimum threshold, instant credit).
- * - Recipients must be EVM (0x...) addresses or NEAR accounts (*.near).
- * - Recipients can claim or withdraw anytime by connecting to app.near-intents.org.
+ * Rules:
+ * 1. Ethereum L1 and Bitcoin -> Direct route with 0% platform fee to protect users from high gas.
+ * 2. L2s (Base, Arbitrum, Polygon, BSC) and low-fee L1s (Solana, Litecoin, Tron) -> Upfront fee collection in source asset.
+ * 3. appFees sent to NEAR Intents is ALWAYS [] to bypass NEAR's $1,000 threshold and ensure instant payout.
  */
 export function calculateFeeSplit(
   requestedFeeBps?: number | null,
   partnerFeeRecipient?: string | null,
-  _originChain?: string | null
+  originChain?: string | null
 ): FeeSplitResult {
+  const normChain = normalizeChain(originChain);
+
+  // RULE 1: Ethereum Mainnet and Bitcoin -> Direct Route, 0% Platform Fee
+  if (isZeroFeeChain(normChain)) {
+    return {
+      totalCustomFeeBps: 0,
+      zkpayFeeBps: 0,
+      partnerFeeBps: 0,
+      partnerFeeRecipient: null,
+      networkProtocolFeeBps: NEAR_INTENTS_PROTOCOL_FEE_BPS,
+      nearIntentsProtocolFeeBps: NEAR_INTENTS_PROTOCOL_FEE_BPS,
+      totalDeductionsBps: NEAR_INTENTS_PROTOCOL_FEE_BPS,
+      appFees: [],
+      treasuryAddress: "",
+      isDirectRoute: true,
+      feeSettlementNote:
+        "Direct route enabled (0% platform fee) on Ethereum L1 and Bitcoin to eliminate extra gas costs for users.",
+    };
+  }
+
+  // RULE 2 & 3: Low-fee L2s (Base, Arbitrum, Polygon, BSC) and low-fee L1s (Solana, Litecoin, Tron)
   let totalCustom = typeof requestedFeeBps === "number" && !isNaN(requestedFeeBps)
     ? Math.round(requestedFeeBps)
     : DEFAULT_CUSTOM_FEE_BPS;
@@ -104,29 +151,21 @@ export function calculateFeeSplit(
   totalCustom = Math.max(MIN_CUSTOM_FEE_BPS, Math.min(MAX_CUSTOM_FEE_BPS, totalCustom));
 
   const cleanPartnerRecipient = partnerFeeRecipient?.trim() || null;
-  const treasuryAddress = getFeeRecipientAddress();
+  const treasuryAddress = getTreasuryAddressForChain(normChain);
 
   let zkpayFeeBps: number;
   let partnerFeeBps: number;
 
   if (cleanPartnerRecipient) {
-    // 50/50 Split
     zkpayFeeBps = Math.floor(totalCustom / 2);
     partnerFeeBps = totalCustom - zkpayFeeBps;
   } else {
-    // 100% to ZkPay
     zkpayFeeBps = totalCustom;
     partnerFeeBps = 0;
   }
 
-  const appFees: { recipient: string; fee: number }[] = [
-    { recipient: treasuryAddress, fee: zkpayFeeBps },
-  ];
-
-  if (cleanPartnerRecipient && partnerFeeBps > 0) {
-    appFees.push({ recipient: cleanPartnerRecipient, fee: partnerFeeBps });
-  }
-
+  // Upfront fee settlement: appFees sent to NEAR Intents is ALWAYS []
+  // This bypasses NEAR's $1,000 threshold and ensures instant on-chain settlement directly to treasury.
   return {
     totalCustomFeeBps: totalCustom,
     zkpayFeeBps,
@@ -135,9 +174,10 @@ export function calculateFeeSplit(
     networkProtocolFeeBps: NEAR_INTENTS_PROTOCOL_FEE_BPS,
     nearIntentsProtocolFeeBps: NEAR_INTENTS_PROTOCOL_FEE_BPS,
     totalDeductionsBps: NEAR_INTENTS_PROTOCOL_FEE_BPS + totalCustom,
-    appFees,
+    appFees: [],
     treasuryAddress,
-    feeSettlementNote: `Fees settle into your NEAR Intents ledger account (${treasuryAddress.startsWith("0x") ? "EVM 0x" : ".near"}) with $0 minimum threshold. Connect your wallet to app.near-intents.org to view, swap, or withdraw accumulated fees.`,
+    isDirectRoute: false,
+    feeSettlementNote: `Upfront fee settlement on origin chain (${normChain || "L2"}). Fee is transferred directly to treasury/partner address before or atomically with the swap. $0 minimum payout threshold.`,
   };
 }
 
@@ -562,14 +602,26 @@ export async function getSwapQuote(params: SwapQuoteParams) {
   // Validate partner fee recipient format if provided
   if (
     feeSplit.partnerFeeRecipient &&
-    !isValidFeeRecipient(feeSplit.partnerFeeRecipient)
+    !isValidFeeRecipient(feeSplit.partnerFeeRecipient, resolvedOriginChain)
   ) {
     const err: any = new Error(
-      `Partner fee recipient address '${feeSplit.partnerFeeRecipient}' is invalid. NEAR Intents requires an EVM address (0x...) or a NEAR account (*.near) to collect swap fees. Non-EVM native addresses cannot receive fees.`
+      `Partner fee recipient address '${feeSplit.partnerFeeRecipient}' is invalid for origin chain '${resolvedOriginChain}'.`
     );
     err.code = "INVALID_FEE_RECIPIENT";
     err.statusCode = 400;
     throw err;
+  }
+
+  // Compute upfront fee deduction
+  let netSwapAmount = amount.trim();
+  let feeAmount = "0";
+
+  if (!feeSplit.isDirectRoute && feeSplit.totalCustomFeeBps > 0) {
+    const totalAtomic = BigInt(amount.trim());
+    const feeAtomic = (totalAtomic * BigInt(feeSplit.totalCustomFeeBps)) / 10000n;
+    const netAtomic = totalAtomic - feeAtomic;
+    netSwapAmount = netAtomic > 0n ? netAtomic.toString() : amount.trim();
+    feeAmount = feeAtomic.toString();
   }
 
   // Ensure effectiveRecipient is ALWAYS valid for the destination chain
@@ -588,12 +640,12 @@ export async function getSwapQuote(params: SwapQuoteParams) {
     depositType: "ORIGIN_CHAIN",
     destinationAsset: destinationAssetId,
     recipientType: "DESTINATION_CHAIN",
-    amount: amount.trim(),
+    amount: netSwapAmount, // Pass net swap amount to solver
     recipient: effectiveRecipient,
     refundTo: effectiveRefundTo,
     refundType: "ORIGIN_CHAIN",
     deadline,
-    appFees: feeSplit.appFees,
+    appFees: [], // ZERO appFees to NEAR Intents!
   };
 
   const data = await fetchSolverApi(`${ONECLICK_API}/quote`, {
@@ -611,19 +663,57 @@ export async function getSwapQuote(params: SwapQuoteParams) {
 
   const quote = data.quote;
 
+  const executionPlan: ExecutionPlan = {
+    isDirectRoute: feeSplit.isDirectRoute,
+    type: feeSplit.isDirectRoute ? "DIRECT_DEPOSIT" : "UPFRONT_FEE_SPLIT",
+    totalAmountIn: amount.trim(),
+    netSwapAmount,
+    feeAmount,
+    feeAsset: originAssetId,
+    treasuryAddress: feeSplit.treasuryAddress || null,
+    partnerFeeRecipient: feeSplit.partnerFeeRecipient || null,
+    depositAddress: quote.depositAddress,
+    transfers: feeSplit.isDirectRoute
+      ? [
+          {
+            purpose: "SWAP_DEPOSIT",
+            recipient: quote.depositAddress,
+            amount: amount.trim(),
+          },
+        ]
+      : [
+          {
+            purpose: "PLATFORM_FEE",
+            recipient: feeSplit.treasuryAddress,
+            amount: feeAmount,
+          },
+          {
+            purpose: "SWAP_DEPOSIT",
+            recipient: quote.depositAddress,
+            amount: netSwapAmount,
+          },
+        ],
+  };
+
   return {
     quoteId: data.correlationId || `q_${Date.now()}`,
     originAsset: originAssetId,
     destinationAsset: destinationAssetId,
-    amountIn: quote.amountIn || amount,
+    totalAmountIn: amount.trim(),
+    netSwapAmount,
+    feeAmount,
+    amountIn: quote.amountIn || netSwapAmount,
     amountInFormatted: quote.amountInFormatted,
     amountOut: quote.amountOut,
     amountOutFormatted: quote.amountOutFormatted,
     minAmountOut: quote.minAmountOut,
     minAmountOutFormatted: quote.minAmountOutFormatted,
+    executionPlan,
     feeBreakdown: {
+      isDirectRoute: feeSplit.isDirectRoute,
       networkProtocolFeeBps: feeSplit.networkProtocolFeeBps,
       totalCustomFeeBps: feeSplit.totalCustomFeeBps,
+      feeAmount,
       split: {
         zkpayFeeBps: feeSplit.zkpayFeeBps,
         partnerFeeBps: feeSplit.partnerFeeBps,
@@ -678,20 +768,32 @@ export async function createSwapOrder(params: CreateSwapParams) {
   // Validate atomic units and minimum volume threshold
   validateSwapAmount(amount, originAssetId);
 
-  // Fee split is resolved per ORIGIN chain because 1Click appFees carve out input tokens
+  // Fee split is resolved per ORIGIN chain
   const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain);
 
   // Validate partner fee recipient format if provided
   if (
     feeSplit.partnerFeeRecipient &&
-    !isValidFeeRecipient(feeSplit.partnerFeeRecipient)
+    !isValidFeeRecipient(feeSplit.partnerFeeRecipient, resolvedOriginChain)
   ) {
     const err: any = new Error(
-      `Partner fee recipient address '${feeSplit.partnerFeeRecipient}' is invalid. NEAR Intents requires an EVM address (0x...) or a NEAR account (*.near) to collect swap fees. Non-EVM native addresses cannot receive fees.`
+      `Partner fee recipient address '${feeSplit.partnerFeeRecipient}' is invalid for origin chain '${resolvedOriginChain}'.`
     );
     err.code = "INVALID_FEE_RECIPIENT";
     err.statusCode = 400;
     throw err;
+  }
+
+  // Compute upfront fee deduction
+  let netSwapAmount = amount.trim();
+  let feeAmount = "0";
+
+  if (!feeSplit.isDirectRoute && feeSplit.totalCustomFeeBps > 0) {
+    const totalAtomic = BigInt(amount.trim());
+    const feeAtomic = (totalAtomic * BigInt(feeSplit.totalCustomFeeBps)) / 10000n;
+    const netAtomic = totalAtomic - feeAtomic;
+    netSwapAmount = netAtomic > 0n ? netAtomic.toString() : amount.trim();
+    feeAmount = feeAtomic.toString();
   }
 
   const effectiveRefundTo = resolveRefundAddress(originAssetId, params.refundTo, recipient, { isDryRun: false });
@@ -705,12 +807,12 @@ export async function createSwapOrder(params: CreateSwapParams) {
     depositType: "ORIGIN_CHAIN",
     destinationAsset: destinationAssetId,
     recipientType: "DESTINATION_CHAIN",
-    amount: amount.trim(),
+    amount: netSwapAmount, // Pass net swap amount to solver
     recipient: recipient.trim(),
     refundTo: effectiveRefundTo,
     refundType: "ORIGIN_CHAIN",
     deadline,
-    appFees: feeSplit.appFees,
+    appFees: [], // ZERO appFees to NEAR Intents!
   };
 
   const data = await fetchSolverApi(`${ONECLICK_API}/quote`, {
@@ -728,13 +830,45 @@ export async function createSwapOrder(params: CreateSwapParams) {
 
   const quote = data.quote;
 
+  const executionPlan: ExecutionPlan = {
+    isDirectRoute: feeSplit.isDirectRoute,
+    type: feeSplit.isDirectRoute ? "DIRECT_DEPOSIT" : "UPFRONT_FEE_SPLIT",
+    totalAmountIn: amount.trim(),
+    netSwapAmount,
+    feeAmount,
+    feeAsset: originAssetId,
+    treasuryAddress: feeSplit.treasuryAddress || null,
+    partnerFeeRecipient: feeSplit.partnerFeeRecipient || null,
+    depositAddress: quote.depositAddress,
+    transfers: feeSplit.isDirectRoute
+      ? [
+          {
+            purpose: "SWAP_DEPOSIT",
+            recipient: quote.depositAddress,
+            amount: amount.trim(),
+          },
+        ]
+      : [
+          {
+            purpose: "PLATFORM_FEE",
+            recipient: feeSplit.treasuryAddress,
+            amount: feeAmount,
+          },
+          {
+            purpose: "SWAP_DEPOSIT",
+            recipient: quote.depositAddress,
+            amount: netSwapAmount,
+          },
+        ],
+  };
+
   return {
     swapId: data.correlationId || `swp_${Date.now()}`,
     status: "PENDING_DEPOSIT",
     deposit: {
       address: quote.depositAddress,
       memo: quote.depositMemo || null,
-      amount: quote.amountInFormatted || amount,
+      amount: quote.amountInFormatted || netSwapAmount,
       deadline: quote.deadline || deadline,
     },
     settlement: {
@@ -744,8 +878,11 @@ export async function createSwapOrder(params: CreateSwapParams) {
       minAmountOut: quote.minAmountOutFormatted || quote.minAmountOut,
       timeEstimateSeconds: quote.timeEstimate || 60,
     },
+    executionPlan,
     feeSplit: {
+      isDirectRoute: feeSplit.isDirectRoute,
       totalCustomFeeBps: feeSplit.totalCustomFeeBps,
+      feeAmount,
       zkpayFeeBps: feeSplit.zkpayFeeBps,
       partnerFeeBps: feeSplit.partnerFeeBps,
       partnerFeeRecipient: feeSplit.partnerFeeRecipient,

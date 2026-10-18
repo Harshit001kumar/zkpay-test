@@ -27,11 +27,19 @@ Supported Chains: btc, eth, base, sol, arb, bsc, tron, ltc
 - POST endpoints: Pass API key via \`X-API-Key: zkpay_live_...\` header or \`Authorization: Bearer zkpay_live_...\`
 - Get your key at zkpay.top → Profile → Merchant & Bot API Keys
 
-## CRITICAL: Fee Settlement Architecture
-- Fees are paid out in the DESTINATION ASSET of the swap on the DESTINATION CHAIN.
-- ZkPay Treasury automatically routes its 50% cut to ZkPay's dedicated treasury address on the target destination chain.
-- PARTNERS MUST provide a \`feeRecipient\` address that matches the destination chain (e.g., Solana Base58 address if destination is SOL, Bitcoin address if destination is BTC, EVM 0x address if destination is Base/ETH/Arb/BSC, Tron address if destination is TRC20).
-- WARNING: If a partner provides an address from the wrong chain (e.g., an Ethereum 0x address when destination is Solana), the fee will be permanently lost on-chain. It is the partner's responsibility to validate this.
+## CRITICAL: Fee Settlement Architecture ($0 Threshold, Instant Payout)
+- Tier 1: High-Fee L1s (Ethereum Mainnet 'eth' & Bitcoin 'btc'):
+  - Direct routes with 0% platform fee (isDirectRoute: true, feeAmount: "0").
+  - Users are protected from high L1 network gas fees; transactions route straight to solvers without extra fee hops.
+- Tier 2 (L2s: base, arb, polygon, bsc) & Tier 3 (Low-Fee L1s: sol, ltc, tron):
+  - Fees are collected UPFRONT in the ORIGIN ASSET directly to the partner & treasury wallets.
+  - Swapping ETH on Base/Arb -> Fee paid in ETH.
+  - Swapping USDC/USDT -> Fee paid in USDC/USDT.
+  - Swapping SOL -> Fee paid in SOL to your Solana address.
+  - Swapping LTC -> Fee paid in LTC to your Litecoin address.
+  - 100% instant settlement, $0 minimum payout threshold (no portal lockups or $1,000 withdrawal limits).
+- PARTNERS MUST provide a \`feeRecipient\` address that matches the ORIGIN CHAIN (e.g., Solana Base58 address when swapping SOL, Base 0x address when swapping on Base, LTC address when swapping LTC).
+- An \`executionPlan\` is returned by both /quote and /create, detailing the exact transfers (fee split + solver deposit).
 
 ## Endpoints
 
@@ -51,16 +59,16 @@ Response:
 }
 
 ### 2. GET /api/v1/swap/quote?fromAsset={}&toAsset={}&amount={}&chain={}&destinationChain={}
-Preview swap pricing and fee breakdown. Dry run — no funds committed.
+Preview swap pricing, fee breakdown, and execution plan. Dry run — no funds committed.
 Rate limit: 30 req/min (IP) · 120 req/min (API Key)
 
 Query params:
-- fromAsset (required): Token symbol like "ETH", "SOL", "BTC"
-- toAsset (optional): Destination token symbol like "SOL", "USDC". Defaults to Base USDC if omitted.
+- fromAsset (required): Token symbol like "SOL", "ETH", "BTC"
+- toAsset (optional): Destination token symbol like "USDC", "SOL". Defaults to Base USDC if omitted.
 - amount (required): Integer string in ATOMIC UNITS (see conversion table below)
-- chain (optional): Source chain e.g. "eth", "sol", "btc"
-- destinationChain (optional): Target chain e.g. "sol", "base". Defaults to Base if omitted.
-- feeRecipient (optional): Partner's destination-chain address for 50% revenue share.
+- chain (optional): Source chain e.g. "sol", "base", "eth", "btc"
+- destinationChain (optional): Target chain e.g. "base", "sol". Defaults to Base if omitted.
+- feeRecipient (optional): Partner's origin-chain address for 50% revenue share (automatically 0 on ETH/BTC L1).
 - totalFeeBps (optional): Total fee in bps (range: 20–450 bps, default 100 = 1.00%).
 
 Response:
@@ -68,19 +76,40 @@ Response:
   "success": true,
   "quote": {
     "quoteId": "q_1727382000000",
-    "originAsset": "nep141:eth.omft.near",
-    "destinationAsset": "nep141:sol.omft.near",
-    "amountIn": "10000000000000000",
-    "amountInFormatted": "0.01",
-    "amountOut": "241500000",
-    "amountOutFormatted": "0.2415",
-    "minAmountOut": "239085000",
-    "minAmountOutFormatted": "0.2391",
+    "originAsset": "nep141:sol.omft.near",
+    "destinationAsset": "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+    "totalAmountIn": "1000000000",
+    "netSwapAmount": "990000000",
+    "feeAmount": "10000000",
+    "amountIn": "990000000",
+    "amountInFormatted": "0.99",
+    "amountOut": "102500000",
+    "amountOutFormatted": "102.50",
+    "minAmountOut": "101475000",
+    "minAmountOutFormatted": "101.47",
+    "executionPlan": {
+      "isDirectRoute": false,
+      "type": "UPFRONT_FEE_SPLIT",
+      "totalAmountIn": "1000000000",
+      "netSwapAmount": "990000000",
+      "feeAmount": "10000000",
+      "feeAsset": "nep141:sol.omft.near",
+      "treasuryAddress": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
+      "partnerFeeRecipient": "7vN24xV8y...SolanaPayoutAddress",
+      "depositAddress": "near_solver_deposit_address...",
+      "transfers": [
+        { "purpose": "PLATFORM_FEE", "recipient": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf", "amount": "10000000" },
+        { "purpose": "SWAP_DEPOSIT", "recipient": "near_solver_deposit_address...", "amount": "990000000" }
+      ]
+    },
     "feeBreakdown": {
+      "isDirectRoute": false,
       "networkProtocolFeeBps": 25,
       "totalCustomFeeBps": 100,
-      "split": { "zkpayFeeBps": 50, "partnerFeeBps": 50, "partnerFeeRecipient": "7vN24xV8y...SolanaPayoutAddress" },
-      "totalDeductionsBps": 125
+      "feeAmount": "10000000",
+      "split": { "zkpayFeeBps": 50, "partnerFeeBps": 50, "partnerFeeRecipient": "7vN24xV8y...SolanaPayoutAddress", "treasuryAddress": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf" },
+      "totalDeductionsBps": 125,
+      "feeSettlementNote": "Upfront fee settlement on origin chain (sol). $0 minimum payout threshold."
     },
     "timeEstimateSeconds": 45,
     "expiresAt": "2026-10-01T15:00:00.000Z"
@@ -88,26 +117,26 @@ Response:
 }
 
 ### 3. POST /api/v1/swap/create
-Creates a live swap order. Returns a single-use deposit address on the source chain.
+Creates a live swap order. Returns a single-use deposit address on the source chain and the executionPlan.
 Rate limit: 10 req/min (IP) · 60 req/min (API Key)
 
 Request body:
 {
-  "fromAsset": "ETH",
-  "chain": "eth",
-  "toAsset": "SOL",
-  "destinationChain": "sol",
-  "amount": "10000000000000000",
-  "recipient": "7vN24xV8y...SolanaUserAddress",
-  "refundTo": "0xUserEthAddress",
+  "fromAsset": "SOL",
+  "chain": "sol",
+  "toAsset": "USDC",
+  "destinationChain": "base",
+  "amount": "1000000000",
+  "recipient": "0xUserBaseRecipientAddress",
+  "refundTo": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
   "feeRecipient": "7vN24xV8y...SolanaPartnerAddress",
   "totalFeeBps": 100
 }
 
 - recipient: User's destination-chain wallet address
 - refundTo: User's origin-chain wallet address (for automatic refund on failure/expiry)
-- feeRecipient: Partner's payout address on the DESTINATION CHAIN (must match destinationChain format!)
-- totalFeeBps: Your desired fee in basis points (range: 20–450 bps)
+- feeRecipient: Partner's payout address on the ORIGIN CHAIN (must match chain format! E.g. Solana address for SOL source)
+- totalFeeBps: Your desired fee in basis points (range: 20–450 bps, 0 on ETH/BTC L1)
 
 Response:
 {
@@ -115,24 +144,39 @@ Response:
   "order": {
     "swapId": "swp_1727382000000",
     "status": "PENDING_DEPOSIT",
+    "totalAmountIn": "1000000000",
+    "netSwapAmount": "990000000",
+    "feeAmount": "10000000",
     "deposit": {
-      "address": "0x89c1...EthereumDepositAddress",
-      "amount": "0.01",
+      "address": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
+      "amount": "0.99",
       "deadline": "2026-10-01T15:15:00.000Z"
     },
     "settlement": {
-      "recipient": "7vN24xV8y...SolanaUserAddress",
-      "estimatedAmountOut": "0.2415",
-      "minAmountOut": "0.2391",
+      "recipient": "0xUserBaseRecipientAddress",
+      "estimatedAmountOut": "102.50",
+      "minAmountOut": "101.47",
       "timeEstimateSeconds": 60
     },
+    "executionPlan": {
+      "isDirectRoute": false,
+      "type": "UPFRONT_FEE_SPLIT",
+      "totalAmountIn": "1000000000",
+      "netSwapAmount": "990000000",
+      "feeAmount": "10000000",
+      "transfers": [
+        { "purpose": "PLATFORM_FEE", "recipient": "7vN24xV8y...SolanaPartnerAddress", "amount": "10000000" },
+        { "purpose": "SWAP_DEPOSIT", "recipient": "near_solver_deposit_address...", "amount": "990000000" }
+      ]
+    },
     "feeSplit": {
+      "isDirectRoute": false,
       "totalCustomFeeBps": 100,
       "zkpayFeeBps": 50,
       "partnerFeeBps": 50,
       "partnerFeeRecipient": "7vN24xV8y...SolanaPartnerAddress",
       "treasuryAddress": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
-      "feeSettlementNote": "Fees are paid in the destination asset to the recipient on the destination chain."
+      "feeSettlementNote": "Upfront fee settlement on origin chain (sol). $0 minimum payout threshold."
     }
   }
 }
@@ -147,27 +191,30 @@ Response:
 {
   "success": true,
   "status": "settled",
-  "depositedAmount": "0.01 ETH",
-  "settledAmount": "0.2415 SOL",
-  "destinationTxHash": "5KtP...solanaTxSignature",
-  "destinationExplorerUrl": "https://solscan.io/tx/5KtP..."
+  "depositedAmount": "0.99 SOL",
+  "settledAmount": "102.50 USDC",
+  "destinationTxHash": "0x89c1...baseTxHash",
+  "destinationExplorerUrl": "https://basescan.org/tx/0x89c1..."
 }
 
 ## Integration Flow
 1. Call /swap/tokens to discover supported assets
 2. Call /swap/quote to preview rate & fees (show user the quote)
-3. Validate user's destination recipient and your feeRecipient for destination chain compatibility
-4. Call /swap/create to get deposit address
+3. Validate user's destination recipient and your feeRecipient for origin chain compatibility
+4. Call /swap/create to get deposit address and execution plan
 5. User sends crypto to the deposit address on source chain
 6. Poll /swap/status until status is "settled", "failed", or "refunded"
 
-## Fee Structure (50/50 Revenue Share in Destination Asset)
-- Network Protocol Fee: 25 bps (0.25%) — goes to solver network
-- Your Partner Share: 50% of totalFeeBps → settled in DESTINATION ASSET to feeRecipient
-- ZkPay Treasury Share: 50% of totalFeeBps → settled in DESTINATION ASSET to ZkPay treasury
-- Minimum totalFeeBps: 20 (0.20%)
-- Maximum totalFeeBps: 450 (4.50%)
-- If no feeRecipient provided: 100% of custom fee goes to ZkPay treasury
+## Fee Structure ($0 Threshold, Upfront Origin Settlement)
+- High-Fee L1s (ETH Mainnet & BTC): 0% platform fee direct route to protect users from gas costs.
+- L2s (Base, Arbitrum, Polygon, BSC) & Low-Fee L1s (Solana, Litecoin, Tron):
+  - Network Protocol Fee: 25 bps (0.25%) — deducted by solver network
+  - Your Partner Share: 50% of totalFeeBps → settled UPFRONT in ORIGIN ASSET to feeRecipient
+  - ZkPay Treasury Share: 50% of totalFeeBps → settled UPFRONT in ORIGIN ASSET to ZkPay treasury
+  - Minimum totalFeeBps: 20 (0.20%)
+  - Maximum totalFeeBps: 450 (4.50%)
+  - If no feeRecipient provided: 100% of custom fee goes to ZkPay treasury
+  - Settlement: Instant on origin chain, $0 minimum payout threshold, no portal delays.
 
 ## CRITICAL: Atomic Units Conversion Table
 ALL amounts MUST be integer strings in atomic/base units. NEVER pass decimals like "0.01".
@@ -682,20 +729,18 @@ Verify with:
           <div className="bg-white/5 backdrop-blur-[40px] border border-white/15 rounded-xl p-8 md:p-10 shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
             <div className="flex items-center gap-3 mb-6">
               <span className="font-label-caps text-[#c0c6de] text-[10px] tracking-[0.25em] font-bold">
-                SWAP API - 50/50 FEE SPLIT
+                SWAP API - MULTI-CHAIN FEE SETTLEMENT ($0 THRESHOLD)
               </span>
               <div className="h-px w-8 bg-white/20" />
             </div>
 
             <h2 className="text-2xl md:text-3xl font-medium tracking-tight text-[#e5e2e3] mb-4">
-              Earn Revenue on Every Swap
+              Instant Upfront Revenue on Every Swap
             </h2>
             <p className="text-sm text-[#c6c6cd] max-w-3xl mb-8 leading-relaxed">
               Embed multi-chain crypto-to-crypto token swaps (BTC, ETH, SOL, USDT, USDC across 8+ blockchains) into your app or bot.
-              You provide your payout address (<code className="text-[#c0c6de] bg-white/5 px-1.5 py-0.5 rounded">feeRecipient</code>)
-              and set the fee (<code className="text-[#c0c6de] bg-white/5 px-1.5 py-0.5 rounded">totalFeeBps</code>).
-              The fee is split <strong className="text-[#e5e2e3]">50% to you</strong> and <strong className="text-[#e5e2e3]">50% to ZkPay</strong>,
-              settled atomically on-chain by decentralized solver networks.
+              To protect users from heavy gas overhead, swaps on <strong className="text-[#e5e2e3]">Ethereum Mainnet</strong> and <strong className="text-[#e5e2e3]">Bitcoin</strong> are routed directly with <strong className="text-emerald-400">0% platform fee</strong>.
+              For L2s (Base, Arbitrum, Polygon, BSC) and low-fee chains (Solana, Litecoin, Tron), fees are collected <strong className="text-[#e5e2e3]">upfront in the origin asset</strong> directly to your wallet (<code className="text-[#c0c6de] bg-white/5 px-1.5 py-0.5 rounded">feeRecipient</code>) with <strong className="text-[#c0c6de]">$0 minimum payout threshold</strong> and 100% instant settlement — no third-party aggregator lockups or $1,000 portal limits.
             </p>
 
             {/* Fee Breakdown Table */}
@@ -703,41 +748,68 @@ Verify with:
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-white/15">
-                    <th className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.2em] pb-3 pr-4">COMPONENT</th>
+                    <th className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.2em] pb-3 pr-4">ROUTE / COMPONENT</th>
                     <th className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.2em] pb-3 pr-4">BPS</th>
                     <th className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.2em] pb-3 pr-4">% RATE</th>
                     <th className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.2em] pb-3 pr-4">ON $1,000</th>
-                    <th className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.2em] pb-3">DESTINATION</th>
+                    <th className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.2em] pb-3">SETTLEMENT & RECIPIENT</th>
                   </tr>
                 </thead>
                 <tbody className="text-[#e5e2e3]">
+                  {/* Tier 1 Header */}
+                  <tr className="bg-white/[0.03]">
+                    <td colSpan={5} className="py-2.5 px-3 text-[10px] font-mono font-bold text-amber-300 uppercase tracking-wider">
+                      Tier 1: High-Fee L1s (Ethereum Mainnet &amp; Bitcoin) — 0% Platform Fee Direct Route
+                    </td>
+                  </tr>
                   <tr className="border-b border-white/5">
-                    <td className="py-3 pr-4 text-[#909097]">Network Protocol Fee</td>
+                    <td className="py-3 pr-4 text-[#909097] pl-3">Platform Fee (ETH/BTC)</td>
+                    <td className="py-3 pr-4 font-mono text-emerald-400">0</td>
+                    <td className="py-3 pr-4 text-emerald-400">0.00%</td>
+                    <td className="py-3 pr-4 font-mono text-emerald-400">$0.00</td>
+                    <td className="py-3 text-emerald-400">0% fee — Direct route saves user high L1 gas fees</td>
+                  </tr>
+                  <tr className="border-b border-white/5">
+                    <td className="py-3 pr-4 text-[#909097] pl-3">Network Protocol Fee</td>
                     <td className="py-3 pr-4 font-mono">25</td>
                     <td className="py-3 pr-4">0.25%</td>
                     <td className="py-3 pr-4 font-mono">$2.50</td>
                     <td className="py-3 text-[#909097]">Network Solvers</td>
                   </tr>
+
+                  {/* Tier 2 & 3 Header */}
+                  <tr className="bg-white/[0.03]">
+                    <td colSpan={5} className="py-2.5 px-3 text-[10px] font-mono font-bold text-sky-300 uppercase tracking-wider">
+                      Tier 2 &amp; 3: L2s (Base, Arb, Polygon, BSC) &amp; Low-Fee L1s (Solana, Litecoin, Tron)
+                    </td>
+                  </tr>
                   <tr className="border-b border-white/5">
-                    <td className="py-3 pr-4 text-[#c0c6de] font-medium">Your Partner Share</td>
+                    <td className="py-3 pr-4 text-[#c0c6de] font-medium pl-3">Your Partner Share (50%)</td>
                     <td className="py-3 pr-4 font-mono text-[#c0c6de]">50</td>
                     <td className="py-3 pr-4 text-[#c0c6de]">0.50%</td>
                     <td className="py-3 pr-4 font-mono text-[#c0c6de]">$5.00</td>
-                    <td className="py-3 text-[#c0c6de]">Your feeRecipient wallet</td>
+                    <td className="py-3 text-[#c0c6de]">Upfront in origin token → Your feeRecipient wallet ($0 min)</td>
                   </tr>
                   <tr className="border-b border-white/5">
-                    <td className="py-3 pr-4">ZkPay Treasury Share</td>
+                    <td className="py-3 pr-4 pl-3">ZkPay Treasury Share (50%)</td>
                     <td className="py-3 pr-4 font-mono">50</td>
                     <td className="py-3 pr-4">0.50%</td>
                     <td className="py-3 pr-4 font-mono">$5.00</td>
-                    <td className="py-3 text-[#909097]">ZkPay Treasury</td>
+                    <td className="py-3 text-[#909097]">Upfront in origin token → ZkPay Treasury</td>
                   </tr>
-                  <tr className="bg-white/5">
-                    <td className="py-3 pr-4 font-medium">Net User Receives</td>
+                  <tr className="border-b border-white/5">
+                    <td className="py-3 pr-4 text-[#909097] pl-3">Network Protocol Fee</td>
+                    <td className="py-3 pr-4 font-mono">25</td>
+                    <td className="py-3 pr-4">0.25%</td>
+                    <td className="py-3 pr-4 font-mono">$2.50</td>
+                    <td className="py-3 text-[#909097]">Network Solvers</td>
+                  </tr>
+                  <tr className="bg-white/5 font-medium">
+                    <td className="py-3 pr-4 pl-3">Net User Receives</td>
                     <td className="py-3 pr-4 font-mono">N/A</td>
                     <td className="py-3 pr-4">98.75%</td>
-                    <td className="py-3 pr-4 font-mono font-medium">$987.50</td>
-                    <td className="py-3">User Recipient Wallet</td>
+                    <td className="py-3 pr-4 font-mono">$987.50</td>
+                    <td className="py-3">User Destination Recipient Wallet</td>
                   </tr>
                 </tbody>
               </table>
@@ -745,19 +817,19 @@ Verify with:
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
-                <span className="font-label-caps text-[9px] text-[#c0c6de] tracking-[0.2em] font-bold">MIN FEE</span>
-                <p className="text-sm font-medium text-[#e5e2e3]">20 bps (0.20%)</p>
-                <p className="text-xs text-[#909097]">Minimum custom fee per swap</p>
+                <span className="font-label-caps text-[9px] text-amber-300 tracking-[0.2em] font-bold">TIER 1 (ETH &amp; BTC)</span>
+                <p className="text-sm font-medium text-emerald-400">0% Platform Fee</p>
+                <p className="text-xs text-[#909097]">Direct route to protect users from high L1 gas fees</p>
               </div>
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
-                <span className="font-label-caps text-[9px] text-[#c0c6de] tracking-[0.2em] font-bold">MAX FEE</span>
-                <p className="text-sm font-medium text-[#e5e2e3]">450 bps (4.50%)</p>
-                <p className="text-xs text-[#909097]">Stays within 500 bps router limit</p>
+                <span className="font-label-caps text-[9px] text-sky-300 tracking-[0.2em] font-bold">TIER 2 &amp; 3 (L2s, SOL, LTC)</span>
+                <p className="text-sm font-medium text-[#e5e2e3]">Upfront Origin Settlement</p>
+                <p className="text-xs text-[#909097]">$0 minimum threshold, instant payout in origin token</p>
               </div>
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
-                <span className="font-label-caps text-[9px] text-[#c0c6de] tracking-[0.2em] font-bold">NO PARTNER</span>
-                <p className="text-sm font-medium text-[#e5e2e3]">100% → ZkPay</p>
-                <p className="text-xs text-[#909097]">If no feeRecipient, entire fee goes to treasury</p>
+                <span className="font-label-caps text-[9px] text-[#c0c6de] tracking-[0.2em] font-bold">CUSTOMIZABLE BPS</span>
+                <p className="text-sm font-medium text-[#e5e2e3]">20 to 450 bps (0.20% – 4.50%)</p>
+                <p className="text-xs text-[#909097]">Default 100 bps (1.00%), split 50/50 with partner</p>
               </div>
             </div>
 
@@ -765,7 +837,7 @@ Verify with:
             <div className="border-t border-white/10 pt-8 mt-4 space-y-6">
               <div className="flex items-center gap-3">
                 <span className="font-label-caps text-[#c0c6de] text-[10px] tracking-[0.25em] font-bold">
-                  PARTNER INTEGRATION &amp; REFUND PROTECTION
+                  PARTNER INTEGRATION &amp; SETTLEMENT RULES
                 </span>
                 <div className="h-px w-8 bg-white/20" />
               </div>
@@ -774,36 +846,46 @@ Verify with:
                 <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-3">
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-emerald-400 text-base">payments</span>
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">1. Partner Fee Sharing</h4>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">1. Upfront Origin Payout ($0 Min)</h4>
                   </div>
                   <p className="text-xs text-[#c6c6cd] leading-relaxed">
-                    Pass your Base address in <code className="text-[#c0c6de] font-mono">feeRecipient</code> and your desired fee in <code className="text-[#c0c6de] font-mono">totalFeeBps</code> (e.g. 100 for 1.00%).
-                    Every trade atomically distributes 50% of the custom fee directly to your wallet upon settlement on Base Mainnet.
+                    Pass your origin-chain payout address in <code className="text-[#c0c6de] font-mono">feeRecipient</code> (e.g. your Solana address for SOL source, or Base 0x address for Base source) and desired fee in <code className="text-[#c0c6de] font-mono">totalFeeBps</code>.
+                    50% of the custom fee is transferred upfront in the origin token with 100% instant settlement and zero withdrawal thresholds.
                   </p>
                 </div>
 
                 <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-3">
                   <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-sky-400 text-base">security</span>
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">2. User Refund Protection</h4>
+                    <span className="material-symbols-outlined text-amber-400 text-base">local_gas_station</span>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">2. Gas Protection on ETH &amp; BTC</h4>
                   </div>
                   <p className="text-xs text-[#c6c6cd] leading-relaxed">
-                    Always include <code className="text-[#c0c6de] font-mono">refundTo</code> with the user's origin-chain address (e.g. their Ethereum address when depositing ETH, Solana address for SOL).
-                    If a trade exceeds slippage or the deposit deadline passes, 100% of user deposit is automatically refunded back to <code className="text-[#c0c6de] font-mono">refundTo</code> on the origin chain.
+                    Ethereum Mainnet and Bitcoin transactions carry punitive gas fees. ZkPay automatically bypasses platform fees on these L1 routes (<code className="text-emerald-400 font-mono">isDirectRoute: true</code>, 0% fee) to protect users from paying double transaction fees.
                   </p>
                 </div>
               </div>
 
-              <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-3">
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-purple-400 text-base">sync_alt</span>
-                  <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">3. Any-to-Any Crypto Routing</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-sky-400 text-base">security</span>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">3. User Refund Protection</h4>
+                  </div>
+                  <p className="text-xs text-[#c6c6cd] leading-relaxed">
+                    Always include <code className="text-[#c0c6de] font-mono">refundTo</code> with the user's origin-chain address (e.g. their Ethereum address when depositing ETH, Solana address for SOL).
+                    If a trade exceeds slippage or the deposit deadline passes, 100% of the user deposit is automatically refunded back to <code className="text-[#c0c6de] font-mono">refundTo</code> on the origin chain.
+                  </p>
                 </div>
-                <p className="text-xs text-[#c6c6cd] leading-relaxed">
-                  ZkPay supports full cross-chain swaps between any supported tokens (e.g. ETH → SOL, BTC → SOL, SOL → Base USDC).
-                  Specify <code className="text-[#c0c6de] font-mono">toAsset</code> and optional <code className="text-[#c0c6de] font-mono">destinationChain</code>.
-                  If <code className="text-[#c0c6de] font-mono">toAsset</code> is omitted, it seamlessly defaults to Base USDC for backwards compatibility.
-                </p>
+
+                <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-purple-400 text-base">sync_alt</span>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">4. Execution Plan Transparency</h4>
+                  </div>
+                  <p className="text-xs text-[#c6c6cd] leading-relaxed">
+                    Both <code className="text-[#c0c6de] font-mono">/swap/quote</code> and <code className="text-[#c0c6de] font-mono">/swap/create</code> return an <code className="text-[#c0c6de] font-mono">executionPlan</code> specifying exact transfers for platform fees and solver deposits, giving client apps full programmatic visibility into fund flows.
+                  </p>
+                </div>
               </div>
             </div>
           </div>

@@ -106,12 +106,90 @@ export async function POST(request: Request) {
       );
     }
 
-    // ── 5. Call Privy Earn deposit API with Authorization Context ──
+    // ── 5. Calculate upfront platform fee (L2 USDC fee in USDC) ──
+    const rawFeeBps = typeof body.feeBps === "number" ? body.feeBps : 50; // default 50 bps (0.5%)
+    const feeBps = Math.max(0, Math.min(500, rawFeeBps));
+    const feeAmount = (parsedAmount * feeBps) / 10000;
+    const netVaultAmount = Number((parsedAmount - feeAmount).toFixed(6));
+
     const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID!;
     const appSecret = process.env.PRIVY_APP_SECRET!;
     const basicAuth = Buffer.from(`${appId}:${appSecret}`).toString("base64");
     const authKey = getPrivyAuthPrivateKey();
 
+    // ── 6. Transfer fee to ZkPay Treasury if feeAmount > 0 ──
+    let feeTxResult: any = null;
+    if (feeAmount > 0) {
+      try {
+        const { encodeFunctionData, parseUnits } = await import("viem");
+        const { CONTRACTS } = await import("@/lib/constants");
+
+        const feeUnits = parseUnits(feeAmount.toFixed(6), 6);
+        const transferData = encodeFunctionData({
+          abi: [
+            {
+              type: "function",
+              name: "transfer",
+              inputs: [
+                { name: "to", type: "address" },
+                { name: "amount", type: "uint256" },
+              ],
+              outputs: [{ name: "", type: "bool" }],
+              stateMutability: "nonpayable",
+            },
+          ],
+          functionName: "transfer",
+          args: [CONTRACTS.TREASURY, feeUnits],
+        });
+
+        const rpcEndpoint = `https://api.privy.io/api/v1/wallets/${targetWalletId}/rpc`;
+        const rpcBody = {
+          method: "eth_sendTransaction",
+          caip2: "eip155:8453",
+          params: {
+            transaction: {
+              to: CONTRACTS.USDC,
+              data: transferData,
+              value: "0x0",
+            },
+          },
+        };
+
+        const rpcHeaders: Record<string, string> = {
+          "privy-app-id": appId,
+          Authorization: `Basic ${basicAuth}`,
+          "Content-Type": "application/json",
+        };
+
+        if (authKey) {
+          const { createPrivyAuthorizationSignature } = await import("@/lib/server/privyEarn");
+          const sig = createPrivyAuthorizationSignature({
+            method: "POST",
+            url: rpcEndpoint,
+            body: rpcBody,
+            appId,
+            privateKeyRaw: authKey,
+          });
+          if (sig) rpcHeaders["privy-authorization-signature"] = sig;
+        }
+
+        const feeRes = await fetch(rpcEndpoint, {
+          method: "POST",
+          headers: rpcHeaders,
+          body: JSON.stringify(rpcBody),
+        });
+
+        if (feeRes.ok) {
+          feeTxResult = await feeRes.json();
+        } else {
+          console.warn("[Earn Deposit] Upfront fee transfer response:", await feeRes.text());
+        }
+      } catch (feeErr: any) {
+        console.warn("[Earn Deposit] Upfront fee deduction warning:", feeErr?.message || feeErr);
+      }
+    }
+
+    // ── 7. Call Privy Earn deposit API for Net Amount ──
     // Attempt SDK call with authorization_context first
     const privy = getPrivyClient() as any;
     if (typeof privy?.wallets === "function" && typeof privy.wallets()?.earn === "function") {
@@ -121,7 +199,7 @@ export async function POST(request: Request) {
 
         const sdkResult = await privy.wallets().earn().ethereum().deposit(targetWalletId, {
           vault_id: VAULT_ID,
-          amount: String(parsedAmount),
+          amount: String(netVaultAmount),
           authorization_context: sdkContext,
         });
 
@@ -129,6 +207,14 @@ export async function POST(request: Request) {
           success: true,
           actionId: sdkResult?.id,
           status: sdkResult?.status || "pending",
+          fee: {
+            feeBps,
+            feeAmount: feeAmount.toFixed(6),
+            feeAsset: "USDC",
+            treasuryAddress: process.env.NEXT_PUBLIC_TREASURY_ADDRESS || "0xb856b24fb054135deba5e0309edd31ed6a8afbe2",
+            feeTxHash: feeTxResult?.data?.hash || feeTxResult?.hash || null,
+            netDepositedAmount: netVaultAmount.toFixed(6),
+          },
         });
       } catch (sdkErr: any) {
         console.warn("[Earn Deposit SDK call failed, falling back to REST]:", sdkErr?.message);
@@ -139,7 +225,7 @@ export async function POST(request: Request) {
     const endpointUrl = `https://api.privy.io/api/v1/wallets/${targetWalletId}/earn/ethereum/deposit`;
     const requestBody = {
       vault_id: VAULT_ID,
-      amount: String(parsedAmount),
+      amount: String(netVaultAmount),
     };
 
     const headers: Record<string, string> = {
@@ -184,6 +270,14 @@ export async function POST(request: Request) {
         success: true,
         actionId: earnData.id,
         status: earnData.status,
+        fee: {
+          feeBps,
+          feeAmount: feeAmount.toFixed(6),
+          feeAsset: "USDC",
+          treasuryAddress: process.env.NEXT_PUBLIC_TREASURY_ADDRESS || "0xb856b24fb054135deba5e0309edd31ed6a8afbe2",
+          feeTxHash: feeTxResult?.data?.hash || feeTxResult?.hash || null,
+          netDepositedAmount: netVaultAmount.toFixed(6),
+        },
       },
       { status: 200 }
     );
