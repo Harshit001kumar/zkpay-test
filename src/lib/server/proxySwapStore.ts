@@ -57,35 +57,51 @@ async function hydrateCache() {
   if (isHydrated) return;
   isHydrated = true;
 
-  try {
-    const db = await getMongoDb();
-    if (db) {
-      const collection = db.collection<ProxySwapOrder>("proxy_swap_orders");
-      const activeOrders = await collection
-        .find({ expiresAt: { $gt: Date.now() - 24 * 60 * 60 * 1000 } })
-        .toArray();
-
-      for (const ord of activeOrders) {
-        ordersByAddress.set(ord.proxyDepositAddress.toLowerCase(), ord);
-        ordersBySwapId.set(ord.swapId, ord);
-      }
-      return;
-    }
-  } catch (err) {
-    console.warn("[ProxySwapStore] MongoDB hydrate warning, trying local file:", err);
-  }
-
+  // 1. First, read local fallback file if it exists (for seamless migration to MongoDB)
+  const localOrders: ProxySwapOrder[] = [];
   try {
     if (fs.existsSync(FALLBACK_FILE)) {
       const raw = fs.readFileSync(FALLBACK_FILE, "utf-8");
       const list: ProxySwapOrder[] = JSON.parse(raw);
       for (const ord of list) {
         ordersByAddress.set(ord.proxyDepositAddress.toLowerCase(), ord);
+        ordersByAddress.set(ord.proxyDepositAddress, ord);
         ordersBySwapId.set(ord.swapId, ord);
+        localOrders.push(ord);
       }
     }
   } catch (err) {
     console.warn("[ProxySwapStore] Local file hydrate warning:", err);
+  }
+
+  // 2. Then, read from MongoDB and merge (migrating any local orders into MongoDB)
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const collection = db.collection<ProxySwapOrder>("proxy_swap_orders");
+
+      if (localOrders.length > 0) {
+        for (const ord of localOrders) {
+          await collection.updateOne(
+            { swapId: ord.swapId },
+            { $set: ord },
+            { upsert: true }
+          ).catch(() => {});
+        }
+      }
+
+      const activeOrders = await collection
+        .find({ expiresAt: { $gt: Date.now() - 48 * 60 * 60 * 1000 } })
+        .toArray();
+
+      for (const ord of activeOrders) {
+        ordersByAddress.set(ord.proxyDepositAddress.toLowerCase(), ord);
+        ordersByAddress.set(ord.proxyDepositAddress, ord);
+        ordersBySwapId.set(ord.swapId, ord);
+      }
+    }
+  } catch (err) {
+    console.warn("[ProxySwapStore] MongoDB hydrate warning:", err);
   }
 }
 
@@ -121,6 +137,7 @@ async function persistOrder(order: ProxySwapOrder) {
 export async function saveProxySwapOrder(order: ProxySwapOrder): Promise<void> {
   await hydrateCache();
   ordersByAddress.set(order.proxyDepositAddress.toLowerCase(), order);
+  ordersByAddress.set(order.proxyDepositAddress, order);
   ordersBySwapId.set(order.swapId, order);
   await persistOrder(order);
 }
@@ -130,7 +147,37 @@ export async function saveProxySwapOrder(order: ProxySwapOrder): Promise<void> {
  */
 export async function getProxyOrderByAddress(address: string): Promise<ProxySwapOrder | null> {
   await hydrateCache();
-  return ordersByAddress.get(address.trim().toLowerCase()) || null;
+  const clean = address.trim();
+  const cached =
+    ordersByAddress.get(clean.toLowerCase()) ||
+    ordersByAddress.get(clean) ||
+    ordersBySwapId.get(clean);
+  if (cached) return cached;
+
+  // Direct MongoDB query if memory cache missed
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const collection = db.collection<ProxySwapOrder>("proxy_swap_orders");
+      const order = await collection.findOne({
+        $or: [
+          { proxyDepositAddress: clean },
+          { proxyDepositAddress: clean.toLowerCase() },
+          { swapId: clean },
+        ],
+      });
+      if (order) {
+        ordersByAddress.set(order.proxyDepositAddress.toLowerCase(), order);
+        ordersByAddress.set(order.proxyDepositAddress, order);
+        ordersBySwapId.set(order.swapId, order);
+        return order;
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  return null;
 }
 
 /**
@@ -138,7 +185,37 @@ export async function getProxyOrderByAddress(address: string): Promise<ProxySwap
  */
 export async function getProxyOrderBySwapId(swapId: string): Promise<ProxySwapOrder | null> {
   await hydrateCache();
-  return ordersBySwapId.get(swapId.trim()) || null;
+  const clean = swapId.trim();
+  const cached =
+    ordersBySwapId.get(clean) ||
+    ordersByAddress.get(clean.toLowerCase()) ||
+    ordersByAddress.get(clean);
+  if (cached) return cached;
+
+  // Direct MongoDB query if memory cache missed
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const collection = db.collection<ProxySwapOrder>("proxy_swap_orders");
+      const order = await collection.findOne({
+        $or: [
+          { swapId: clean },
+          { proxyDepositAddress: clean },
+          { proxyDepositAddress: clean.toLowerCase() },
+        ],
+      });
+      if (order) {
+        ordersByAddress.set(order.proxyDepositAddress.toLowerCase(), order);
+        ordersByAddress.set(order.proxyDepositAddress, order);
+        ordersBySwapId.set(order.swapId, order);
+        return order;
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  return null;
 }
 
 /**
