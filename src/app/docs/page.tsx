@@ -32,7 +32,7 @@ Supported Chains: btc, eth, base, sol, arb, bsc, tron, ltc
   - Direct routes with 0% platform fee (isDirectRoute: true, feeAmount: "0").
   - Users are protected from high L1 network gas fees; transactions route straight to solvers without extra fee hops.
 - Tier 2 (L2s: base, arb, polygon, bsc) & Tier 3 (Low-Fee L1s: sol, ltc, tron):
-  - Single-Transfer Proxy System: Users send 100% of the funds to ONE single address (`order.deposit.address`).
+  - Single-Transfer Proxy System: Users send 100% of the funds to ONE single address (\`order.deposit.address\`).
   - Automatic Split & Forward: The system detects the incoming transfer, splits the upfront fee to Treasury/Partner, and forwards the net amount to Near Intents solvers.
   - Case A (Native Tokens: ETH, BNB, POL, SOL, LTC): Gas is paid directly from the incoming native token.
   - Case B (Stablecoins: USDC, USDT): All fees and transfer costs are paid strictly out of the deposited token balance (~$0.01 buffer) with zero native gas required.
