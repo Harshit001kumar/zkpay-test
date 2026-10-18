@@ -12,6 +12,7 @@ import {
   DEPOSIT_FEE_BPS,
   resolveChainFromAssetId,
   getTreasuryAddressForChain,
+  isZeroFeeChain,
 } from "@/lib/constants";
 
 export async function POST(req: Request) {
@@ -29,6 +30,7 @@ export async function POST(req: Request) {
     // The recipient MUST be an EVM address (0x...) or a NEAR account (*.near).
     const originChain = resolveChainFromAssetId(originAssetId) || "base";
     const isDirect = isZeroFeeChain(originChain);
+    const feeRecipient = getTreasuryAddressForChain(originChain);
 
     let netSwapAmount = String(amount).trim();
     let feeAmount = "0";
