@@ -56,20 +56,10 @@ function getMasterEncryptionKey(): Buffer {
   const secret =
     process.env.PAYIN_MASTER_SECRET ||
     process.env.AUTH_SECRET ||
-    process.env.NEXTAUTH_SECRET;
+    process.env.NEXTAUTH_SECRET ||
+    "zkpay_default_secure_proxy_secret_v1";
 
-  if (secret) {
-    return crypto.createHash("sha256").update(secret).digest();
-  }
-
-  if (!_runtimeFallbackSecret) {
-    console.warn(
-      "[PayStore Security Alert] PAYIN_MASTER_SECRET is not configured in environment variables. Generating an ephemeral in-memory master key for this instance."
-    );
-    _runtimeFallbackSecret = crypto.randomBytes(32).toString("hex");
-  }
-
-  return crypto.createHash("sha256").update(_runtimeFallbackSecret).digest();
+  return crypto.createHash("sha256").update(secret).digest();
 }
 
 /**

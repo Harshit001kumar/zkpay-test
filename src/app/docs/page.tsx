@@ -33,13 +33,13 @@ Supported Chains: btc, eth, base, sol, arb, bsc, tron, ltc
   - Users are protected from high network gas fees and token-account initialization requirements; transactions route 100% straight to Near Intents native solvers.
 - Single-Transfer Proxy System:
   - Base ('base' - ETH, USDC, USDT), Solana ('sol' - Native SOL), and Native Gas tokens on Arbitrum ('arb' - ETH), Polygon ('polygon' - POL), and BSC ('bsc' - BNB).
-  - Single-Transfer Proxy System: Users send 100% of funds to ONE single address (`order.deposit.address`).
+  - Single-Transfer Proxy System: Users send 100% of funds to ONE single address (\`order.deposit.address\`).
   - Automatic Split & Forward: The background sweeper detects the incoming transfer, splits the upfront fee to Treasury/Partner, and forwards the net amount to Near Intents solvers.
   - Case A (Native Gas Tokens: Base ETH, Arb ETH, Polygon POL, BSC BNB, Solana SOL): Gas is paid directly from the incoming native token.
   - Case B (Base USDC / USDT): All fees and micro-transfer buffers are paid strictly out of the deposited token balance with zero user gas required.
   - 100% instant settlement, $0 minimum payout threshold.
-- PARTNERS MUST provide a `feeRecipient` address that matches the ORIGIN CHAIN.
-- An `executionPlan` is returned by both /quote and /create, detailing the exact transfers (fee split + solver deposit).
+- PARTNERS MUST provide a \`feeRecipient\` address that matches the ORIGIN CHAIN.
+- An \`executionPlan\` is returned by both /quote and /create, detailing the exact transfers (fee split + solver deposit).
 
 ## Endpoints
 

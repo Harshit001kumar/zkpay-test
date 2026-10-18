@@ -208,19 +208,36 @@ export function getDecryptedProxyPrivateKey(order: ProxySwapOrder): `0x${string}
   const iv = Buffer.from(ivHex, "hex");
   const authTag = Buffer.from(authTagHex, "hex");
 
-  const secret =
-    process.env.PAYIN_MASTER_SECRET ||
-    process.env.AUTH_SECRET ||
-    process.env.NEXTAUTH_SECRET ||
-    "zkpay_default_secure_proxy_secret_v1";
+  // Candidate secrets to try in order (ensures backward compatibility across server restarts)
+  const candidateSecrets = [
+    process.env.PAYIN_MASTER_SECRET,
+    process.env.AUTH_SECRET,
+    process.env.NEXTAUTH_SECRET,
+    "zkpay_default_secure_proxy_secret_v1",
+  ].filter(Boolean) as string[];
 
-  const key = crypto.createHash("sha256").update(secret).digest();
+  let decrypted: string | null = null;
+  let lastErr: any = null;
 
-  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
-  decipher.setAuthTag(authTag);
+  for (const secret of candidateSecrets) {
+    try {
+      const key = crypto.createHash("sha256").update(secret).digest();
+      const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+      decipher.setAuthTag(authTag);
+      let d = decipher.update(encryptedHex, "hex", "utf-8");
+      d += decipher.final("utf-8");
+      decrypted = d;
+      break;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
 
-  let decrypted = decipher.update(encryptedHex, "hex", "utf-8");
-  decrypted += decipher.final("utf-8");
+  if (!decrypted) {
+    throw new Error(
+      `Failed to decrypt proxy private key for order ${order.swapId}: ${lastErr?.message || "Invalid authentication tag"}. Ensure PAYIN_MASTER_SECRET is configured.`
+    );
+  }
 
   const clean = decrypted.trim();
   return (clean.startsWith("0x") ? clean : `0x${clean}`) as `0x${string}`;
