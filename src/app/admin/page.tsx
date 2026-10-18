@@ -195,9 +195,10 @@ export default function AdminPage() {
   const [recoverySuccessResult, setRecoverySuccessResult] = useState<any | null>(null);
   const [recoveryExecuteError, setRecoveryExecuteError] = useState<string | null>(null);
 
-  // Recent Proxy Orders
+  // Recent Proxy Orders & RPC Providers
   const [recentProxyOrders, setRecentProxyOrders] = useState<any[]>([]);
   const [isLoadingRecentProxy, setIsLoadingRecentProxy] = useState(false);
+  const [rpcProviders, setRpcProviders] = useState<any>({});
 
   const loadRecentProxyOrders = useCallback(async () => {
     setIsLoadingRecentProxy(true);
@@ -207,8 +208,9 @@ export default function AdminPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (res.ok && data.orders) {
-        setRecentProxyOrders(data.orders);
+      if (res.ok) {
+        if (data.orders) setRecentProxyOrders(data.orders);
+        if (data.providers) setRpcProviders(data.providers);
       }
     } catch (e) {
       console.warn("Failed to load recent proxy orders:", e);
@@ -236,6 +238,7 @@ export default function AdminPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
+      if (data.providers) setRpcProviders(data.providers);
       if (res.ok && data.report) {
         setProxyReport(data.report);
         setCustomRecipientInput(data.report.refundTo || "");

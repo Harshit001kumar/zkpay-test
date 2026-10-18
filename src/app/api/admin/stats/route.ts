@@ -5,21 +5,15 @@ import { ERC20_ABI } from "@/lib/abi";
 import { createPrices } from "@p2pdotme/sdk/prices";
 import { getRelayerAddress, getRelayerBalance } from "@/lib/server/relayer";
 import { listPayLinks, getActivePayInSessions } from "@/lib/server/payStore";
-import { createPublicClient, http, formatEther } from "viem";
-import { base } from "viem/chains";
+import { formatEther } from "viem";
 import { getLiveFiatRate } from "@/lib/server/p2pRates";
 
 export const dynamic = "force-dynamic";
 
-let _publicClient: any = null;
+import { getResilientPublicClientForChain } from "@/lib/server/rpcConfig";
+
 function getServerPublicClient() {
-  if (!_publicClient) {
-    _publicClient = createPublicClient({
-      chain: base,
-      transport: http(CHAIN.rpcUrl),
-    });
-  }
-  return _publicClient;
+  return getResilientPublicClientForChain("base");
 }
 
 export async function GET(req: Request) {

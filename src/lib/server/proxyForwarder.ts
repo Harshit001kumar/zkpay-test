@@ -23,6 +23,11 @@ import {
 } from "./proxySwapStore";
 import { getRelayerWalletClient } from "./relayer";
 import { decodeBase58 } from "./proxyWallets";
+import {
+  getResilientPublicClientForChain,
+  fetchResilientSolanaRpc,
+  getEvmRpcConfig,
+} from "./rpcConfig";
 
 const ERC20_ABI = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
@@ -57,58 +62,24 @@ export const CHAIN_TOKENS: Record<string, Record<string, `0x${string}`>> = {
   },
 };
 
-// RPC Fallbacks for Tier 2 Chains
-const RPC_URLS: Record<string, string[]> = {
-  base: [
-    "https://mainnet.base.org",
-    "https://base-rpc.publicnode.com",
-    "https://base.llamarpc.com",
-  ],
-  arb: [
-    "https://arb1.arbitrum.io/rpc",
-    "https://arbitrum.llamarpc.com",
-    "https://arbitrum-one-rpc.publicnode.com",
-  ],
-  polygon: [
-    "https://polygon-rpc.com",
-    "https://polygon.llamarpc.com",
-    "https://polygon-bor-rpc.publicnode.com",
-  ],
-  bsc: [
-    "https://bsc-dataseed.binance.org",
-    "https://binance.llamarpc.com",
-    "https://bsc-rpc.publicnode.com",
-  ],
-};
-
 function getChainConfig(chainStr: string) {
-  const c = normalizeChain(chainStr) || chainStr.toLowerCase();
-  switch (c) {
-    case "arb":
-    case "arbitrum":
-      return { chain: arbitrum, key: "arb" };
-    case "polygon":
-    case "matic":
-    case "pol":
-      return { chain: polygon, key: "polygon" };
-    case "bsc":
-    case "bnb":
-      return { chain: bsc, key: "bsc" };
-    case "base":
-    default:
-      return { chain: base, key: "base" };
-  }
+  const { chain, key } = getEvmRpcConfig(chainStr);
+  return { chain, key };
 }
 
 function getPublicClientForChain(chainStr: string) {
-  const { chain, key } = getChainConfig(chainStr);
-  const urls = RPC_URLS[key] || RPC_URLS.base;
-  const transports = urls.map((u) => http(u, { timeout: 6000, retryCount: 2 }));
-  return createPublicClient({
+  return getResilientPublicClientForChain(chainStr);
+}
+
+function getWalletClientForChain(chainStr: string, account: any) {
+  const { chain, transports } = getEvmRpcConfig(chainStr);
+  return createWalletClient({
+    account,
     chain,
     transport: fallback(transports, { rank: false }),
   });
 }
+
 
 // In-memory concurrency locks to prevent double-sweeping
 const sweepLocks = new Set<string>();
@@ -185,11 +156,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     const rawKey = getDecryptedProxyPrivateKey(order);
     const proxyAccount = privateKeyToAccount(rawKey);
 
-    const walletClient = createWalletClient({
-      account: proxyAccount,
-      chain,
-      transport: http(),
-    });
+    const walletClient = getWalletClientForChain(order.chain, proxyAccount);
 
     const feeWei = (balanceWei * BigInt(order.feeAmount)) / expectedAtomic;
 
@@ -310,11 +277,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       }
     }
 
-    const walletClient = createWalletClient({
-      account: proxyAccount,
-      chain,
-      transport: http(),
-    });
+    const walletClient = getWalletClientForChain(order.chain, proxyAccount);
 
     // 1. Transfer Fee + Token Gas Reimbursement to Treasury
     let feeTxHash = "";
@@ -364,40 +327,8 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
   }
 }
 
-const SOLANA_RPCS = [
-  process.env.SOLANA_RPC_URL,
-  "https://api.mainnet-beta.solana.com",
-  "https://solana-mainnet.rpc.extrnode.com",
-  "https://rpc.ankr.com/solana",
-  "https://solana.public-rpc.com",
-].filter(Boolean) as string[];
-
 async function fetchSolanaRpc(method: string, params: any[]): Promise<any> {
-  let lastError: any = null;
-  for (const rpcUrl of SOLANA_RPCS) {
-    try {
-      const res = await fetch(rpcUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: `sol-${Date.now()}`,
-          method,
-          params,
-        }),
-      });
-      if (!res.ok) continue;
-      const data = await res.json();
-      if (data.error) {
-        lastError = data.error;
-        continue;
-      }
-      return data.result;
-    } catch (e) {
-      lastError = e;
-    }
-  }
-  throw new Error(`All Solana RPCs failed for ${method}: ${lastError?.message || JSON.stringify(lastError)}`);
+  return fetchResilientSolanaRpc(method, params);
 }
 
 /**
@@ -919,13 +850,7 @@ export async function recoverProxyDeposit(
   const publicClient = getPublicClientForChain(order.chain);
   const privKeyHex = getDecryptedProxyPrivateKey(order);
   const proxyAccount = privateKeyToAccount(privKeyHex);
-  const { chain } = getChainConfig(order.chain);
-
-  const walletClient = createWalletClient({
-    account: proxyAccount,
-    chain,
-    transport: http(),
-  });
+  const walletClient = getWalletClientForChain(order.chain, proxyAccount);
 
   const upperSymbol = order.fromAsset.toUpperCase();
   const isNative =

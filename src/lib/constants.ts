@@ -34,16 +34,28 @@ export const EARN_CONFIG = {
   PERFORMANCE_FEE_BPS: 1000,
 } as const;
 
-const INFURA_KEY = process.env.NEXT_PUBLIC_INFURA_API_KEY;
-const INFURA_RPC = INFURA_KEY ? `https://base-mainnet.infura.io/v3/${INFURA_KEY}` : null;
+const INFURA_KEY =
+  process.env.INFURA_API_KEY ||
+  process.env.INFURA_PROJECT_ID ||
+  process.env.NEXT_PUBLIC_INFURA_API_KEY;
+const INFURA_RPC = INFURA_KEY ? `https://base-mainnet.infura.io/v3/${INFURA_KEY.trim().replace(/^["']|["']$/g, "")}` : null;
+
+const NOWNODES_KEY =
+  process.env.NOWNODES_API_KEY ||
+  process.env.NOWNODES_KEY ||
+  process.env.NEXT_PUBLIC_NOWNODES_API_KEY;
+const NOWNODES_BASE_RPC = NOWNODES_KEY ? `https://base.nownodes.io` : null;
 
 export const BASE_RPC_URLS = [
   process.env.NEXT_PUBLIC_RPC_URL,
+  process.env.BASE_RPC_URL,
   INFURA_RPC,
-  "https://base.llamarpc.com",
-  "https://base-rpc.publicnode.com",
-  "https://1rpc.io/base",
+  NOWNODES_BASE_RPC,
   "https://mainnet.base.org",
+  "https://base-rpc.publicnode.com",
+  "https://base.llamarpc.com",
+  "https://1rpc.io/base",
+  "https://base.drpc.org",
 ].filter(Boolean) as string[];
 
 export const CHAIN = {

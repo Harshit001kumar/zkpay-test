@@ -1,21 +1,14 @@
 import { NextResponse } from "next/server";
 import { recordScanAndPayReward } from "@/lib/server/rewardsStore";
 import { verifyUserRequest } from "@/lib/server/userAuth";
-import { CHAIN, CONTRACTS } from "@/lib/constants";
-import { createPublicClient, http, parseUnits, isAddress } from "viem";
-import { base } from "viem/chains";
+import { CONTRACTS } from "@/lib/constants";
+import { parseUnits, isAddress } from "viem";
+import { getResilientPublicClientForChain } from "@/lib/server/rpcConfig";
 
 export const dynamic = "force-dynamic";
 
-let _publicClient: any = null;
 function getServerPublicClient() {
-  if (!_publicClient) {
-    _publicClient = createPublicClient({
-      chain: base,
-      transport: http(CHAIN.rpcUrl),
-    });
-  }
-  return _publicClient;
+  return getResilientPublicClientForChain("base");
 }
 
 function findFeeTransferToTreasury(

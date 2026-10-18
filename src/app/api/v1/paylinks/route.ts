@@ -3,37 +3,25 @@ import { createPayLink, findPayLinkByTxHash, getPayLink, updatePayLink } from "@
 import { dispatchWebhook, isSafeWebhookUrl, isSafeWebhookUrlAsync } from "@/lib/server/webhooks";
 import { resolvePublicApiAuth } from "@/lib/server/publicApiAuth";
 import { enforceRateLimit } from "@/lib/server/rateLimit";
-import { createPrices } from "@p2pdotme/sdk/prices";
 import {
-  createPublicClient,
   decodeEventLog,
-  http,
   isHex,
   parseAbiItem,
   parseUnits,
 } from "viem";
-import { base } from "viem/chains";
 import { CONTRACTS } from "@/lib/constants";
+import { getResilientPublicClientForChain } from "@/lib/server/rpcConfig";
 
 export const dynamic = "force-dynamic";
 
-const DIAMOND_ADDRESS = (process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0x4cad6eC90e65baBec9335cAd728DDC610c316368") as `0x${string}`;
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
 const PLATFORM_FEE_BPS = 100;
 const PUBLIC_APP_BASE_URL = process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || "https://zkpay.top";
 const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
-let _publicClient: any = null;
 
 import { getLiveFiatRate } from "@/lib/server/p2pRates";
 
 function getPublicClient() {
-  if (!_publicClient) {
-    _publicClient = createPublicClient({
-      chain: base,
-      transport: http(RPC_URL),
-    });
-  }
-  return _publicClient;
+  return getResilientPublicClientForChain("base");
 }
 
 function getPublicBaseUrl(): string {

@@ -8,33 +8,17 @@ import { base } from "viem/chains";
  * Prevents transient Base RPC latency or rate-limiting from failing payin session creation.
  */
 
-const DIAMOND_ADDRESS = (process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0x4cad6eC90e65baBec9335cAd728DDC610c316368") as `0x${string}`;
-const CUSTOM_RPC = process.env.NEXT_PUBLIC_RPC_URL;
+import { getEvmRpcConfig } from "./rpcConfig";
 
-// Reliable Base Mainnet RPC endpoints ordered by priority
-const BASE_RPC_URLS = [
-  ...(CUSTOM_RPC ? [CUSTOM_RPC] : []),
-  "https://mainnet.base.org",
-  "https://base-rpc.publicnode.com",
-  "https://base.llamarpc.com",
-  "https://1rpc.io/base",
-  "https://base.gateway.tenderly.co",
-];
+const DIAMOND_ADDRESS = (process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0x4cad6eC90e65baBec9335cAd728DDC610c316368") as `0x${string}`;
 
 let _publicClient: any = null;
 
 export function getResilientPublicClient() {
   if (!_publicClient) {
-    const transports = BASE_RPC_URLS.map((url) =>
-      http(url, {
-        timeout: 5000,
-        retryCount: 2,
-        retryDelay: 300,
-      })
-    );
-
+    const { chain, transports } = getEvmRpcConfig("base");
     _publicClient = createPublicClient({
-      chain: base,
+      chain,
       transport: fallback(transports, { rank: false }),
     });
   }

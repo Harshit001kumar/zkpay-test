@@ -1,7 +1,4 @@
 import { corsJson, corsOptions } from "@/lib/server/cors";
-import { createPrices } from "@p2pdotme/sdk/prices";
-import { createPublicClient, http } from "viem";
-import { base } from "viem/chains";
 import { CONTRACTS } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";

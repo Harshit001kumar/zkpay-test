@@ -1,15 +1,9 @@
 import { corsJson, corsOptions } from "@/lib/server/cors";
-import { createPrices } from "@p2pdotme/sdk/prices";
-import { createPublicClient, http } from "viem";
-import { base } from "viem/chains";
+import { getLiveFiatRate } from "@/lib/server/p2pRates";
 
 export const dynamic = "force-dynamic";
 
-const DIAMOND_ADDRESS = (process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0x4cad6eC90e65baBec9335cAd728DDC610c316368") as `0x${string}`;
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://mainnet.base.org";
 const PLATFORM_FEE_BPS = 100; // 1%
-
-import { getLiveFiatRate } from "@/lib/server/p2pRates";
 
 /**
  * POST /api/v1/quotes

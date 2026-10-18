@@ -5,6 +5,12 @@ import {
   recoverProxyDeposit,
 } from "@/lib/server/proxyForwarder";
 import { getRecentProxyOrders } from "@/lib/server/proxySwapStore";
+import {
+  getInfuraApiKey,
+  getNowNodesApiKey,
+  getAlchemyApiKey,
+  getHeliusApiKey,
+} from "@/lib/server/rpcConfig";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +30,14 @@ export async function GET(req: Request) {
     );
   }
 
+  const providers = {
+    infura: Boolean(getInfuraApiKey()),
+    nowNodes: Boolean(getNowNodesApiKey()),
+    alchemy: Boolean(getAlchemyApiKey()),
+    helius: Boolean(getHeliusApiKey()),
+    customSolana: Boolean(process.env.SOLANA_RPC_URL || process.env.SOL_RPC_URL),
+  };
+
   try {
     const { searchParams } = new URL(req.url);
     const query = searchParams.get("query") || searchParams.get("depositAddress") || searchParams.get("swapId");
@@ -32,11 +46,12 @@ export async function GET(req: Request) {
     if (query) {
       const inspectRes = await inspectProxyDepositBalances(query.trim(), customToken);
       if (!inspectRes.success) {
-        return NextResponse.json({ error: inspectRes.message }, { status: 404 });
+        return NextResponse.json({ error: inspectRes.message, providers }, { status: 404 });
       }
       return NextResponse.json({
         success: true,
         report: inspectRes.report,
+        providers,
       });
     }
 
@@ -44,6 +59,7 @@ export async function GET(req: Request) {
     const orders = await getRecentProxyOrders(50);
     return NextResponse.json({
       success: true,
+      providers,
       orders: orders.map((o) => ({
         swapId: o.swapId,
         chain: o.chain,

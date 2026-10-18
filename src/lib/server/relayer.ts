@@ -1,8 +1,8 @@
-import { createWalletClient, http, fallback, parseEther, formatEther, parseAbi } from "viem";
+import { createWalletClient, fallback, parseEther, formatEther, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { base } from "viem/chains";
-import { CHAIN, CONTRACTS } from "@/lib/constants";
+import { CONTRACTS } from "@/lib/constants";
 import { getResilientPublicClient } from "@/lib/server/p2pRates";
+import { getEvmRpcConfig } from "@/lib/server/rpcConfig";
 
 // ─────────────────────────────────────────────────────
 // Enterprise-Grade Backend Gas Relayer ("Gas Tank")
@@ -74,17 +74,11 @@ function getRelayerAccount() {
 let _walletClient: any = null;
 function getWalletClient() {
   if (!_walletClient) {
-    const transports = [
-      ...(process.env.NEXT_PUBLIC_RPC_URL ? [http(process.env.NEXT_PUBLIC_RPC_URL)] : []),
-      http(CHAIN.rpcUrl),
-      http("https://mainnet.base.org"),
-      http("https://base-rpc.publicnode.com"),
-      http("https://base.llamarpc.com"),
-    ];
+    const { chain, transports } = getEvmRpcConfig("base");
 
     _walletClient = createWalletClient({
       account: getRelayerAccount(),
-      chain: base,
+      chain,
       transport: fallback(transports, { rank: false }),
     });
   }
