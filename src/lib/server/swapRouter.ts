@@ -28,7 +28,7 @@ import {
   normalizeChain,
 } from "@/lib/constants";
 import { resolveRefundAddress } from "@/lib/refundAddress";
-import { generateProxyDepositWallet } from "./proxyWallets";
+import { generateProxyDepositWallet, isProxySupportedChain } from "./proxyWallets";
 import {
   saveProxySwapOrder,
   getProxyOrderByAddress,
@@ -128,12 +128,17 @@ export interface FeeSplitResult {
 export function calculateFeeSplit(
   requestedFeeBps?: number | null,
   partnerFeeRecipient?: string | null,
-  originChain?: string | null
+  originChain?: string | null,
+  fromAsset?: string | null
 ): FeeSplitResult {
   const normChain = normalizeChain(originChain);
 
-  // RULE 1: Ethereum Mainnet and Bitcoin -> Direct Route, 0% Platform Fee
-  if (isZeroFeeChain(normChain)) {
+  // RULE 1: Direct Route, 0% Platform Fee
+  // Applied to:
+  // - Zero-fee chains (Ethereum L1, Bitcoin) to protect users from high gas.
+  // - Any chain or asset that does NOT use Single-Transfer Proxy (Litecoin, Tron, Solana SPL tokens, etc.)
+  //   so 100% of user deposit routes directly to Near Intents solvers with 0 amount mismatch and 0 risk of stuck funds!
+  if (isZeroFeeChain(normChain) || !isProxySupportedChain(normChain, fromAsset)) {
     return {
       totalCustomFeeBps: 0,
       zkpayFeeBps: 0,
@@ -145,8 +150,7 @@ export function calculateFeeSplit(
       appFees: [],
       treasuryAddress: "",
       isDirectRoute: true,
-      feeSettlementNote:
-        "Direct route enabled (0% platform fee) on Ethereum L1 and Bitcoin to eliminate extra gas costs for users.",
+      feeSettlementNote: `Direct route enabled (0% platform fee) on ${normChain || "origin chain"} to eliminate extra hops and ensure 100% direct solver routing.`,
     };
   }
 
@@ -604,7 +608,7 @@ export async function getSwapQuote(params: SwapQuoteParams) {
   validateSwapAmount(amount, originAssetId);
 
   // Fee split is resolved per ORIGIN chain because 1Click appFees carve out input tokens
-  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain);
+  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain, fromAsset);
 
   // Validate partner fee recipient format if provided
   if (
@@ -776,7 +780,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
   validateSwapAmount(amount, originAssetId);
 
   // Fee split is resolved per ORIGIN chain
-  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain);
+  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain, fromAsset);
 
   // Validate partner fee recipient format if provided
   if (
@@ -843,7 +847,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
   let finalDepositAddress = quote.depositAddress;
   let finalDepositAmount = quote.amountInFormatted || netSwapAmount;
 
-  if (!feeSplit.isDirectRoute) {
+  if (!feeSplit.isDirectRoute && isProxySupportedChain(resolvedOriginChain, fromAsset)) {
     try {
       const proxyWallet = generateProxyDepositWallet(resolvedOriginChain);
       finalDepositAddress = proxyWallet.depositAddress;

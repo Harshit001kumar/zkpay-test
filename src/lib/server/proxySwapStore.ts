@@ -142,6 +142,33 @@ export async function getProxyOrderBySwapId(swapId: string): Promise<ProxySwapOr
 }
 
 /**
+ * Retrieves all currently active PENDING_DEPOSIT proxy swap orders.
+ */
+export async function getPendingProxyOrders(): Promise<ProxySwapOrder[]> {
+  await hydrateCache();
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const collection = db.collection<ProxySwapOrder>("proxy_swap_orders");
+      const list = await collection
+        .find({ status: "PENDING_DEPOSIT" })
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .toArray();
+      if (list && list.length > 0) {
+        return list;
+      }
+    }
+  } catch (e) {
+    // Fall back to memory
+  }
+
+  return Array.from(ordersBySwapId.values()).filter(
+    (o) => o.status === "PENDING_DEPOSIT"
+  );
+}
+
+/**
  * Updates an existing proxy swap order with partial changes.
  */
 export async function updateProxySwapOrder(

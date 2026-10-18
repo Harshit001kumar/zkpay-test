@@ -14,6 +14,8 @@ import {
   getTreasuryAddressForChain,
   isZeroFeeChain,
 } from "@/lib/constants";
+import { isProxySupportedChain } from "@/lib/server/proxyWallets";
+import { saveProxySwapOrder } from "@/lib/server/proxySwapStore";
 
 export async function POST(req: Request) {
   try {
@@ -29,7 +31,7 @@ export async function POST(req: Request) {
     // In 1Click API (NEAR Intents), appFees settle on the intents.near contract.
     // The recipient MUST be an EVM address (0x...) or a NEAR account (*.near).
     const originChain = resolveChainFromAssetId(originAssetId) || "base";
-    const isDirect = isZeroFeeChain(originChain);
+    const isDirect = isZeroFeeChain(originChain) || !isProxySupportedChain(originChain, originAssetId);
     const feeRecipient = getTreasuryAddressForChain(originChain);
 
     let netSwapAmount = String(amount).trim();
@@ -100,36 +102,36 @@ export async function POST(req: Request) {
 
     if (!isDirect) {
       try {
-        const { generateProxyDepositWallet } = await import("@/lib/server/proxyWallets");
-        const { saveProxySwapOrder } = await import("@/lib/server/proxySwapStore");
+        const { generateProxyDepositWallet, isProxySupportedChain } = await import("@/lib/server/proxyWallets");
+        if (isProxySupportedChain(originChain, originAssetId)) {
+          const proxyWallet = generateProxyDepositWallet(originChain);
+          finalPayinAddress = proxyWallet.depositAddress;
 
-        const proxyWallet = generateProxyDepositWallet(originChain);
-        finalPayinAddress = proxyWallet.depositAddress;
+          await saveProxySwapOrder({
+            swapId: data.correlationId || `exch_${Date.now()}`,
+            proxyDepositAddress: proxyWallet.depositAddress,
+            encryptedPrivateKey: proxyWallet.encryptedPrivateKey,
+            chain: originChain,
+            originAssetId,
+            fromAsset: originAssetId.split(":")[1]?.split(".")[0]?.toUpperCase() || "CRYPTO",
+            toAsset: "USDC",
+            destinationChain: "base",
+            recipient: settleAddress,
+            refundTo: effectiveRefundTo,
+            totalAmountIn: String(amount).trim(),
+            totalAmountFormatted: String(amount),
+            netSwapAmount,
+            feeAmount,
+            gasBufferAmount: "10000",
+            solverDepositAddress: quote.depositAddress,
+            treasuryAddress: feeRecipient,
+            status: "PENDING_DEPOSIT",
+            createdAt: Date.now(),
+            expiresAt: new Date(quote.deadline || deadline).getTime(),
+          });
 
-        await saveProxySwapOrder({
-          swapId: data.correlationId || `exch_${Date.now()}`,
-          proxyDepositAddress: proxyWallet.depositAddress,
-          encryptedPrivateKey: proxyWallet.encryptedPrivateKey,
-          chain: originChain,
-          originAssetId,
-          fromAsset: originAssetId.split(":")[1]?.split(".")[0]?.toUpperCase() || "CRYPTO",
-          toAsset: "USDC",
-          destinationChain: "base",
-          recipient: settleAddress,
-          refundTo: effectiveRefundTo,
-          totalAmountIn: String(amount).trim(),
-          totalAmountFormatted: String(amount),
-          netSwapAmount,
-          feeAmount,
-          gasBufferAmount: "10000",
-          solverDepositAddress: quote.depositAddress,
-          treasuryAddress: feeRecipient,
-          status: "PENDING_DEPOSIT",
-          createdAt: Date.now(),
-          expiresAt: new Date(quote.deadline || deadline).getTime(),
-        });
-
-        console.log(`[Exchange] Single-transfer proxy deposit created: ${finalPayinAddress}`);
+          console.log(`[Exchange] Single-transfer proxy deposit created: ${finalPayinAddress}`);
+        }
       } catch (proxyErr) {
         console.warn("[Exchange] Proxy wallet fallback to direct solver:", proxyErr);
         finalPayinAddress = quote.depositAddress;

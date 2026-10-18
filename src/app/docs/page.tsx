@@ -28,17 +28,18 @@ Supported Chains: btc, eth, base, sol, arb, bsc, tron, ltc
 - Get your key at zkpay.top → Profile → Merchant & Bot API Keys
 
 ## CRITICAL: Fee Settlement Architecture ($0 Threshold, Instant Payout)
-- Tier 1: High-Fee L1s (Ethereum Mainnet 'eth' & Bitcoin 'btc'):
-  - Direct routes with 0% platform fee (isDirectRoute: true, feeAmount: "0").
-  - Users are protected from high L1 network gas fees; transactions route straight to solvers without extra fee hops.
-- Tier 2 (L2s: base, arb, polygon, bsc) & Tier 3 (Low-Fee L1s: sol, ltc, tron):
-  - Single-Transfer Proxy System: Users send 100% of the funds to ONE single address (\`order.deposit.address\`).
-  - Automatic Split & Forward: The system detects the incoming transfer, splits the upfront fee to Treasury/Partner, and forwards the net amount to Near Intents solvers.
-  - Case A (Native Tokens: ETH, BNB, POL, SOL, LTC): Gas is paid directly from the incoming native token.
-  - Case B (Stablecoins: USDC, USDT): All fees and transfer costs are paid strictly out of the deposited token balance (~$0.01 buffer) with zero native gas required.
-  - 100% instant settlement, $0 minimum payout threshold (no portal lockups or $1,000 withdrawal limits).
-- PARTNERS MUST provide a \`feeRecipient\` address that matches the ORIGIN CHAIN (e.g., Solana Base58 address when swapping SOL, Base 0x address when swapping on Base, LTC address when swapping LTC).
-- An \`executionPlan\` is returned by both /quote and /create, detailing the exact transfers (fee split + solver deposit).
+- Direct Routes (0% platform fee, 100% non-custodial solver routing):
+  - Bitcoin ('btc'), Ethereum L1 ('eth'), Litecoin ('ltc'), Tron ('tron'), and Solana SPL tokens (USDC/USDT on Solana).
+  - Users are protected from high network gas fees and token-account initialization requirements; transactions route 100% straight to Near Intents native solvers.
+- Single-Transfer Proxy System:
+  - Base ('base' - ETH, USDC, USDT), Solana ('sol' - Native SOL), and Native Gas tokens on Arbitrum ('arb' - ETH), Polygon ('polygon' - POL), and BSC ('bsc' - BNB).
+  - Single-Transfer Proxy System: Users send 100% of funds to ONE single address (`order.deposit.address`).
+  - Automatic Split & Forward: The background sweeper detects the incoming transfer, splits the upfront fee to Treasury/Partner, and forwards the net amount to Near Intents solvers.
+  - Case A (Native Gas Tokens: Base ETH, Arb ETH, Polygon POL, BSC BNB, Solana SOL): Gas is paid directly from the incoming native token.
+  - Case B (Base USDC / USDT): All fees and micro-transfer buffers are paid strictly out of the deposited token balance with zero user gas required.
+  - 100% instant settlement, $0 minimum payout threshold.
+- PARTNERS MUST provide a `feeRecipient` address that matches the ORIGIN CHAIN.
+- An `executionPlan` is returned by both /quote and /create, detailing the exact transfers (fee split + solver deposit).
 
 ## Endpoints
 

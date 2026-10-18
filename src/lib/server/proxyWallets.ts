@@ -112,3 +112,68 @@ export function generateProxyDepositWallet(chain: string): GeneratedProxyWallet 
     encryptedPrivateKey: encryptedKey,
   };
 }
+
+function extractCleanSymbol(fromAsset?: string | null): string {
+  if (!fromAsset) return "";
+  const s = fromAsset.trim().toUpperCase();
+  if (s.includes(":")) {
+    const part = s.split(":")[1]?.split(".")[0] || "";
+    if (part.includes("-")) return part.split("-")[0];
+    return part;
+  }
+  return s;
+}
+
+/**
+ * Checks whether a chain and asset are supported by the Single-Transfer Auto-Split & Forward System.
+ * - Base: Native ETH, USDC, USDT (backend has Base relayer to pre-fund micro-gas).
+ * - Solana: Native SOL only (self-paying binary Ed25519 wire transactions).
+ * - Arbitrum: Native ETH only (self-paying gas token).
+ * - Polygon: Native POL / MATIC only (self-paying gas token).
+ * - BSC: Native BNB only (self-paying gas token).
+ * 
+ * ALL OTHER CHAINS & NON-GAS TOKENS:
+ * (Bitcoin, Ethereum L1, Litecoin, Tron, Solana SPL tokens, Arbitrum/Polygon/BSC non-native ERC20s)
+ * route directly to Near Intents solvers with 0% platform fee deduction (100% of user funds straight to solver).
+ * This eliminates any risk of stuck deposits across unsupported chains or non-gas tokens.
+ */
+export function isProxySupportedChain(chain?: string | null, fromAsset?: string | null): boolean {
+  if (!chain) return false;
+  const c = normalizeChain(chain);
+  if (!c) return false;
+
+  const sym = extractCleanSymbol(fromAsset);
+
+  // 1. Solana: Only native SOL uses proxy wallet (avoids SPL Associated Token Account rent & gas)
+  if (c === "sol") {
+    if (!sym) return true;
+    return sym === "SOL" || sym.includes("SOL");
+  }
+
+  // 2. Base: Full support (Native ETH, USDC, USDT)
+  if (c === "base") {
+    return true;
+  }
+
+  // 3. Arbitrum: Only native ETH (self-paying gas token)
+  if (c === "arb") {
+    if (!sym) return true;
+    return sym === "ETH";
+  }
+
+  // 4. Polygon: Only native POL / MATIC (self-paying gas token)
+  if (c === "polygon") {
+    if (!sym) return true;
+    return sym === "POL" || sym === "MATIC";
+  }
+
+  // 5. BSC: Only native BNB (self-paying gas token)
+  if (c === "bsc") {
+    if (!sym) return true;
+    return sym === "BNB";
+  }
+
+  // All other chains (btc, eth, tron, ltc, etc.) are NOT proxy supported -> 100% direct solver route
+  return false;
+}
+

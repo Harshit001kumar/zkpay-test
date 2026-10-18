@@ -28,9 +28,17 @@ export async function GET(req: Request) {
 
     const effectiveRefundTo = resolveRefundAddress(originAssetId, userRefundTo, recipientAddress, { isDryRun: true });
 
-    // In 1Click API (NEAR Intents), appFees settle on the intents.near contract.
-    // The recipient MUST be an EVM address (0x...) or a NEAR account (*.near).
-    const feeRecipient = getTreasuryAddressForChain();
+    const originChain = resolveChainFromAssetId(originAssetId) || "base";
+    const { isZeroFeeChain } = await import("@/lib/constants");
+    const { isProxySupportedChain } = await import("@/lib/server/proxyWallets");
+    const isDirect = isZeroFeeChain(originChain) || !isProxySupportedChain(originChain, originAssetId);
+
+    let netSwapAmount = String(amount).trim();
+    if (!isDirect) {
+      const totalAtomic = BigInt(String(amount).trim());
+      const feeAtomic = (totalAtomic * BigInt(DEPOSIT_FEE_BPS)) / 10000n;
+      netSwapAmount = (totalAtomic - feeAtomic).toString();
+    }
 
     const deadline = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
@@ -42,12 +50,12 @@ export async function GET(req: Request) {
       depositType: "ORIGIN_CHAIN",
       destinationAsset: DESTINATION_ASSET,
       recipientType: "DESTINATION_CHAIN",
-      amount,
+      amount: netSwapAmount,
       recipient: recipientAddress,
       refundTo: effectiveRefundTo,
       refundType: "ORIGIN_CHAIN",
       deadline,
-      appFees: [{ recipient: feeRecipient, fee: DEPOSIT_FEE_BPS }],
+      appFees: [], // ZERO appFees to NEAR Intents — consistent with wet execution
     };
 
     const headers: Record<string, string> = {

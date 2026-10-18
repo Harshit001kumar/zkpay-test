@@ -15,6 +15,8 @@ import { CONTRACTS, normalizeChain } from "@/lib/constants";
 import {
   ProxySwapOrder,
   getProxyOrderByAddress,
+  getProxyOrderBySwapId,
+  getPendingProxyOrders,
   updateProxySwapOrder,
   getDecryptedProxyPrivateKey,
 } from "./proxySwapStore";
@@ -136,6 +138,9 @@ export async function checkAndForwardProxyDeposit(order: ProxySwapOrder): Promis
 /**
  * Handles EVM deposit detection, Case A (Native) and Case B (Stablecoins / ERC-20).
  */
+/**
+ * Handles EVM deposit detection, Case A (Native) and Case B (Stablecoins / ERC-20).
+ */
 async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
   const publicClient = getPublicClientForChain(order.chain);
   const proxyAddress = getAddress(order.proxyDepositAddress as `0x${string}`);
@@ -158,8 +163,8 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     const balanceWei = await publicClient.getBalance({ address: proxyAddress });
     const expectedAtomic = BigInt(order.totalAmountIn);
 
-    // Minimum 95% threshold to tolerate gas rounding
-    if (balanceWei < (expectedAtomic * 95n) / 100n || balanceWei === 0n) {
+    // Minimum 90% threshold to tolerate slight gas fluctuations
+    if (balanceWei < (expectedAtomic * 90n) / 100n || balanceWei === 0n) {
       return order; // Awaiting deposit
     }
 
@@ -178,36 +183,41 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       transport: http(),
     });
 
-    // Estimate gas for transfers (L2 gas is ~$0.002)
-    const gasPrice = await publicClient.getGasPrice();
-    const gasReservePerTx = 25000n * gasPrice;
-    const totalGasReserve = gasReservePerTx * 2n;
-
-    // Platform Fee
     const feeWei = (balanceWei * BigInt(order.feeAmount)) / expectedAtomic;
-    // Net to Solver
-    const netWei = balanceWei - feeWei - totalGasReserve;
+
+    // 1. Transfer Fee to Treasury if fee > 0
+    let feeTxHash = "";
+    if (feeWei > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
+      try {
+        feeTxHash = await walletClient.sendTransaction({
+          to: treasuryAddress,
+          value: feeWei,
+        });
+        console.log(`[ProxyForwarder] Fee transfer broadcast: ${feeTxHash}`);
+        // Wait for fee receipt so nonce is incremented and state is mined
+        await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` });
+      } catch (feeErr) {
+        console.warn("[ProxyForwarder] Fee transfer warning, proceeding with solver forward:", feeErr);
+      }
+    }
+
+    // 2. Query exact remaining balance after fee & gas deduction
+    const remainingBalance = await publicClient.getBalance({ address: proxyAddress });
+    const currentGasPrice = await publicClient.getGasPrice();
+    const gasReserve = 30000n * currentGasPrice; // Safe buffer for native L2 transfer
+    const netWei = remainingBalance > gasReserve ? remainingBalance - gasReserve : 0n;
 
     if (netWei <= 0n) {
-      throw new Error("Deposit amount too small to cover transfer and L2 gas.");
+      throw new Error("Remaining balance too small to cover L2 transfer gas.");
     }
 
-    // 1. Transfer Fee to Treasury
-    let feeTxHash = "";
-    if (feeWei > 0n) {
-      feeTxHash = await walletClient.sendTransaction({
-        to: treasuryAddress,
-        value: feeWei,
-      });
-      console.log(`[ProxyForwarder] Fee transfer broadcast: ${feeTxHash}`);
-    }
-
-    // 2. Transfer Net to Solver
+    // 3. Transfer Net to Solver
     const forwardTxHash = await walletClient.sendTransaction({
       to: solverAddress,
       value: netWei,
     });
     console.log(`[ProxyForwarder] Solver forward broadcast: ${forwardTxHash}`);
+    await publicClient.waitForTransactionReceipt({ hash: forwardTxHash as `0x${string}` });
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: "FORWARDED",
@@ -219,9 +229,16 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     return updated || order;
   } else {
     // ─── CASE B: Stablecoins & ERC-20s (USDC, USDT) ───
-    // User pays gas & fee 100% out of the token balance!
+    // Dynamically resolve token address from CHAIN_TOKENS or regex match from originAssetId
     const tokenMap = CHAIN_TOKENS[chainKey] || {};
-    const tokenAddress = tokenMap[upperSymbol];
+    let tokenAddress: `0x${string}` | undefined = tokenMap[upperSymbol];
+
+    if (!tokenAddress && order.originAssetId.includes("0x")) {
+      const match = order.originAssetId.match(/0x[a-fA-F0-9]{40}/);
+      if (match) {
+        tokenAddress = getAddress(match[0]);
+      }
+    }
 
     if (!tokenAddress) {
       console.warn(`[ProxyForwarder] Unknown token contract for ${upperSymbol} on ${order.chain}`);
@@ -237,7 +254,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     const expectedAtomic = BigInt(order.totalAmountIn);
 
-    if (tokenBalance < (expectedAtomic * 95n) / 100n || tokenBalance === 0n) {
+    if (tokenBalance < (expectedAtomic * 90n) / 100n || tokenBalance === 0n) {
       return order; // Awaiting deposit
     }
 
@@ -250,7 +267,6 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     const rawKey = getDecryptedProxyPrivateKey(order);
     const proxyAccount = privateKeyToAccount(rawKey);
 
-    // Token Gas Buffer: 0.01 USDT/USDC (10,000 in 6-dec, 10^16 in 18-dec)
     const tokenDecimals = (await publicClient.readContract({
       address: tokenAddress,
       abi: ERC20_ABI,
@@ -261,7 +277,9 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     // Platform fee in token
     const feeUnits = (tokenBalance * BigInt(order.feeAmount)) / expectedAtomic;
-    const netTokenUnits = tokenBalance - feeUnits - gasBufferUnits;
+    const netTokenUnits = tokenBalance > feeUnits + gasBufferUnits
+      ? tokenBalance - feeUnits - gasBufferUnits
+      : tokenBalance - feeUnits;
 
     if (netTokenUnits <= 0n) {
       throw new Error("Token deposit too small to cover fee and token gas buffer.");
@@ -270,7 +288,8 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     // Pre-fund proxy with micro-ETH for the transfer if needed (e.g. 0.00003 ETH ~$0.006)
     // The relayer is immediately reimbursed via the tokenGasBuffer!
     const ethBalance = await publicClient.getBalance({ address: proxyAddress });
-    if (ethBalance < 21000n * (await publicClient.getGasPrice())) {
+    const gasPrice = await publicClient.getGasPrice();
+    if (ethBalance < 35000n * gasPrice) {
       try {
         const relayer = getRelayerWalletClient();
         const fundTx = await relayer.sendTransaction({
@@ -290,27 +309,45 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     });
 
     // 1. Transfer Fee + Token Gas Reimbursement to Treasury
+    let feeTxHash = "";
     const totalTreasuryCut = feeUnits + gasBufferUnits;
-    const feeTxHash = await walletClient.writeContract({
+    if (totalTreasuryCut > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
+      try {
+        feeTxHash = await walletClient.writeContract({
+          address: tokenAddress,
+          abi: ERC20_ABI,
+          functionName: "transfer",
+          args: [treasuryAddress, totalTreasuryCut],
+        });
+        console.log(`[ProxyForwarder] Token fee + gas reimbursement broadcast: ${feeTxHash}`);
+        await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` });
+      } catch (feeErr) {
+        console.warn("[ProxyForwarder] Token fee transfer error, continuing to solver:", feeErr);
+      }
+    }
+
+    // 2. Query exact remaining token balance and transfer net to solver
+    const remainingTokenBalance = (await publicClient.readContract({
       address: tokenAddress,
       abi: ERC20_ABI,
-      functionName: "transfer",
-      args: [treasuryAddress, totalTreasuryCut],
-    });
-    console.log(`[ProxyForwarder] Token fee + gas reimbursement broadcast: ${feeTxHash}`);
+      functionName: "balanceOf",
+      args: [proxyAddress],
+    })) as bigint;
 
-    // 2. Transfer Net Token Amount to Solver Deposit Address
+    const finalNetTokens = remainingTokenBalance > 0n ? remainingTokenBalance : netTokenUnits;
+
     const forwardTxHash = await walletClient.writeContract({
       address: tokenAddress,
       abi: ERC20_ABI,
       functionName: "transfer",
-      args: [solverAddress, netTokenUnits],
+      args: [solverAddress, finalNetTokens],
     });
     console.log(`[ProxyForwarder] Net token forward to solver broadcast: ${forwardTxHash}`);
+    await publicClient.waitForTransactionReceipt({ hash: forwardTxHash as `0x${string}` });
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: "FORWARDED",
-      depositTxHash: feeTxHash,
+      depositTxHash: feeTxHash || forwardTxHash,
       feeTxHash,
       forwardTxHash,
     });
@@ -690,10 +727,13 @@ export async function recoverProxyDeposit(
     };
   } else {
     // ERC-20 token sweep
-    const tokenAddress = (CHAIN_TOKENS[order.chain]?.[upperSymbol] ||
-      (order.originAssetId.includes("0x")
-        ? order.originAssetId.split("-")[1]?.split(".")[0]
-        : null)) as `0x${string}`;
+    let tokenAddress = CHAIN_TOKENS[order.chain]?.[upperSymbol];
+    if (!tokenAddress && order.originAssetId.includes("0x")) {
+      const match = order.originAssetId.match(/0x[a-fA-F0-9]{40}/);
+      if (match) {
+        tokenAddress = getAddress(match[0]);
+      }
+    }
 
     if (!tokenAddress) {
       throw new Error(`Cannot resolve ERC-20 token address for ${order.fromAsset} on ${order.chain}`);
@@ -751,3 +791,74 @@ export async function recoverProxyDeposit(
     };
   }
 }
+
+let sweeperInterval: NodeJS.Timeout | null = null;
+let isSweeperTickActive = false;
+
+/**
+ * Starts the automatic background sweeper daemon.
+ * Periodically scans all PENDING_DEPOSIT proxy orders:
+ * 1. If an order has received funds, it forwards to solver immediately.
+ * 2. If an order has expired (past deadline) with funds deposited, it automatically refunds 100% to the user's refundTo address!
+ * 3. If an order has 0 balance and expired > 1 hour ago, marks status as EXPIRED.
+ */
+export function ensureProxySweeperDaemonRunning() {
+  if (sweeperInterval) return;
+
+  console.log("[ProxySweeperDaemon] Starting automated background proxy deposit sweeper (interval: 12s)...");
+
+  sweeperInterval = setInterval(async () => {
+    if (isSweeperTickActive) return;
+    isSweeperTickActive = true;
+
+    try {
+      const pendingOrders = await getPendingProxyOrders();
+      if (!pendingOrders || pendingOrders.length === 0) {
+        return;
+      }
+
+      for (const order of pendingOrders) {
+        try {
+          const isExpired = Date.now() > order.expiresAt + 60_000;
+
+          if (isExpired) {
+            // Check if funds were deposited on an expired quote.
+            // If yes, automatic 100% refund to user's refundTo address!
+            const refundRes = await recoverProxyDeposit(order.proxyDepositAddress, { action: "refund" });
+            if (refundRes.success) {
+              console.log(
+                `[ProxySweeperDaemon] Automatically refunded expired deposit for order ${order.swapId} to user ${order.refundTo}. Tx: ${refundRes.txHash}`
+              );
+            } else {
+              // No funds were deposited and order expired > 1 hour ago -> mark EXPIRED
+              if (Date.now() > order.expiresAt + 3600_000) {
+                await updateProxySwapOrder(order.swapId, { status: "EXPIRED" });
+              }
+            }
+          } else {
+            // Order is active within deadline -> attempt forward sweep
+            await checkAndForwardProxyDeposit(order);
+          }
+        } catch (itemErr) {
+          console.warn(`[ProxySweeperDaemon] Error sweeping order ${order.swapId}:`, itemErr);
+        }
+      }
+    } catch (daemonErr) {
+      console.warn("[ProxySweeperDaemon] Sweeper tick error:", daemonErr);
+    } finally {
+      isSweeperTickActive = false;
+    }
+  }, 12_000);
+
+  if (sweeperInterval.unref) {
+    sweeperInterval.unref();
+  }
+}
+
+// Auto-start daemon when module loads
+try {
+  ensureProxySweeperDaemonRunning();
+} catch (e) {
+  // Safe fallback
+}
+
