@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import {
   createPublicClient,
   createWalletClient,
@@ -18,6 +19,7 @@ import {
   getDecryptedProxyPrivateKey,
 } from "./proxySwapStore";
 import { getRelayerWalletClient } from "./relayer";
+import { decodeBase58 } from "./proxyWallets";
 
 const ERC20_ABI = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
@@ -317,45 +319,435 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
   }
 }
 
+const SOLANA_RPCS = [
+  process.env.SOLANA_RPC_URL,
+  "https://api.mainnet-beta.solana.com",
+  "https://solana-mainnet.rpc.extrnode.com",
+  "https://rpc.ankr.com/solana",
+  "https://solana.public-rpc.com",
+].filter(Boolean) as string[];
+
+async function fetchSolanaRpc(method: string, params: any[]): Promise<any> {
+  let lastError: any = null;
+  for (const rpcUrl of SOLANA_RPCS) {
+    try {
+      const res = await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: `sol-${Date.now()}`,
+          method,
+          params,
+        }),
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data.error) {
+        lastError = data.error;
+        continue;
+      }
+      return data.result;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw new Error(`All Solana RPCs failed for ${method}: ${lastError?.message || JSON.stringify(lastError)}`);
+}
+
 /**
- * Handles Solana proxy deposit balance checking via standard Solana JSON-RPC.
+ * Builds, signs (Ed25519), and broadcasts a native Solana transfer transaction
+ * with 1 or 2 instructions (solver transfer + optional treasury fee).
+ */
+async function sendSolanaTransfer(params: {
+  fromPubkeyBase58: string;
+  fromPrivKeyHex: string;
+  toPubkeyBase58: string;
+  transferLamports: bigint;
+  feeRecipientBase58?: string | null;
+  feeLamports?: bigint;
+}): Promise<string> {
+  const {
+    fromPubkeyBase58,
+    fromPrivKeyHex,
+    toPubkeyBase58,
+    transferLamports,
+    feeRecipientBase58,
+    feeLamports = 0n,
+  } = params;
+
+  const bhResult = await fetchSolanaRpc("getLatestBlockhash", [{ commitment: "confirmed" }]);
+  const blockhash = bhResult?.value?.blockhash;
+  if (!blockhash) {
+    throw new Error("Failed to retrieve latest Solana blockhash.");
+  }
+
+  const fromPubkeyBuf = decodeBase58(fromPubkeyBase58);
+  const toPubkeyBuf = decodeBase58(toPubkeyBase58);
+  const blockhashBuf = decodeBase58(blockhash);
+  const systemProgramBuf = Buffer.alloc(32); // 11111111111111111111111111111111
+
+  const hasFeeTransfer =
+    Boolean(feeRecipientBase58) &&
+    feeLamports > 0n &&
+    feeRecipientBase58?.trim() !== toPubkeyBase58.trim();
+
+  let accountKeys: Buffer;
+  let instructions: Buffer;
+
+  if (hasFeeTransfer && feeRecipientBase58) {
+    const feePubkeyBuf = decodeBase58(feeRecipientBase58.trim());
+    // 4 Accounts: [from(0), to(1), fee(2), SystemProgram(3)]
+    accountKeys = Buffer.concat([
+      Buffer.from([4]),
+      fromPubkeyBuf,
+      toPubkeyBuf,
+      feePubkeyBuf,
+      systemProgramBuf,
+    ]);
+
+    // Ix 0: Transfer to solver
+    const ix0Data = Buffer.alloc(12);
+    ix0Data.writeUInt32LE(2, 0); // Transfer = 2
+    ix0Data.writeBigUInt64LE(transferLamports, 4);
+
+    const ix0 = Buffer.concat([
+      Buffer.from([3]), // program index = 3
+      Buffer.from([2, 0, 1]), // 2 accounts: 0 (from), 1 (to)
+      Buffer.from([12]),
+      ix0Data,
+    ]);
+
+    // Ix 1: Transfer fee to treasury
+    const ix1Data = Buffer.alloc(12);
+    ix1Data.writeUInt32LE(2, 0);
+    ix1Data.writeBigUInt64LE(feeLamports, 4);
+
+    const ix1 = Buffer.concat([
+      Buffer.from([3]), // program index = 3
+      Buffer.from([2, 0, 2]), // 2 accounts: 0 (from), 2 (fee)
+      Buffer.from([12]),
+      ix1Data,
+    ]);
+
+    instructions = Buffer.concat([Buffer.from([2]), ix0, ix1]);
+  } else {
+    // 3 Accounts: [from(0), to(1), SystemProgram(2)]
+    accountKeys = Buffer.concat([
+      Buffer.from([3]),
+      fromPubkeyBuf,
+      toPubkeyBuf,
+      systemProgramBuf,
+    ]);
+
+    const ix0Data = Buffer.alloc(12);
+    ix0Data.writeUInt32LE(2, 0);
+    ix0Data.writeBigUInt64LE(transferLamports, 4);
+
+    const ix0 = Buffer.concat([
+      Buffer.from([2]), // program index = 2
+      Buffer.from([2, 0, 1]), // 2 accounts: 0 (from), 1 (to)
+      Buffer.from([12]),
+      ix0Data,
+    ]);
+
+    instructions = Buffer.concat([Buffer.from([1]), ix0]);
+  }
+
+  // Header: 1 req sig, 0 readonly signed, 1 readonly unsigned (SystemProgram)
+  const header = Buffer.from([1, 0, 1]);
+  const message = Buffer.concat([header, accountKeys, blockhashBuf, instructions]);
+
+  // Sign with Ed25519
+  const cleanHex = fromPrivKeyHex.replace(/^0x/, "");
+  const rawPrivSeed = Buffer.from(cleanHex, "hex").subarray(0, 32);
+
+  const pkcs8Der = Buffer.concat([
+    Buffer.from("302e020100300506032b657004220420", "hex"),
+    rawPrivSeed,
+  ]);
+  const privKeyObj = crypto.createPrivateKey({
+    key: pkcs8Der,
+    format: "der",
+    type: "pkcs8",
+  });
+
+  const signature = crypto.sign(null, message, privKeyObj);
+
+  const wireTx = Buffer.concat([
+    Buffer.from([1]), // 1 signature
+    signature,
+    message,
+  ]);
+
+  const wireTxBase64 = wireTx.toString("base64");
+
+  const txSignature = await fetchSolanaRpc("sendTransaction", [
+    wireTxBase64,
+    {
+      encoding: "base64",
+      preflightCommitment: "confirmed",
+      skipPreflight: false,
+    },
+  ]);
+
+  console.log(`[ProxyForwarder] Solana on-chain transfer broadcast success: ${txSignature}`);
+  return txSignature;
+}
+
+/**
+ * Handles Solana proxy deposit balance checking and executes real on-chain forward.
  */
 async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
-  const solanaRpc = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
-
   try {
-    const res = await fetch(solanaRpc, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: "check-balance",
-        method: "getBalance",
-        params: [order.proxyDepositAddress],
-      }),
-    });
+    const balanceRes = await fetchSolanaRpc("getBalance", [order.proxyDepositAddress]);
+    const lamports = BigInt(balanceRes?.value || 0);
+    const MIN_NETWORK_FEE = 5000n; // 0.000005 SOL
 
-    const data = await res.json();
-    const lamports = BigInt(data?.result?.value || 0);
-    const expectedAtomic = BigInt(order.totalAmountIn);
-
-    if (lamports >= (expectedAtomic * 95n) / 100n && lamports > 0n) {
+    if (lamports > MIN_NETWORK_FEE) {
       console.log(
-        `[ProxyForwarder] Solana deposit detected for order ${order.swapId}: ${lamports} lamports`
+        `[ProxyForwarder] Solana deposit detected for order ${order.swapId}: ${lamports} lamports (address: ${order.proxyDepositAddress})`
       );
 
-      // In test/sandbox or live environment, mark as detected/forwarded
+      const privKeyHex = getDecryptedProxyPrivateKey(order);
+      const expectedSolverLamports = BigInt(order.netSwapAmount);
+      const available = lamports - MIN_NETWORK_FEE;
+
+      let solverLamports = expectedSolverLamports;
+      let feeLamports = 0n;
+
+      if (available <= expectedSolverLamports) {
+        solverLamports = available;
+        feeLamports = 0n;
+      } else {
+        solverLamports = expectedSolverLamports;
+        feeLamports = available - expectedSolverLamports;
+      }
+
+      console.log(
+        `[ProxyForwarder] Sweeping SOL: ${solverLamports} -> Solver (${order.solverDepositAddress}), ${feeLamports} -> Treasury (${order.treasuryAddress})`
+      );
+
+      const txHash = await sendSolanaTransfer({
+        fromPubkeyBase58: order.proxyDepositAddress,
+        fromPrivKeyHex: privKeyHex,
+        toPubkeyBase58: order.solverDepositAddress,
+        transferLamports: solverLamports,
+        feeRecipientBase58: feeLamports > 0n ? order.treasuryAddress : null,
+        feeLamports,
+      });
+
       const updated = await updateProxySwapOrder(order.swapId, {
         status: "FORWARDED",
-        depositTxHash: "solana_detected",
-        feeTxHash: "solana_fee_split",
-        forwardTxHash: "solana_solver_forward",
+        depositTxHash: txHash,
+        feeTxHash: feeLamports > 0n ? txHash : undefined,
+        forwardTxHash: txHash,
       });
+
       return updated || order;
     }
   } catch (err) {
-    console.warn("[ProxyForwarder] Solana balance query warning:", err);
+    console.warn("[ProxyForwarder] Solana balance/sweep error:", err);
   }
 
   return order;
+}
+
+export interface RecoverResult {
+  success: boolean;
+  message: string;
+  txHash?: string;
+  order?: ProxySwapOrder | null;
+  recoveredAmount?: string;
+  destination?: string;
+}
+
+/**
+ * Permanent emergency recovery function for any stuck deposit across Solana or EVM chains.
+ * Can sweep funds directly to Near Intents solver address or refund 100% to the user.
+ */
+export async function recoverProxyDeposit(
+  addressOrSwapId: string,
+  options?: {
+    action?: "forward" | "refund";
+    customRecipient?: string;
+  }
+): Promise<RecoverResult> {
+  const query = addressOrSwapId.trim();
+  const order =
+    (await getProxyOrderByAddress(query)) ||
+    (await getProxyOrderBySwapId(query));
+
+  if (!order) {
+    return {
+      success: false,
+      message: `No proxy order found for '${query}'.`,
+    };
+  }
+
+  const normChain = normalizeChain(order.chain) || order.chain.toLowerCase();
+  const action = options?.action || "forward";
+
+  // 1. SOLANA RECOVERY
+  if (normChain === "sol") {
+    const balanceRes = await fetchSolanaRpc("getBalance", [order.proxyDepositAddress]);
+    const lamports = BigInt(balanceRes?.value || 0);
+    const MIN_NETWORK_FEE = 5000n;
+
+    if (lamports <= MIN_NETWORK_FEE) {
+      return {
+        success: false,
+        message: `Proxy address has insufficient balance to sweep (${lamports} lamports). Funds may have already been swept.`,
+        order,
+      };
+    }
+
+    const privKeyHex = getDecryptedProxyPrivateKey(order);
+    const destination =
+      options?.customRecipient ||
+      (action === "refund" ? order.refundTo : order.solverDepositAddress);
+
+    const sweepAmount = lamports - MIN_NETWORK_FEE;
+
+    const txHash = await sendSolanaTransfer({
+      fromPubkeyBase58: order.proxyDepositAddress,
+      fromPrivKeyHex: privKeyHex,
+      toPubkeyBase58: destination,
+      transferLamports: sweepAmount,
+    });
+
+    const updated = await updateProxySwapOrder(order.swapId, {
+      status: action === "refund" ? "SETTLED" : "FORWARDED",
+      forwardTxHash: txHash,
+      error: action === "refund" ? "Manually refunded to user" : undefined,
+    });
+
+    return {
+      success: true,
+      message: `Successfully swept ${sweepAmount} lamports to ${destination}!`,
+      txHash,
+      order: updated,
+      recoveredAmount: sweepAmount.toString(),
+      destination,
+    };
+  }
+
+  // 2. EVM RECOVERY (Base, Arbitrum, Polygon, BSC)
+  const publicClient = getPublicClientForChain(order.chain);
+  const privKeyHex = getDecryptedProxyPrivateKey(order);
+  const proxyAccount = privateKeyToAccount(privKeyHex);
+  const { chain } = getChainConfig(order.chain);
+
+  const walletClient = createWalletClient({
+    account: proxyAccount,
+    chain,
+    transport: http(),
+  });
+
+  const destination = (options?.customRecipient ||
+    (action === "refund" ? order.refundTo : order.solverDepositAddress)) as `0x${string}`;
+
+  const upperSymbol = order.fromAsset.toUpperCase();
+  const isNative =
+    upperSymbol === "ETH" ||
+    upperSymbol === "BNB" ||
+    upperSymbol === "POL" ||
+    upperSymbol === "MATIC";
+
+  if (isNative) {
+    const balanceWei = await publicClient.getBalance({ address: proxyAccount.address });
+    const gasPrice = await publicClient.getGasPrice();
+    const gasLimit = 21000n;
+    const gasCost = gasLimit * gasPrice;
+
+    if (balanceWei <= gasCost) {
+      return {
+        success: false,
+        message: `Proxy address has insufficient balance to sweep (${balanceWei} wei).`,
+        order,
+      };
+    }
+
+    const sweepAmount = balanceWei - gasCost;
+    const txHash = await walletClient.sendTransaction({
+      to: destination,
+      value: sweepAmount,
+    });
+
+    const updated = await updateProxySwapOrder(order.swapId, {
+      status: action === "refund" ? "SETTLED" : "FORWARDED",
+      forwardTxHash: txHash,
+      error: action === "refund" ? "Manually refunded to user" : undefined,
+    });
+
+    return {
+      success: true,
+      message: `Successfully swept ${sweepAmount} wei to ${destination}!`,
+      txHash,
+      order: updated,
+      recoveredAmount: sweepAmount.toString(),
+      destination,
+    };
+  } else {
+    // ERC-20 token sweep
+    const tokenAddress = (CHAIN_TOKENS[order.chain]?.[upperSymbol] ||
+      (order.originAssetId.includes("0x")
+        ? order.originAssetId.split("-")[1]?.split(".")[0]
+        : null)) as `0x${string}`;
+
+    if (!tokenAddress) {
+      throw new Error(`Cannot resolve ERC-20 token address for ${order.fromAsset} on ${order.chain}`);
+    }
+
+    const tokenBalance = (await publicClient.readContract({
+      address: tokenAddress,
+      abi: ERC20_ABI,
+      functionName: "balanceOf",
+      args: [proxyAccount.address],
+    })) as bigint;
+
+    if (tokenBalance === 0n) {
+      return {
+        success: false,
+        message: `Proxy address has 0 ${order.fromAsset} token balance.`,
+        order,
+      };
+    }
+
+    const ethBalance = await publicClient.getBalance({ address: proxyAccount.address });
+    if (ethBalance < 21000n * (await publicClient.getGasPrice())) {
+      try {
+        const relayer = getRelayerWalletClient();
+        const fundTx = await relayer.sendTransaction({
+          to: proxyAccount.address,
+          value: 30000000000000n,
+        });
+        await publicClient.waitForTransactionReceipt({ hash: fundTx });
+      } catch (e) {
+        console.warn("[Recover] Gas advance warning:", e);
+      }
+    }
+
+    const txHash = await walletClient.writeContract({
+      address: tokenAddress,
+      abi: ERC20_ABI,
+      functionName: "transfer",
+      args: [destination, tokenBalance],
+    });
+
+    const updated = await updateProxySwapOrder(order.swapId, {
+      status: action === "refund" ? "SETTLED" : "FORWARDED",
+      forwardTxHash: txHash,
+      error: action === "refund" ? "Manually refunded to user" : undefined,
+    });
+
+    return {
+      success: true,
+      message: `Successfully swept ${tokenBalance} tokens to ${destination}!`,
+      txHash,
+      order: updated,
+      recoveredAmount: tokenBalance.toString(),
+      destination,
+    };
+  }
 }

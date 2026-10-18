@@ -36,6 +36,39 @@ export function encodeBase58(source: Uint8Array | Buffer): string {
   return str;
 }
 
+const BASE58_MAP = new Map<string, number>();
+for (let i = 0; i < BASE58_ALPHABET.length; i++) {
+  BASE58_MAP.set(BASE58_ALPHABET[i], i);
+}
+
+/**
+ * Decodes a Base58 string to a Buffer (Solana / Bitcoin standard).
+ */
+export function decodeBase58(str: string): Buffer {
+  if (str.length === 0) return Buffer.alloc(0);
+  const bytes = [0];
+  for (let i = 0; i < str.length; i++) {
+    const val = BASE58_MAP.get(str[i]);
+    if (val === undefined) throw new Error(`Invalid Base58 character: ${str[i]}`);
+    for (let j = 0; j < bytes.length; j++) bytes[j] *= 58;
+    bytes[0] += val;
+    let carry = 0;
+    for (let j = 0; j < bytes.length; j++) {
+      bytes[j] += carry;
+      carry = bytes[j] >> 8;
+      bytes[j] &= 0xff;
+    }
+    while (carry) {
+      bytes.push(carry & 0xff);
+      carry >>= 8;
+    }
+  }
+  for (let i = 0; i < str.length && str[i] === BASE58_ALPHABET[0]; i++) {
+    bytes.push(0);
+  }
+  return Buffer.from(bytes.reverse());
+}
+
 export interface GeneratedProxyWallet {
   chain: string;
   depositAddress: string;
