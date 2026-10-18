@@ -165,6 +165,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     if (feeWei > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
       try {
         feeTxHash = await walletClient.sendTransaction({
+          account: proxyAccount,
           to: treasuryAddress,
           value: feeWei,
         });
@@ -188,6 +189,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     // 3. Transfer Net to Solver
     const forwardTxHash = await walletClient.sendTransaction({
+      account: proxyAccount,
       to: solverAddress,
       value: netWei,
     });
@@ -268,6 +270,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       try {
         const relayer = getRelayerWalletClient();
         const fundTx = await relayer.sendTransaction({
+          account: relayer.account,
           to: proxyAddress,
           value: 30000000000000n, // 0.00003 ETH
         });
@@ -285,6 +288,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     if (totalTreasuryCut > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
       try {
         feeTxHash = await walletClient.writeContract({
+          account: proxyAccount,
           address: tokenAddress,
           abi: ERC20_ABI,
           functionName: "transfer",
@@ -308,6 +312,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     const finalNetTokens = remainingTokenBalance > 0n ? remainingTokenBalance : netTokenUnits;
 
     const forwardTxHash = await walletClient.writeContract({
+      account: proxyAccount,
       address: tokenAddress,
       abi: ERC20_ABI,
       functionName: "transfer",

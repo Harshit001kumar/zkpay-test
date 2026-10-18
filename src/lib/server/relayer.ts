@@ -240,6 +240,7 @@ export async function prefundAccount(
   // 5. Broadcast micro ETH on Base
   const walletClient = getWalletClient();
   const hash = await walletClient.sendTransaction({
+    account: getRelayerAccount(),
     to: targetAddress,
     value: PREFUND_AMOUNT,
   });
