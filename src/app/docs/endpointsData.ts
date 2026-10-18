@@ -1058,7 +1058,7 @@ bot.command('swapquote', async (ctx) => {
     title: "Create Swap Order",
     category: "swap",
     rateLimit: "10 req/min (IP) · 60 req/min (API Key)",
-    description: "Commits a cross-chain crypto-to-crypto swap order and generates a single-use deposit address. For L2s and low-fee chains (Solana, Litecoin, Tron), fees are collected upfront in the origin token ($0 minimum payout threshold, instant settlement) and an executionPlan is returned detailing the fee and deposit transfers. On Ethereum Mainnet ('eth') and Bitcoin ('btc'), fees are automatically 0% (direct route) to save user network gas fees.",
+    description: "Commits a cross-chain crypto-to-crypto swap order and generates a single-use proxy deposit address. Enables a seamless Single-Transfer experience: the user sends 100% of the deposit to this single address. The system automatically detects the incoming deposit, splits the upfront fee to Treasury/Partner, and forwards the net amount to Near Intents solvers. For stablecoins (USDC/USDT), all fees and transfer costs are paid strictly out of the deposited token balance with zero native gas required. On Ethereum Mainnet ('eth') and Bitcoin ('btc'), orders are routed directly with 0% platform fee.",
     parameters: [
       {
         name: "fromAsset",

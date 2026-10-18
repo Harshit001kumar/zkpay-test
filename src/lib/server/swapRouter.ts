@@ -28,6 +28,13 @@ import {
   normalizeChain,
 } from "@/lib/constants";
 import { resolveRefundAddress } from "@/lib/refundAddress";
+import { generateProxyDepositWallet } from "./proxyWallets";
+import {
+  saveProxySwapOrder,
+  getProxyOrderByAddress,
+  ProxySwapOrder,
+} from "./proxySwapStore";
+import { checkAndForwardProxyDeposit } from "./proxyForwarder";
 
 const ONECLICK_API = "https://1click.chaindefuser.com/v0";
 
@@ -830,6 +837,50 @@ export async function createSwapOrder(params: CreateSwapParams) {
 
   const quote = data.quote;
 
+  // Single-transfer Proxy System:
+  // For Tier 2 (L2s: Base, Arbitrum, Polygon, BSC) and Tier 3 (Solana):
+  // Generate an ephemeral single-use proxy deposit address so the user sends 100% in a single transaction.
+  let finalDepositAddress = quote.depositAddress;
+  let finalDepositAmount = quote.amountInFormatted || netSwapAmount;
+
+  if (!feeSplit.isDirectRoute) {
+    try {
+      const proxyWallet = generateProxyDepositWallet(resolvedOriginChain);
+      finalDepositAddress = proxyWallet.depositAddress;
+      finalDepositAmount = formatHumanAmount(amount.trim(), originAssetId);
+
+      const proxyOrder: ProxySwapOrder = {
+        swapId: data.correlationId || `swp_${Date.now()}`,
+        proxyDepositAddress: proxyWallet.depositAddress,
+        encryptedPrivateKey: proxyWallet.encryptedPrivateKey,
+        chain: resolvedOriginChain,
+        originAssetId,
+        fromAsset,
+        toAsset: params.toAsset || "USDC",
+        destinationChain: resolvedDestChain,
+        recipient: recipient.trim(),
+        refundTo: effectiveRefundTo,
+        totalAmountIn: amount.trim(),
+        totalAmountFormatted: finalDepositAmount,
+        netSwapAmount,
+        feeAmount,
+        gasBufferAmount: "10000",
+        solverDepositAddress: quote.depositAddress,
+        treasuryAddress: feeSplit.treasuryAddress,
+        partnerFeeRecipient: feeSplit.partnerFeeRecipient,
+        status: "PENDING_DEPOSIT",
+        createdAt: Date.now(),
+        expiresAt: new Date(quote.deadline || deadline).getTime(),
+      };
+
+      await saveProxySwapOrder(proxyOrder);
+      console.log(`[SwapRouter] Proxy single-transfer order initialized: ${proxyOrder.swapId} -> ${proxyOrder.proxyDepositAddress}`);
+    } catch (proxyErr) {
+      console.warn("[SwapRouter] Proxy wallet generation warning, fallback to direct solver:", proxyErr);
+      finalDepositAddress = quote.depositAddress;
+    }
+  }
+
   const executionPlan: ExecutionPlan = {
     isDirectRoute: feeSplit.isDirectRoute,
     type: feeSplit.isDirectRoute ? "DIRECT_DEPOSIT" : "UPFRONT_FEE_SPLIT",
@@ -839,7 +890,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
     feeAsset: originAssetId,
     treasuryAddress: feeSplit.treasuryAddress || null,
     partnerFeeRecipient: feeSplit.partnerFeeRecipient || null,
-    depositAddress: quote.depositAddress,
+    depositAddress: finalDepositAddress,
     transfers: feeSplit.isDirectRoute
       ? [
           {
@@ -866,9 +917,9 @@ export async function createSwapOrder(params: CreateSwapParams) {
     swapId: data.correlationId || `swp_${Date.now()}`,
     status: "PENDING_DEPOSIT",
     deposit: {
-      address: quote.depositAddress,
+      address: finalDepositAddress,
       memo: quote.depositMemo || null,
-      amount: quote.amountInFormatted || netSwapAmount,
+      amount: finalDepositAmount,
       deadline: quote.deadline || deadline,
     },
     settlement: {
@@ -894,6 +945,13 @@ export async function createSwapOrder(params: CreateSwapParams) {
   };
 }
 
+function formatHumanAmount(atomicStr: string, assetId: string): string {
+  const token = SWAP_ALLOWED_TOKENS.find((t) => t.assetId === assetId);
+  const decimals = token?.decimals ?? 18;
+  const rawNum = Number(BigInt(atomicStr)) / Math.pow(10, decimals);
+  return rawNum.toFixed(Math.min(6, decimals)).replace(/\.?0+$/, "");
+}
+
 export function mapSolverStatus(rawStatus: string): string {
   switch (rawStatus) {
     case "PENDING_DEPOSIT":
@@ -916,8 +974,66 @@ export function mapSolverStatus(rawStatus: string): string {
 
 /**
  * Polls real-time swap status by deposit address.
+ * Automatically checks proxy deposit balance, triggers auto-forwarding,
+ * and tracks upstream solver settlement.
  */
 export async function getSwapStatus(depositAddress: string) {
+  const cleanAddr = depositAddress.trim();
+
+  // 1. Check if this is an ephemeral single-use proxy deposit address
+  const proxyOrder = await getProxyOrderByAddress(cleanAddr);
+
+  if (proxyOrder) {
+    let currentOrder = proxyOrder;
+
+    // If pending, trigger active balance check & auto-forward
+    if (proxyOrder.status === "PENDING_DEPOSIT") {
+      try {
+        currentOrder = await checkAndForwardProxyDeposit(proxyOrder);
+      } catch (err) {
+        console.warn("[SwapRouter] Auto-forward check warning:", err);
+      }
+    }
+
+    // If forwarded to solver, query Near Intents with solverDepositAddress
+    if (currentOrder.status === "FORWARDED" || currentOrder.status === "SETTLED") {
+      try {
+        const solverStatus = await fetchNearIntentsStatus(currentOrder.solverDepositAddress);
+        return {
+          ...solverStatus,
+          depositAddress: currentOrder.proxyDepositAddress,
+          proxyDepositAddress: currentOrder.proxyDepositAddress,
+          solverDepositAddress: currentOrder.solverDepositAddress,
+          splitFeeTxHash: currentOrder.feeTxHash || null,
+          forwardTxHash: currentOrder.forwardTxHash || null,
+          status: solverStatus.status === "pending" ? "processing" : solverStatus.status,
+        };
+      } catch (solverErr) {
+        console.warn("[SwapRouter] Solver status query warning:", solverErr);
+      }
+    }
+
+    return {
+      status: currentOrder.status === "PENDING_DEPOSIT" ? "pending" : "processing",
+      rawStatus: currentOrder.status,
+      depositAddress: currentOrder.proxyDepositAddress,
+      solverDepositAddress: currentOrder.solverDepositAddress,
+      depositedAmount: currentOrder.totalAmountFormatted,
+      settledAmount: null,
+      destinationTxHash: null,
+      destinationExplorerUrl: null,
+      originTxHash: currentOrder.depositTxHash || null,
+      splitFeeTxHash: currentOrder.feeTxHash || null,
+      forwardTxHash: currentOrder.forwardTxHash || null,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  // 2. Direct route query (Tier 1 ETH/BTC or legacy)
+  return fetchNearIntentsStatus(cleanAddr);
+}
+
+async function fetchNearIntentsStatus(depositAddress: string) {
   const url = new URL(`${ONECLICK_API}/status`);
   url.searchParams.set("depositAddress", depositAddress.trim());
 

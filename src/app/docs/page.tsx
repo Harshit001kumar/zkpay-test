@@ -32,11 +32,10 @@ Supported Chains: btc, eth, base, sol, arb, bsc, tron, ltc
   - Direct routes with 0% platform fee (isDirectRoute: true, feeAmount: "0").
   - Users are protected from high L1 network gas fees; transactions route straight to solvers without extra fee hops.
 - Tier 2 (L2s: base, arb, polygon, bsc) & Tier 3 (Low-Fee L1s: sol, ltc, tron):
-  - Fees are collected UPFRONT in the ORIGIN ASSET directly to the partner & treasury wallets.
-  - Swapping ETH on Base/Arb -> Fee paid in ETH.
-  - Swapping USDC/USDT -> Fee paid in USDC/USDT.
-  - Swapping SOL -> Fee paid in SOL to your Solana address.
-  - Swapping LTC -> Fee paid in LTC to your Litecoin address.
+  - Single-Transfer Proxy System: Users send 100% of the funds to ONE single address (`order.deposit.address`).
+  - Automatic Split & Forward: The system detects the incoming transfer, splits the upfront fee to Treasury/Partner, and forwards the net amount to Near Intents solvers.
+  - Case A (Native Tokens: ETH, BNB, POL, SOL, LTC): Gas is paid directly from the incoming native token.
+  - Case B (Stablecoins: USDC, USDT): All fees and transfer costs are paid strictly out of the deposited token balance (~$0.01 buffer) with zero native gas required.
   - 100% instant settlement, $0 minimum payout threshold (no portal lockups or $1,000 withdrawal limits).
 - PARTNERS MUST provide a \`feeRecipient\` address that matches the ORIGIN CHAIN (e.g., Solana Base58 address when swapping SOL, Base 0x address when swapping on Base, LTC address when swapping LTC).
 - An \`executionPlan\` is returned by both /quote and /create, detailing the exact transfers (fee split + solver deposit).
@@ -846,11 +845,10 @@ Verify with:
                 <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-3">
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-emerald-400 text-base">payments</span>
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">1. Upfront Origin Payout ($0 Min)</h4>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">1. Single-Transfer Auto-Split ($0 Min)</h4>
                   </div>
                   <p className="text-xs text-[#c6c6cd] leading-relaxed">
-                    Pass your origin-chain payout address in <code className="text-[#c0c6de] font-mono">feeRecipient</code> (e.g. your Solana address for SOL source, or Base 0x address for Base source) and desired fee in <code className="text-[#c0c6de] font-mono">totalFeeBps</code>.
-                    50% of the custom fee is transferred upfront in the origin token with 100% instant settlement and zero withdrawal thresholds.
+                    Users send 100% of their deposit in a single transfer to the proxy address. The system automatically detects the deposit, splits the upfront fee to <code className="text-[#c0c6de] font-mono">feeRecipient</code>, and forwards the net amount to solvers. For stablecoins (USDT/USDC), all gas and fees are paid strictly out of the token balance with zero native ETH required.
                   </p>
                 </div>
 

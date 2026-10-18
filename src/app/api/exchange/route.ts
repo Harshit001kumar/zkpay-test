@@ -27,7 +27,18 @@ export async function POST(req: Request) {
 
     // In 1Click API (NEAR Intents), appFees settle on the intents.near contract.
     // The recipient MUST be an EVM address (0x...) or a NEAR account (*.near).
-    const feeRecipient = getTreasuryAddressForChain();
+    const originChain = resolveChainFromAssetId(originAssetId) || "base";
+    const isDirect = isZeroFeeChain(originChain);
+
+    let netSwapAmount = String(amount).trim();
+    let feeAmount = "0";
+
+    if (!isDirect) {
+      const totalAtomic = BigInt(String(amount).trim());
+      const feeAtomic = (totalAtomic * BigInt(DEPOSIT_FEE_BPS)) / 10000n;
+      netSwapAmount = (totalAtomic - feeAtomic).toString();
+      feeAmount = feeAtomic.toString();
+    }
 
     const deadline = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
@@ -39,12 +50,12 @@ export async function POST(req: Request) {
       depositType: "ORIGIN_CHAIN",
       destinationAsset: DESTINATION_ASSET,
       recipientType: "DESTINATION_CHAIN",
-      amount,
+      amount: netSwapAmount,
       recipient: settleAddress,
       refundTo: effectiveRefundTo,
       refundType: "ORIGIN_CHAIN",
       deadline,
-      appFees: [{ recipient: feeRecipient, fee: DEPOSIT_FEE_BPS }],
+      appFees: [], // ZERO appFees to NEAR Intents! Avoids $1,000 threshold.
     };
 
     const headers: Record<string, string> = {
@@ -83,10 +94,50 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No deposit address in response" }, { status: 502 });
     }
 
-    // Map to frontend expectations (same shape as old SideShift response)
+    let finalPayinAddress = quote.depositAddress;
+
+    if (!isDirect) {
+      try {
+        const { generateProxyDepositWallet } = await import("@/lib/server/proxyWallets");
+        const { saveProxySwapOrder } = await import("@/lib/server/proxySwapStore");
+
+        const proxyWallet = generateProxyDepositWallet(originChain);
+        finalPayinAddress = proxyWallet.depositAddress;
+
+        await saveProxySwapOrder({
+          swapId: data.correlationId || `exch_${Date.now()}`,
+          proxyDepositAddress: proxyWallet.depositAddress,
+          encryptedPrivateKey: proxyWallet.encryptedPrivateKey,
+          chain: originChain,
+          originAssetId,
+          fromAsset: originAssetId.split(":")[1]?.split(".")[0]?.toUpperCase() || "CRYPTO",
+          toAsset: "USDC",
+          destinationChain: "base",
+          recipient: settleAddress,
+          refundTo: effectiveRefundTo,
+          totalAmountIn: String(amount).trim(),
+          totalAmountFormatted: String(amount),
+          netSwapAmount,
+          feeAmount,
+          gasBufferAmount: "10000",
+          solverDepositAddress: quote.depositAddress,
+          treasuryAddress: feeRecipient,
+          status: "PENDING_DEPOSIT",
+          createdAt: Date.now(),
+          expiresAt: new Date(quote.deadline || deadline).getTime(),
+        });
+
+        console.log(`[Exchange] Single-transfer proxy deposit created: ${finalPayinAddress}`);
+      } catch (proxyErr) {
+        console.warn("[Exchange] Proxy wallet fallback to direct solver:", proxyErr);
+        finalPayinAddress = quote.depositAddress;
+      }
+    }
+
+    // Map to frontend expectations
     return NextResponse.json({
       id: data.correlationId,
-      payinAddress: quote.depositAddress,
+      payinAddress: finalPayinAddress,
       depositMemo: quote.depositMemo || null,
       deadline: quote.deadline,
       amountOut: quote.amountOutFormatted,

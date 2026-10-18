@@ -34,6 +34,72 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing depositAddress parameter" }, { status: 400 });
     }
 
+    // 1. Check if depositAddress is an ephemeral proxy address
+    try {
+      const { getProxyOrderByAddress } = await import("@/lib/server/proxySwapStore");
+      const { checkAndForwardProxyDeposit } = await import("@/lib/server/proxyForwarder");
+
+      const proxyOrder = await getProxyOrderByAddress(depositAddress);
+      if (proxyOrder) {
+        let currentOrder = proxyOrder;
+
+        if (proxyOrder.status === "PENDING_DEPOSIT") {
+          try {
+            currentOrder = await checkAndForwardProxyDeposit(proxyOrder);
+          } catch (forwardErr) {
+            console.warn("[ExchangeStatus] Auto-forward check warning:", forwardErr);
+          }
+        }
+
+        if (currentOrder.status === "FORWARDED" || currentOrder.status === "SETTLED") {
+          // Query upstream solver using solverDepositAddress
+          const solverAddress = currentOrder.solverDepositAddress;
+          const solverUrl = new URL(`${ONECLICK_API}/status`);
+          solverUrl.searchParams.set("depositAddress", solverAddress);
+
+          const solverHeaders: Record<string, string> = {};
+          if (process.env.NEAR_INTENTS_API_KEY) {
+            solverHeaders["X-API-Key"] = process.env.NEAR_INTENTS_API_KEY;
+          }
+
+          const solverRes = await fetch(solverUrl.toString(), {
+            method: "GET",
+            headers: solverHeaders,
+          });
+
+          if (solverRes.ok) {
+            const solverData = await solverRes.json();
+            const swapDetails = solverData.swapDetails || {};
+            const finalStatus = mapStatus(solverData.status);
+
+            return NextResponse.json({
+              status: finalStatus === "pending" ? "processing" : finalStatus,
+              rawStatus: solverData.status,
+              depositAmount: currentOrder.totalAmountFormatted,
+              settleAmount: swapDetails.amountOutFormatted || null,
+              txId: swapDetails.destinationChainTxHashes?.[0]?.hash || null,
+              txExplorerUrl: swapDetails.destinationChainTxHashes?.[0]?.explorerUrl || null,
+              splitFeeTxHash: currentOrder.feeTxHash || null,
+              forwardTxHash: currentOrder.forwardTxHash || null,
+            });
+          }
+        }
+
+        return NextResponse.json({
+          status: currentOrder.status === "PENDING_DEPOSIT" ? "pending" : "processing",
+          rawStatus: currentOrder.status,
+          depositAmount: currentOrder.totalAmountFormatted,
+          settleAmount: null,
+          txId: null,
+          txExplorerUrl: null,
+          splitFeeTxHash: currentOrder.feeTxHash || null,
+          forwardTxHash: currentOrder.forwardTxHash || null,
+        });
+      }
+    } catch (proxyLookupErr) {
+      console.warn("[ExchangeStatus] Proxy lookup warning:", proxyLookupErr);
+    }
+
     const headers: Record<string, string> = {};
     if (process.env.NEAR_INTENTS_API_KEY) {
       headers["X-API-Key"] = process.env.NEAR_INTENTS_API_KEY;
