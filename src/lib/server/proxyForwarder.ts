@@ -553,6 +553,16 @@ async function fetchSolanaRpc(method: string, params: any[]): Promise<any> {
   return fetchResilientSolanaRpc(method, params);
 }
 
+function isValidSolanaAddress(address?: string | null): boolean {
+  if (!address || typeof address !== "string") return false;
+  try {
+    const decoded = decodeBase58(address.trim());
+    return decoded.length === 32;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Builds, signs (Ed25519), and broadcasts a native Solana transfer transaction
  * with 1 or 2 instructions (solver transfer + optional treasury fee).
@@ -722,18 +732,50 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
         feeLamports = available - expectedSolverLamports;
       }
 
+      // Never block auto-forward if treasury fee address is not a valid Solana address.
+      if (feeLamports > 0n && !isValidSolanaAddress(order.treasuryAddress)) {
+        console.warn(
+          `[ProxyForwarder] Invalid Solana treasury address for fee split on order ${order.swapId}; forwarding full available amount to solver.`
+        );
+        solverLamports = available;
+        feeLamports = 0n;
+      }
+
       console.log(
         `[ProxyForwarder] Sweeping SOL: ${solverLamports} -> Solver (${order.solverDepositAddress}), ${feeLamports} -> Treasury (${order.treasuryAddress})`
       );
 
-      const txHash = await sendSolanaTransfer({
-        fromPubkeyBase58: order.proxyDepositAddress,
-        fromPrivKeyHex: privKeyHex,
-        toPubkeyBase58: order.solverDepositAddress,
-        transferLamports: solverLamports,
-        feeRecipientBase58: feeLamports > 0n ? order.treasuryAddress : null,
-        feeLamports,
-      });
+      let txHash: string;
+      try {
+        txHash = await sendSolanaTransfer({
+          fromPubkeyBase58: order.proxyDepositAddress,
+          fromPrivKeyHex: privKeyHex,
+          toPubkeyBase58: order.solverDepositAddress,
+          transferLamports: solverLamports,
+          feeRecipientBase58: feeLamports > 0n ? order.treasuryAddress : null,
+          feeLamports,
+        });
+      } catch (splitErr) {
+        // Fallback: if split transfer fails, still auto-release all available funds to solver.
+        if (feeLamports > 0n) {
+          console.warn(
+            `[ProxyForwarder] SOL split transfer failed for order ${order.swapId}, retrying direct solver forward:`,
+            splitErr
+          );
+          solverLamports = available;
+          feeLamports = 0n;
+          txHash = await sendSolanaTransfer({
+            fromPubkeyBase58: order.proxyDepositAddress,
+            fromPrivKeyHex: privKeyHex,
+            toPubkeyBase58: order.solverDepositAddress,
+            transferLamports: solverLamports,
+            feeRecipientBase58: null,
+            feeLamports: 0n,
+          });
+        } else {
+          throw splitErr;
+        }
+      }
 
       const updated = await updateProxySwapOrder(order.swapId, {
         status: "FORWARDED",
@@ -1345,4 +1387,3 @@ try {
 } catch (e) {
   // Safe fallback
 }
-
