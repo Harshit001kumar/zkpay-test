@@ -246,6 +246,34 @@ export async function getPendingProxyOrders(): Promise<ProxySwapOrder[]> {
 }
 
 /**
+ * Retrieves recent proxy swap orders for the admin console.
+ */
+export async function getRecentProxyOrders(limit = 50): Promise<ProxySwapOrder[]> {
+  await hydrateCache();
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const collection = db.collection<ProxySwapOrder>("proxy_swap_orders");
+      const list = await collection
+        .find({})
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .toArray();
+      if (list && list.length > 0) {
+        return list;
+      }
+    }
+  } catch (e) {
+    // Fall back to memory
+  }
+
+  return Array.from(ordersBySwapId.values())
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, limit);
+}
+
+
+/**
  * Updates an existing proxy swap order with partial changes.
  */
 export async function updateProxySwapOrder(

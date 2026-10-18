@@ -4,12 +4,37 @@ import { MongoClient, Db } from "mongodb";
  * MongoDB Connection Client for ZkPay.
  * 
  * Uses a global singleton to prevent connection exhaustion in Next.js serverless/dev environments.
- * If MONGODB_URI is not set, returns null to allow graceful fallback to local storage.
+ * If MONGODB_URI is not set or invalid, returns null to allow graceful fallback to local storage.
  */
 
-const rawUri = process.env.MONGODB_URI;
-// Trim accidental spaces (e.g. from copy-pasting)
-const uri = rawUri ? rawUri.trim().replace(/\s+/g, "") : undefined;
+export function getCleanMongoUri(): string | undefined {
+  const raw = process.env.MONGODB_URI;
+  if (!raw) return undefined;
+  let s = raw.trim();
+
+  // Strip accidental surrounding quotes or backticks (common in copy-pasting into Render)
+  if (
+    (s.startsWith('"') && s.endsWith('"')) ||
+    (s.startsWith("'") && s.endsWith("'")) ||
+    (s.startsWith("`") && s.endsWith("`"))
+  ) {
+    s = s.slice(1, -1).trim();
+  }
+
+  // Strip accidental "MONGODB_URI=" prefix if user pasted the entire assignment
+  if (s.startsWith("MONGODB_URI=")) {
+    s = s.replace("MONGODB_URI=", "").trim();
+    if (
+      (s.startsWith('"') && s.endsWith('"')) ||
+      (s.startsWith("'") && s.endsWith("'"))
+    ) {
+      s = s.slice(1, -1).trim();
+    }
+  }
+
+  return s.replace(/\s+/g, "");
+}
+
 const dbName = process.env.MONGODB_DB || "zkpay";
 
 let client: MongoClient | null = null;
@@ -21,21 +46,32 @@ declare global {
 }
 
 export function isMongoConfigured(): boolean {
+  const uri = getCleanMongoUri();
   if (!uri) return false;
-  
+
+  // Connection string must start with mongodb:// or mongodb+srv://
+  if (!uri.startsWith("mongodb://") && !uri.startsWith("mongodb+srv://")) {
+    console.warn(
+      `[MongoDB] Warning: MONGODB_URI does not start with 'mongodb://' or 'mongodb+srv://'. Found '${uri.slice(0, 15)}...'. Please check your Render environment variables.`
+    );
+    return false;
+  }
+
   // Ignore dummy/placeholder templates
   if (
     uri.includes("username:password") ||
+    uri.includes("<db_password>") ||
     uri.includes("<password>") ||
     uri.includes("<username>") ||
     uri.includes("your-")
   ) {
+    console.warn(
+      "[MongoDB] Warning: MONGODB_URI contains placeholder credentials (e.g. '<db_password>'). Please replace it with your real MongoDB Atlas database user password in Render."
+    );
     return false;
   }
 
   // Detect incomplete Atlas placeholder without a cluster shard subdomain.
-  // Real MongoDB Atlas URLs are structured as: cluster0.<unique-id>.mongodb.net
-  // A URL pointing directly to cluster0.mongodb.net cannot resolve via DNS SRV.
   const isBareCluster0 = /(@|\/\/)cluster0\.mongodb\.net(?::\d+)?(?:\/|\?|$)/i.test(uri);
   if (isBareCluster0) {
     console.warn(
@@ -56,30 +92,30 @@ export async function getMongoClient(): Promise<MongoClient | null> {
     return null;
   }
 
+  const uri = getCleanMongoUri();
   if (!isMongoConfigured() || !uri) {
     return null;
   }
 
-  if (process.env.NODE_ENV === "development") {
-    // In development mode, use a global variable so that the value
-    // is preserved across module reloads caused by HMR (Hot Module Replacement).
-    if (!global._mongoClientPromise) {
-      client = new MongoClient(uri);
-      global._mongoClientPromise = client.connect();
-    }
-    clientPromise = global._mongoClientPromise;
-  } else {
-    // In production mode, it's best to not use a global variable.
-    if (!clientPromise) {
-      client = new MongoClient(uri);
-      clientPromise = client.connect();
-    }
-  }
-
   try {
+    if (process.env.NODE_ENV === "development") {
+      // In development mode, use a global variable to preserve across HMR
+      if (!global._mongoClientPromise) {
+        client = new MongoClient(uri);
+        global._mongoClientPromise = client.connect();
+      }
+      clientPromise = global._mongoClientPromise;
+    } else {
+      // In production mode
+      if (!clientPromise) {
+        client = new MongoClient(uri);
+        clientPromise = client.connect();
+      }
+    }
+
     return await clientPromise;
-  } catch (err) {
-    console.error("[MongoDB] Failed to connect to cluster:", err);
+  } catch (err: any) {
+    console.error("[MongoDB] Failed to initialize or connect to cluster:", err?.message || err);
     clientPromise = null;
     if (process.env.NODE_ENV === "development") {
       global._mongoClientPromise = undefined;

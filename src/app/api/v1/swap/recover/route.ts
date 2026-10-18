@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { corsJson, corsOptions } from "@/lib/server/cors";
-import { recoverProxyDeposit } from "@/lib/server/proxyForwarder";
+import {
+  recoverProxyDeposit,
+  inspectProxyDepositBalances,
+} from "@/lib/server/proxyForwarder";
 
 export const dynamic = "force-dynamic";
 
@@ -15,16 +18,22 @@ export async function OPTIONS() {
  * Sweeps stuck funds directly to Near Intents solver address or refunds 100% to user.
  * 
  * Body:
- * - depositAddress (required): The proxy deposit address
- * - action (optional): "forward" (default, sweeps to solver) | "refund" (refunds to user)
+ * - depositAddress (required): The proxy deposit address or swap ID
+ * - action (optional): "forward" (sweeps to solver) | "refund" (refunds to user) | "custom"
  * - customRecipient (optional): Custom destination address override
+ * - tokenAddress (optional): Specific ERC-20 contract address to sweep
+ * - tokenType (optional): "native" | "token" | "auto"
+ * - amount (optional): Specific amount to sweep
  */
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const depositAddress = body.depositAddress || body.address || body.swapId;
-    const action = body.action === "refund" ? "refund" : "forward";
+    const action = body.action || "forward";
     const customRecipient = body.customRecipient?.trim() || undefined;
+    const tokenAddress = body.tokenAddress?.trim() || undefined;
+    const tokenType = body.tokenType;
+    const amount = body.amount?.trim() || undefined;
 
     if (!depositAddress || typeof depositAddress !== "string") {
       return corsJson(
@@ -36,11 +45,14 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log(`[SwapRecover] Manual recovery requested for ${depositAddress}, action: ${action}`);
+    console.log(`[SwapRecover] Recovery requested for ${depositAddress}, action: ${action}`);
 
     const result = await recoverProxyDeposit(depositAddress.trim(), {
       action,
       customRecipient,
+      tokenAddress,
+      tokenType,
+      amount,
     });
 
     if (!result.success) {
@@ -58,6 +70,7 @@ export async function POST(req: Request) {
       success: true,
       message: result.message,
       txHash: result.txHash,
+      explorerUrl: result.explorerUrl,
       recoveredAmount: result.recoveredAmount,
       destination: result.destination,
       order: result.order,
@@ -76,12 +89,16 @@ export async function POST(req: Request) {
 
 /**
  * GET /api/v1/swap/recover?depositAddress=...
- * Inspect recovery status or trigger forward check
+ * 
+ * Inspect on-chain balances across native gas and ERC-20 tokens,
+ * or trigger an automatic forward if ?trigger=true.
  */
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const depositAddress = searchParams.get("depositAddress") || searchParams.get("address") || searchParams.get("swapId");
+    const shouldTrigger = searchParams.get("trigger") === "true" || searchParams.get("action") === "forward";
+    const customToken = searchParams.get("customToken") || undefined;
 
     if (!depositAddress) {
       return corsJson(
@@ -90,15 +107,28 @@ export async function GET(req: Request) {
       );
     }
 
-    const result = await recoverProxyDeposit(depositAddress.trim(), { action: "forward" });
+    if (shouldTrigger) {
+      const result = await recoverProxyDeposit(depositAddress.trim(), { action: "forward" });
+      return corsJson({
+        success: result.success,
+        message: result.message,
+        txHash: result.txHash || null,
+        explorerUrl: result.explorerUrl || null,
+        recoveredAmount: result.recoveredAmount || null,
+        destination: result.destination || null,
+        order: result.order || null,
+      });
+    }
+
+    // Default inspection behavior
+    const inspectRes = await inspectProxyDepositBalances(depositAddress.trim(), customToken);
+    if (!inspectRes.success) {
+      return corsJson({ success: false, error: inspectRes.message }, { status: 404 });
+    }
 
     return corsJson({
-      success: result.success,
-      message: result.message,
-      txHash: result.txHash || null,
-      recoveredAmount: result.recoveredAmount || null,
-      destination: result.destination || null,
-      order: result.order || null,
+      success: true,
+      report: inspectRes.report,
     });
   } catch (err: any) {
     return corsJson({ success: false, error: err.message }, { status: 500 });

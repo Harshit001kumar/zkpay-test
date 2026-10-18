@@ -8,6 +8,7 @@ import {
   getAddress,
   isAddress,
   formatUnits,
+  parseUnits,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, arbitrum, polygon, bsc } from "viem/chains";
@@ -27,25 +28,32 @@ const ERC20_ABI = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
   "function transfer(address to, uint256 amount) returns (bool)",
   "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)",
 ]);
 
 // Known token addresses across Tier 2 chains
-const CHAIN_TOKENS: Record<string, Record<string, `0x${string}`>> = {
+export const CHAIN_TOKENS: Record<string, Record<string, `0x${string}`>> = {
   base: {
     USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     USDT: "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+    DAI: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
   },
   arb: {
     USDC: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+    USDCe: "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8",
     USDT: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
+    DAI: "0xDA10009cBd5D07dd0CeCc6616156627515b3c58A",
   },
   polygon: {
     USDC: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+    USDCe: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
     USDT: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+    DAI: "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
   },
   bsc: {
     USDT: "0x55d398326f99059fF775485246999027B3197955",
     USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+    BUSD: "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
   },
 };
 
@@ -590,6 +598,222 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
   return order;
 }
 
+export interface TokenBalanceInfo {
+  symbol: string;
+  address: string;
+  balanceFormatted: string;
+  rawBalance: string;
+  decimals: number;
+  isExpected: boolean;
+}
+
+export interface ProxyBalanceReport {
+  swapId: string;
+  chain: string;
+  proxyDepositAddress: string;
+  orderStatus: string;
+  createdAt: number;
+  expiresAt: number;
+  refundTo: string;
+  solverDepositAddress: string;
+  fromAsset: string;
+  toAsset: string;
+  expectedAmount: string;
+  hasMismatchedTokens: boolean;
+  mismatchedWarning?: string;
+  nativeBalance: {
+    symbol: string;
+    balanceFormatted: string;
+    rawBalance: string;
+    hasGas: boolean;
+  };
+  tokens: TokenBalanceInfo[];
+}
+
+export function getExplorerTxUrl(chain: string, txHash: string): string {
+  const c = normalizeChain(chain);
+  if (c === "sol") return `https://solscan.io/tx/${txHash}`;
+  if (c === "polygon") return `https://polygonscan.com/tx/${txHash}`;
+  if (c === "arb") return `https://arbiscan.io/tx/${txHash}`;
+  if (c === "bsc") return `https://bscscan.com/tx/${txHash}`;
+  return `https://basescan.org/tx/${txHash}`;
+}
+
+/**
+ * Inspects all on-chain balances (native gas + ERC-20 tokens) across a proxy deposit address.
+ * Automatically scans known tokens to detect mismatched deposits (e.g. USDC sent when USDT was selected).
+ */
+export async function inspectProxyDepositBalances(
+  addressOrSwapId: string,
+  customTokenAddress?: string
+): Promise<{ success: boolean; report?: ProxyBalanceReport; message?: string }> {
+  const query = addressOrSwapId.trim();
+  const order =
+    (await getProxyOrderByAddress(query)) ||
+    (await getProxyOrderBySwapId(query));
+
+  if (!order) {
+    return { success: false, message: `No proxy order found for '${query}'.` };
+  }
+
+  const normChain = normalizeChain(order.chain) || order.chain.toLowerCase();
+  const upperSymbol = order.fromAsset.toUpperCase();
+
+  // 1. SOLANA
+  if (normChain === "sol") {
+    let lamports = 0n;
+    try {
+      const balanceRes = await fetchSolanaRpc("getBalance", [order.proxyDepositAddress]);
+      lamports = BigInt(balanceRes?.value || 0);
+    } catch (e) {
+      console.warn("[Inspect] Solana balance query warning:", e);
+    }
+    const formatted = (Number(lamports) / 1e9).toFixed(6);
+
+    return {
+      success: true,
+      report: {
+        swapId: order.swapId,
+        chain: order.chain,
+        proxyDepositAddress: order.proxyDepositAddress,
+        orderStatus: order.status,
+        createdAt: order.createdAt,
+        expiresAt: order.expiresAt,
+        refundTo: order.refundTo,
+        solverDepositAddress: order.solverDepositAddress,
+        fromAsset: order.fromAsset,
+        toAsset: order.toAsset,
+        expectedAmount: order.totalAmountFormatted || "0",
+        hasMismatchedTokens: false,
+        nativeBalance: {
+          symbol: "SOL",
+          balanceFormatted: formatted,
+          rawBalance: lamports.toString(),
+          hasGas: lamports > 5000n,
+        },
+        tokens: [],
+      },
+    };
+  }
+
+  // 2. EVM CHAINS (Base, Arbitrum, Polygon, BSC)
+  const publicClient = getPublicClientForChain(order.chain);
+  const nativeSymbol =
+    normChain === "polygon" ? "POL" : normChain === "bsc" ? "BNB" : "ETH";
+
+  let nativeWei = 0n;
+  try {
+    nativeWei = await publicClient.getBalance({
+      address: order.proxyDepositAddress as `0x${string}`,
+    });
+  } catch (e) {
+    console.warn("[Inspect] Native balance fetch error:", e);
+  }
+
+  const nativeFormatted = (Number(nativeWei) / 1e18).toFixed(6);
+  const gasPrice = await publicClient.getGasPrice().catch(() => 1000000000n);
+  const hasGas = nativeWei >= 21000n * gasPrice;
+
+  // Build list of tokens to check
+  const tokensToCheck = new Map<string, { symbol: string; address: `0x${string}` }>();
+  const chainTokens = CHAIN_TOKENS[normChain] || {};
+  for (const [sym, addr] of Object.entries(chainTokens)) {
+    tokensToCheck.set(addr.toLowerCase(), { symbol: sym, address: addr });
+  }
+
+  // If order's originAssetId specifies a contract address, add it
+  if (order.originAssetId.includes("0x")) {
+    const match = order.originAssetId.match(/0x[a-fA-F0-9]{40}/);
+    if (match) {
+      const addr = getAddress(match[0]);
+      if (!tokensToCheck.has(addr.toLowerCase())) {
+        tokensToCheck.set(addr.toLowerCase(), { symbol: upperSymbol, address: addr });
+      }
+    }
+  }
+
+  // If custom token address passed
+  if (customTokenAddress && isAddress(customTokenAddress.trim())) {
+    const addr = getAddress(customTokenAddress.trim());
+    if (!tokensToCheck.has(addr.toLowerCase())) {
+      tokensToCheck.set(addr.toLowerCase(), { symbol: "CUSTOM", address: addr });
+    }
+  }
+
+  const tokenList: TokenBalanceInfo[] = [];
+  let hasMismatchedTokens = false;
+  let mismatchedWarning = "";
+
+  for (const { symbol, address } of tokensToCheck.values()) {
+    try {
+      const [rawBal, decimals, dynSymbol] = await Promise.all([
+        publicClient.readContract({
+          address,
+          abi: ERC20_ABI,
+          functionName: "balanceOf",
+          args: [order.proxyDepositAddress as `0x${string}`],
+        }) as Promise<bigint>,
+        publicClient.readContract({
+          address,
+          abi: ERC20_ABI,
+          functionName: "decimals",
+        }).catch(() => 6) as Promise<number>,
+        publicClient.readContract({
+          address,
+          abi: ERC20_ABI,
+          functionName: "symbol",
+        }).catch(() => symbol) as Promise<string>,
+      ]);
+
+      const formatted = formatUnits(rawBal, decimals);
+      const isExpected =
+        dynSymbol.toUpperCase() === upperSymbol || symbol.toUpperCase() === upperSymbol;
+
+      if (rawBal > 0n && !isExpected) {
+        hasMismatchedTokens = true;
+        mismatchedWarning = `Mismatched deposit detected! Order expected ${upperSymbol}, but found ${formatted} ${dynSymbol} on ${order.chain}.`;
+      }
+
+      tokenList.push({
+        symbol: dynSymbol || symbol,
+        address,
+        balanceFormatted: formatted,
+        rawBalance: rawBal.toString(),
+        decimals,
+        isExpected,
+      });
+    } catch {
+      // ignore
+    }
+  }
+
+  return {
+    success: true,
+    report: {
+      swapId: order.swapId,
+      chain: order.chain,
+      proxyDepositAddress: order.proxyDepositAddress,
+      orderStatus: order.status,
+      createdAt: order.createdAt,
+      expiresAt: order.expiresAt,
+      refundTo: order.refundTo,
+      solverDepositAddress: order.solverDepositAddress,
+      fromAsset: order.fromAsset,
+      toAsset: order.toAsset,
+      expectedAmount: order.totalAmountFormatted || "0",
+      hasMismatchedTokens,
+      mismatchedWarning: hasMismatchedTokens ? mismatchedWarning : undefined,
+      nativeBalance: {
+        symbol: nativeSymbol,
+        balanceFormatted: nativeFormatted,
+        rawBalance: nativeWei.toString(),
+        hasGas,
+      },
+      tokens: tokenList,
+    },
+  };
+}
+
 export interface RecoverResult {
   success: boolean;
   message: string;
@@ -597,18 +821,26 @@ export interface RecoverResult {
   order?: ProxySwapOrder | null;
   recoveredAmount?: string;
   destination?: string;
+  explorerUrl?: string;
+}
+
+export interface RecoverOptions {
+  action?: "forward" | "refund" | "custom";
+  customRecipient?: string;
+  tokenAddress?: string; // "native" or specific 0x... address
+  tokenType?: "native" | "token" | "auto";
+  amount?: string;
 }
 
 /**
  * Permanent emergency recovery function for any stuck deposit across Solana or EVM chains.
- * Can sweep funds directly to Near Intents solver address or refund 100% to the user.
+ * Can sweep funds directly to Near Intents solver address, refund 100% to the user,
+ * or manually transfer to ANY custom destination address entered by admin.
+ * Supports sweeping native gas or any ERC-20 token (even mismatched tokens).
  */
 export async function recoverProxyDeposit(
   addressOrSwapId: string,
-  options?: {
-    action?: "forward" | "refund";
-    customRecipient?: string;
-  }
+  options?: RecoverOptions
 ): Promise<RecoverResult> {
   const query = addressOrSwapId.trim();
   const order =
@@ -625,6 +857,12 @@ export async function recoverProxyDeposit(
   const normChain = normalizeChain(order.chain) || order.chain.toLowerCase();
   const action = options?.action || "forward";
 
+  // Determine recipient destination address
+  let destination = options?.customRecipient?.trim();
+  if (!destination) {
+    destination = action === "refund" ? order.refundTo : order.solverDepositAddress;
+  }
+
   // 1. SOLANA RECOVERY
   if (normChain === "sol") {
     const balanceRes = await fetchSolanaRpc("getBalance", [order.proxyDepositAddress]);
@@ -640,10 +878,6 @@ export async function recoverProxyDeposit(
     }
 
     const privKeyHex = getDecryptedProxyPrivateKey(order);
-    const destination =
-      options?.customRecipient ||
-      (action === "refund" ? order.refundTo : order.solverDepositAddress);
-
     const sweepAmount = lamports - MIN_NETWORK_FEE;
 
     const txHash = await sendSolanaTransfer({
@@ -656,20 +890,32 @@ export async function recoverProxyDeposit(
     const updated = await updateProxySwapOrder(order.swapId, {
       status: action === "refund" ? "SETTLED" : "FORWARDED",
       forwardTxHash: txHash,
-      error: action === "refund" ? "Manually refunded to user" : undefined,
+      error: action === "refund" ? `Manually refunded to ${destination}` : undefined,
     });
+
+    const explorerUrl = getExplorerTxUrl("sol", txHash);
 
     return {
       success: true,
       message: `Successfully swept ${sweepAmount} lamports to ${destination}!`,
       txHash,
       order: updated,
-      recoveredAmount: sweepAmount.toString(),
+      recoveredAmount: (Number(sweepAmount) / 1e9).toFixed(6) + " SOL",
       destination,
+      explorerUrl,
     };
   }
 
   // 2. EVM RECOVERY (Base, Arbitrum, Polygon, BSC)
+  if (!isAddress(destination)) {
+    return {
+      success: false,
+      message: `Invalid EVM destination address: '${destination}'.`,
+      order,
+    };
+  }
+  const cleanDestination = getAddress(destination);
+
   const publicClient = getPublicClientForChain(order.chain);
   const privKeyHex = getDecryptedProxyPrivateKey(order);
   const proxyAccount = privateKeyToAccount(privKeyHex);
@@ -681,9 +927,6 @@ export async function recoverProxyDeposit(
     transport: http(),
   });
 
-  const destination = (options?.customRecipient ||
-    (action === "refund" ? order.refundTo : order.solverDepositAddress)) as `0x${string}`;
-
   const upperSymbol = order.fromAsset.toUpperCase();
   const isNative =
     upperSymbol === "ETH" ||
@@ -691,7 +934,17 @@ export async function recoverProxyDeposit(
     upperSymbol === "POL" ||
     upperSymbol === "MATIC";
 
-  if (isNative) {
+  const explicitNative =
+    options?.tokenType === "native" ||
+    options?.tokenAddress?.toLowerCase() === "native";
+
+  const explicitToken =
+    options?.tokenType === "token" ||
+    (options?.tokenAddress && options.tokenAddress.toLowerCase() !== "native");
+
+  const sweepNative = explicitNative || (!explicitToken && isNative);
+
+  if (sweepNative) {
     const balanceWei = await publicClient.getBalance({ address: proxyAccount.address });
     const gasPrice = await publicClient.getGasPrice();
     const gasLimit = 21000n;
@@ -700,71 +953,131 @@ export async function recoverProxyDeposit(
     if (balanceWei <= gasCost) {
       return {
         success: false,
-        message: `Proxy address has insufficient balance to sweep (${balanceWei} wei).`,
+        message: `Proxy address has insufficient native balance to sweep (${balanceWei} wei).`,
         order,
       };
     }
 
-    const sweepAmount = balanceWei - gasCost;
+    const sweepAmount = options?.amount
+      ? parseUnits(options.amount, 18)
+      : balanceWei - gasCost;
+
     const txHash = await walletClient.sendTransaction({
-      to: destination,
+      to: cleanDestination,
       value: sweepAmount,
     });
+
+    await publicClient.waitForTransactionReceipt({ hash: txHash }).catch(() => {});
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: action === "refund" ? "SETTLED" : "FORWARDED",
       forwardTxHash: txHash,
-      error: action === "refund" ? "Manually refunded to user" : undefined,
+      error: action === "refund" ? `Manually refunded to ${cleanDestination}` : undefined,
     });
+
+    const explorerUrl = getExplorerTxUrl(order.chain, txHash);
 
     return {
       success: true,
-      message: `Successfully swept ${sweepAmount} wei to ${destination}!`,
+      message: `Successfully swept ${(Number(sweepAmount) / 1e18).toFixed(6)} native gas tokens to ${cleanDestination}!`,
       txHash,
       order: updated,
-      recoveredAmount: sweepAmount.toString(),
-      destination,
+      recoveredAmount: (Number(sweepAmount) / 1e18).toFixed(6),
+      destination: cleanDestination,
+      explorerUrl,
     };
   } else {
-    // ERC-20 token sweep
-    let tokenAddress = CHAIN_TOKENS[order.chain]?.[upperSymbol];
-    if (!tokenAddress && order.originAssetId.includes("0x")) {
-      const match = order.originAssetId.match(/0x[a-fA-F0-9]{40}/);
-      if (match) {
-        tokenAddress = getAddress(match[0]);
+    // ERC-20 token sweep (Supports order's asset, explicit tokenAddress, or auto-detecting mismatched token)
+    let tokenAddress: `0x${string}` | null = null;
+
+    if (options?.tokenAddress && isAddress(options.tokenAddress)) {
+      tokenAddress = getAddress(options.tokenAddress);
+    } else {
+      tokenAddress = CHAIN_TOKENS[normChain]?.[upperSymbol] || null;
+      if (!tokenAddress && order.originAssetId.includes("0x")) {
+        const match = order.originAssetId.match(/0x[a-fA-F0-9]{40}/);
+        if (match) tokenAddress = getAddress(match[0]);
+      }
+
+      // Auto-detect: if expected token has 0 balance, scan known tokens for any balance > 0
+      if (!tokenAddress) {
+        const candidateTokens = CHAIN_TOKENS[normChain] || {};
+        for (const candidateAddr of Object.values(candidateTokens)) {
+          const bal = (await publicClient
+            .readContract({
+              address: candidateAddr,
+              abi: ERC20_ABI,
+              functionName: "balanceOf",
+              args: [proxyAccount.address],
+            })
+            .catch(() => 0n)) as bigint;
+
+          if (bal > 0n) {
+            tokenAddress = candidateAddr;
+            break;
+          }
+        }
       }
     }
 
     if (!tokenAddress) {
-      throw new Error(`Cannot resolve ERC-20 token address for ${order.fromAsset} on ${order.chain}`);
+      throw new Error(`Cannot resolve ERC-20 token address for ${order.fromAsset} on ${order.chain}. Please provide tokenAddress.`);
     }
 
-    const tokenBalance = (await publicClient.readContract({
-      address: tokenAddress,
-      abi: ERC20_ABI,
-      functionName: "balanceOf",
-      args: [proxyAccount.address],
-    })) as bigint;
+    const [tokenBalance, decimals, tokenSymbol] = await Promise.all([
+      publicClient.readContract({
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: "balanceOf",
+        args: [proxyAccount.address],
+      }) as Promise<bigint>,
+      publicClient.readContract({
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: "decimals",
+      }).catch(() => 6) as Promise<number>,
+      publicClient.readContract({
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: "symbol",
+      }).catch(() => upperSymbol) as Promise<string>,
+    ]);
 
     if (tokenBalance === 0n) {
       return {
         success: false,
-        message: `Proxy address has 0 ${order.fromAsset} token balance.`,
+        message: `Proxy address has 0 ${tokenSymbol} token balance.`,
         order,
       };
     }
 
+    const sweepAmount = options?.amount
+      ? parseUnits(options.amount, decimals)
+      : tokenBalance;
+
     const ethBalance = await publicClient.getBalance({ address: proxyAccount.address });
-    if (ethBalance < 21000n * (await publicClient.getGasPrice())) {
-      try {
-        const relayer = getRelayerWalletClient();
-        const fundTx = await relayer.sendTransaction({
-          to: proxyAccount.address,
-          value: 30000000000000n,
-        });
-        await publicClient.waitForTransactionReceipt({ hash: fundTx });
-      } catch (e) {
-        console.warn("[Recover] Gas advance warning:", e);
+    const gasPrice = await publicClient.getGasPrice();
+    const minGasNeeded = 60000n * gasPrice;
+
+    if (ethBalance < minGasNeeded) {
+      if (normChain === "base") {
+        try {
+          const relayer = getRelayerWalletClient();
+          const fundTx = await relayer.sendTransaction({
+            to: proxyAccount.address,
+            value: 30000000000000n,
+          });
+          await publicClient.waitForTransactionReceipt({ hash: fundTx });
+        } catch (e) {
+          console.warn("[Recover] Base gas advance warning:", e);
+        }
+      } else {
+        const nativeSym = normChain === "polygon" ? "POL" : normChain === "bsc" ? "BNB" : "ETH";
+        return {
+          success: false,
+          message: `Proxy wallet holds ${formatUnits(sweepAmount, decimals)} ${tokenSymbol}, but has insufficient native ${nativeSym} for network gas fee (${ethBalance} wei). Please send ~0.05 ${nativeSym} to proxy address ${proxyAccount.address} to power the transaction, then retry.`,
+          order,
+        };
       }
     }
 
@@ -772,22 +1085,27 @@ export async function recoverProxyDeposit(
       address: tokenAddress,
       abi: ERC20_ABI,
       functionName: "transfer",
-      args: [destination, tokenBalance],
+      args: [cleanDestination, sweepAmount],
     });
+
+    await publicClient.waitForTransactionReceipt({ hash: txHash }).catch(() => {});
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: action === "refund" ? "SETTLED" : "FORWARDED",
       forwardTxHash: txHash,
-      error: action === "refund" ? "Manually refunded to user" : undefined,
+      error: action === "refund" ? `Manually refunded to ${cleanDestination}` : undefined,
     });
+
+    const explorerUrl = getExplorerTxUrl(order.chain, txHash);
 
     return {
       success: true,
-      message: `Successfully swept ${tokenBalance} tokens to ${destination}!`,
+      message: `Successfully swept ${formatUnits(sweepAmount, decimals)} ${tokenSymbol} to ${cleanDestination}!`,
       txHash,
       order: updated,
-      recoveredAmount: tokenBalance.toString(),
-      destination,
+      recoveredAmount: `${formatUnits(sweepAmount, decimals)} ${tokenSymbol}`,
+      destination: cleanDestination,
+      explorerUrl,
     };
   }
 }

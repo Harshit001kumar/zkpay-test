@@ -178,6 +178,139 @@ export default function AdminPage() {
     }
   };
 
+  // Emergency Proxy Recovery Tool State
+  const [proxyQueryInput, setProxyQueryInput] = useState("");
+  const [proxyCustomTokenInput, setProxyCustomTokenInput] = useState("");
+  const [isInspectingProxy, setIsInspectingProxy] = useState(false);
+  const [proxyReport, setProxyReport] = useState<any | null>(null);
+  const [proxyInspectError, setProxyInspectError] = useState<string | null>(null);
+
+  // Recovery Execution State
+  const [recoveryAction, setRecoveryAction] = useState<"refund" | "forward" | "custom">("refund");
+  const [customRecipientInput, setCustomRecipientInput] = useState("");
+  const [selectedAssetType, setSelectedAssetType] = useState<"native" | "token">("native");
+  const [selectedTokenAddress, setSelectedTokenAddress] = useState("");
+  const [customSweepAmount, setCustomSweepAmount] = useState("");
+  const [isExecutingRecovery, setIsExecutingRecovery] = useState(false);
+  const [recoverySuccessResult, setRecoverySuccessResult] = useState<any | null>(null);
+  const [recoveryExecuteError, setRecoveryExecuteError] = useState<string | null>(null);
+
+  // Recent Proxy Orders
+  const [recentProxyOrders, setRecentProxyOrders] = useState<any[]>([]);
+  const [isLoadingRecentProxy, setIsLoadingRecentProxy] = useState(false);
+
+  const loadRecentProxyOrders = useCallback(async () => {
+    setIsLoadingRecentProxy(true);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch("/api/admin/proxy-recover", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.orders) {
+        setRecentProxyOrders(data.orders);
+      }
+    } catch (e) {
+      console.warn("Failed to load recent proxy orders:", e);
+    } finally {
+      setIsLoadingRecentProxy(false);
+    }
+  }, [getAccessToken]);
+
+  const handleInspectProxy = async (targetQuery?: string) => {
+    const q = (targetQuery || proxyQueryInput).trim();
+    if (!q) return;
+
+    setIsInspectingProxy(true);
+    setProxyInspectError(null);
+    setProxyReport(null);
+    setRecoverySuccessResult(null);
+    setRecoveryExecuteError(null);
+
+    try {
+      const token = await getAccessToken();
+      const url = `/api/admin/proxy-recover?query=${encodeURIComponent(q)}${
+        proxyCustomTokenInput.trim() ? `&customToken=${encodeURIComponent(proxyCustomTokenInput.trim())}` : ""
+      }`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.report) {
+        setProxyReport(data.report);
+        setCustomRecipientInput(data.report.refundTo || "");
+
+        // Pre-select asset type based on detected balances
+        const tokensWithBalance = (data.report.tokens || []).filter(
+          (t: any) => BigInt(t.rawBalance || "0") > 0n
+        );
+        if (tokensWithBalance.length > 0) {
+          setSelectedAssetType("token");
+          setSelectedTokenAddress(tokensWithBalance[0].address);
+        } else {
+          setSelectedAssetType("native");
+        }
+      } else {
+        setProxyInspectError(data.error || "No proxy order found for this query.");
+      }
+    } catch (err: any) {
+      setProxyInspectError(err.message || "Failed to inspect proxy deposit");
+    } finally {
+      setIsInspectingProxy(false);
+    }
+  };
+
+  const handleExecuteRecovery = async () => {
+    if (!proxyReport) return;
+
+    let dest = customRecipientInput.trim();
+    if (recoveryAction === "refund") {
+      dest = proxyReport.refundTo;
+    } else if (recoveryAction === "forward") {
+      dest = proxyReport.solverDepositAddress;
+    }
+
+    if (!dest) {
+      setRecoveryExecuteError("Please provide a valid destination address.");
+      return;
+    }
+
+    setIsExecutingRecovery(true);
+    setRecoveryExecuteError(null);
+    setRecoverySuccessResult(null);
+
+    try {
+      const token = await getAccessToken();
+      const res = await fetch("/api/admin/proxy-recover", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          depositAddress: proxyReport.proxyDepositAddress,
+          action: recoveryAction,
+          customRecipient: dest,
+          tokenType: selectedAssetType,
+          tokenAddress: selectedAssetType === "token" ? selectedTokenAddress : undefined,
+          amount: customSweepAmount.trim() || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setRecoverySuccessResult(data);
+        handleInspectProxy(proxyReport.proxyDepositAddress);
+      } else {
+        setRecoveryExecuteError(data.error || "Recovery transfer failed.");
+      }
+    } catch (err: any) {
+      setRecoveryExecuteError(err.message || "Failed to execute recovery transfer");
+    } finally {
+      setIsExecutingRecovery(false);
+    }
+  };
+
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -436,6 +569,12 @@ export default function AdminPage() {
       loadAdminData();
     }
   }, [isAuthorized, loadAdminData]);
+
+  useEffect(() => {
+    if (isAuthorized && activeTab === "tools") {
+      loadRecentProxyOrders();
+    }
+  }, [isAuthorized, activeTab, loadRecentProxyOrders]);
 
   const handleLookupShift = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1347,6 +1486,19 @@ export default function AdminPage() {
                       <span className="text-emerald-400 font-bold">{shiftData.settleAmount} USDC</span>
                     </div>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("tools");
+                      setProxyQueryInput(shiftIdInput.trim());
+                      handleInspectProxy(shiftIdInput.trim());
+                    }}
+                    className="w-full mt-2 py-2 px-3 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-200 font-mono text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>Open in Emergency Recovery & Manual Transfer</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -1795,6 +1947,431 @@ export default function AdminPage() {
                       </a>
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+
+            {/* Tool 3: Emergency Proxy Sweeper & Manual Recovery Console */}
+            <div className="obsidian-glass rounded-2xl p-5 sm:p-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
+                    <ShieldAlert className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+                      Emergency Proxy Sweeper & Manual Transfer Console
+                    </h3>
+                    <p className="text-xs text-[#909097] font-mono mt-0.5">
+                      Inspect on-chain balances across native gas and tokens, detect mismatched deposits (e.g. USDC sent on a USDT swap), and manually refund or sweep to ANY address.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={loadRecentProxyOrders}
+                  disabled={isLoadingRecentProxy}
+                  className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-mono text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 self-start sm:self-auto shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingRecentProxy ? "animate-spin" : ""}`} />
+                  <span>Refresh Orders</span>
+                </button>
+              </div>
+
+              {/* Input Form for Querying */}
+              <div className="space-y-2.5">
+                <div className="flex flex-col sm:flex-row gap-2.5">
+                  <input
+                    type="text"
+                    placeholder="Enter Proxy Deposit Address or Swap ID (e.g. 0x... or sol Base58 or swap_...)"
+                    value={proxyQueryInput}
+                    onChange={(e) => setProxyQueryInput(e.target.value)}
+                    className="flex-1 px-4 py-3 rounded-xl bg-black/40 border border-white/10 text-xs font-mono text-white placeholder-[#909097] focus:outline-none focus:border-[#c0c6de]"
+                  />
+                  <button
+                    onClick={() => handleInspectProxy()}
+                    disabled={isInspectingProxy || !proxyQueryInput.trim()}
+                    className="px-5 py-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-200 font-mono text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95"
+                  >
+                    <Search className={`w-3.5 h-3.5 ${isInspectingProxy ? "animate-spin" : ""}`} />
+                    <span>{isInspectingProxy ? "Scanning Chain..." : "Inspect Balances"}</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Optional: Custom ERC-20 Token Contract Address (0x...)"
+                    value={proxyCustomTokenInput}
+                    onChange={(e) => setProxyCustomTokenInput(e.target.value)}
+                    className="flex-1 px-3.5 py-2 rounded-xl bg-black/20 border border-white/5 text-[11px] font-mono text-[#c6c6cd] placeholder-[#909097]/60 focus:outline-none focus:border-white/20"
+                  />
+                  <span className="text-[10px] text-[#909097] font-mono shrink-0">For arbitrary custom tokens</span>
+                </div>
+              </div>
+
+              {/* Quick Select from Recent Proxy Orders */}
+              {recentProxyOrders.length > 0 && (
+                <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-mono text-[#909097]">
+                    <span>Recent Proxy Orders ({recentProxyOrders.length}):</span>
+                    <span>Click to load into inspector</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pr-1">
+                    {recentProxyOrders.slice(0, 15).map((o) => (
+                      <button
+                        key={o.swapId}
+                        onClick={() => {
+                          setProxyQueryInput(o.proxyDepositAddress);
+                          handleInspectProxy(o.proxyDepositAddress);
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-black/40 hover:bg-white/10 border border-white/10 text-[10px] font-mono text-[#c0c6de] flex items-center gap-1.5 transition-all text-left truncate max-w-[260px]"
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          o.status === "FORWARDED" || o.status === "SETTLED" ? "bg-emerald-400" :
+                          o.status === "EXPIRED" ? "bg-red-400" : "bg-amber-400"
+                        }`} />
+                        <span className="font-bold text-white uppercase">{o.chain}</span>
+                        <span className="text-[#909097]">{o.fromAsset}</span>
+                        <span className="truncate">{o.proxyDepositAddress.slice(0, 6)}...{o.proxyDepositAddress.slice(-4)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Inspection Error */}
+              {proxyInspectError && (
+                <div className="p-3.5 rounded-xl bg-red-950/30 border border-red-500/20 text-[#ffb4ab] text-xs font-mono flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                  <span>{proxyInspectError}</span>
+                </div>
+              )}
+
+              {/* Inspection Report & Manual Transfer Panel */}
+              {proxyReport && (
+                <div className="p-4 sm:p-5 rounded-xl bg-black/50 border border-white/15 space-y-4">
+                  {/* Mismatched Token Alert Banner */}
+                  {proxyReport.hasMismatchedTokens && (
+                    <div className="p-3.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs font-mono space-y-1">
+                      <div className="flex items-center gap-2 font-bold">
+                        <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>Mismatched Token Deposit Detected!</span>
+                      </div>
+                      <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                        {proxyReport.mismatchedWarning || "The user deposited an alternate token that was not requested in the swap quote. Funds are securely held in the proxy wallet."}
+                      </p>
+                      <p className="text-[10px] text-amber-300/80 font-bold">
+                        👉 Select the token below and click "Refund to User" or enter a custom address to return funds.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Order Overview Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
+                    <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 space-y-0.5">
+                      <span className="text-[#909097] text-[10px] uppercase">Chain / Asset</span>
+                      <p className="text-white font-bold uppercase">{proxyReport.chain} &bull; {proxyReport.fromAsset}</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 space-y-0.5">
+                      <span className="text-[#909097] text-[10px] uppercase">Expected Deposit</span>
+                      <p className="text-white font-bold">{proxyReport.expectedAmount} {proxyReport.fromAsset}</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 space-y-0.5">
+                      <span className="text-[#909097] text-[10px] uppercase">Order Status</span>
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        proxyReport.orderStatus === "FORWARDED" || proxyReport.orderStatus === "SETTLED" ? "bg-emerald-500/20 text-emerald-300" :
+                        proxyReport.orderStatus === "EXPIRED" ? "bg-red-500/20 text-red-300" : "bg-amber-500/20 text-amber-300"
+                      }`}>
+                        {proxyReport.orderStatus}
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 space-y-0.5">
+                      <span className="text-[#909097] text-[10px] uppercase">Proxy Address</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-white truncate text-[11px]">{proxyReport.proxyDepositAddress}</span>
+                        <button
+                          onClick={() => copyToClipboard(proxyReport.proxyDepositAddress, "report_proxy")}
+                          className="text-[#909097] hover:text-white shrink-0"
+                        >
+                          {copiedKey === "report_proxy" ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Registered Addresses */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs font-mono">
+                    <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 flex items-center justify-between">
+                      <span className="text-[#909097] text-[11px]">User Refund Address:</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-emerald-400 font-bold truncate max-w-[170px] sm:max-w-[200px] text-[11px]">{proxyReport.refundTo}</span>
+                        <button
+                          onClick={() => copyToClipboard(proxyReport.refundTo, "report_refund")}
+                          className="text-[#909097] hover:text-white"
+                        >
+                          {copiedKey === "report_refund" ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 flex items-center justify-between">
+                      <span className="text-[#909097] text-[11px]">Solver Address:</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-purple-400 font-bold truncate max-w-[170px] sm:max-w-[200px] text-[11px]">{proxyReport.solverDepositAddress}</span>
+                        <button
+                          onClick={() => copyToClipboard(proxyReport.solverDepositAddress, "report_solver")}
+                          className="text-[#909097] hover:text-white"
+                        >
+                          {copiedKey === "report_solver" ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Live On-Chain Balances Detected */}
+                  <div className="space-y-2">
+                    <span className="text-xs font-bold text-white uppercase font-mono tracking-wider block">
+                      Live On-Chain Balances on Proxy Address
+                    </span>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 font-mono text-xs">
+                      {/* Native Gas Token Balance */}
+                      <div className={`p-3 rounded-xl border ${
+                        selectedAssetType === "native" ? "bg-amber-500/10 border-amber-500/30" : "bg-black/30 border-white/10"
+                      } space-y-1.5`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[#909097] text-[10px] uppercase font-bold">
+                            {proxyReport.nativeBalance.symbol} (Native Gas)
+                          </span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                            proxyReport.nativeBalance.hasGas ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300"
+                          }`}>
+                            {proxyReport.nativeBalance.hasGas ? "Sufficient Gas" : "Gas Low / 0"}
+                          </span>
+                        </div>
+                        <p className="text-base font-bold text-white">
+                          {proxyReport.nativeBalance.balanceFormatted} {proxyReport.nativeBalance.symbol}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedAssetType("native");
+                            setSelectedTokenAddress("");
+                          }}
+                          className={`w-full py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${
+                            selectedAssetType === "native"
+                              ? "bg-amber-500 text-black"
+                              : "bg-white/10 hover:bg-white/20 text-white"
+                          }`}
+                        >
+                          {selectedAssetType === "native" ? "Selected for Sweep" : "Select Native"}
+                        </button>
+                      </div>
+
+                      {/* Token Balances */}
+                      {(proxyReport.tokens || []).map((t: any) => {
+                        const hasBal = BigInt(t.rawBalance || "0") > 0n;
+                        const isSelected = selectedAssetType === "token" && selectedTokenAddress.toLowerCase() === t.address.toLowerCase();
+
+                        return (
+                          <div
+                            key={t.address}
+                            className={`p-3 rounded-xl border ${
+                              isSelected
+                                ? "bg-purple-500/15 border-purple-500/30"
+                                : hasBal
+                                ? "bg-emerald-950/20 border-emerald-500/30"
+                                : "bg-black/30 border-white/5 opacity-60"
+                            } space-y-1.5`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[#909097] text-[10px] uppercase font-bold truncate max-w-[110px]">
+                                {t.symbol}
+                              </span>
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                                t.isExpected ? "bg-blue-500/20 text-blue-300" : "bg-amber-500/20 text-amber-300"
+                              }`}>
+                                {t.isExpected ? "Expected" : "Alternate Token"}
+                              </span>
+                            </div>
+                            <p className={`text-base font-bold ${hasBal ? "text-emerald-400" : "text-[#909097]"}`}>
+                              {t.balanceFormatted} {t.symbol}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedAssetType("token");
+                                setSelectedTokenAddress(t.address);
+                              }}
+                              className={`w-full py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${
+                                isSelected
+                                  ? "bg-purple-500 text-white"
+                                  : "bg-white/10 hover:bg-white/20 text-white"
+                              }`}
+                            >
+                              {isSelected ? "Selected for Sweep" : "Select Token"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Manual Transfer Configuration Box */}
+                  <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10 space-y-3 font-mono text-xs">
+                    <span className="text-xs font-bold text-white uppercase tracking-wider block">
+                      Manual Transfer & Recovery Configuration
+                    </span>
+
+                    {/* Action Selector */}
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] text-[#909097] uppercase font-bold block">Destination Preset</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRecoveryAction("refund");
+                            setCustomRecipientInput(proxyReport.refundTo);
+                          }}
+                          className={`py-2 px-3 rounded-xl border text-left flex items-center justify-between transition-all ${
+                            recoveryAction === "refund"
+                              ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300 font-bold"
+                              : "bg-black/30 border-white/10 text-[#909097] hover:text-white"
+                          }`}
+                        >
+                          <span>1. Refund to User</span>
+                          {recoveryAction === "refund" && <Check className="w-3.5 h-3.5" />}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRecoveryAction("forward");
+                            setCustomRecipientInput(proxyReport.solverDepositAddress);
+                          }}
+                          className={`py-2 px-3 rounded-xl border text-left flex items-center justify-between transition-all ${
+                            recoveryAction === "forward"
+                              ? "bg-blue-500/20 border-blue-500/40 text-blue-300 font-bold"
+                              : "bg-black/30 border-white/10 text-[#909097] hover:text-white"
+                          }`}
+                        >
+                          <span>2. Forward to Solver</span>
+                          {recoveryAction === "forward" && <Check className="w-3.5 h-3.5" />}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRecoveryAction("custom");
+                            setCustomRecipientInput("");
+                          }}
+                          className={`py-2 px-3 rounded-xl border text-left flex items-center justify-between transition-all ${
+                            recoveryAction === "custom"
+                              ? "bg-purple-500/20 border-purple-500/40 text-purple-300 font-bold"
+                              : "bg-black/30 border-white/10 text-[#909097] hover:text-white"
+                          }`}
+                        >
+                          <span>3. Custom Address</span>
+                          {recoveryAction === "custom" && <Check className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Recipient Address Field */}
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-[#909097] uppercase font-bold block">
+                        Target Destination Recipient Address
+                      </span>
+                      <input
+                        type="text"
+                        placeholder="Enter destination recipient address (0x... or Solana Base58)"
+                        value={customRecipientInput}
+                        onChange={(e) => {
+                          setCustomRecipientInput(e.target.value);
+                          if (recoveryAction !== "custom") setRecoveryAction("custom");
+                        }}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-xs font-mono text-white focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+
+                    {/* Token / Asset Selection summary */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-[#909097] uppercase font-bold block">
+                          Asset Selected to Transfer
+                        </span>
+                        <div className="p-2.5 rounded-xl bg-black/40 border border-white/10 text-white font-bold flex items-center justify-between">
+                          <span>
+                            {selectedAssetType === "native"
+                              ? `${proxyReport.nativeBalance.symbol} (Native Gas)`
+                              : (proxyReport.tokens.find((t: any) => t.address.toLowerCase() === selectedTokenAddress.toLowerCase())?.symbol || "Custom ERC-20")}
+                          </span>
+                          <span className="text-[10px] font-normal text-[#909097] font-mono">
+                            {selectedAssetType === "native" ? "Native Layer" : "Token Contract"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-[#909097] uppercase font-bold block">
+                          Amount to Transfer (Leave blank for 100% full balance)
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="e.g. 50.0 or leave empty for MAX"
+                          value={customSweepAmount}
+                          onChange={(e) => setCustomSweepAmount(e.target.value)}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-xs font-mono text-white focus:outline-none focus:border-purple-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Execution Error Banner */}
+                    {recoveryExecuteError && (
+                      <div className="p-3 rounded-xl bg-red-950/30 border border-red-500/20 text-[#ffb4ab] text-xs font-mono flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                        <span>{recoveryExecuteError}</span>
+                      </div>
+                    )}
+
+                    {/* Success Banner */}
+                    {recoverySuccessResult && (
+                      <div className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-500/30 text-emerald-300 text-xs font-mono space-y-2">
+                        <div className="flex items-center gap-2 font-bold text-sm">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>Recovery Transfer Executed Successfully!</span>
+                        </div>
+                        <p>{recoverySuccessResult.message}</p>
+                        {recoverySuccessResult.txHash && (
+                          <div className="flex items-center gap-1.5 pt-1">
+                            <span className="text-[#909097]">Transaction:</span>
+                            <a
+                              href={recoverySuccessResult.explorerUrl || `https://basescan.org/tx/${recoverySuccessResult.txHash}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-white underline inline-flex items-center gap-1 font-bold"
+                            >
+                              <span className="truncate max-w-[200px]">{recoverySuccessResult.txHash}</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Execute CTA */}
+                    <button
+                      type="button"
+                      onClick={handleExecuteRecovery}
+                      disabled={isExecutingRecovery || !customRecipientInput.trim()}
+                      className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-purple-600 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white font-mono text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95 shadow-lg shadow-purple-500/10"
+                    >
+                      <Zap className={`w-4 h-4 ${isExecutingRecovery ? "animate-spin" : ""}`} />
+                      <span>{isExecutingRecovery ? "Executing On-Chain Transfer..." : `Broadcast Transfer to ${recoveryAction === "refund" ? "User Refund Address" : recoveryAction === "forward" ? "Solver Address" : "Custom Address"}`}</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
