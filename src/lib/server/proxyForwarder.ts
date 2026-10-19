@@ -586,13 +586,14 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       const leftoverNative = await publicClient.getBalance({ address: proxyAddress });
       const currentGas = await publicClient.getGasPrice();
       const l1Buffer = (chainKey === "base" || chainKey === "arb") ? 600_000_000_000n : 10_000_000_000n;
-      const dustGasCost = 21000n * currentGas + l1Buffer;
+      const dustGasCost = 45000n * currentGas + l1Buffer;
       if (leftoverNative > dustGasCost) {
         const relayerAddr = getRelayerWalletClientForChain(chainKey).account.address;
         const dustTx = await walletClient.sendTransaction({
           account: proxyAccount,
           to: relayerAddr,
           value: leftoverNative - dustGasCost,
+          gas: 45000n,
         });
         await publicClient.waitForTransactionReceipt({ hash: dustTx as `0x${string}` });
         console.log(`[ProxyForwarder] ✓ Swept ${leftoverNative - dustGasCost} wei ${nativeSym} dust back to relayer: ${dustTx}`);
@@ -1426,7 +1427,16 @@ export async function recoverProxyDeposit(
     const gasPrice = await publicClient.getGasPrice().catch(() => 100_000_000n);
     const maxFee = feeData?.maxFeePerGas ? (feeData.maxFeePerGas * 120n) / 100n : (gasPrice * 120n) / 100n;
     const maxPriorityFee = feeData?.maxPriorityFeePerGas || (gasPrice > 1_000_000_000n ? 1_000_000_000n : gasPrice);
-    const gasLimit = 21000n;
+
+    // Dynamic gas limit: estimate gas for cleanDestination (e.g. smart contracts, EIP-7702 delegated accounts require > 21k gas)
+    const estimatedGas = await publicClient
+      .estimateGas({
+        account: proxyAccount,
+        to: cleanDestination,
+        value: 1000n,
+      })
+      .catch(() => 45000n);
+    const gasLimit = estimatedGas > 21000n ? (estimatedGas * 130n) / 100n : 45000n;
 
     // Critical: Base and Arbitrum are L2s that charge an L1 DA fee on top of execution gas.
     // We reserve 600 gwei (~0.0000006 ETH) for L1 DA overhead on Base/Arb to ensure balance covers cost.
