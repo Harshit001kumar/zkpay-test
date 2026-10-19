@@ -21,7 +21,7 @@ import {
   updateProxySwapOrder,
   getDecryptedProxyPrivateKey,
 } from "./proxySwapStore";
-import { getRelayerWalletClient } from "./relayer";
+import { getRelayerWalletClient, getRelayerWalletClientForChain } from "./relayer";
 import { decodeBase58 } from "./proxyWallets";
 import {
   getResilientPublicClientForChain,
@@ -125,8 +125,8 @@ async function executeGaslessUsdcTransfer(params: {
   const s = ("0x" + signature.slice(66, 130)) as `0x${string}`;
   const v = parseInt(signature.slice(130, 132), 16);
 
-  // Relayer submits the authorization (relayer pays gas)
-  const relayer = getRelayerWalletClient();
+  // Relayer on THIS chain submits the authorization (relayer pays gas)
+  const relayer = getRelayerWalletClientForChain(chainKey);
   const txHash = await relayer.writeContract({
     account: relayer.account,
     address: tokenAddress,
@@ -209,7 +209,12 @@ export async function checkAndForwardProxyDeposit(order: ProxySwapOrder): Promis
       return await checkSolanaDeposit(order);
     }
 
-    // ── 2. EVM Chains (Base, Arbitrum, Polygon, BSC) ──
+    // ── 2. Litecoin Deposit Check ──
+    if (normChain === "ltc") {
+      return await checkLtcDeposit(order);
+    }
+
+    // ── 3. EVM Chains (Base, Arbitrum, Polygon, BSC) ──
     return await checkEvmDeposit(order);
   } finally {
     sweepLocks.delete(lockKey);
@@ -260,36 +265,63 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     const walletClient = getWalletClientForChain(order.chain, proxyAccount);
 
-    const feeWei = (balanceWei * BigInt(order.feeAmount)) / expectedAtomic;
+    let zkpayFeeWei = 0n;
+    let partnerFeeWei = 0n;
+
+    if (order.zkpayFeeBps !== undefined) {
+      zkpayFeeWei = (balanceWei * BigInt(order.zkpayFeeBps)) / 10000n;
+      if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
+        partnerFeeWei = (balanceWei * BigInt(order.partnerFeeBps!)) / 10000n;
+      }
+    } else {
+      zkpayFeeWei = (balanceWei * BigInt(order.feeAmount)) / expectedAtomic;
+    }
 
     // 1. Transfer Fee to Treasury if fee > 0
     let feeTxHash = "";
-    if (feeWei > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
+    if (zkpayFeeWei > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
       try {
         feeTxHash = await walletClient.sendTransaction({
           account: proxyAccount,
           to: treasuryAddress,
-          value: feeWei,
+          value: zkpayFeeWei,
         });
-        console.log(`[ProxyForwarder] Fee transfer broadcast: ${feeTxHash}`);
-        // Wait for fee receipt so nonce is incremented and state is mined
+        console.log(`[ProxyForwarder] ZkPay fee transfer broadcast: ${feeTxHash}`);
         await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` });
       } catch (feeErr) {
-        console.warn("[ProxyForwarder] Fee transfer warning, proceeding with solver forward:", feeErr);
+        console.warn("[ProxyForwarder] ZkPay fee transfer warning:", feeErr);
       }
     }
 
-    // 2. Query exact remaining balance after fee & gas deduction
+    // 2. Transfer Partner fee if specified and > 0
+    let partnerTxHash = "";
+    if (partnerFeeWei > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
+      try {
+        partnerTxHash = await walletClient.sendTransaction({
+          account: proxyAccount,
+          to: getAddress(order.partnerFeeRecipient),
+          value: partnerFeeWei,
+        });
+        console.log(`[ProxyForwarder] Partner fee transfer broadcast: ${partnerTxHash}`);
+        await publicClient.waitForTransactionReceipt({ hash: partnerTxHash as `0x${string}` });
+      } catch (partnerErr) {
+        console.warn("[ProxyForwarder] Partner fee transfer warning:", partnerErr);
+      }
+    }
+
+    // 3. Query exact remaining balance after fees & live gas deduction
     const remainingBalance = await publicClient.getBalance({ address: proxyAddress });
-    const currentGasPrice = await publicClient.getGasPrice();
-    const gasReserve = 30000n * currentGasPrice; // Safe buffer for native L2 transfer
+    const feeData = await publicClient.estimateFeesPerGas().catch(() => null);
+    const maxFee = feeData?.maxFeePerGas || (await publicClient.getGasPrice());
+    const l1Buffer = (chainKey === "base" || chainKey === "arb") ? 600_000_000_000n : 10_000_000_000n;
+    const gasReserve = 25000n * maxFee + l1Buffer;
     const netWei = remainingBalance > gasReserve ? remainingBalance - gasReserve : 0n;
 
     if (netWei <= 0n) {
       throw new Error("Remaining balance too small to cover L2 transfer gas.");
     }
 
-    // 3. Transfer Net to Solver
+    // 4. Transfer Net to Solver
     const forwardTxHash = await walletClient.sendTransaction({
       account: proxyAccount,
       to: solverAddress,
@@ -301,14 +333,13 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     const updated = await updateProxySwapOrder(order.swapId, {
       status: "FORWARDED",
       depositTxHash: feeTxHash || forwardTxHash,
-      feeTxHash,
+      feeTxHash: feeTxHash || partnerTxHash,
       forwardTxHash,
     });
 
     return updated || order;
   } else {
     // ─── CASE B: Stablecoins & ERC-20s (USDC, USDT) ───
-    // Dynamically resolve token address from CHAIN_TOKENS or regex match from originAssetId
     const tokenMap = CHAIN_TOKENS[chainKey] || {};
     let tokenAddress: `0x${string}` | undefined = tokenMap[upperSymbol];
 
@@ -352,50 +383,79 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       functionName: "decimals",
     })) as number;
 
-    const gasBufferUnits = tokenDecimals === 6 ? 10_000n : 10_000_000_000_000_000n; // ~$0.01
+    const isStable = upperSymbol === "USDC" || upperSymbol === "USDT";
+    // Fixed fee: 0.05 units for USDC/USDT (50,000 in 6 decimals)
+    const fixedFeeUnits = isStable
+      ? (order.fixedFeeAmount ? BigInt(order.fixedFeeAmount) : (tokenDecimals >= 2 ? 5n * 10n ** BigInt(tokenDecimals - 2) : 0n))
+      : 0n;
 
-    // Platform fee in token
-    const feeUnits = (tokenBalance * BigInt(order.feeAmount)) / expectedAtomic;
-    const netTokenUnits = tokenBalance > feeUnits + gasBufferUnits
-      ? tokenBalance - feeUnits - gasBufferUnits
-      : tokenBalance - feeUnits;
+    let zkpayFeeUnits = 0n;
+    let partnerFeeUnits = 0n;
 
-    if (netTokenUnits <= 0n) {
-      throw new Error("Token deposit too small to cover fee and token gas buffer.");
+    if (order.zkpayFeeBps !== undefined) {
+      zkpayFeeUnits = (tokenBalance * BigInt(order.zkpayFeeBps)) / 10000n + fixedFeeUnits;
+      if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
+        partnerFeeUnits = (tokenBalance * BigInt(order.partnerFeeBps!)) / 10000n;
+      }
+    } else {
+      zkpayFeeUnits = (tokenBalance * BigInt(order.feeAmount)) / expectedAtomic;
     }
 
-    // Pre-fund proxy with micro-ETH for the transfer if needed
-    // For USDC on Base/Arb/Polygon: use gasless EIP-3009 transferWithAuthorization (relayer pays gas)
-    // For other tokens: fall back to ETH advance to proxy
+    const totalFeeUnits = zkpayFeeUnits + partnerFeeUnits;
+    if (tokenBalance <= totalFeeUnits) {
+      throw new Error("Token deposit too small to cover fees.");
+    }
+
+    const netTokenUnits = tokenBalance - totalFeeUnits;
+
+    // Check if eligible for gasless EIP-3009 transfer
     const isGaslessEligible =
       EIP3009_USDC[chainKey] &&
       tokenAddress.toLowerCase() === EIP3009_USDC[chainKey].toLowerCase();
 
     if (isGaslessEligible) {
-      // ── GASLESS PATH: Relayer pays all gas via EIP-3009 ──
+      // ── GASLESS PATH: Relayer on chainKey submits EIP-3009 transferWithAuthorization ──
       console.log(`[ProxyForwarder] Using gasless EIP-3009 for USDC transfer on ${chainKey}`);
 
-      // 1. Fee to Treasury (gasless)
+      // 1. ZkPay Fee to Treasury (gasless)
       let feeTxHash = "";
-      const totalTreasuryCut = feeUnits + gasBufferUnits;
-      if (totalTreasuryCut > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
+      if (zkpayFeeUnits > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
         try {
           feeTxHash = await executeGaslessUsdcTransfer({
             proxyAccount,
             tokenAddress,
             to: treasuryAddress,
-            value: totalTreasuryCut,
+            value: zkpayFeeUnits,
             chainKey,
             publicClient,
           });
-          console.log(`[ProxyForwarder] ✓ Gasless fee transfer: ${feeTxHash}`);
+          console.log(`[ProxyForwarder] ✓ Gasless ZkPay fee transfer: ${feeTxHash}`);
           await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` });
         } catch (feeErr) {
-          console.warn("[ProxyForwarder] Gasless fee transfer error, continuing:", feeErr);
+          console.warn("[ProxyForwarder] Gasless ZkPay fee transfer error:", feeErr);
         }
       }
 
-      // 2. Net to Solver (gasless)
+      // 2. Partner Fee to Partner Recipient (gasless)
+      let partnerTxHash = "";
+      if (partnerFeeUnits > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
+        try {
+          partnerTxHash = await executeGaslessUsdcTransfer({
+            proxyAccount,
+            tokenAddress,
+            to: getAddress(order.partnerFeeRecipient),
+            value: partnerFeeUnits,
+            chainKey,
+            publicClient,
+          });
+          console.log(`[ProxyForwarder] ✓ Gasless partner fee transfer: ${partnerTxHash}`);
+          await publicClient.waitForTransactionReceipt({ hash: partnerTxHash as `0x${string}` });
+        } catch (partnerErr) {
+          console.warn("[ProxyForwarder] Gasless partner fee transfer error:", partnerErr);
+        }
+      }
+
+      // 3. Net to Solver (gasless)
       const remainingTokenBalance = (await publicClient.readContract({
         address: tokenAddress,
         abi: ERC20_ABI,
@@ -419,87 +479,88 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       const updated = await updateProxySwapOrder(order.swapId, {
         status: "FORWARDED",
         depositTxHash: feeTxHash || forwardTxHash,
-        feeTxHash,
+        feeTxHash: feeTxHash || partnerTxHash,
         forwardTxHash,
       });
 
       return updated || order;
     }
 
-    // ── LEGACY PATH: Gas advance to proxy (for non-USDC tokens like USDT, DAI) ──
-    // Relayer sends a micro amount of native gas (ETH/POL/BNB) to proxy, then proxy does the ERC-20 transfer
+    // ── LEGACY PATH: Dynamic Live Gas advance to proxy (for USDT, DAI, etc.) ──
     const nativeBalance = await publicClient.getBalance({ address: proxyAddress });
+    const feeData = await publicClient.estimateFeesPerGas().catch(() => null);
     const gasPrice = await publicClient.getGasPrice();
+    const maxFee = feeData?.maxFeePerGas || gasPrice;
     const nativeSym = chainKey === "polygon" ? "POL" : chainKey === "bsc" ? "BNB" : "ETH";
 
-    if (nativeBalance < 35000n * gasPrice) {
+    const transfersCount = partnerFeeUnits > 0n ? 3n : 2n;
+    const gasNeeded = maxFee * 65000n * transfersCount;
+
+    if (nativeBalance < gasNeeded) {
       try {
-        // Build a relayer wallet client on the SAME chain as the proxy (not hardcoded Base)
-        const { privateKeyToAccount: pka } = await import("viem/accounts");
-        const relayerKey = getRelayerWalletClient().account.source === "privateKey"
-          ? getRelayerWalletClient().account
-          : null;
+        const relayer = getRelayerWalletClientForChain(chainKey);
+        const relayerNativeBal = await publicClient.getBalance({ address: relayer.account.address });
+        const advanceAmount = gasNeeded - nativeBalance;
 
-        if (!relayerKey) {
-          console.error("[ProxyForwarder] Cannot resolve relayer account for gas advance.");
-          return order;
-        }
-
-        const { chain: relayChain, transports: relayTransports } = getEvmRpcConfig(chainKey);
-        const chainRelayer = createWalletClient({
-          account: relayerKey,
-          chain: relayChain,
-          transport: fallback(relayTransports, { rank: false }),
-        });
-
-        // Check relayer has enough native gas on THIS chain
-        const relayerNativeBal = await publicClient.getBalance({ address: relayerKey.address });
-        if (relayerNativeBal < 50000000000000n) { // < 0.00005
+        if (relayerNativeBal < advanceAmount) {
           console.error(
-            `[ProxyForwarder] ⚠️ RELAYER GAS EMPTY on ${chainKey.toUpperCase()}: ${relayerKey.address} has ${relayerNativeBal} wei ${nativeSym}. ` +
-            `Send ~0.001 ${nativeSym} on ${chainKey.toUpperCase()} to enable proxy sweeping.`
+            `[ProxyForwarder] ⚠️ RELAYER GAS EMPTY on ${chainKey.toUpperCase()}: has ${relayerNativeBal} wei ${nativeSym}, needs ${advanceAmount}.`
           );
           return order;
         }
 
-        const fundTx = await chainRelayer.sendTransaction({
-          account: relayerKey,
+        const fundTx = await relayer.sendTransaction({
+          account: relayer.account,
           to: proxyAddress,
-          value: 30000000000000n, // 0.00003 native
+          value: advanceAmount,
         });
         await publicClient.waitForTransactionReceipt({ hash: fundTx });
-        console.log(`[ProxyForwarder] ✓ ${nativeSym} gas advance to proxy ${proxyAddress}: ${fundTx}`);
+        console.log(`[ProxyForwarder] ✓ Live ${nativeSym} gas advance to proxy ${proxyAddress}: ${fundTx}`);
       } catch (fundErr: any) {
-        console.error(
-          `[ProxyForwarder] ✗ ${nativeSym} gas advance FAILED for proxy ${proxyAddress} on ${chainKey}. ` +
-          `Error: ${fundErr?.message || fundErr}`
-        );
+        console.error(`[ProxyForwarder] ✗ Gas advance failed on ${chainKey}:`, fundErr?.message || fundErr);
         return order;
       }
     }
 
     const walletClient = getWalletClientForChain(order.chain, proxyAccount);
 
-    // 1. Transfer Fee + Token Gas Reimbursement to Treasury
+    // 1. Transfer ZkPay fee
     let feeTxHash = "";
-    const totalTreasuryCut = feeUnits + gasBufferUnits;
-    if (totalTreasuryCut > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
+    if (zkpayFeeUnits > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
       try {
         feeTxHash = await walletClient.writeContract({
           account: proxyAccount,
           address: tokenAddress,
           abi: ERC20_ABI,
           functionName: "transfer",
-          args: [treasuryAddress, totalTreasuryCut],
+          args: [treasuryAddress, zkpayFeeUnits],
         });
-        console.log(`[ProxyForwarder] Token fee + gas reimbursement broadcast: ${feeTxHash}`);
+        console.log(`[ProxyForwarder] Token ZkPay fee transfer broadcast: ${feeTxHash}`);
         await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` });
       } catch (feeErr) {
-        console.warn("[ProxyForwarder] Token fee transfer error, continuing to solver:", feeErr);
+        console.warn("[ProxyForwarder] Token ZkPay fee transfer error:", feeErr);
       }
     }
 
-    // 2. Query exact remaining token balance and transfer net to solver
+    // 2. Transfer Partner fee
+    let partnerTxHash = "";
+    if (partnerFeeUnits > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
+      try {
+        partnerTxHash = await walletClient.writeContract({
+          account: proxyAccount,
+          address: tokenAddress,
+          abi: ERC20_ABI,
+          functionName: "transfer",
+          args: [getAddress(order.partnerFeeRecipient), partnerFeeUnits],
+        });
+        console.log(`[ProxyForwarder] Token partner fee transfer broadcast: ${partnerTxHash}`);
+        await publicClient.waitForTransactionReceipt({ hash: partnerTxHash as `0x${string}` });
+      } catch (partnerErr) {
+        console.warn("[ProxyForwarder] Token partner fee transfer error:", partnerErr);
+      }
+    }
+
+    // 3. Transfer Net to Solver
     const remainingTokenBalance = (await publicClient.readContract({
       address: tokenAddress,
       abi: ERC20_ABI,
@@ -519,23 +580,24 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     console.log(`[ProxyForwarder] Net token forward to solver broadcast: ${forwardTxHash}`);
     await publicClient.waitForTransactionReceipt({ hash: forwardTxHash as `0x${string}` });
 
-    // 3. Sweep leftover ETH dust back to relayer (auto-refill gas tank)
+    // 4. Sweep leftover native gas dust back to relayer using live fee + L1 reserve
     try {
-      const leftoverEth = await publicClient.getBalance({ address: proxyAddress });
+      const leftoverNative = await publicClient.getBalance({ address: proxyAddress });
       const currentGas = await publicClient.getGasPrice();
-      const dustGasCost = 21000n * currentGas;
-      if (leftoverEth > dustGasCost + 1000n) {
-        const relayerAddr = getRelayerWalletClient().account.address;
+      const l1Buffer = (chainKey === "base" || chainKey === "arb") ? 600_000_000_000n : 10_000_000_000n;
+      const dustGasCost = 21000n * currentGas + l1Buffer;
+      if (leftoverNative > dustGasCost) {
+        const relayerAddr = getRelayerWalletClientForChain(chainKey).account.address;
         const dustTx = await walletClient.sendTransaction({
           account: proxyAccount,
           to: relayerAddr,
-          value: leftoverEth - dustGasCost,
+          value: leftoverNative - dustGasCost,
         });
         await publicClient.waitForTransactionReceipt({ hash: dustTx as `0x${string}` });
-        console.log(`[ProxyForwarder] ✓ Swept ${leftoverEth - dustGasCost} wei ETH dust back to relayer: ${dustTx}`);
+        console.log(`[ProxyForwarder] ✓ Swept ${leftoverNative - dustGasCost} wei ${nativeSym} dust back to relayer: ${dustTx}`);
       }
     } catch (dustErr) {
-      console.warn("[ProxyForwarder] ETH dust sweep warning (non-fatal):", dustErr);
+      console.warn("[ProxyForwarder] Native dust sweep warning (non-fatal):", dustErr);
     }
 
     const updated = await updateProxySwapOrder(order.swapId, {
@@ -549,13 +611,23 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
   }
 }
 
+function to32Bytes(buf: Buffer): Buffer {
+  if (buf.length === 32) return buf;
+  if (buf.length < 32) {
+    const out = Buffer.alloc(32);
+    buf.copy(out, 32 - buf.length);
+    return out;
+  }
+  return buf.subarray(buf.length - 32);
+}
+
 async function fetchSolanaRpc(method: string, params: any[]): Promise<any> {
   return fetchResilientSolanaRpc(method, params);
 }
 
 /**
  * Builds, signs (Ed25519), and broadcasts a native Solana transfer transaction
- * with 1 or 2 instructions (solver transfer + optional treasury fee).
+ * with solver transfer, optional ZkPay treasury fee, and optional partner fee.
  */
 async function sendSolanaTransfer(params: {
   fromPubkeyBase58: string;
@@ -564,6 +636,8 @@ async function sendSolanaTransfer(params: {
   transferLamports: bigint;
   feeRecipientBase58?: string | null;
   feeLamports?: bigint;
+  partnerRecipientBase58?: string | null;
+  partnerLamports?: bigint;
 }): Promise<string> {
   const {
     fromPubkeyBase58,
@@ -572,6 +646,8 @@ async function sendSolanaTransfer(params: {
     transferLamports,
     feeRecipientBase58,
     feeLamports = 0n,
+    partnerRecipientBase58,
+    partnerLamports = 0n,
   } = params;
 
   const bhResult = await fetchSolanaRpc("getLatestBlockhash", [{ commitment: "confirmed" }]);
@@ -580,38 +656,46 @@ async function sendSolanaTransfer(params: {
     throw new Error("Failed to retrieve latest Solana blockhash.");
   }
 
-  const fromPubkeyBuf = decodeBase58(fromPubkeyBase58);
-  const toPubkeyBuf = decodeBase58(toPubkeyBase58);
-  const blockhashBuf = decodeBase58(blockhash);
+  const fromPubkeyBuf = to32Bytes(decodeBase58(fromPubkeyBase58));
+  const toPubkeyBuf = to32Bytes(decodeBase58(toPubkeyBase58));
+  const blockhashBuf = to32Bytes(decodeBase58(blockhash));
   const systemProgramBuf = Buffer.alloc(32); // 11111111111111111111111111111111
 
-  const hasFeeTransfer =
+  const hasTreasuryFee =
     Boolean(feeRecipientBase58) &&
     feeLamports > 0n &&
     feeRecipientBase58?.trim() !== toPubkeyBase58.trim();
 
+  const hasPartnerFee =
+    Boolean(partnerRecipientBase58) &&
+    partnerLamports > 0n &&
+    partnerRecipientBase58?.trim() !== toPubkeyBase58.trim() &&
+    partnerRecipientBase58?.trim() !== feeRecipientBase58?.trim();
+
   let accountKeys: Buffer;
   let instructions: Buffer;
 
-  if (hasFeeTransfer && feeRecipientBase58) {
-    const feePubkeyBuf = decodeBase58(feeRecipientBase58.trim());
-    // 4 Accounts: [from(0), to(1), fee(2), SystemProgram(3)]
+  if (hasTreasuryFee && hasPartnerFee && feeRecipientBase58 && partnerRecipientBase58) {
+    const feePubkeyBuf = to32Bytes(decodeBase58(feeRecipientBase58.trim()));
+    const partnerPubkeyBuf = to32Bytes(decodeBase58(partnerRecipientBase58.trim()));
+
+    // 5 Accounts: [from(0), to(1), treasury(2), partner(3), SystemProgram(4)]
     accountKeys = Buffer.concat([
-      Buffer.from([4]),
+      Buffer.from([5]),
       fromPubkeyBuf,
       toPubkeyBuf,
       feePubkeyBuf,
+      partnerPubkeyBuf,
       systemProgramBuf,
     ]);
 
     // Ix 0: Transfer to solver
     const ix0Data = Buffer.alloc(12);
-    ix0Data.writeUInt32LE(2, 0); // Transfer = 2
+    ix0Data.writeUInt32LE(2, 0);
     ix0Data.writeBigUInt64LE(transferLamports, 4);
-
     const ix0 = Buffer.concat([
-      Buffer.from([3]), // program index = 3
-      Buffer.from([2, 0, 1]), // 2 accounts: 0 (from), 1 (to)
+      Buffer.from([4]), // program index = 4
+      Buffer.from([2, 0, 1]), // from(0), to(1)
       Buffer.from([12]),
       ix0Data,
     ]);
@@ -620,10 +704,53 @@ async function sendSolanaTransfer(params: {
     const ix1Data = Buffer.alloc(12);
     ix1Data.writeUInt32LE(2, 0);
     ix1Data.writeBigUInt64LE(feeLamports, 4);
-
     const ix1 = Buffer.concat([
-      Buffer.from([3]), // program index = 3
-      Buffer.from([2, 0, 2]), // 2 accounts: 0 (from), 2 (fee)
+      Buffer.from([4]),
+      Buffer.from([2, 0, 2]), // from(0), treasury(2)
+      Buffer.from([12]),
+      ix1Data,
+    ]);
+
+    // Ix 2: Transfer fee to partner
+    const ix2Data = Buffer.alloc(12);
+    ix2Data.writeUInt32LE(2, 0);
+    ix2Data.writeBigUInt64LE(partnerLamports, 4);
+    const ix2 = Buffer.concat([
+      Buffer.from([4]),
+      Buffer.from([2, 0, 3]), // from(0), partner(3)
+      Buffer.from([12]),
+      ix2Data,
+    ]);
+
+    instructions = Buffer.concat([Buffer.from([3]), ix0, ix1, ix2]);
+  } else if (hasTreasuryFee && feeRecipientBase58) {
+    const feePubkeyBuf = to32Bytes(decodeBase58(feeRecipientBase58.trim()));
+
+    // 4 Accounts: [from(0), to(1), treasury(2), SystemProgram(3)]
+    accountKeys = Buffer.concat([
+      Buffer.from([4]),
+      fromPubkeyBuf,
+      toPubkeyBuf,
+      feePubkeyBuf,
+      systemProgramBuf,
+    ]);
+
+    const ix0Data = Buffer.alloc(12);
+    ix0Data.writeUInt32LE(2, 0);
+    ix0Data.writeBigUInt64LE(transferLamports, 4);
+    const ix0 = Buffer.concat([
+      Buffer.from([3]),
+      Buffer.from([2, 0, 1]),
+      Buffer.from([12]),
+      ix0Data,
+    ]);
+
+    const ix1Data = Buffer.alloc(12);
+    ix1Data.writeUInt32LE(2, 0);
+    ix1Data.writeBigUInt64LE(feeLamports, 4);
+    const ix1 = Buffer.concat([
+      Buffer.from([3]),
+      Buffer.from([2, 0, 2]),
       Buffer.from([12]),
       ix1Data,
     ]);
@@ -641,10 +768,9 @@ async function sendSolanaTransfer(params: {
     const ix0Data = Buffer.alloc(12);
     ix0Data.writeUInt32LE(2, 0);
     ix0Data.writeBigUInt64LE(transferLamports, 4);
-
     const ix0 = Buffer.concat([
-      Buffer.from([2]), // program index = 2
-      Buffer.from([2, 0, 1]), // 2 accounts: 0 (from), 1 (to)
+      Buffer.from([2]),
+      Buffer.from([2, 0, 1]),
       Buffer.from([12]),
       ix0Data,
     ]);
@@ -698,54 +824,125 @@ async function sendSolanaTransfer(params: {
  */
 async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
   try {
-    const balanceRes = await fetchSolanaRpc("getBalance", [order.proxyDepositAddress]);
+    const balanceRes = await fetchSolanaRpc("getBalance", [order.proxyDepositAddress, { commitment: "confirmed" }]);
     const lamports = BigInt(balanceRes?.value || 0);
-    const MIN_NETWORK_FEE = 5000n; // 0.000005 SOL
+    const MIN_NETWORK_FEE = 10000n; // 0.00001 SOL buffer
 
-    if (lamports > MIN_NETWORK_FEE) {
-      console.log(
-        `[ProxyForwarder] Solana deposit detected for order ${order.swapId}: ${lamports} lamports (address: ${order.proxyDepositAddress})`
-      );
-
-      const privKeyHex = getDecryptedProxyPrivateKey(order);
-      const expectedSolverLamports = BigInt(order.netSwapAmount);
-      const available = lamports - MIN_NETWORK_FEE;
-
-      let solverLamports = expectedSolverLamports;
-      let feeLamports = 0n;
-
-      if (available <= expectedSolverLamports) {
-        solverLamports = available;
-        feeLamports = 0n;
-      } else {
-        solverLamports = expectedSolverLamports;
-        feeLamports = available - expectedSolverLamports;
-      }
-
-      console.log(
-        `[ProxyForwarder] Sweeping SOL: ${solverLamports} -> Solver (${order.solverDepositAddress}), ${feeLamports} -> Treasury (${order.treasuryAddress})`
-      );
-
-      const txHash = await sendSolanaTransfer({
-        fromPubkeyBase58: order.proxyDepositAddress,
-        fromPrivKeyHex: privKeyHex,
-        toPubkeyBase58: order.solverDepositAddress,
-        transferLamports: solverLamports,
-        feeRecipientBase58: feeLamports > 0n ? order.treasuryAddress : null,
-        feeLamports,
-      });
-
-      const updated = await updateProxySwapOrder(order.swapId, {
-        status: "FORWARDED",
-        depositTxHash: txHash,
-        feeTxHash: feeLamports > 0n ? txHash : undefined,
-        forwardTxHash: txHash,
-      });
-
-      return updated || order;
+    const expectedAtomic = BigInt(order.totalAmountIn);
+    if (lamports < (expectedAtomic * 90n) / 100n || lamports <= MIN_NETWORK_FEE) {
+      return order; // Awaiting deposit
     }
+
+    console.log(
+      `[ProxyForwarder] Solana deposit detected for order ${order.swapId}: ${lamports} lamports (address: ${order.proxyDepositAddress})`
+    );
+
+    await updateProxySwapOrder(order.swapId, { status: "FORWARDING" });
+
+    const privKeyHex = getDecryptedProxyPrivateKey(order);
+
+    let zkpayFeeLamports = 0n;
+    let partnerFeeLamports = 0n;
+
+    if (order.zkpayFeeBps !== undefined) {
+      zkpayFeeLamports = (lamports * BigInt(order.zkpayFeeBps)) / 10000n;
+      if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
+        partnerFeeLamports = (lamports * BigInt(order.partnerFeeBps!)) / 10000n;
+      }
+    } else {
+      zkpayFeeLamports = (lamports * BigInt(order.feeAmount)) / expectedAtomic;
+    }
+
+    const available = lamports - MIN_NETWORK_FEE - zkpayFeeLamports - partnerFeeLamports;
+    if (available <= 0n) {
+      throw new Error("Solana deposit too small to cover fees and network gas.");
+    }
+
+    const solverLamports = available;
+
+    console.log(
+      `[ProxyForwarder] Sweeping SOL: ${solverLamports} -> Solver (${order.solverDepositAddress}), ${zkpayFeeLamports} -> Treasury (${order.treasuryAddress}), ${partnerFeeLamports} -> Partner (${order.partnerFeeRecipient || "none"})`
+    );
+
+    const txHash = await sendSolanaTransfer({
+      fromPubkeyBase58: order.proxyDepositAddress,
+      fromPrivKeyHex: privKeyHex,
+      toPubkeyBase58: order.solverDepositAddress,
+      transferLamports: solverLamports,
+      feeRecipientBase58: zkpayFeeLamports > 0n ? order.treasuryAddress : null,
+      feeLamports: zkpayFeeLamports,
+      partnerRecipientBase58: (partnerFeeLamports > 0n && order.partnerFeeRecipient) ? order.partnerFeeRecipient : null,
+      partnerLamports: partnerFeeLamports,
+    });
+
+    const updated = await updateProxySwapOrder(order.swapId, {
+      status: "FORWARDED",
+      depositTxHash: txHash,
+      feeTxHash: (zkpayFeeLamports > 0n || partnerFeeLamports > 0n) ? txHash : undefined,
+      forwardTxHash: txHash,
+    });
+
+    return updated || order;
   } catch (err) {
     console.warn("[ProxyForwarder] Solana balance/sweep error:", err);
+  }
+
+  return order;
+}
+
+/**
+ * Handles Litecoin proxy deposit balance checking and executes real on-chain UTXO sweep.
+ */
+async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
+  try {
+    const { getLtcBalanceAndUtxos, sweepLtcDeposit } = await import("./ltcClient");
+    const { balanceSatoshis, utxos } = await getLtcBalanceAndUtxos(order.proxyDepositAddress);
+    const expectedAtomic = BigInt(order.totalAmountIn);
+
+    if (balanceSatoshis < (expectedAtomic * 90n) / 100n || balanceSatoshis <= 5000n) {
+      return order; // Awaiting deposit
+    }
+
+    console.log(
+      `[ProxyForwarder] LTC deposit detected for order ${order.swapId}: ${balanceSatoshis} satoshis (${utxos.length} UTXOs on ${order.proxyDepositAddress})`
+    );
+
+    await updateProxySwapOrder(order.swapId, { status: "FORWARDING" });
+
+    const privKeyHex = getDecryptedProxyPrivateKey(order);
+
+    let zkpayFeeSats = 0n;
+    let partnerFeeSats = 0n;
+
+    if (order.zkpayFeeBps !== undefined) {
+      zkpayFeeSats = (balanceSatoshis * BigInt(order.zkpayFeeBps)) / 10000n;
+      if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
+        partnerFeeSats = (balanceSatoshis * BigInt(order.partnerFeeBps!)) / 10000n;
+      }
+    } else {
+      zkpayFeeSats = (balanceSatoshis * BigInt(order.feeAmount)) / expectedAtomic;
+    }
+
+    const txHash = await sweepLtcDeposit({
+      proxyAddress: order.proxyDepositAddress,
+      privKeyHex,
+      solverAddress: order.solverDepositAddress,
+      treasuryAddress: order.treasuryAddress,
+      partnerAddress: order.partnerFeeRecipient,
+      zkpayFeeSatoshis: zkpayFeeSats,
+      partnerFeeSatoshis: partnerFeeSats,
+    });
+
+    const updated = await updateProxySwapOrder(order.swapId, {
+      status: "FORWARDED",
+      depositTxHash: txHash,
+      feeTxHash: (zkpayFeeSats > 0n || partnerFeeSats > 0n) ? txHash : undefined,
+      forwardTxHash: txHash,
+    });
+
+    return updated || order;
+  } catch (err) {
+    console.warn("[ProxyForwarder] LTC balance/sweep error:", err);
   }
 
   return order;
@@ -786,6 +983,7 @@ export interface ProxyBalanceReport {
 export function getExplorerTxUrl(chain: string, txHash: string): string {
   const c = normalizeChain(chain);
   if (c === "sol") return `https://solscan.io/tx/${txHash}`;
+  if (c === "ltc") return `https://litecoinspace.org/tx/${txHash}`;
   if (c === "polygon") return `https://polygonscan.com/tx/${txHash}`;
   if (c === "arb") return `https://arbiscan.io/tx/${txHash}`;
   if (c === "bsc") return `https://bscscan.com/tx/${txHash}`;
@@ -843,6 +1041,44 @@ export async function inspectProxyDepositBalances(
           balanceFormatted: formatted,
           rawBalance: lamports.toString(),
           hasGas: lamports > 5000n,
+        },
+        tokens: [],
+      },
+    };
+  }
+
+  // 1.5 LITECOIN
+  if (normChain === "ltc") {
+    let balanceSatoshis = 0n;
+    try {
+      const { getLtcBalanceAndUtxos } = await import("./ltcClient");
+      const res = await getLtcBalanceAndUtxos(order.proxyDepositAddress);
+      balanceSatoshis = res.balanceSatoshis;
+    } catch (e) {
+      console.warn("[Inspect] LTC balance query warning:", e);
+    }
+    const formatted = (Number(balanceSatoshis) / 1e8).toFixed(8);
+
+    return {
+      success: true,
+      report: {
+        swapId: order.swapId,
+        chain: order.chain,
+        proxyDepositAddress: order.proxyDepositAddress,
+        orderStatus: order.status,
+        createdAt: order.createdAt,
+        expiresAt: order.expiresAt,
+        refundTo: order.refundTo,
+        solverDepositAddress: order.solverDepositAddress,
+        fromAsset: order.fromAsset,
+        toAsset: order.toAsset,
+        expectedAmount: order.totalAmountFormatted || "0",
+        hasMismatchedTokens: false,
+        nativeBalance: {
+          symbol: "LTC",
+          balanceFormatted: formatted,
+          rawBalance: balanceSatoshis.toString(),
+          hasGas: balanceSatoshis > 3000n,
         },
         tokens: [],
       },
@@ -1059,6 +1295,59 @@ export async function recoverProxyDeposit(
     };
   }
 
+  // 1.5 LITECOIN RECOVERY
+  if (normChain === "ltc") {
+    if (!destination || (!destination.startsWith("L") && !destination.startsWith("M") && !destination.startsWith("ltc1"))) {
+      return {
+        success: false,
+        message: `Invalid LTC destination address: '${destination}'. Must start with L, M, or ltc1.`,
+        order,
+      };
+    }
+
+    const { getLtcBalanceAndUtxos, sweepLtcDeposit } = await import("./ltcClient");
+    const { balanceSatoshis, utxos } = await getLtcBalanceAndUtxos(order.proxyDepositAddress);
+    const MINER_FEE_SATOSHIS = 3000n;
+
+    if (utxos.length === 0 || balanceSatoshis <= MINER_FEE_SATOSHIS) {
+      return {
+        success: false,
+        message: `Proxy address has insufficient LTC balance to sweep (${balanceSatoshis} satoshis).`,
+        order,
+      };
+    }
+
+    const privKeyHex = getDecryptedProxyPrivateKey(order);
+    const sweepAmountSats = balanceSatoshis - MINER_FEE_SATOSHIS;
+
+    const txHash = await sweepLtcDeposit({
+      proxyAddress: order.proxyDepositAddress,
+      privKeyHex,
+      solverAddress: destination,
+      treasuryAddress: destination,
+      zkpayFeeSatoshis: 0n,
+      partnerFeeSatoshis: 0n,
+    });
+
+    const updated = await updateProxySwapOrder(order.swapId, {
+      status: action === "refund" ? "SETTLED" : "FORWARDED",
+      forwardTxHash: txHash,
+      error: action === "refund" ? `Manually refunded to ${destination}` : undefined,
+    });
+
+    const explorerUrl = getExplorerTxUrl("ltc", txHash);
+
+    return {
+      success: true,
+      message: `Successfully swept ${(Number(sweepAmountSats) / 1e8).toFixed(8)} LTC to ${destination}!`,
+      txHash,
+      order: updated,
+      recoveredAmount: (Number(sweepAmountSats) / 1e8).toFixed(8) + " LTC",
+      destination,
+      explorerUrl,
+    };
+  }
+
   // 2. EVM RECOVERY (Base, Arbitrum, Polygon, BSC)
   if (!isAddress(destination)) {
     return {
@@ -1093,26 +1382,46 @@ export async function recoverProxyDeposit(
 
   if (sweepNative) {
     const balanceWei = await publicClient.getBalance({ address: proxyAccount.address });
-    const gasPrice = await publicClient.getGasPrice();
+    const feeData = await publicClient.estimateFeesPerGas().catch(() => null);
+    const gasPrice = await publicClient.getGasPrice().catch(() => 100_000_000n);
+    const maxFee = feeData?.maxFeePerGas ? (feeData.maxFeePerGas * 120n) / 100n : (gasPrice * 120n) / 100n;
+    const maxPriorityFee = feeData?.maxPriorityFeePerGas || (gasPrice > 1_000_000_000n ? 1_000_000_000n : gasPrice);
     const gasLimit = 21000n;
-    const gasCost = gasLimit * gasPrice;
 
-    if (balanceWei <= gasCost) {
+    // Critical: Base and Arbitrum are L2s that charge an L1 DA fee on top of execution gas.
+    // We reserve 600 gwei (~0.0000006 ETH) for L1 DA overhead on Base/Arb to ensure balance covers cost.
+    const l1DataReserve = (normChain === "base" || normChain === "arb") ? 600_000_000_000n : 10_000_000_000n;
+    const totalGasReserve = (gasLimit * maxFee) + l1DataReserve;
+
+    if (balanceWei <= totalGasReserve) {
       return {
         success: false,
-        message: `Proxy address has insufficient native balance to sweep (${balanceWei} wei).`,
+        message: `Proxy address has insufficient native balance to sweep (${balanceWei} wei). Total gas and L1 DA reserve required: ${totalGasReserve} wei.`,
         order,
       };
     }
 
+    const maxSweepable = balanceWei - totalGasReserve;
     const sweepAmount = options?.amount
-      ? parseUnits(options.amount, 18)
-      : balanceWei - gasCost;
+      ? (parseUnits(options.amount, 18) > maxSweepable ? maxSweepable : parseUnits(options.amount, 18))
+      : maxSweepable;
+
+    if (sweepAmount <= 0n) {
+      return {
+        success: false,
+        message: `Calculated sweep amount is 0 wei after gas reserve.`,
+        order,
+      };
+    }
 
     const txHash = await walletClient.sendTransaction({
       account: proxyAccount,
       to: cleanDestination,
       value: sweepAmount,
+      maxFeePerGas: feeData?.maxFeePerGas ? maxFee : undefined,
+      maxPriorityFeePerGas: feeData?.maxPriorityFeePerGas ? maxPriorityFee : undefined,
+      gasPrice: !feeData?.maxFeePerGas ? maxFee : undefined,
+      gas: gasLimit,
     });
 
     await publicClient.waitForTransactionReceipt({ hash: txHash }).catch(() => {});
@@ -1203,44 +1512,72 @@ export async function recoverProxyDeposit(
       ? parseUnits(options.amount, decimals)
       : tokenBalance;
 
+    // Check if USDC supports gasless EIP-3009 transfer
+    if (EIP3009_USDC[normChain] && tokenAddress.toLowerCase() === EIP3009_USDC[normChain].toLowerCase()) {
+      try {
+        console.log(`[Recover] Attempting gasless EIP-3009 USDC transfer on ${normChain}...`);
+        const txHash = await executeGaslessUsdcTransfer({
+          proxyAccount,
+          tokenAddress,
+          to: cleanDestination,
+          value: sweepAmount,
+          chainKey: normChain,
+          publicClient,
+        });
+
+        const updated = await updateProxySwapOrder(order.swapId, {
+          status: action === "refund" ? "SETTLED" : "FORWARDED",
+          forwardTxHash: txHash,
+          error: action === "refund" ? `Manually refunded to ${cleanDestination}` : undefined,
+        });
+
+        const explorerUrl = getExplorerTxUrl(order.chain, txHash);
+        return {
+          success: true,
+          message: `Successfully swept ${formatUnits(sweepAmount, decimals)} ${tokenSymbol} via gasless relayer to ${cleanDestination}!`,
+          txHash,
+          order: updated,
+          recoveredAmount: `${formatUnits(sweepAmount, decimals)} ${tokenSymbol}`,
+          destination: cleanDestination,
+          explorerUrl,
+        };
+      } catch (gaslessErr: any) {
+        console.warn(`[Recover] Gasless transfer failed, falling back to standard transfer:`, gaslessErr?.message || gaslessErr);
+      }
+    }
+
     const ethBalance = await publicClient.getBalance({ address: proxyAccount.address });
     const gasPrice = await publicClient.getGasPrice();
     const minGasNeeded = 60000n * gasPrice;
 
     if (ethBalance < minGasNeeded) {
-      if (normChain === "base") {
-        try {
-          const relayer = getRelayerWalletClient();
+      try {
+        const relayer = getRelayerWalletClientForChain(normChain);
+        const relayerBal = await publicClient.getBalance({ address: relayer.account.address });
+        const advanceAmount = normChain === "polygon" ? parseUnits("0.05", 18) : (normChain === "bsc" ? parseUnits("0.001", 18) : 30_000_000_000_000n);
 
-          // Check relayer balance first
-          const relayerBal = await publicClient.getBalance({ address: relayer.account.address });
-          if (relayerBal < 50000000000000n) {
-            return {
-              success: false,
-              message: `Relayer gas tank is empty (${relayerBal} wei at ${relayer.account.address}). Send ~0.001 ETH on Base to the relayer address, then retry.`,
-              order,
-            };
-          }
-
+        if (relayerBal > advanceAmount * 2n) {
           const fundTx = await relayer.sendTransaction({
             account: relayer.account,
             to: proxyAccount.address,
-            value: 30000000000000n,
+            value: advanceAmount,
           });
           await publicClient.waitForTransactionReceipt({ hash: fundTx });
-          console.log(`[Recover] ✓ Gas advance to proxy ${proxyAccount.address}: ${fundTx}`);
-        } catch (e: any) {
+          console.log(`[Recover] ✓ Gas advance to proxy ${proxyAccount.address} on ${normChain}: ${fundTx}`);
+        } else {
+          const nativeSym = normChain === "polygon" ? "POL" : normChain === "bsc" ? "BNB" : "ETH";
           return {
             success: false,
-            message: `Gas advance to proxy failed: ${e?.message || e}. Relayer may need more ETH on Base.`,
+            message: `Proxy wallet holds ${formatUnits(sweepAmount, decimals)} ${tokenSymbol}, but has insufficient native ${nativeSym} for network gas fee (${ethBalance} wei) and relayer gas tank is low (${formatUnits(relayerBal, 18)} ${nativeSym}). Please send some ${nativeSym} to relayer address ${relayer.account.address} or proxy address ${proxyAccount.address}.`,
             order,
           };
         }
-      } else {
+      } catch (advanceErr: any) {
+        console.warn(`[Recover] Relayer gas advance failed on ${normChain}:`, advanceErr);
         const nativeSym = normChain === "polygon" ? "POL" : normChain === "bsc" ? "BNB" : "ETH";
         return {
           success: false,
-          message: `Proxy wallet holds ${formatUnits(sweepAmount, decimals)} ${tokenSymbol}, but has insufficient native ${nativeSym} for network gas fee (${ethBalance} wei). Please send ~0.05 ${nativeSym} to proxy address ${proxyAccount.address} to power the transaction, then retry.`,
+          message: `Proxy wallet holds ${formatUnits(sweepAmount, decimals)} ${tokenSymbol}, but has insufficient native ${nativeSym} for gas fee (${ethBalance} wei). Please send ~0.05 ${nativeSym} to proxy address ${proxyAccount.address} to power the transaction, then retry.`,
           order,
         };
       }

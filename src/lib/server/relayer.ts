@@ -89,6 +89,22 @@ export function getRelayerWalletClient() {
   return getWalletClient();
 }
 
+// Same relayer key, but a wallet client bound to the requested chain (Base, Polygon, Arbitrum, BSC...)
+const _chainWalletClients = new Map<string, any>();
+export function getRelayerWalletClientForChain(chainStr: string) {
+  const { chain, transports, key } = getEvmRpcConfig(chainStr);
+  const cached = _chainWalletClients.get(key);
+  if (cached) return cached;
+
+  const client = createWalletClient({
+    account: getRelayerAccount(),
+    chain,
+    transport: fallback(transports, { rank: false }),
+  });
+  _chainWalletClients.set(key, client);
+  return client;
+}
+
 function getPublicClient() {
   return getResilientPublicClient();
 }

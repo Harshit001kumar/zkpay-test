@@ -18,13 +18,17 @@ export interface ProxySwapOrder {
   totalAmountIn: string; // Atomic units e.g. "100000000"
   totalAmountFormatted: string; // Human readable e.g. "100.00"
   netSwapAmount: string; // Atomic units sent to solver
-  feeAmount: string; // Atomic units
-  gasBufferAmount: string; // Atomic units for Case B (0.01 USDT/USDC)
+  feeAmount: string; // Atomic units (total fee: zkpay % + fixed + partner %)
+  gasBufferAmount: string; // Legacy (no longer charged on new orders)
   solverDepositAddress: string; // Near Intents single-use address
+  solverQuoteAmount?: string; // Amount quoted to solver (net minus 1% FLEX buffer)
   treasuryAddress: string;
   partnerFeeRecipient?: string | null;
   partnerFeeAmount?: string;
   zkpayFeeAmount?: string;
+  zkpayFeeBps?: number; // ZkPay share of % fee
+  partnerFeeBps?: number; // Partner share of % fee
+  fixedFeeAmount?: string; // Fixed 0.05 USDC/USDT in atomic units (ZkPay only)
   status: "PENDING_DEPOSIT" | "DETECTED" | "FORWARDING" | "FORWARDED" | "SETTLED" | "FAILED" | "EXPIRED";
   depositTxHash?: string;
   feeTxHash?: string;

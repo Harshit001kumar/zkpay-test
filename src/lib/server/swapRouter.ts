@@ -44,6 +44,14 @@ export const DEFAULT_CUSTOM_FEE_BPS = 100;        // 1.00% default
 export const MIN_CUSTOM_FEE_BPS = 20;             // 0.20% minimum custom fee
 export const MAX_CUSTOM_FEE_BPS = 450;            // 4.50% max custom fee (leaves headroom for 25 bps overhead < 500 bps cap)
 
+// Fixed fee (0.05 units) charged on every proxied USDC/USDT API swap.
+// Covers relayer-sponsored gas. Always goes 100% to the ZkPay treasury (never split with partners).
+export const FIXED_STABLE_FEE_CENTS = 5n; // 0.05 = 5 cents
+
+// The solver is quoted this much BELOW the real net amount. Because the quote is FLEX_INPUT,
+// the solver swaps 100% of what actually arrives, so a slightly larger deposit never fails or refunds.
+export const FLEX_INPUT_BUFFER_BPS = 100; // 1%
+
 // Default EVM treasury address (used when origin chain isn't specified or is EVM)
 export const ZKPAY_TREASURY_ADDRESS =
   process.env.NEXT_PUBLIC_DEPOSIT_FEE_RECIPIENT ||
@@ -51,27 +59,95 @@ export const ZKPAY_TREASURY_ADDRESS =
   CONTRACTS.TREASURY ||
   "0xb856b24fb054135deba5e0309edd31ed6a8afbe2";
 
+const EVM_CHAINS = new Set(["base", "arb", "polygon", "bsc", "eth"]);
+
 /**
- * Validates that a fee recipient address matches the expected format for the chain.
+ * Validates that a fee recipient address is valid ON THE GIVEN CHAIN.
+ * Strict: an EVM address is rejected for Solana/LTC/BTC/Tron and vice versa.
+ * Fees are paid in the origin asset on the origin chain, so pass the ORIGIN chain.
  */
 export function isValidFeeRecipient(address?: string | null, chain?: string | null): boolean {
   if (!address || typeof address !== "string") return false;
   const clean = address.trim();
   const c = normalizeChain(chain);
-  // EVM address
-  if (/^0x[a-fA-F0-9]{40}$/.test(clean)) return true;
-  // Solana address (base58, 32-44 characters)
-  if ((!c || c === "sol") && /^[1-9A-HJ-NP-za-km-z]{32,44}$/.test(clean)) return true;
-  // Tron address (starts with T, base58 34 characters)
-  if ((!c || c === "tron") && /^T[a-km-zA-HJ-NP-Z1-9]{33}$/.test(clean)) return true;
-  // Litecoin address (starts with L, M, or ltc1)
-  if ((!c || c === "ltc") && /^(L|M|ltc1)[a-km-zA-HJ-NP-Z1-9]{25,43}$/.test(clean)) return true;
-  // Bitcoin address
-  if ((!c || c === "btc") && /^(1|3|bc1)[a-km-zA-HJ-NP-Z1-9]{25,62}$/.test(clean)) return true;
-  // Named NEAR account or implicit
-  if (/^[a-z0-9_.-]+\.(near|tg)$/i.test(clean)) return true;
-  if (/^[a-fA-F0-9]{64}$/.test(clean)) return true;
+  if (!c) return false;
+
+  if (EVM_CHAINS.has(c)) return /^0x[a-fA-F0-9]{40}$/.test(clean);
+  if (c === "sol") return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(clean);
+  if (c === "tron") return /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(clean);
+  if (c === "ltc") {
+    return /^[LM][1-9A-HJ-NP-Za-km-z]{26,33}$/.test(clean) || /^ltc1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{39,59}$/.test(clean);
+  }
+  if (c === "btc") {
+    return /^[13][1-9A-HJ-NP-Za-km-z]{25,34}$/.test(clean) || /^bc1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{39,59}$/.test(clean);
+  }
   return false;
+}
+
+/**
+ * Looks up symbol + decimals for a curated origin asset.
+ */
+export function getOriginTokenMeta(originAssetId: string): { symbol: string; decimals: number } | null {
+  const t = SWAP_ALLOWED_TOKENS.find((x) => x.assetId === originAssetId);
+  return t ? { symbol: t.symbol, decimals: t.decimals } : null;
+}
+
+export interface UpfrontFeeBreakdown {
+  zkpayPercentFee: bigint; // ZkPay share of the % fee
+  partnerFee: bigint;      // Partner share of the % fee
+  fixedFee: bigint;        // Fixed 0.05 USDC/USDT (ZkPay only)
+  zkpayFee: bigint;        // zkpayPercentFee + fixedFee -> treasury
+  totalFee: bigint;        // zkpayFee + partnerFee
+  netSwapAmount: bigint;   // What the proxy actually forwards to the solver
+  solverQuoteAmount: bigint; // What we quote the solver for (net minus 1% FLEX buffer)
+}
+
+/**
+ * Single source of truth for upfront fee math on proxied API swaps.
+ */
+export function computeUpfrontFees(
+  totalAtomic: bigint,
+  feeSplit: FeeSplitResult,
+  originAssetId: string
+): UpfrontFeeBreakdown {
+  if (feeSplit.isDirectRoute) {
+    return {
+      zkpayPercentFee: 0n,
+      partnerFee: 0n,
+      fixedFee: 0n,
+      zkpayFee: 0n,
+      totalFee: 0n,
+      netSwapAmount: totalAtomic,
+      solverQuoteAmount: totalAtomic,
+    };
+  }
+
+  const meta = getOriginTokenMeta(originAssetId);
+  const isStable = !!meta && (meta.symbol === "USDC" || meta.symbol === "USDT") && meta.decimals >= 2;
+  const fixedFee = isStable ? FIXED_STABLE_FEE_CENTS * 10n ** BigInt(meta!.decimals - 2) : 0n;
+
+  const partnerFee = feeSplit.partnerFeeRecipient
+    ? (totalAtomic * BigInt(feeSplit.partnerFeeBps)) / 10000n
+    : 0n;
+  const zkpayPercentFee = (totalAtomic * BigInt(feeSplit.zkpayFeeBps)) / 10000n;
+  const zkpayFee = zkpayPercentFee + fixedFee;
+  const totalFee = zkpayFee + partnerFee;
+
+  if (totalAtomic <= totalFee) {
+    const err: any = new Error(
+      isStable
+        ? `Amount is too small: it must be larger than the fees (${feeSplit.totalCustomFeeBps / 100}% + 0.05 ${meta!.symbol} fixed fee).`
+        : `Amount is too small to cover the ${feeSplit.totalCustomFeeBps / 100}% platform fee.`
+    );
+    err.code = "AMOUNT_BELOW_MINIMUM";
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const netSwapAmount = totalAtomic - totalFee;
+  const solverQuoteAmount = (netSwapAmount * BigInt(10000 - FLEX_INPUT_BUFFER_BPS)) / 10000n;
+
+  return { zkpayPercentFee, partnerFee, fixedFee, zkpayFee, totalFee, netSwapAmount, solverQuoteAmount };
 }
 
 // Re-export chain & treasury resolution helpers
@@ -85,7 +161,7 @@ export {
 };
 
 export interface ExecutionTransfer {
-  purpose: "PLATFORM_FEE" | "SWAP_DEPOSIT";
+  purpose: "PLATFORM_FEE" | "PARTNER_FEE" | "SWAP_DEPOSIT";
   recipient: string;
   amount: string;
 }
@@ -608,7 +684,8 @@ export async function getSwapQuote(params: SwapQuoteParams) {
   validateSwapAmount(amount, originAssetId);
 
   // Fee split is resolved per ORIGIN chain because 1Click appFees carve out input tokens
-  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain, fromAsset);
+  const originSymbol = getOriginTokenMeta(originAssetId)?.symbol || fromAsset;
+  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain, originSymbol);
 
   // Validate partner fee recipient format if provided
   if (
@@ -623,17 +700,10 @@ export async function getSwapQuote(params: SwapQuoteParams) {
     throw err;
   }
 
-  // Compute upfront fee deduction
-  let netSwapAmount = amount.trim();
-  let feeAmount = "0";
-
-  if (!feeSplit.isDirectRoute && feeSplit.totalCustomFeeBps > 0) {
-    const totalAtomic = BigInt(amount.trim());
-    const feeAtomic = (totalAtomic * BigInt(feeSplit.totalCustomFeeBps)) / 10000n;
-    const netAtomic = totalAtomic - feeAtomic;
-    netSwapAmount = netAtomic > 0n ? netAtomic.toString() : amount.trim();
-    feeAmount = feeAtomic.toString();
-  }
+  // Compute upfront fee deduction (single source of truth)
+  const fees = computeUpfrontFees(BigInt(amount.trim()), feeSplit, originAssetId);
+  const netSwapAmount = fees.netSwapAmount.toString();
+  const feeAmount = fees.totalFee.toString();
 
   // Ensure effectiveRecipient is ALWAYS valid for the destination chain
   const effectiveRecipient =
@@ -651,7 +721,7 @@ export async function getSwapQuote(params: SwapQuoteParams) {
     depositType: "ORIGIN_CHAIN",
     destinationAsset: destinationAssetId,
     recipientType: "DESTINATION_CHAIN",
-    amount: netSwapAmount, // Pass net swap amount to solver
+    amount: fees.solverQuoteAmount.toString(), // Quoted 1% below net; FLEX_INPUT swaps the full forwarded amount
     recipient: effectiveRecipient,
     refundTo: effectiveRefundTo,
     refundType: "ORIGIN_CHAIN",
@@ -696,8 +766,17 @@ export async function getSwapQuote(params: SwapQuoteParams) {
           {
             purpose: "PLATFORM_FEE",
             recipient: feeSplit.treasuryAddress,
-            amount: feeAmount,
+            amount: fees.zkpayFee.toString(),
           },
+          ...(fees.partnerFee > 0n && feeSplit.partnerFeeRecipient
+            ? [
+                {
+                  purpose: "PARTNER_FEE" as const,
+                  recipient: feeSplit.partnerFeeRecipient,
+                  amount: fees.partnerFee.toString(),
+                },
+              ]
+            : []),
           {
             purpose: "SWAP_DEPOSIT",
             recipient: quote.depositAddress,
@@ -725,6 +804,9 @@ export async function getSwapQuote(params: SwapQuoteParams) {
       networkProtocolFeeBps: feeSplit.networkProtocolFeeBps,
       totalCustomFeeBps: feeSplit.totalCustomFeeBps,
       feeAmount,
+      fixedFeeAmount: fees.fixedFee.toString(),
+      zkpayFeeAmount: fees.zkpayFee.toString(),
+      partnerFeeAmount: fees.partnerFee.toString(),
       split: {
         zkpayFeeBps: feeSplit.zkpayFeeBps,
         partnerFeeBps: feeSplit.partnerFeeBps,
@@ -780,7 +862,8 @@ export async function createSwapOrder(params: CreateSwapParams) {
   validateSwapAmount(amount, originAssetId);
 
   // Fee split is resolved per ORIGIN chain
-  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain, fromAsset);
+  const originSymbol = getOriginTokenMeta(originAssetId)?.symbol || fromAsset;
+  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain, originSymbol);
 
   // Validate partner fee recipient format if provided
   if (
@@ -795,17 +878,10 @@ export async function createSwapOrder(params: CreateSwapParams) {
     throw err;
   }
 
-  // Compute upfront fee deduction
-  let netSwapAmount = amount.trim();
-  let feeAmount = "0";
-
-  if (!feeSplit.isDirectRoute && feeSplit.totalCustomFeeBps > 0) {
-    const totalAtomic = BigInt(amount.trim());
-    const feeAtomic = (totalAtomic * BigInt(feeSplit.totalCustomFeeBps)) / 10000n;
-    const netAtomic = totalAtomic - feeAtomic;
-    netSwapAmount = netAtomic > 0n ? netAtomic.toString() : amount.trim();
-    feeAmount = feeAtomic.toString();
-  }
+  // Compute upfront fee deduction (single source of truth)
+  const fees = computeUpfrontFees(BigInt(amount.trim()), feeSplit, originAssetId);
+  const netSwapAmount = fees.netSwapAmount.toString();
+  const feeAmount = fees.totalFee.toString();
 
   const effectiveRefundTo = resolveRefundAddress(originAssetId, params.refundTo, recipient, { isDryRun: false });
   const deadline = new Date(Date.now() + 15 * 60 * 1000).toISOString();
@@ -818,7 +894,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
     depositType: "ORIGIN_CHAIN",
     destinationAsset: destinationAssetId,
     recipientType: "DESTINATION_CHAIN",
-    amount: netSwapAmount, // Pass net swap amount to solver
+    amount: fees.solverQuoteAmount.toString(), // Quoted 1% below net; FLEX_INPUT swaps the full forwarded amount
     recipient: recipient.trim(),
     refundTo: effectiveRefundTo,
     refundType: "ORIGIN_CHAIN",
@@ -847,7 +923,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
   let finalDepositAddress = quote.depositAddress;
   let finalDepositAmount = quote.amountInFormatted || netSwapAmount;
 
-  if (!feeSplit.isDirectRoute && isProxySupportedChain(resolvedOriginChain, fromAsset)) {
+  if (!feeSplit.isDirectRoute && isProxySupportedChain(resolvedOriginChain, originSymbol)) {
     try {
       const proxyWallet = generateProxyDepositWallet(resolvedOriginChain);
       finalDepositAddress = proxyWallet.depositAddress;
@@ -857,9 +933,10 @@ export async function createSwapOrder(params: CreateSwapParams) {
         swapId: data.correlationId || `swp_${Date.now()}`,
         proxyDepositAddress: proxyWallet.depositAddress,
         encryptedPrivateKey: proxyWallet.encryptedPrivateKey,
-        chain: resolvedOriginChain,
+        chain: normalizeChain(resolvedOriginChain) || resolvedOriginChain,
         originAssetId,
-        fromAsset,
+        // Store the resolved symbol (forwarder relies on it), not the raw user input
+        fromAsset: getOriginTokenMeta(originAssetId)?.symbol || fromAsset,
         toAsset: params.toAsset || "USDC",
         destinationChain: resolvedDestChain,
         recipient: recipient.trim(),
@@ -868,10 +945,16 @@ export async function createSwapOrder(params: CreateSwapParams) {
         totalAmountFormatted: finalDepositAmount,
         netSwapAmount,
         feeAmount,
-        gasBufferAmount: "10000",
+        gasBufferAmount: "0",
         solverDepositAddress: quote.depositAddress,
+        solverQuoteAmount: fees.solverQuoteAmount.toString(),
         treasuryAddress: feeSplit.treasuryAddress,
-        partnerFeeRecipient: feeSplit.partnerFeeRecipient,
+        partnerFeeRecipient: fees.partnerFee > 0n ? feeSplit.partnerFeeRecipient : null,
+        zkpayFeeBps: feeSplit.zkpayFeeBps,
+        partnerFeeBps: fees.partnerFee > 0n ? feeSplit.partnerFeeBps : 0,
+        fixedFeeAmount: fees.fixedFee.toString(),
+        zkpayFeeAmount: fees.zkpayFee.toString(),
+        partnerFeeAmount: fees.partnerFee.toString(),
         status: "PENDING_DEPOSIT",
         createdAt: Date.now(),
         expiresAt: new Date(quote.deadline || deadline).getTime(),
@@ -907,8 +990,17 @@ export async function createSwapOrder(params: CreateSwapParams) {
           {
             purpose: "PLATFORM_FEE",
             recipient: feeSplit.treasuryAddress,
-            amount: feeAmount,
+            amount: fees.zkpayFee.toString(),
           },
+          ...(fees.partnerFee > 0n && feeSplit.partnerFeeRecipient
+            ? [
+                {
+                  purpose: "PARTNER_FEE" as const,
+                  recipient: feeSplit.partnerFeeRecipient,
+                  amount: fees.partnerFee.toString(),
+                },
+              ]
+            : []),
           {
             purpose: "SWAP_DEPOSIT",
             recipient: quote.depositAddress,
@@ -938,6 +1030,9 @@ export async function createSwapOrder(params: CreateSwapParams) {
       isDirectRoute: feeSplit.isDirectRoute,
       totalCustomFeeBps: feeSplit.totalCustomFeeBps,
       feeAmount,
+      fixedFeeAmount: fees.fixedFee.toString(),
+      zkpayFeeAmount: fees.zkpayFee.toString(),
+      partnerFeeAmount: fees.partnerFee.toString(),
       zkpayFeeBps: feeSplit.zkpayFeeBps,
       partnerFeeBps: feeSplit.partnerFeeBps,
       partnerFeeRecipient: feeSplit.partnerFeeRecipient,
