@@ -936,11 +936,26 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
  */
 async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
   try {
-    const { getLtcBalanceAndUtxos, sweepLtcDeposit } = await import("./ltcClient");
+    const { getLtcBalanceAndUtxos, sweepLtcDeposit, LTC_DUST_THRESHOLD_SATOSHIS } = await import("./ltcClient");
     const { balanceSatoshis, utxos } = await getLtcBalanceAndUtxos(order.proxyDepositAddress);
-    const expectedAtomic = BigInt(order.totalAmountIn);
 
-    if (balanceSatoshis < (expectedAtomic * 90n) / 100n || balanceSatoshis <= 5000n) {
+    // Safely parse expected atomic units (handles decimal inputs e.g. "0.0035" or atomic units)
+    let expectedAtomic = 0n;
+    try {
+      const clean = (order.totalAmountIn || "0").trim();
+      if (clean.includes(".")) {
+        const { parseUnits } = await import("viem");
+        expectedAtomic = parseUnits(clean, 8); // LTC has 8 decimals
+      } else {
+        expectedAtomic = BigInt(clean);
+      }
+    } catch {
+      expectedAtomic = 0n;
+    }
+
+    // Minimum balance needed to cover LTC miner fee (~3000-5000 sats)
+    const minThreshold = expectedAtomic > 0n ? (expectedAtomic * 80n) / 100n : 5000n;
+    if (utxos.length === 0 || balanceSatoshis <= 5000n || (expectedAtomic > 0n && balanceSatoshis < minThreshold)) {
       return order; // Awaiting deposit
     }
 
@@ -960,7 +975,7 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
         partnerFeeSats = (balanceSatoshis * BigInt(order.partnerFeeBps!)) / 10000n;
       }
-    } else {
+    } else if (order.feeAmount && expectedAtomic > 0n) {
       zkpayFeeSats = (balanceSatoshis * BigInt(order.feeAmount)) / expectedAtomic;
     }
 
@@ -974,16 +989,24 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       partnerFeeSatoshis: partnerFeeSats,
     });
 
+    const dustLimit = LTC_DUST_THRESHOLD_SATOSHIS || 5460n;
+    const hasFeeOutput = zkpayFeeSats >= dustLimit || partnerFeeSats >= dustLimit;
+
     const updated = await updateProxySwapOrder(order.swapId, {
       status: "FORWARDED",
       depositTxHash: txHash,
-      feeTxHash: (zkpayFeeSats > 0n || partnerFeeSats > 0n) ? txHash : undefined,
+      feeTxHash: hasFeeOutput ? txHash : undefined,
       forwardTxHash: txHash,
     });
 
     return updated || order;
-  } catch (err) {
-    console.warn("[ProxyForwarder] LTC balance/sweep error:", err);
+  } catch (err: any) {
+    console.error("[ProxyForwarder] LTC balance/sweep error:", err);
+    // Revert status to PENDING_DEPOSIT and record error message so the sweeper daemon retries
+    await updateProxySwapOrder(order.swapId, {
+      status: "PENDING_DEPOSIT",
+      error: `LTC sweep error: ${err?.message || err}`,
+    }).catch(() => {});
   }
 
   return order;

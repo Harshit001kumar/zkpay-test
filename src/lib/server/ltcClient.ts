@@ -27,6 +27,10 @@ export const LITECOIN_NETWORK = {
   wif: 0xb0,
 };
 
+// Standard Litecoin P2PKH dust relay limit (5,460 satoshis).
+// Any transaction output below this threshold is rejected by Litecoin Core nodes with 'dust (code 64)'.
+export const LTC_DUST_THRESHOLD_SATOSHIS = 5460n;
+
 /**
  * Queries LTC address balance and UTXOs using NowNodes with failovers to LitecoinSpace and BlockCypher.
  */
@@ -43,7 +47,9 @@ export async function getLtcBalanceAndUtxos(address: string): Promise<LtcBalance
       });
       if (res.ok) {
         const data = await res.json();
-        const balanceSatoshis = BigInt(data.balance || "0");
+        const confirmedBal = BigInt(data.balance || "0");
+        const unconfirmedBal = BigInt(data.unconfirmedBalance || "0");
+        const balanceSatoshis = confirmedBal + (unconfirmedBal > 0n ? unconfirmedBal : 0n);
         
         // If balance > 0, fetch UTXOs from NOWNodes
         if (balanceSatoshis > 0n) {
@@ -58,10 +64,13 @@ export async function getLtcBalanceAndUtxos(address: string): Promise<LtcBalance
               vout: Number(u.vout),
               value: BigInt(u.value || "0"),
             }));
-            return { balanceSatoshis, utxos };
+            if (utxos.length > 0) {
+              return { balanceSatoshis, utxos };
+            }
           }
         }
-        return { balanceSatoshis, utxos: [] };
+        // If NowNodes returned 0 balance or 0 UTXOs (e.g. indexer delay), do not return early;
+        // fall back to LitecoinSpace mempool explorer below.
       }
     } catch (e) {
       console.warn("[LTC] NowNodes query warning, falling back:", e);
@@ -88,7 +97,9 @@ export async function getLtcBalanceAndUtxos(address: string): Promise<LtcBalance
           });
         }
       }
-      return { balanceSatoshis: total, utxos };
+      if (utxos.length > 0) {
+        return { balanceSatoshis: total, utxos };
+      }
     }
   } catch (e) {
     console.warn("[LTC] LitecoinSpace query warning, falling back:", e);
@@ -205,12 +216,44 @@ export async function sweepLtcDeposit(params: {
   // Standard LTC miner fee (~2000-5000 satoshis is plenty for LTC's ~1 sat/vB)
   const MINER_FEE_SATOSHIS = 3000n;
 
-  const totalFeeSatoshis = zkpayFeeSatoshis + partnerFeeSatoshis;
+  let effectiveZkpayFee = zkpayFeeSatoshis;
+  let effectivePartnerFee = partnerFeeSatoshis;
+
+  // 1. If treasury address is same as proxy address, do not send fee back to proxy
+  if (treasuryAddress.toLowerCase() === proxyAddress.toLowerCase()) {
+    effectiveZkpayFee = 0n;
+  }
+
+  // 2. If ZkPay fee is below dust limit (5,460 sats), do NOT create a dust output; roll into solver
+  if (effectiveZkpayFee < LTC_DUST_THRESHOLD_SATOSHIS) {
+    if (effectiveZkpayFee > 0n) {
+      console.log(
+        `[LTC] ZkPay fee (${effectiveZkpayFee} sats) below dust limit (${LTC_DUST_THRESHOLD_SATOSHIS} sats); rolling into solver amount.`
+      );
+    }
+    effectiveZkpayFee = 0n;
+  }
+
+  // 3. If Partner fee is below dust limit or partner address is invalid/proxy, roll into solver
+  if (
+    !partnerAddress ||
+    partnerAddress.toLowerCase() === proxyAddress.toLowerCase() ||
+    effectivePartnerFee < LTC_DUST_THRESHOLD_SATOSHIS
+  ) {
+    if (effectivePartnerFee > 0n) {
+      console.log(
+        `[LTC] Partner fee (${effectivePartnerFee} sats) below dust limit (${LTC_DUST_THRESHOLD_SATOSHIS} sats); rolling into solver amount.`
+      );
+    }
+    effectivePartnerFee = 0n;
+  }
+
+  const totalFeeSatoshis = effectiveZkpayFee + effectivePartnerFee;
   const netSolverSatoshis = balanceSatoshis - totalFeeSatoshis - MINER_FEE_SATOSHIS;
 
   if (netSolverSatoshis <= 0n) {
     throw new Error(
-      `LTC deposit balance (${balanceSatoshis} sats) too low to cover fee (${totalFeeSatoshis} sats) and miner fee.`
+      `LTC deposit balance (${balanceSatoshis} sats) too low to cover fee (${totalFeeSatoshis} sats) and miner fee (${MINER_FEE_SATOSHIS} sats).`
     );
   }
 
@@ -286,19 +329,19 @@ export async function sweepLtcDeposit(params: {
     value: Number(netSolverSatoshis),
   });
 
-  // Output 2: ZkPay Treasury fee (if > 0)
-  if (zkpayFeeSatoshis > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
+  // Output 2: ZkPay Treasury fee (if >= dust threshold and not solver address)
+  if (effectiveZkpayFee >= LTC_DUST_THRESHOLD_SATOSHIS && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
     psbt.addOutput({
       address: treasuryAddress,
-      value: Number(zkpayFeeSatoshis),
+      value: Number(effectiveZkpayFee),
     });
   }
 
-  // Output 3: Partner fee (if > 0)
-  if (partnerAddress && partnerFeeSatoshis > 0n) {
+  // Output 3: Partner fee (if >= dust threshold)
+  if (partnerAddress && effectivePartnerFee >= LTC_DUST_THRESHOLD_SATOSHIS) {
     psbt.addOutput({
       address: partnerAddress,
-      value: Number(partnerFeeSatoshis),
+      value: Number(effectivePartnerFee),
     });
   }
 
