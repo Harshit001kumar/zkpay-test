@@ -7,11 +7,6 @@ import { normalizeChain } from "@/lib/constants";
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 /**
- * Encodes arbitrary buffer to Base58 string (Solana / Bitcoin standard).
- */
-const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
-/**
  * Encodes arbitrary buffer to Base58 string (Solana / Bitcoin / Litecoin standard).
  * Uses BigInt for arbitrary-precision arithmetic to prevent 32-bit integer overflow.
  */
