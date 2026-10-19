@@ -34,6 +34,8 @@ export interface ProxySwapOrder {
   feeTxHash?: string;
   forwardTxHash?: string;
   error?: string;
+  feeNote?: string; // Why a fee output was skipped / rolled into the solver transfer (audit trail)
+  lastAttemptAt?: number; // Timestamp of last forward sweep attempt (used for cooldown backoff)
   createdAt: number;
   expiresAt: number;
 }

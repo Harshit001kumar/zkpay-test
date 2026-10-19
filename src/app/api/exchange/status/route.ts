@@ -81,6 +81,7 @@ export async function GET(req: Request) {
               txExplorerUrl: swapDetails.destinationChainTxHashes?.[0]?.explorerUrl || null,
               splitFeeTxHash: currentOrder.feeTxHash || null,
               forwardTxHash: currentOrder.forwardTxHash || null,
+              feeNote: currentOrder.feeNote || null,
             });
           }
         }
@@ -94,6 +95,8 @@ export async function GET(req: Request) {
           txExplorerUrl: null,
           splitFeeTxHash: currentOrder.feeTxHash || null,
           forwardTxHash: currentOrder.forwardTxHash || null,
+          feeNote: currentOrder.feeNote || null,
+          error: currentOrder.error || null,
         });
       }
     } catch (proxyLookupErr) {

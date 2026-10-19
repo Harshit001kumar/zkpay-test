@@ -203,6 +203,12 @@ export async function checkAndForwardProxyDeposit(order: ProxySwapOrder): Promis
     return order;
   }
 
+  // Backoff / Cooldown: if a sweep attempt failed within the last 10 seconds,
+  // do not repeatedly hammer the RPC on every 500ms status poll.
+  if (order.lastAttemptAt && Date.now() - order.lastAttemptAt < 10_000 && order.error) {
+    return order;
+  }
+
   sweepLocks.add(lockKey);
   try {
     // ── 1. Solana Deposit Check ──
@@ -627,9 +633,154 @@ async function fetchSolanaRpc(method: string, params: any[]): Promise<any> {
   return fetchResilientSolanaRpc(method, params);
 }
 
+// ─── Solana constants ───
+// 1 signature = 5,000 lamports base fee (no priority fee).
+const SOLANA_NETWORK_FEE = 5000n;
+// Rent-exempt minimum for a 0-data System account. After any transaction, every touched
+// account must hold either 0 lamports or >= this amount, otherwise the runtime rejects
+// the whole transaction with InsufficientFundsForRent.
+const SOLANA_RENT_EXEMPT_MIN = 890_880n;
+// Below this the deposit is treated as "not arrived yet".
+const SOLANA_MIN_SWEEP_LAMPORTS = 50_000n;
+
+function isSolanaBase58Address(addr?: string | null): boolean {
+  if (!addr) return false;
+  const clean = addr.trim();
+  if (clean.startsWith("0x")) return false;
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(clean);
+}
+
+interface SolanaTransferOutput {
+  toBase58: string;
+  lamports: bigint;
+}
+
 /**
- * Builds, signs (Ed25519), and broadcasts a native Solana transfer transaction
- * with solver transfer, optional ZkPay treasury fee, and optional partner fee.
+ * Builds, signs (Ed25519), and broadcasts a native Solana transaction with ONE
+ * System Program transfer instruction PER output (any number of outputs).
+ * - Duplicate recipients are merged, zero outputs dropped.
+ * - Preflight simulation is ENABLED, so rent/balance errors are rejected by the RPC
+ *   before broadcast instead of landing on-chain as failed transactions.
+ */
+async function sendSolanaMultiTransfer(params: {
+  fromPubkeyBase58: string;
+  fromPrivKeyHex: string;
+  outputs: SolanaTransferOutput[];
+}): Promise<string> {
+  const fromKey = params.fromPubkeyBase58.trim();
+
+  const merged = new Map<string, bigint>();
+  for (const o of params.outputs) {
+    const to = (o.toBase58 || "").trim();
+    if (o.lamports <= 0n || to === fromKey) continue;
+    if (!isSolanaBase58Address(to)) {
+      throw new Error(`Invalid Solana recipient address: '${to}'`);
+    }
+    merged.set(to, (merged.get(to) || 0n) + o.lamports);
+  }
+  if (merged.size === 0) {
+    throw new Error("No valid Solana transfer outputs to send.");
+  }
+
+  const bhResult = await fetchSolanaRpc("getLatestBlockhash", [{ commitment: "confirmed" }]);
+  const blockhash = bhResult?.value?.blockhash;
+  if (!blockhash) {
+    throw new Error("Failed to retrieve latest Solana blockhash.");
+  }
+
+  const recipients = Array.from(merged.entries());
+
+  // Account keys: [signer/payer (0), ...recipients (writable, unsigned), SystemProgram (readonly, last)]
+  const accountKeys: Buffer[] = [
+    to32Bytes(decodeBase58(fromKey)),
+    ...recipients.map(([to]) => to32Bytes(decodeBase58(to))),
+    Buffer.alloc(32), // 11111111111111111111111111111111 (System Program)
+  ];
+  const programIndex = accountKeys.length - 1;
+
+  const instructions: Buffer[] = recipients.map(([, lamports], i) => {
+    const data = Buffer.alloc(12);
+    data.writeUInt32LE(2, 0); // SystemInstruction::Transfer
+    data.writeBigUInt64LE(lamports, 4);
+    return Buffer.concat([
+      Buffer.from([programIndex]),
+      Buffer.from([2, 0, i + 1]), // 2 accounts: from(0), to(i+1)
+      Buffer.from([12]),
+      data,
+    ]);
+  });
+
+  // Header: 1 required signature, 0 readonly signed, 1 readonly unsigned (System Program)
+  // Counts are < 128 so each compact-u16 length fits in one byte.
+  const message = Buffer.concat([
+    Buffer.from([1, 0, 1]),
+    Buffer.from([accountKeys.length]),
+    ...accountKeys,
+    to32Bytes(decodeBase58(blockhash)),
+    Buffer.from([instructions.length]),
+    ...instructions,
+  ]);
+
+  const cleanHex = params.fromPrivKeyHex.replace(/^0x/, "");
+  const rawPrivSeed = Buffer.from(cleanHex, "hex").subarray(0, 32);
+  const privKeyObj = crypto.createPrivateKey({
+    key: Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), rawPrivSeed]),
+    format: "der",
+    type: "pkcs8",
+  });
+  const signature = crypto.sign(null, message, privKeyObj);
+
+  const wireTxBase64 = Buffer.concat([Buffer.from([1]), signature, message]).toString("base64");
+
+  const txSignature = await fetchSolanaRpc("sendTransaction", [
+    wireTxBase64,
+    {
+      encoding: "base64",
+      skipPreflight: false, // simulate first: reject rent / balance errors before broadcast
+      preflightCommitment: "confirmed",
+      maxRetries: 5,
+    },
+  ]);
+
+  console.log(
+    `[ProxyForwarder] Solana tx broadcast (${recipients.length} transfer(s)): ${txSignature} :: ` +
+      recipients.map(([to, l]) => `${l} -> ${to}`).join(", ")
+  );
+  return txSignature;
+}
+
+/**
+ * Polls signature status until confirmed. Throws if the transaction failed on-chain.
+ * Returns "timeout" if not confirmed within the window (preflight already passed).
+ */
+async function waitForSolanaSignature(
+  signature: string,
+  timeoutMs = 20_000
+): Promise<"confirmed" | "timeout"> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    let status: any = null;
+    try {
+      const res = await fetchSolanaRpc("getSignatureStatuses", [[signature], { searchTransactionHistory: false }]);
+      status = res?.value?.[0] || null;
+    } catch {
+      // transient RPC failure — keep polling
+    }
+    if (status) {
+      if (status.err) {
+        throw new Error(`Solana transaction ${signature} failed on-chain: ${JSON.stringify(status.err)}`);
+      }
+      if (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized") {
+        return "confirmed";
+      }
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  return "timeout";
+}
+
+/**
+ * Backwards-compatible wrapper (used by the recovery / refund paths).
  */
 async function sendSolanaTransfer(params: {
   fromPubkeyBase58: string;
@@ -641,194 +792,20 @@ async function sendSolanaTransfer(params: {
   partnerRecipientBase58?: string | null;
   partnerLamports?: bigint;
 }): Promise<string> {
-  const {
-    fromPubkeyBase58,
-    fromPrivKeyHex,
-    toPubkeyBase58,
-    transferLamports,
-    feeRecipientBase58,
-    feeLamports = 0n,
-    partnerRecipientBase58,
-    partnerLamports = 0n,
-  } = params;
-
-  const bhResult = await fetchSolanaRpc("getLatestBlockhash", [{ commitment: "confirmed" }]);
-  const blockhash = bhResult?.value?.blockhash;
-  if (!blockhash) {
-    throw new Error("Failed to retrieve latest Solana blockhash.");
+  const outputs: SolanaTransferOutput[] = [
+    { toBase58: params.toPubkeyBase58, lamports: params.transferLamports },
+  ];
+  if (params.feeRecipientBase58 && (params.feeLamports ?? 0n) > 0n) {
+    outputs.push({ toBase58: params.feeRecipientBase58, lamports: params.feeLamports! });
   }
-
-  const fromPubkeyBuf = to32Bytes(decodeBase58(fromPubkeyBase58));
-  const toPubkeyBuf = to32Bytes(decodeBase58(toPubkeyBase58));
-  const blockhashBuf = to32Bytes(decodeBase58(blockhash));
-  const systemProgramBuf = Buffer.alloc(32); // 11111111111111111111111111111111
-
-  const isSolanaAddr = (addr?: string | null) => {
-    if (!addr) return false;
-    const clean = addr.trim();
-    if (clean.startsWith("0x")) return false;
-    return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(clean);
-  };
-
-  const hasTreasuryFee =
-    Boolean(feeRecipientBase58) &&
-    feeLamports > 0n &&
-    isSolanaAddr(feeRecipientBase58) &&
-    feeRecipientBase58!.trim() !== toPubkeyBase58.trim();
-
-  const hasPartnerFee =
-    Boolean(partnerRecipientBase58) &&
-    partnerLamports > 0n &&
-    isSolanaAddr(partnerRecipientBase58) &&
-    partnerRecipientBase58!.trim() !== toPubkeyBase58.trim() &&
-    partnerRecipientBase58!.trim() !== feeRecipientBase58!.trim();
-
-  let accountKeys: Buffer;
-  let instructions: Buffer;
-
-  if (hasTreasuryFee && hasPartnerFee && feeRecipientBase58 && partnerRecipientBase58) {
-    const feePubkeyBuf = to32Bytes(decodeBase58(feeRecipientBase58.trim()));
-    const partnerPubkeyBuf = to32Bytes(decodeBase58(partnerRecipientBase58.trim()));
-
-    // 5 Accounts: [from(0), to(1), treasury(2), partner(3), SystemProgram(4)]
-    accountKeys = Buffer.concat([
-      Buffer.from([5]),
-      fromPubkeyBuf,
-      toPubkeyBuf,
-      feePubkeyBuf,
-      partnerPubkeyBuf,
-      systemProgramBuf,
-    ]);
-
-    // Ix 0: Transfer to solver
-    const ix0Data = Buffer.alloc(12);
-    ix0Data.writeUInt32LE(2, 0);
-    ix0Data.writeBigUInt64LE(transferLamports, 4);
-    const ix0 = Buffer.concat([
-      Buffer.from([4]), // program index = 4
-      Buffer.from([2, 0, 1]), // from(0), to(1)
-      Buffer.from([12]),
-      ix0Data,
-    ]);
-
-    // Ix 1: Transfer fee to treasury
-    const ix1Data = Buffer.alloc(12);
-    ix1Data.writeUInt32LE(2, 0);
-    ix1Data.writeBigUInt64LE(feeLamports, 4);
-    const ix1 = Buffer.concat([
-      Buffer.from([4]),
-      Buffer.from([2, 0, 2]), // from(0), treasury(2)
-      Buffer.from([12]),
-      ix1Data,
-    ]);
-
-    // Ix 2: Transfer fee to partner
-    const ix2Data = Buffer.alloc(12);
-    ix2Data.writeUInt32LE(2, 0);
-    ix2Data.writeBigUInt64LE(partnerLamports, 4);
-    const ix2 = Buffer.concat([
-      Buffer.from([4]),
-      Buffer.from([2, 0, 3]), // from(0), partner(3)
-      Buffer.from([12]),
-      ix2Data,
-    ]);
-
-    instructions = Buffer.concat([Buffer.from([3]), ix0, ix1, ix2]);
-  } else if (hasTreasuryFee && feeRecipientBase58) {
-    const feePubkeyBuf = to32Bytes(decodeBase58(feeRecipientBase58.trim()));
-
-    // 4 Accounts: [from(0), to(1), treasury(2), SystemProgram(3)]
-    accountKeys = Buffer.concat([
-      Buffer.from([4]),
-      fromPubkeyBuf,
-      toPubkeyBuf,
-      feePubkeyBuf,
-      systemProgramBuf,
-    ]);
-
-    const ix0Data = Buffer.alloc(12);
-    ix0Data.writeUInt32LE(2, 0);
-    ix0Data.writeBigUInt64LE(transferLamports, 4);
-    const ix0 = Buffer.concat([
-      Buffer.from([3]),
-      Buffer.from([2, 0, 1]),
-      Buffer.from([12]),
-      ix0Data,
-    ]);
-
-    const ix1Data = Buffer.alloc(12);
-    ix1Data.writeUInt32LE(2, 0);
-    ix1Data.writeBigUInt64LE(feeLamports, 4);
-    const ix1 = Buffer.concat([
-      Buffer.from([3]),
-      Buffer.from([2, 0, 2]),
-      Buffer.from([12]),
-      ix1Data,
-    ]);
-
-    instructions = Buffer.concat([Buffer.from([2]), ix0, ix1]);
-  } else {
-    // 3 Accounts: [from(0), to(1), SystemProgram(2)]
-    accountKeys = Buffer.concat([
-      Buffer.from([3]),
-      fromPubkeyBuf,
-      toPubkeyBuf,
-      systemProgramBuf,
-    ]);
-
-    const ix0Data = Buffer.alloc(12);
-    ix0Data.writeUInt32LE(2, 0);
-    ix0Data.writeBigUInt64LE(transferLamports, 4);
-    const ix0 = Buffer.concat([
-      Buffer.from([2]),
-      Buffer.from([2, 0, 1]),
-      Buffer.from([12]),
-      ix0Data,
-    ]);
-
-    instructions = Buffer.concat([Buffer.from([1]), ix0]);
+  if (params.partnerRecipientBase58 && (params.partnerLamports ?? 0n) > 0n) {
+    outputs.push({ toBase58: params.partnerRecipientBase58, lamports: params.partnerLamports! });
   }
-
-  // Header: 1 req sig, 0 readonly signed, 1 readonly unsigned (SystemProgram)
-  const header = Buffer.from([1, 0, 1]);
-  const message = Buffer.concat([header, accountKeys, blockhashBuf, instructions]);
-
-  // Sign with Ed25519
-  const cleanHex = fromPrivKeyHex.replace(/^0x/, "");
-  const rawPrivSeed = Buffer.from(cleanHex, "hex").subarray(0, 32);
-
-  const pkcs8Der = Buffer.concat([
-    Buffer.from("302e020100300506032b657004220420", "hex"),
-    rawPrivSeed,
-  ]);
-  const privKeyObj = crypto.createPrivateKey({
-    key: pkcs8Der,
-    format: "der",
-    type: "pkcs8",
+  return sendSolanaMultiTransfer({
+    fromPubkeyBase58: params.fromPubkeyBase58,
+    fromPrivKeyHex: params.fromPrivKeyHex,
+    outputs,
   });
-
-  const signature = crypto.sign(null, message, privKeyObj);
-
-  const wireTx = Buffer.concat([
-    Buffer.from([1]), // 1 signature
-    signature,
-    message,
-  ]);
-
-  const wireTxBase64 = wireTx.toString("base64");
-
-  const txSignature = await fetchSolanaRpc("sendTransaction", [
-    wireTxBase64,
-    {
-      encoding: "base64",
-      preflightCommitment: "confirmed",
-      skipPreflight: true,
-      maxRetries: 5,
-    },
-  ]);
-
-  console.log(`[ProxyForwarder] Solana on-chain transfer broadcast success: ${txSignature}`);
-  return txSignature;
 }
 
 /**
@@ -858,16 +835,29 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
     }
 
     // Await deposit if balance is zero or cannot cover network gas fee (~5000 lamports).
-    // Any deposit >= 50,000 lamports (~$0.007) triggers immediate forward to Near Intents (FLEX_INPUT swaps full received amount).
-    if (lamports <= 50_000n) {
+    if (lamports <= SOLANA_NETWORK_FEE) {
       return order; // Awaiting deposit
+    }
+
+    // On Solana, an uninitialized recipient (such as Near Intents single-use solver address)
+    // CANNOT receive less than 890,880 lamports (~$0.13) without failing simulation with InsufficientFundsForRent.
+    if (lamports < SOLANA_RENT_EXEMPT_MIN + SOLANA_NETWORK_FEE) {
+      try {
+        const solverBalRes = await fetchSolanaRpc("getBalance", [order.solverDepositAddress]);
+        const solverBal = BigInt(solverBalRes?.value || 0);
+        if (solverBal < SOLANA_RENT_EXEMPT_MIN) {
+          return order; // Awaiting full deposit
+        }
+      } catch {
+        return order;
+      }
     }
 
     console.log(
       `[ProxyForwarder] Solana deposit detected for order ${order.swapId}: ${lamports} lamports (address: ${order.proxyDepositAddress})`
     );
 
-    await updateProxySwapOrder(order.swapId, { status: "FORWARDING" });
+    await updateProxySwapOrder(order.swapId, { status: "FORWARDING", lastAttemptAt: Date.now() });
 
     const privKeyHex = getDecryptedProxyPrivateKey(order);
 
@@ -887,7 +877,6 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
     // On Solana, a newly created account (or one with 0 balance) CANNOT receive less than 890,880 lamports (~$0.13).
     // If a fee is below 890,880 lamports, or if the recipient is invalid/uninitialized,
     // we roll the fee into the solver transfer so the proxy account is cleanly emptied to EXACTLY 0 lamports.
-    const SOLANA_RENT_EXEMPT_MIN = 890_880n;
     const isSolanaAddr = (addr?: string | null) => {
       if (!addr) return false;
       const clean = addr.trim();
@@ -895,55 +884,95 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
       return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(clean);
     };
 
-    let effectiveZkpayFee = 0n;
-    if (
+    const feeNotes: string[] = [];
+
+    // Check if treasury and partner are the same recipient address
+    const isSameRecipient =
       order.treasuryAddress &&
+      order.partnerFeeRecipient &&
       isSolanaAddr(order.treasuryAddress) &&
-      order.treasuryAddress.trim() !== order.proxyDepositAddress.trim() &&
-      order.treasuryAddress.trim() !== order.solverDepositAddress.trim() &&
-      zkpayFeeLamports > 0n
-    ) {
-      if (zkpayFeeLamports >= SOLANA_RENT_EXEMPT_MIN) {
-        effectiveZkpayFee = zkpayFeeLamports;
+      isSolanaAddr(order.partnerFeeRecipient) &&
+      order.treasuryAddress.trim() === order.partnerFeeRecipient.trim();
+
+    let effectiveZkpayFee = 0n;
+    let effectivePartnerFee = 0n;
+
+    if (isSameRecipient) {
+      const combinedFee = zkpayFeeLamports + partnerFeeLamports;
+      if (combinedFee >= SOLANA_RENT_EXEMPT_MIN) {
+        effectiveZkpayFee = combinedFee;
+        effectivePartnerFee = 0n;
       } else {
         try {
-          const treasuryBalRes = await fetchSolanaRpc("getBalance", [order.treasuryAddress.trim()]);
-          const treasuryBal = BigInt(treasuryBalRes?.value || 0);
-          if (treasuryBal >= SOLANA_RENT_EXEMPT_MIN) {
-            effectiveZkpayFee = zkpayFeeLamports;
+          const balRes = await fetchSolanaRpc("getBalance", [order.treasuryAddress.trim()]);
+          const bal = BigInt(balRes?.value || 0);
+          if (bal >= SOLANA_RENT_EXEMPT_MIN) {
+            effectiveZkpayFee = combinedFee;
+            effectivePartnerFee = 0n;
           } else {
-            console.log(
-              `[ProxyForwarder] Solana treasury fee (${zkpayFeeLamports} lamports) is below rent threshold and treasury is uninitialized; rolling into solver transfer.`
-            );
+            feeNotes.push(`Combined fee (${combinedFee} lamports) rolled into solver transfer (below rent-exempt threshold)`);
           }
         } catch {
-          // If RPC fails or recipient uninitialized, roll fee into solver transfer
+          feeNotes.push(`Combined fee (${combinedFee} lamports) rolled into solver transfer (RPC check failed)`);
         }
       }
-    }
-
-    let effectivePartnerFee = 0n;
-    if (
-      order.partnerFeeRecipient &&
-      isSolanaAddr(order.partnerFeeRecipient) &&
-      order.partnerFeeRecipient.trim() !== order.proxyDepositAddress.trim() &&
-      order.partnerFeeRecipient.trim() !== order.solverDepositAddress.trim() &&
-      partnerFeeLamports > 0n
-    ) {
-      if (partnerFeeLamports >= SOLANA_RENT_EXEMPT_MIN) {
-        effectivePartnerFee = partnerFeeLamports;
-      } else {
-        try {
-          const partnerBalRes = await fetchSolanaRpc("getBalance", [order.partnerFeeRecipient.trim()]);
-          const partnerBal = BigInt(partnerBalRes?.value || 0);
-          if (partnerBal >= SOLANA_RENT_EXEMPT_MIN) {
-            effectivePartnerFee = partnerFeeLamports;
-          } else {
-            console.log(
-              `[ProxyForwarder] Solana partner fee (${partnerFeeLamports} lamports) is below rent threshold; rolling into solver transfer.`
-            );
+    } else {
+      if (
+        order.treasuryAddress &&
+        isSolanaAddr(order.treasuryAddress) &&
+        order.treasuryAddress.trim() !== order.proxyDepositAddress.trim() &&
+        order.treasuryAddress.trim() !== order.solverDepositAddress.trim() &&
+        zkpayFeeLamports > 0n
+      ) {
+        if (zkpayFeeLamports >= SOLANA_RENT_EXEMPT_MIN) {
+          effectiveZkpayFee = zkpayFeeLamports;
+        } else {
+          try {
+            const treasuryBalRes = await fetchSolanaRpc("getBalance", [order.treasuryAddress.trim()]);
+            const treasuryBal = BigInt(treasuryBalRes?.value || 0);
+            if (treasuryBal >= SOLANA_RENT_EXEMPT_MIN) {
+              effectiveZkpayFee = zkpayFeeLamports;
+            } else {
+              feeNotes.push(
+                `Treasury fee (${zkpayFeeLamports} lamports) rolled into solver transfer (below rent threshold)`
+              );
+              console.log(
+                `[ProxyForwarder] Solana treasury fee (${zkpayFeeLamports} lamports) is below rent threshold and treasury is uninitialized; rolling into solver transfer.`
+              );
+            }
+          } catch {
+            feeNotes.push(`Treasury fee (${zkpayFeeLamports} lamports) rolled into solver transfer (RPC check failed)`);
           }
-        } catch {}
+        }
+      }
+
+      if (
+        order.partnerFeeRecipient &&
+        isSolanaAddr(order.partnerFeeRecipient) &&
+        order.partnerFeeRecipient.trim() !== order.proxyDepositAddress.trim() &&
+        order.partnerFeeRecipient.trim() !== order.solverDepositAddress.trim() &&
+        partnerFeeLamports > 0n
+      ) {
+        if (partnerFeeLamports >= SOLANA_RENT_EXEMPT_MIN) {
+          effectivePartnerFee = partnerFeeLamports;
+        } else {
+          try {
+            const partnerBalRes = await fetchSolanaRpc("getBalance", [order.partnerFeeRecipient.trim()]);
+            const partnerBal = BigInt(partnerBalRes?.value || 0);
+            if (partnerBal >= SOLANA_RENT_EXEMPT_MIN) {
+              effectivePartnerFee = partnerFeeLamports;
+            } else {
+              feeNotes.push(
+                `Partner fee (${partnerFeeLamports} lamports) rolled into solver transfer (below rent threshold)`
+              );
+              console.log(
+                `[ProxyForwarder] Solana partner fee (${partnerFeeLamports} lamports) is below rent threshold; rolling into solver transfer.`
+              );
+            }
+          } catch {
+            feeNotes.push(`Partner fee (${partnerFeeLamports} lamports) rolled into solver transfer (RPC check failed)`);
+          }
+        }
       }
     }
 
@@ -971,19 +1000,30 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
       partnerLamports: effectivePartnerFee,
     });
 
+    const confirmStatus = await waitForSolanaSignature(txHash, 25_000);
+    if (confirmStatus === "confirmed") {
+      console.log(`[ProxyForwarder] ✓ Solana transfer confirmed on-chain: ${txHash}`);
+    } else {
+      console.log(`[ProxyForwarder] Solana transfer ${txHash} broadcast accepted; confirmation polling timed out (will finalize asynchronously).`);
+    }
+
     const updated = await updateProxySwapOrder(order.swapId, {
       status: "FORWARDED",
       depositTxHash: txHash,
       feeTxHash: (effectiveZkpayFee > 0n || effectivePartnerFee > 0n) ? txHash : undefined,
       forwardTxHash: txHash,
+      feeNote: feeNotes.length > 0 ? feeNotes.join("; ") : undefined,
+      lastAttemptAt: Date.now(),
+      error: undefined,
     });
 
     return updated || order;
   } catch (err: any) {
     console.error("[ProxyForwarder] Solana balance/sweep error:", err);
-    // Revert status to PENDING_DEPOSIT and record error message so the sweeper daemon retries
+    // Revert status to PENDING_DEPOSIT and record error message with lastAttemptAt so backoff prevents flapping
     await updateProxySwapOrder(order.swapId, {
       status: "PENDING_DEPOSIT",
+      lastAttemptAt: Date.now(),
       error: `Solana sweep error: ${err?.message || err}`,
     }).catch(() => {});
   }

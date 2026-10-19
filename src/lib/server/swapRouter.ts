@@ -1105,6 +1105,7 @@ export async function getSwapStatus(depositAddress: string) {
           solverDepositAddress: currentOrder.solverDepositAddress,
           splitFeeTxHash: currentOrder.feeTxHash || null,
           forwardTxHash: currentOrder.forwardTxHash || null,
+          feeNote: currentOrder.feeNote || null,
           status: solverStatus.status === "pending" ? "processing" : solverStatus.status,
         };
       } catch (solverErr) {
@@ -1124,6 +1125,8 @@ export async function getSwapStatus(depositAddress: string) {
       originTxHash: currentOrder.depositTxHash || null,
       splitFeeTxHash: currentOrder.feeTxHash || null,
       forwardTxHash: currentOrder.forwardTxHash || null,
+      feeNote: currentOrder.feeNote || null,
+      error: currentOrder.error || null,
       updatedAt: new Date().toISOString(),
     };
   }
