@@ -232,7 +232,7 @@ export async function getPendingProxyOrders(): Promise<ProxySwapOrder[]> {
     if (db) {
       const collection = db.collection<ProxySwapOrder>("proxy_swap_orders");
       const list = await collection
-        .find({ status: "PENDING_DEPOSIT" })
+        .find({ status: { $in: ["PENDING_DEPOSIT", "FORWARDING"] } })
         .sort({ createdAt: -1 })
         .limit(50)
         .toArray();
@@ -245,7 +245,7 @@ export async function getPendingProxyOrders(): Promise<ProxySwapOrder[]> {
   }
 
   return Array.from(ordersBySwapId.values()).filter(
-    (o) => o.status === "PENDING_DEPOSIT"
+    (o) => o.status === "PENDING_DEPOSIT" || o.status === "FORWARDING"
   );
 }
 
