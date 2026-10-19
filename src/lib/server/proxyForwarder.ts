@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { Buffer } from "buffer";
 import {
   createPublicClient,
   createWalletClient,
@@ -1618,7 +1619,7 @@ export async function recoverProxyDeposit(
   }
 }
 
-let sweeperInterval: NodeJS.Timeout | null = null;
+let sweeperInterval: ReturnType<typeof setInterval> | null = null;
 let isSweeperTickActive = false;
 
 /**
@@ -1676,8 +1677,8 @@ export function ensureProxySweeperDaemonRunning() {
     }
   }, 12_000);
 
-  if (sweeperInterval.unref) {
-    sweeperInterval.unref();
+  if (sweeperInterval && typeof (sweeperInterval as any).unref === "function") {
+    (sweeperInterval as any).unref();
   }
 }
 

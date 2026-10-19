@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { Buffer } from "buffer";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { getAddress } from "viem";
 import { encryptKey } from "./payStore";

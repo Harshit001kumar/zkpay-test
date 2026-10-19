@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { Buffer } from "buffer";
 import { getNowNodesApiKey } from "./rpcConfig";
 
 export interface LtcUtxo {
