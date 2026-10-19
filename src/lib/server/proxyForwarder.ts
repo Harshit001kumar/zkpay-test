@@ -1414,15 +1414,20 @@ export async function recoverProxyDeposit(
       };
     }
 
-    const txHash = await walletClient.sendTransaction({
+    const txParams: any = {
       account: proxyAccount,
       to: cleanDestination,
       value: sweepAmount,
-      maxFeePerGas: feeData?.maxFeePerGas ? maxFee : undefined,
-      maxPriorityFeePerGas: feeData?.maxPriorityFeePerGas ? maxPriorityFee : undefined,
-      gasPrice: !feeData?.maxFeePerGas ? maxFee : undefined,
       gas: gasLimit,
-    });
+    };
+    if (feeData?.maxFeePerGas) {
+      txParams.maxFeePerGas = maxFee;
+      txParams.maxPriorityFeePerGas = maxPriorityFee;
+    } else {
+      txParams.gasPrice = maxFee;
+    }
+
+    const txHash = await walletClient.sendTransaction(txParams);
 
     await publicClient.waitForTransactionReceipt({ hash: txHash }).catch(() => {});
 
