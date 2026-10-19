@@ -663,16 +663,25 @@ async function sendSolanaTransfer(params: {
   const blockhashBuf = to32Bytes(decodeBase58(blockhash));
   const systemProgramBuf = Buffer.alloc(32); // 11111111111111111111111111111111
 
+  const isSolanaAddr = (addr?: string | null) => {
+    if (!addr) return false;
+    const clean = addr.trim();
+    if (clean.startsWith("0x")) return false;
+    return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(clean);
+  };
+
   const hasTreasuryFee =
     Boolean(feeRecipientBase58) &&
     feeLamports > 0n &&
-    feeRecipientBase58?.trim() !== toPubkeyBase58.trim();
+    isSolanaAddr(feeRecipientBase58) &&
+    feeRecipientBase58!.trim() !== toPubkeyBase58.trim();
 
   const hasPartnerFee =
     Boolean(partnerRecipientBase58) &&
     partnerLamports > 0n &&
-    partnerRecipientBase58?.trim() !== toPubkeyBase58.trim() &&
-    partnerRecipientBase58?.trim() !== feeRecipientBase58?.trim();
+    isSolanaAddr(partnerRecipientBase58) &&
+    partnerRecipientBase58!.trim() !== toPubkeyBase58.trim() &&
+    partnerRecipientBase58!.trim() !== feeRecipientBase58!.trim();
 
   let accountKeys: Buffer;
   let instructions: Buffer;
@@ -834,8 +843,22 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
     // Setting network fee to exactly 5,000 lamports ensures 0 lamports remain, cleanly closing the proxy account without rent errors.
     const SOLANA_NETWORK_FEE = 5000n;
 
-    const expectedAtomic = BigInt(order.totalAmountIn);
-    if (lamports < (expectedAtomic * 90n) / 100n || lamports <= SOLANA_NETWORK_FEE) {
+    // Safely parse expected atomic units (handles decimal inputs e.g. "0.00339" or atomic units)
+    let expectedAtomic = 0n;
+    try {
+      const clean = (order.totalAmountIn || "0").trim();
+      if (clean.includes(".")) {
+        const { parseUnits } = await import("viem");
+        expectedAtomic = parseUnits(clean, 9); // SOL has 9 decimals
+      } else {
+        expectedAtomic = BigInt(clean);
+      }
+    } catch {
+      expectedAtomic = 0n;
+    }
+
+    const minThreshold = expectedAtomic > 0n ? (expectedAtomic * 80n) / 100n : 50_000n;
+    if (lamports <= SOLANA_NETWORK_FEE || (expectedAtomic > 0n && lamports < minThreshold)) {
       return order; // Awaiting deposit
     }
 
@@ -855,49 +878,85 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
       if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
         partnerFeeLamports = (lamports * BigInt(order.partnerFeeBps!)) / 10000n;
       }
-    } else {
+    } else if (order.feeAmount && expectedAtomic > 0n) {
       zkpayFeeLamports = (lamports * BigInt(order.feeAmount)) / expectedAtomic;
     }
 
-    // Rent exemption validation for fee recipients:
-    // If a recipient does not exist on Solana (0 balance) and receives < 890,880 lamports, Solana rejects for rent.
-    let effectiveZkpayFee = zkpayFeeLamports;
-    if (effectiveZkpayFee > 0n && effectiveZkpayFee < 890_880n && order.treasuryAddress) {
-      try {
-        const treasuryBalRes = await fetchSolanaRpc("getBalance", [order.treasuryAddress]);
-        const treasuryBal = BigInt(treasuryBalRes?.value || 0);
-        if (treasuryBal === 0n) {
-          console.warn(`[ProxyForwarder] Solana treasury ${order.treasuryAddress} has 0 balance and fee ${effectiveZkpayFee} is below rent threshold. Forwarding to solver.`);
-          effectiveZkpayFee = 0n;
+    // Solana Rent-Exemption & Address Validation:
+    // On Solana, a newly created account (or one with 0 balance) CANNOT receive less than 890,880 lamports (~$0.13).
+    // If a fee is below 890,880 lamports, or if the recipient is invalid/uninitialized,
+    // we roll the fee into the solver transfer so the proxy account is cleanly emptied to EXACTLY 0 lamports.
+    const SOLANA_RENT_EXEMPT_MIN = 890_880n;
+    const isSolanaAddr = (addr?: string | null) => {
+      if (!addr) return false;
+      const clean = addr.trim();
+      if (clean.startsWith("0x")) return false;
+      return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(clean);
+    };
+
+    let effectiveZkpayFee = 0n;
+    if (
+      order.treasuryAddress &&
+      isSolanaAddr(order.treasuryAddress) &&
+      order.treasuryAddress.trim() !== order.proxyDepositAddress.trim() &&
+      order.treasuryAddress.trim() !== order.solverDepositAddress.trim() &&
+      zkpayFeeLamports > 0n
+    ) {
+      if (zkpayFeeLamports >= SOLANA_RENT_EXEMPT_MIN) {
+        effectiveZkpayFee = zkpayFeeLamports;
+      } else {
+        try {
+          const treasuryBalRes = await fetchSolanaRpc("getBalance", [order.treasuryAddress.trim()]);
+          const treasuryBal = BigInt(treasuryBalRes?.value || 0);
+          if (treasuryBal >= SOLANA_RENT_EXEMPT_MIN) {
+            effectiveZkpayFee = zkpayFeeLamports;
+          } else {
+            console.log(
+              `[ProxyForwarder] Solana treasury fee (${zkpayFeeLamports} lamports) is below rent threshold and treasury is uninitialized; rolling into solver transfer.`
+            );
+          }
+        } catch {
+          // If RPC fails or recipient uninitialized, roll fee into solver transfer
         }
-      } catch {
-        // proceed
       }
     }
 
-    let effectivePartnerFee = partnerFeeLamports;
-    if (effectivePartnerFee > 0n && effectivePartnerFee < 890_880n && order.partnerFeeRecipient) {
-      try {
-        const partnerBalRes = await fetchSolanaRpc("getBalance", [order.partnerFeeRecipient]);
-        const partnerBal = BigInt(partnerBalRes?.value || 0);
-        if (partnerBal === 0n) {
-          console.warn(`[ProxyForwarder] Solana partner ${order.partnerFeeRecipient} has 0 balance and fee ${effectivePartnerFee} is below rent threshold. Forwarding to solver.`);
-          effectivePartnerFee = 0n;
-        }
-      } catch {
-        // proceed
+    let effectivePartnerFee = 0n;
+    if (
+      order.partnerFeeRecipient &&
+      isSolanaAddr(order.partnerFeeRecipient) &&
+      order.partnerFeeRecipient.trim() !== order.proxyDepositAddress.trim() &&
+      order.partnerFeeRecipient.trim() !== order.solverDepositAddress.trim() &&
+      partnerFeeLamports > 0n
+    ) {
+      if (partnerFeeLamports >= SOLANA_RENT_EXEMPT_MIN) {
+        effectivePartnerFee = partnerFeeLamports;
+      } else {
+        try {
+          const partnerBalRes = await fetchSolanaRpc("getBalance", [order.partnerFeeRecipient.trim()]);
+          const partnerBal = BigInt(partnerBalRes?.value || 0);
+          if (partnerBal >= SOLANA_RENT_EXEMPT_MIN) {
+            effectivePartnerFee = partnerFeeLamports;
+          } else {
+            console.log(
+              `[ProxyForwarder] Solana partner fee (${partnerFeeLamports} lamports) is below rent threshold; rolling into solver transfer.`
+            );
+          }
+        } catch {}
       }
     }
 
-    const available = lamports - SOLANA_NETWORK_FEE - effectiveZkpayFee - effectivePartnerFee;
-    if (available <= 0n) {
-      throw new Error(`Solana deposit (${lamports} lamports) too small to cover network gas fee and fees.`);
-    }
+    // CRITICAL: The total lamports leaving the proxy account MUST equal (lamports - SOLANA_NETWORK_FEE).
+    // Any fee that is not routed to Treasury/Partner is given to Solver.
+    // This GUARANTEES the remaining balance in proxy account is EXACTLY 0 LAMPORTS (never stuck with dust).
+    const solverLamports = lamports - SOLANA_NETWORK_FEE - effectiveZkpayFee - effectivePartnerFee;
 
-    const solverLamports = available;
+    if (solverLamports <= 0n) {
+      throw new Error(`Solana deposit (${lamports} lamports) too small to cover 5,000 lamport network fee.`);
+    }
 
     console.log(
-      `[ProxyForwarder] Sweeping SOL: ${solverLamports} -> Solver (${order.solverDepositAddress}), ${effectiveZkpayFee} -> Treasury (${order.treasuryAddress}), ${effectivePartnerFee} -> Partner (${order.partnerFeeRecipient || "none"})`
+      `[ProxyForwarder] Sweeping SOL: ${solverLamports} -> Solver (${order.solverDepositAddress}), ${effectiveZkpayFee} -> Treasury (${order.treasuryAddress}), ${effectivePartnerFee} -> Partner (${order.partnerFeeRecipient || "none"}), 5000 fee. Residual balance = 0 lamports.`
     );
 
     const txHash = await sendSolanaTransfer({
