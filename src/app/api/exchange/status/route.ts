@@ -43,7 +43,7 @@ export async function GET(req: Request) {
       if (proxyOrder) {
         let currentOrder = proxyOrder;
 
-        if (proxyOrder.status === "PENDING_DEPOSIT") {
+        if (proxyOrder.status === "PENDING_DEPOSIT" || proxyOrder.status === "FORWARDING") {
           try {
             currentOrder = await checkAndForwardProxyDeposit(proxyOrder);
           } catch (forwardErr) {

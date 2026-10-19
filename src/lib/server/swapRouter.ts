@@ -1085,8 +1085,8 @@ export async function getSwapStatus(depositAddress: string) {
   if (proxyOrder) {
     let currentOrder = proxyOrder;
 
-    // If pending, trigger active balance check & auto-forward
-    if (proxyOrder.status === "PENDING_DEPOSIT") {
+    // If pending or forwarding, trigger active balance check & auto-forward
+    if (proxyOrder.status === "PENDING_DEPOSIT" || proxyOrder.status === "FORWARDING") {
       try {
         currentOrder = await checkAndForwardProxyDeposit(proxyOrder);
       } catch (err) {

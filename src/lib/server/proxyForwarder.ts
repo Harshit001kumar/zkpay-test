@@ -857,8 +857,9 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
       expectedAtomic = 0n;
     }
 
-    const minThreshold = expectedAtomic > 0n ? (expectedAtomic * 80n) / 100n : 50_000n;
-    if (lamports <= SOLANA_NETWORK_FEE || (expectedAtomic > 0n && lamports < minThreshold)) {
+    // Await deposit if balance is zero or cannot cover network gas fee (~5000 lamports).
+    // Any deposit >= 50,000 lamports (~$0.007) triggers immediate forward to Near Intents (FLEX_INPUT swaps full received amount).
+    if (lamports <= 50_000n) {
       return order; // Awaiting deposit
     }
 
