@@ -550,6 +550,12 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
         const relayerNativeBal = await publicClient.getBalance({ address: relayer.account.address });
         const advanceAmount = gasNeeded - nativeBalance;
 
+        if (chainKey === "polygon" && relayerNativeBal < 2_000_000_000_000_000_000n) {
+          console.warn(
+            `[ProxyForwarder] ⚠️ Polygon relayer gas low: ${formatUnits(relayerNativeBal, 18)} POL remaining. Top up soon to prevent USDT sweep delays.`
+          );
+        }
+
         if (relayerNativeBal < advanceAmount) {
           console.error(
             `[ProxyForwarder] ⚠️ RELAYER GAS EMPTY on ${chainKey.toUpperCase()}: has ${relayerNativeBal} wei ${nativeSym}, needs ${advanceAmount}.`
@@ -635,7 +641,8 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       const currentGas = await publicClient.getGasPrice();
       const l1Buffer = (chainKey === "base" || chainKey === "arb") ? 600_000_000_000n : 10_000_000_000n;
       const dustGasCost = 45000n * currentGas + l1Buffer;
-      if (leftoverNative > dustGasCost) {
+      // Only sweep if the net recovered value is at least 3x the gas cost of the sweep transaction itself
+      if (leftoverNative >= dustGasCost * 3n) {
         const relayerAddr = getRelayerWalletClientForChain(chainKey).account.address;
         const dustTx = await walletClient.sendTransaction({
           account: proxyAccount,

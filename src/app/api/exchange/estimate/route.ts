@@ -13,7 +13,11 @@ import {
   resolveChainFromAssetId,
   getTreasuryAddressForChain,
 } from "@/lib/constants";
-import { getQuoteDeadline } from "@/lib/server/swapRouter";
+import {
+  getQuoteDeadline,
+  calculateFeeSplit,
+  computeUpfrontFees,
+} from "@/lib/server/swapRouter";
 
 export async function GET(req: Request) {
   try {
@@ -36,9 +40,9 @@ export async function GET(req: Request) {
 
     let netSwapAmount = String(amount).trim();
     if (!isDirect) {
-      const totalAtomic = BigInt(String(amount).trim());
-      const feeAtomic = (totalAtomic * BigInt(DEPOSIT_FEE_BPS)) / 10000n;
-      netSwapAmount = (totalAtomic - feeAtomic).toString();
+      const feeSplit = calculateFeeSplit(DEPOSIT_FEE_BPS, null, originChain, originAssetId);
+      const fees = computeUpfrontFees(BigInt(String(amount).trim()), feeSplit, originAssetId);
+      netSwapAmount = fees.netSwapAmount.toString();
     }
 
     const deadline = getQuoteDeadline(originChain);

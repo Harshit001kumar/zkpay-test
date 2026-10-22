@@ -16,7 +16,11 @@ import {
 } from "@/lib/constants";
 import { isProxySupportedChain } from "@/lib/server/proxyWallets";
 import { saveProxySwapOrder } from "@/lib/server/proxySwapStore";
-import { getQuoteDeadline } from "@/lib/server/swapRouter";
+import {
+  getQuoteDeadline,
+  calculateFeeSplit,
+  computeUpfrontFees,
+} from "@/lib/server/swapRouter";
 
 export async function POST(req: Request) {
   try {
@@ -37,12 +41,14 @@ export async function POST(req: Request) {
 
     let netSwapAmount = String(amount).trim();
     let feeAmount = "0";
+    let fixedFeeAmount = "0";
 
     if (!isDirect) {
-      const totalAtomic = BigInt(String(amount).trim());
-      const feeAtomic = (totalAtomic * BigInt(DEPOSIT_FEE_BPS)) / 10000n;
-      netSwapAmount = (totalAtomic - feeAtomic).toString();
-      feeAmount = feeAtomic.toString();
+      const feeSplit = calculateFeeSplit(DEPOSIT_FEE_BPS, null, originChain, originAssetId);
+      const fees = computeUpfrontFees(BigInt(String(amount).trim()), feeSplit, originAssetId);
+      netSwapAmount = fees.netSwapAmount.toString();
+      feeAmount = fees.totalFee.toString();
+      fixedFeeAmount = fees.fixedFee.toString();
     }
 
     const deadline = getQuoteDeadline(originChain);
@@ -123,6 +129,8 @@ export async function POST(req: Request) {
             totalAmountFormatted: String(amount),
             netSwapAmount,
             feeAmount,
+            zkpayFeeBps: isDirect ? 0 : DEPOSIT_FEE_BPS,
+            fixedFeeAmount,
             gasBufferAmount: "10000",
             solverDepositAddress: quote.depositAddress,
             treasuryAddress: feeRecipient,
