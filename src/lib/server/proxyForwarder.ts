@@ -10,6 +10,7 @@ import {
   isAddress,
   formatUnits,
   parseUnits,
+  encodeFunctionData,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, arbitrum, polygon, bsc } from "viem/chains";
@@ -40,6 +41,14 @@ const ERC20_ABI = parseAbi([
 // EIP-3009 transferWithAuthorization ABI (supported by USDC on Base, Polygon, Arbitrum)
 const EIP3009_ABI = parseAbi([
   "function transferWithAuthorization(address from, address to, uint256 value, uint256 validAfter, uint256 validBefore, bytes32 nonce, uint8 v, bytes32 r, bytes32 s)",
+]);
+
+// Deterministic CREATE2 address for Multicall3 across all EVM chains (Base, Polygon, Arb, BSC, Mainnet)
+const MULTICALL3_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11" as const;
+
+const MULTICALL3_ABI = parseAbi([
+  "function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[])",
+  "function aggregate3Value((address target, bool allowFailure, uint256 value, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[])",
 ]);
 
 // Known USDC addresses that support EIP-3009 (Circle's native USDC)
@@ -178,6 +187,131 @@ async function executeGaslessUsdcTransfer(params: {
   });
 
   return txHash;
+}
+
+interface GaslessTransferOutput {
+  to: `0x${string}`;
+  value: bigint;
+}
+
+/**
+ * Bundles multiple EIP-3009 USDC transfers into a single atomic transaction
+ * via Multicall3 (or falls back to single/sequential execution).
+ */
+async function executeBundledGaslessUsdcTransfers(params: {
+  proxyAccount: ReturnType<typeof privateKeyToAccount>;
+  tokenAddress: `0x${string}`;
+  outputs: GaslessTransferOutput[];
+  chainKey: string;
+  publicClient: any;
+}): Promise<string> {
+  const { proxyAccount, tokenAddress, outputs, chainKey, publicClient } = params;
+  const validOutputs = outputs.filter((o) => o.value > 0n);
+
+  if (validOutputs.length === 0) {
+    throw new Error("No non-zero outputs for gasless USDC transfer.");
+  }
+
+  // If only 1 output, call transferWithAuthorization directly
+  if (validOutputs.length === 1) {
+    return executeGaslessUsdcTransfer({
+      proxyAccount,
+      tokenAddress,
+      to: validOutputs[0].to,
+      value: validOutputs[0].value,
+      chainKey,
+      publicClient,
+    });
+  }
+
+  // Multiple outputs: build EIP-3009 signatures for each recipient
+  const chainId = CHAIN_IDS[chainKey];
+  const validAfter = 0n;
+  const validBefore = BigInt(Math.floor(Date.now() / 1000) + 3600); // 1 hour
+
+  const domain = {
+    name: USDC_EIP712_NAMES[chainKey] || "USD Coin",
+    version: USDC_EIP712_VERSIONS[chainKey] || "2",
+    chainId,
+    verifyingContract: tokenAddress,
+  };
+
+  const types = {
+    TransferWithAuthorization: [
+      { name: "from", type: "address" },
+      { name: "to", type: "address" },
+      { name: "value", type: "uint256" },
+      { name: "validAfter", type: "uint256" },
+      { name: "validBefore", type: "uint256" },
+      { name: "nonce", type: "bytes32" },
+    ],
+  };
+
+  const calls: { target: `0x${string}`; allowFailure: boolean; callData: `0x${string}` }[] = [];
+
+  for (const out of validOutputs) {
+    const nonce = ("0x" + crypto.randomBytes(32).toString("hex")) as `0x${string}`;
+    const message = {
+      from: proxyAccount.address,
+      to: out.to,
+      value: out.value,
+      validAfter,
+      validBefore,
+      nonce,
+    };
+
+    const signature = await proxyAccount.signTypedData({
+      domain,
+      types,
+      primaryType: "TransferWithAuthorization",
+      message,
+    });
+
+    const r = ("0x" + signature.slice(2, 66)) as `0x${string}`;
+    const s = ("0x" + signature.slice(66, 130)) as `0x${string}`;
+    const v = parseInt(signature.slice(130, 132), 16);
+
+    const callData = encodeFunctionData({
+      abi: EIP3009_ABI,
+      functionName: "transferWithAuthorization",
+      args: [proxyAccount.address, out.to, out.value, validAfter, validBefore, nonce, v, r, s],
+    });
+
+    calls.push({
+      target: tokenAddress,
+      allowFailure: false,
+      callData,
+    });
+  }
+
+  // Submit via Multicall3 using the Relayer
+  const relayer = getRelayerWalletClientForChain(chainKey);
+  try {
+    const txHash = await relayer.writeContract({
+      account: relayer.account,
+      address: MULTICALL3_ADDRESS,
+      abi: MULTICALL3_ABI,
+      functionName: "aggregate3",
+      args: [calls],
+    });
+    console.log(`[ProxyForwarder] ✓ Atomic Multicall3 bundled ${calls.length} USDC transfers in 1 tx: ${txHash}`);
+    return txHash;
+  } catch (err: any) {
+    console.warn("[ProxyForwarder] Multicall3 bundle failed, falling back to sequential transfers:", err?.message || err);
+    let lastHash = "";
+    for (const out of validOutputs) {
+      lastHash = await executeGaslessUsdcTransfer({
+        proxyAccount,
+        tokenAddress,
+        to: out.to,
+        value: out.value,
+        chainKey,
+        publicClient,
+      });
+      await publicClient.waitForTransactionReceipt({ hash: lastHash as `0x${string}` }).catch(() => {});
+    }
+    return lastHash;
+  }
 }
 
 // Known token addresses across Tier 2 chains
@@ -325,63 +459,115 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       zkpayFeeWei = (balanceWei * BigInt(order.feeAmount)) / expectedAtomic;
     }
 
-    // 1. Transfer Fee to Treasury if fee > 0
-    let feeTxHash = "";
-    if (zkpayFeeWei > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
-      try {
-        feeTxHash = await walletClient.sendTransaction({
-          account: proxyAccount,
-          to: treasuryAddress,
-          value: zkpayFeeWei,
-        });
-        console.log(`[ProxyForwarder] ZkPay fee transfer broadcast: ${feeTxHash}`);
-        await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` });
-      } catch (feeErr) {
-        console.warn("[ProxyForwarder] ZkPay fee transfer warning:", feeErr);
-      }
-    }
+    const hasFees =
+      (zkpayFeeWei > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) ||
+      (partnerFeeWei > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient));
 
-    // 2. Transfer Partner fee if specified and > 0
-    let partnerTxHash = "";
-    if (partnerFeeWei > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
-      try {
-        partnerTxHash = await walletClient.sendTransaction({
-          account: proxyAccount,
-          to: getAddress(order.partnerFeeRecipient),
-          value: partnerFeeWei,
-        });
-        console.log(`[ProxyForwarder] Partner fee transfer broadcast: ${partnerTxHash}`);
-        await publicClient.waitForTransactionReceipt({ hash: partnerTxHash as `0x${string}` });
-      } catch (partnerErr) {
-        console.warn("[ProxyForwarder] Partner fee transfer warning:", partnerErr);
-      }
-    }
-
-    // 3. Query exact remaining balance after fees & live gas deduction
-    const remainingBalance = await publicClient.getBalance({ address: proxyAddress });
     const feeData = await publicClient.estimateFeesPerGas().catch(() => null);
     const maxFee = feeData?.maxFeePerGas || (await publicClient.getGasPrice());
     const l1Buffer = (chainKey === "base" || chainKey === "arb") ? 600_000_000_000n : 10_000_000_000n;
-    const gasReserve = 25000n * maxFee + l1Buffer;
-    const netWei = remainingBalance > gasReserve ? remainingBalance - gasReserve : 0n;
+    const gasLimit = hasFees ? 75000n : 30000n;
+    const gasReserve = gasLimit * maxFee + l1Buffer;
 
-    if (netWei <= 0n) {
-      throw new Error("Remaining balance too small to cover L2 transfer gas.");
+    if (balanceWei <= gasReserve + zkpayFeeWei + partnerFeeWei) {
+      throw new Error("Remaining native balance too small to cover gas and fees.");
     }
 
-    const forwardTxHash = await walletClient.sendTransaction({
-      account: proxyAccount,
-      to: solverAddress,
-      value: netWei,
-    });
-    console.log(`[ProxyForwarder] Solver forward broadcast: ${forwardTxHash}`);
+    const netWei = balanceWei - gasReserve - zkpayFeeWei - partnerFeeWei;
+    if (netWei <= 0n) {
+      throw new Error("Net balance for solver is 0 after fees and gas reserve.");
+    }
+
+    let forwardTxHash = "";
+    let feeTxHash = "";
+
+    if (hasFees) {
+      // ── ATOMIC BUNDLE VIA MULTICALL3 ──
+      // Solver transfer is Call #1 so Near Intents is funded immediately in the same block!
+      const calls: { target: `0x${string}`; allowFailure: boolean; value: bigint; callData: `0x${string}` }[] = [];
+
+      calls.push({
+        target: solverAddress,
+        allowFailure: false,
+        value: netWei,
+        callData: "0x",
+      });
+
+      if (zkpayFeeWei > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
+        calls.push({
+          target: treasuryAddress,
+          allowFailure: false,
+          value: zkpayFeeWei,
+          callData: "0x",
+        });
+      }
+
+      if (partnerFeeWei > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
+        calls.push({
+          target: getAddress(order.partnerFeeRecipient),
+          allowFailure: false,
+          value: partnerFeeWei,
+          callData: "0x",
+        });
+      }
+
+      const totalToSend = netWei + zkpayFeeWei + partnerFeeWei;
+
+      try {
+        forwardTxHash = await walletClient.writeContract({
+          account: proxyAccount,
+          address: MULTICALL3_ADDRESS,
+          abi: MULTICALL3_ABI,
+          functionName: "aggregate3Value",
+          args: [calls],
+          value: totalToSend,
+          gas: gasLimit,
+        });
+        feeTxHash = forwardTxHash;
+        console.log(`[ProxyForwarder] ✓ Atomic Multicall3 bundled native transfer (solver + fees): ${forwardTxHash}`);
+      } catch (mcErr: any) {
+        console.warn("[ProxyForwarder] Multicall3 aggregate3Value failed, falling back to sequential transfers:", mcErr?.message || mcErr);
+        // Fallback: send solver first, then fees
+        forwardTxHash = await walletClient.sendTransaction({
+          account: proxyAccount,
+          to: solverAddress,
+          value: netWei,
+        });
+        notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
+
+        if (zkpayFeeWei > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
+          feeTxHash = await walletClient.sendTransaction({
+            account: proxyAccount,
+            to: treasuryAddress,
+            value: zkpayFeeWei,
+          }).catch(() => "");
+        }
+        if (partnerFeeWei > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
+          await walletClient.sendTransaction({
+            account: proxyAccount,
+            to: getAddress(order.partnerFeeRecipient),
+            value: partnerFeeWei,
+          }).catch(() => "");
+        }
+      }
+    } else {
+      // Direct transfer to solver (no fees)
+      forwardTxHash = await walletClient.sendTransaction({
+        account: proxyAccount,
+        to: solverAddress,
+        value: netWei,
+        gas: 30000n,
+      });
+      console.log(`[ProxyForwarder] Direct solver forward broadcast: ${forwardTxHash}`);
+    }
+
     notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
-    await publicClient.waitForTransactionReceipt({ hash: forwardTxHash as `0x${string}` });
+    await publicClient.waitForTransactionReceipt({ hash: forwardTxHash as `0x${string}` }).catch(() => {});
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: "FORWARDED",
       depositTxHash: feeTxHash || forwardTxHash,
-      feeTxHash: feeTxHash || partnerTxHash,
+      feeTxHash: feeTxHash || forwardTxHash,
       forwardTxHash,
     });
 
@@ -462,73 +648,40 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       tokenAddress.toLowerCase() === EIP3009_USDC[chainKey].toLowerCase();
 
     if (isGaslessEligible) {
-      // ── GASLESS PATH: Relayer on chainKey submits EIP-3009 transferWithAuthorization ──
-      console.log(`[ProxyForwarder] Using gasless EIP-3009 for USDC transfer on ${chainKey}`);
+      // ── GASLESS PATH: Atomic Multicall3 or Single EIP-3009 ──
+      console.log(`[ProxyForwarder] Using atomic gasless EIP-3009 for USDC transfer on ${chainKey}`);
 
-      // 1. ZkPay Fee to Treasury (gasless)
-      let feeTxHash = "";
+      const outputs: GaslessTransferOutput[] = [];
+      // 1. Solver forward (First in list so Near Intents receives funds immediately!)
+      outputs.push({ to: solverAddress, value: netTokenUnits });
+
+      // 2. ZkPay fee to Treasury
       if (zkpayFeeUnits > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
-        try {
-          feeTxHash = await executeGaslessUsdcTransfer({
-            proxyAccount,
-            tokenAddress,
-            to: treasuryAddress,
-            value: zkpayFeeUnits,
-            chainKey,
-            publicClient,
-          });
-          console.log(`[ProxyForwarder] ✓ Gasless ZkPay fee transfer: ${feeTxHash}`);
-          await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` });
-        } catch (feeErr) {
-          console.warn("[ProxyForwarder] Gasless ZkPay fee transfer error:", feeErr);
-        }
+        outputs.push({ to: treasuryAddress, value: zkpayFeeUnits });
       }
 
-      // 2. Partner Fee to Partner Recipient (gasless)
-      let partnerTxHash = "";
+      // 3. Partner fee
       if (partnerFeeUnits > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
-        try {
-          partnerTxHash = await executeGaslessUsdcTransfer({
-            proxyAccount,
-            tokenAddress,
-            to: getAddress(order.partnerFeeRecipient),
-            value: partnerFeeUnits,
-            chainKey,
-            publicClient,
-          });
-          console.log(`[ProxyForwarder] ✓ Gasless partner fee transfer: ${partnerTxHash}`);
-          await publicClient.waitForTransactionReceipt({ hash: partnerTxHash as `0x${string}` });
-        } catch (partnerErr) {
-          console.warn("[ProxyForwarder] Gasless partner fee transfer error:", partnerErr);
-        }
+        outputs.push({ to: getAddress(order.partnerFeeRecipient), value: partnerFeeUnits });
       }
 
-      // 3. Net to Solver (gasless)
-      const remainingTokenBalance = (await publicClient.readContract({
-        address: tokenAddress,
-        abi: ERC20_ABI,
-        functionName: "balanceOf",
-        args: [proxyAddress],
-      })) as bigint;
-
-      const finalNetTokens = remainingTokenBalance > 0n ? remainingTokenBalance : netTokenUnits;
-
-      const forwardTxHash = await executeGaslessUsdcTransfer({
+      const bundleTxHash = await executeBundledGaslessUsdcTransfers({
         proxyAccount,
         tokenAddress,
-        to: solverAddress,
-        value: finalNetTokens,
+        outputs,
         chainKey,
         publicClient,
       });
-      console.log(`[ProxyForwarder] ✓ Gasless solver forward: ${forwardTxHash}`);
-      await publicClient.waitForTransactionReceipt({ hash: forwardTxHash as `0x${string}` });
+
+      console.log(`[ProxyForwarder] ✓ Bundled gasless USDC transfer completed: ${bundleTxHash}`);
+      notifyNearIntentsDepositSubmit(order.solverDepositAddress, bundleTxHash).catch(() => {});
+      await publicClient.waitForTransactionReceipt({ hash: bundleTxHash as `0x${string}` }).catch(() => {});
 
       const updated = await updateProxySwapOrder(order.swapId, {
         status: "FORWARDED",
-        depositTxHash: feeTxHash || forwardTxHash,
-        feeTxHash: feeTxHash || partnerTxHash,
-        forwardTxHash,
+        depositTxHash: bundleTxHash,
+        feeTxHash: bundleTxHash,
+        forwardTxHash: bundleTxHash,
       });
 
       return updated || order;
@@ -578,7 +731,28 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     const walletClient = getWalletClientForChain(order.chain, proxyAccount);
 
-    // 1. Transfer ZkPay fee
+    // 1. Transfer Net to Solver FIRST (Crucial: Prevents Near Intents solver deadline expiry!)
+    const remainingTokenBalance = (await publicClient.readContract({
+      address: tokenAddress,
+      abi: ERC20_ABI,
+      functionName: "balanceOf",
+      args: [proxyAddress],
+    })) as bigint;
+
+    const finalNetTokens = remainingTokenBalance >= totalFeeUnits ? remainingTokenBalance - totalFeeUnits : netTokenUnits;
+
+    const forwardTxHash = await walletClient.writeContract({
+      account: proxyAccount,
+      address: tokenAddress,
+      abi: ERC20_ABI,
+      functionName: "transfer",
+      args: [solverAddress, finalNetTokens],
+    });
+    console.log(`[ProxyForwarder] Net token forward to solver broadcast FIRST: ${forwardTxHash}`);
+    // Immediately notify Near Intents 1Click so mempool indexer recognizes the deposit!
+    notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
+
+    // 2. Transfer ZkPay fee to Treasury
     let feeTxHash = "";
     if (zkpayFeeUnits > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
       try {
@@ -590,13 +764,13 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
           args: [treasuryAddress, zkpayFeeUnits],
         });
         console.log(`[ProxyForwarder] Token ZkPay fee transfer broadcast: ${feeTxHash}`);
-        await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` });
+        await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` }).catch(() => {});
       } catch (feeErr) {
         console.warn("[ProxyForwarder] Token ZkPay fee transfer error:", feeErr);
       }
     }
 
-    // 2. Transfer Partner fee
+    // 3. Transfer Partner fee
     let partnerTxHash = "";
     if (partnerFeeUnits > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
       try {
@@ -608,32 +782,13 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
           args: [getAddress(order.partnerFeeRecipient), partnerFeeUnits],
         });
         console.log(`[ProxyForwarder] Token partner fee transfer broadcast: ${partnerTxHash}`);
-        await publicClient.waitForTransactionReceipt({ hash: partnerTxHash as `0x${string}` });
+        await publicClient.waitForTransactionReceipt({ hash: partnerTxHash as `0x${string}` }).catch(() => {});
       } catch (partnerErr) {
         console.warn("[ProxyForwarder] Token partner fee transfer error:", partnerErr);
       }
     }
 
-    // 3. Transfer Net to Solver
-    const remainingTokenBalance = (await publicClient.readContract({
-      address: tokenAddress,
-      abi: ERC20_ABI,
-      functionName: "balanceOf",
-      args: [proxyAddress],
-    })) as bigint;
-
-    const finalNetTokens = remainingTokenBalance > 0n ? remainingTokenBalance : netTokenUnits;
-
-    const forwardTxHash = await walletClient.writeContract({
-      account: proxyAccount,
-      address: tokenAddress,
-      abi: ERC20_ABI,
-      functionName: "transfer",
-      args: [solverAddress, finalNetTokens],
-    });
-    console.log(`[ProxyForwarder] Net token forward to solver broadcast: ${forwardTxHash}`);
-    notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
-    await publicClient.waitForTransactionReceipt({ hash: forwardTxHash as `0x${string}` });
+    await publicClient.waitForTransactionReceipt({ hash: forwardTxHash as `0x${string}` }).catch(() => {});
 
     // 4. Sweep leftover native gas dust back to relayer using live fee + L1 reserve
     try {

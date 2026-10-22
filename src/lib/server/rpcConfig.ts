@@ -220,7 +220,31 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
     case "polygon":
     case "matic":
     case "pol": {
-      targetChain = polygon;
+      // Override default viem chain rpcUrls so internal fallbacks never contact deprecated polygon-rpc.com
+      targetChain = {
+        ...polygon,
+        rpcUrls: {
+          ...polygon.rpcUrls,
+          default: {
+            http: [
+              "https://polygon-bor-rpc.publicnode.com",
+              "https://polygon.drpc.org",
+              "https://1rpc.io/matic",
+              "https://gateway.tenderly.co/public/polygon",
+              "https://polygon.llamarpc.com",
+            ],
+          },
+          public: {
+            http: [
+              "https://polygon-bor-rpc.publicnode.com",
+              "https://polygon.drpc.org",
+              "https://1rpc.io/matic",
+              "https://gateway.tenderly.co/public/polygon",
+              "https://polygon.llamarpc.com",
+            ],
+          },
+        },
+      };
       key = "polygon";
 
       const custom =
@@ -244,10 +268,10 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
 
       publicUrls.push(
         "https://polygon-bor-rpc.publicnode.com",
-        "https://polygon.llamarpc.com",
-        "https://1rpc.io/matic",
         "https://polygon.drpc.org",
-        "https://polygon-rpc.com"
+        "https://1rpc.io/matic",
+        "https://gateway.tenderly.co/public/polygon",
+        "https://polygon.llamarpc.com"
       );
       break;
     }
@@ -355,7 +379,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
 
   for (const u of customUrls) {
     urls.push(u);
-    transports.push(http(u, { timeout: 6000, retryCount: 2 }));
+    transports.push(http(u, { timeout: 8000, retryCount: 2 }));
   }
 
   for (const p of premiumUrls) {
@@ -363,15 +387,15 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
     transports.push(
       http(p.url, {
         fetchOptions: p.headers ? { headers: p.headers } : undefined,
-        timeout: 6000,
-        retryCount: 2,
+        timeout: 8000,
+        retryCount: 3,
       })
     );
   }
 
   for (const u of publicUrls) {
     urls.push(u);
-    transports.push(http(u, { timeout: 6000, retryCount: 2 }));
+    transports.push(http(u, { timeout: 7000, retryCount: 2 }));
   }
 
   return {
