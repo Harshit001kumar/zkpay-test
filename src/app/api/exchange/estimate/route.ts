@@ -13,6 +13,7 @@ import {
   resolveChainFromAssetId,
   getTreasuryAddressForChain,
 } from "@/lib/constants";
+import { getQuoteDeadline } from "@/lib/server/swapRouter";
 
 export async function GET(req: Request) {
   try {
@@ -40,7 +41,7 @@ export async function GET(req: Request) {
       netSwapAmount = (totalAtomic - feeAtomic).toString();
     }
 
-    const deadline = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    const deadline = getQuoteDeadline(originChain);
 
     const payload = {
       dry: true,

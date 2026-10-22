@@ -38,7 +38,35 @@ export async function getLtcBalanceAndUtxos(address: string): Promise<LtcBalance
   const cleanAddr = address.trim();
   const nowNodesKey = getNowNodesApiKey();
 
-  // 1. Try NOWNodes Blockbook API
+  // 1. Try LitecoinSpace first (real-time mempool.space indexer for LTC, detects unconfirmed txs instantly)
+  try {
+    const utxoRes = await fetch(`https://litecoinspace.org/api/address/${cleanAddr}/utxo`, {
+      method: "GET",
+    });
+    if (utxoRes.ok) {
+      const rawUtxos = await utxoRes.json();
+      let total = 0n;
+      const utxos: LtcUtxo[] = [];
+      if (Array.isArray(rawUtxos)) {
+        for (const u of rawUtxos) {
+          const val = BigInt(u.value || 0);
+          total += val;
+          utxos.push({
+            txid: u.txid,
+            vout: Number(u.vout),
+            value: val,
+          });
+        }
+      }
+      if (utxos.length > 0) {
+        return { balanceSatoshis: total, utxos };
+      }
+    }
+  } catch (e) {
+    console.warn("[LTC] LitecoinSpace query warning, falling back:", e);
+  }
+
+  // 2. Fallback: NOWNodes Blockbook API
   if (nowNodesKey) {
     try {
       const res = await fetch(`https://ltc.nownodes.io/api/v2/address/${cleanAddr}?details=basic`, {
@@ -69,40 +97,10 @@ export async function getLtcBalanceAndUtxos(address: string): Promise<LtcBalance
             }
           }
         }
-        // If NowNodes returned 0 balance or 0 UTXOs (e.g. indexer delay), do not return early;
-        // fall back to LitecoinSpace mempool explorer below.
       }
     } catch (e) {
       console.warn("[LTC] NowNodes query warning, falling back:", e);
     }
-  }
-
-  // 2. Fallback: LitecoinSpace (mempool.space fork for LTC)
-  try {
-    const utxoRes = await fetch(`https://litecoinspace.org/api/address/${cleanAddr}/utxo`, {
-      method: "GET",
-    });
-    if (utxoRes.ok) {
-      const rawUtxos = await utxoRes.json();
-      let total = 0n;
-      const utxos: LtcUtxo[] = [];
-      if (Array.isArray(rawUtxos)) {
-        for (const u of rawUtxos) {
-          const val = BigInt(u.value || 0);
-          total += val;
-          utxos.push({
-            txid: u.txid,
-            vout: Number(u.vout),
-            value: val,
-          });
-        }
-      }
-      if (utxos.length > 0) {
-        return { balanceSatoshis: total, utxos };
-      }
-    }
-  } catch (e) {
-    console.warn("[LTC] LitecoinSpace query warning, falling back:", e);
   }
 
   // 3. Fallback: BlockCypher API

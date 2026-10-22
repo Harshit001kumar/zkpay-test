@@ -16,6 +16,7 @@ import {
 } from "@/lib/constants";
 import { isProxySupportedChain } from "@/lib/server/proxyWallets";
 import { saveProxySwapOrder } from "@/lib/server/proxySwapStore";
+import { getQuoteDeadline } from "@/lib/server/swapRouter";
 
 export async function POST(req: Request) {
   try {
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
       feeAmount = feeAtomic.toString();
     }
 
-    const deadline = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    const deadline = getQuoteDeadline(originChain);
 
     const payload = {
       dry: false, // wet run — generates deposit address

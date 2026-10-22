@@ -68,6 +68,47 @@ const CHAIN_IDS: Record<string, number> = {
 };
 
 /**
+ * Preemptively notifies NEAR Intents 1Click service (POST /v0/deposit/submit)
+ * that a deposit transaction has been broadcast for the specified solver deposit address.
+ * This registers the tx in NEAR Intents' mempool indexer, preventing solver timeouts
+ * while awaiting slow block explorers.
+ */
+export async function notifyNearIntentsDepositSubmit(
+  depositAddress: string,
+  txHash: string
+): Promise<boolean> {
+  if (!depositAddress || !txHash) return false;
+  try {
+    const res = await fetch("https://1click.chaindefuser.com/v0/deposit/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        txHash,
+        depositAddress,
+      }),
+    });
+    if (res.ok) {
+      console.log(
+        `[ProxyForwarder] ✓ Preemptively submitted deposit tx ${txHash} for ${depositAddress} to Near Intents 1Click.`
+      );
+      return true;
+    } else {
+      const errText = await res.text().catch(() => "");
+      console.warn(
+        `[ProxyForwarder] Near Intents deposit/submit returned ${res.status}: ${errText}`
+      );
+      return false;
+    }
+  } catch (err: any) {
+    console.warn(
+      `[ProxyForwarder] Failed to notify Near Intents deposit/submit:`,
+      err?.message || err
+    );
+    return false;
+  }
+}
+
+/**
  * Signs an EIP-3009 transferWithAuthorization and has the relayer submit it.
  * The proxy wallet signs off-chain (no gas needed), the relayer pays all gas.
  */
@@ -328,13 +369,13 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       throw new Error("Remaining balance too small to cover L2 transfer gas.");
     }
 
-    // 4. Transfer Net to Solver
     const forwardTxHash = await walletClient.sendTransaction({
       account: proxyAccount,
       to: solverAddress,
       value: netWei,
     });
     console.log(`[ProxyForwarder] Solver forward broadcast: ${forwardTxHash}`);
+    notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
     await publicClient.waitForTransactionReceipt({ hash: forwardTxHash as `0x${string}` });
 
     const updated = await updateProxySwapOrder(order.swapId, {
@@ -585,6 +626,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       args: [solverAddress, finalNetTokens],
     });
     console.log(`[ProxyForwarder] Net token forward to solver broadcast: ${forwardTxHash}`);
+    notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
     await publicClient.waitForTransactionReceipt({ hash: forwardTxHash as `0x${string}` });
 
     // 4. Sweep leftover native gas dust back to relayer using live fee + L1 reserve
@@ -1000,6 +1042,8 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
       partnerLamports: effectivePartnerFee,
     });
 
+    notifyNearIntentsDepositSubmit(order.solverDepositAddress, txHash).catch(() => {});
+
     const confirmStatus = await waitForSolanaSignature(txHash, 25_000);
     if (confirmStatus === "confirmed") {
       console.log(`[ProxyForwarder] ✓ Solana transfer confirmed on-chain: ${txHash}`);
@@ -1088,6 +1132,8 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       zkpayFeeSatoshis: zkpayFeeSats,
       partnerFeeSatoshis: partnerFeeSats,
     });
+
+    notifyNearIntentsDepositSubmit(order.solverDepositAddress, txHash).catch(() => {});
 
     const dustLimit = LTC_DUST_THRESHOLD_SATOSHIS || 5460n;
     const hasFeeOutput = zkpayFeeSats >= dustLimit || partnerFeeSats >= dustLimit;
@@ -1440,6 +1486,10 @@ export async function recoverProxyDeposit(
       transferLamports: sweepAmount,
     });
 
+    if (action === "forward") {
+      notifyNearIntentsDepositSubmit(destination, txHash).catch(() => {});
+    }
+
     const updated = await updateProxySwapOrder(order.swapId, {
       status: action === "refund" ? "SETTLED" : "FORWARDED",
       forwardTxHash: txHash,
@@ -1492,6 +1542,10 @@ export async function recoverProxyDeposit(
       zkpayFeeSatoshis: 0n,
       partnerFeeSatoshis: 0n,
     });
+
+    if (action === "forward") {
+      notifyNearIntentsDepositSubmit(destination, txHash).catch(() => {});
+    }
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: action === "refund" ? "SETTLED" : "FORWARDED",
@@ -1703,6 +1757,10 @@ export async function recoverProxyDeposit(
           publicClient,
         });
 
+        if (action === "forward") {
+          notifyNearIntentsDepositSubmit(cleanDestination, txHash).catch(() => {});
+        }
+
         const updated = await updateProxySwapOrder(order.swapId, {
           status: action === "refund" ? "SETTLED" : "FORWARDED",
           forwardTxHash: txHash,
@@ -1768,6 +1826,10 @@ export async function recoverProxyDeposit(
       functionName: "transfer",
       args: [cleanDestination, sweepAmount],
     });
+
+    if (action === "forward") {
+      notifyNearIntentsDepositSubmit(cleanDestination, txHash).catch(() => {});
+    }
 
     await publicClient.waitForTransactionReceipt({ hash: txHash }).catch(() => {});
 

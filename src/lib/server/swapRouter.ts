@@ -160,6 +160,33 @@ export {
   isZeroFeeChain,
 };
 
+/**
+ * Calculates optimal quote deadline duration in milliseconds based on origin chain block time and PoW variance.
+ * Proof-of-work chains (BTC, LTC) require longer windows to prevent solvers from timing out
+ * while awaiting multi-minute block confirmations and Poisson mining variance.
+ */
+export function getQuoteDurationMs(originChain?: string): number {
+  const c = originChain ? normalizeChain(originChain) : "";
+  if (c === "btc") {
+    return 90 * 60 * 1000; // 90 mins for Bitcoin (10-min block target + confirmations + Poisson variance)
+  }
+  if (c === "ltc") {
+    return 45 * 60 * 1000; // 45 mins for Litecoin (2.5-min block target + confirmations + Poisson variance)
+  }
+  if (c === "eth") {
+    return 30 * 60 * 1000; // 30 mins for Ethereum L1 (gas re-pricing & block time)
+  }
+  // Fast L2s and L1s (Solana, Base, Arbitrum, Polygon, BSC, Tron): 15 mins is plenty
+  return 15 * 60 * 1000;
+}
+
+/**
+ * Generates an ISO deadline timestamp tailored for the origin blockchain.
+ */
+export function getQuoteDeadline(originChain?: string): string {
+  return new Date(Date.now() + getQuoteDurationMs(originChain)).toISOString();
+}
+
 export interface ExecutionTransfer {
   purpose: "PLATFORM_FEE" | "PARTNER_FEE" | "SWAP_DEPOSIT";
   recipient: string;
@@ -711,7 +738,7 @@ export async function getSwapQuote(params: SwapQuoteParams) {
     getFallbackDestinationAddress(resolvedDestChain);
   const effectiveRefundTo = resolveRefundAddress(originAssetId, params.refundTo, effectiveRecipient, { isDryRun: true });
 
-  const deadline = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  const deadline = getQuoteDeadline(resolvedOriginChain);
 
   const payload = {
     dry: true,
@@ -884,7 +911,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
   const feeAmount = fees.totalFee.toString();
 
   const effectiveRefundTo = resolveRefundAddress(originAssetId, params.refundTo, recipient, { isDryRun: false });
-  const deadline = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  const deadline = getQuoteDeadline(resolvedOriginChain);
 
   const payload = {
     dry: false, // Wet run: returns deposit address
