@@ -739,16 +739,34 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       args: [proxyAddress],
     })) as bigint;
 
-    const finalNetTokens = remainingTokenBalance >= totalFeeUnits ? remainingTokenBalance - totalFeeUnits : netTokenUnits;
+    if (remainingTokenBalance === 0n) {
+      console.log(`[ProxyForwarder] Proxy balance is 0 for order ${order.swapId}. Funds already moved.`);
+      return order;
+    }
 
-    const forwardTxHash = await walletClient.writeContract({
-      account: proxyAccount,
-      address: tokenAddress,
-      abi: ERC20_ABI,
-      functionName: "transfer",
-      args: [solverAddress, finalNetTokens],
-    });
-    console.log(`[ProxyForwarder] Net token forward to solver broadcast FIRST: ${forwardTxHash}`);
+    const finalNetTokens = remainingTokenBalance > totalFeeUnits
+      ? remainingTokenBalance - totalFeeUnits
+      : remainingTokenBalance;
+
+    if (finalNetTokens === 0n) {
+      console.log(`[ProxyForwarder] Final net tokens to send is 0 for order ${order.swapId}.`);
+      return order;
+    }
+
+    let forwardTxHash: string;
+    try {
+      forwardTxHash = await walletClient.writeContract({
+        account: proxyAccount,
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: "transfer",
+        args: [solverAddress, finalNetTokens],
+      });
+      console.log(`[ProxyForwarder] Net token forward to solver broadcast FIRST: ${forwardTxHash}`);
+    } catch (writeErr: any) {
+      console.warn(`[ProxyForwarder] Solver transfer writeContract failed:`, writeErr?.message || writeErr);
+      return order;
+    }
     // Immediately notify Near Intents 1Click so mempool indexer recognizes the deposit!
     notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
 
@@ -1637,13 +1655,25 @@ export async function recoverProxyDeposit(
   }
 
   const normChain = normalizeChain(order.chain) || order.chain.toLowerCase();
-  const action = options?.action || "forward";
+  const lockKey = `${normChain}:${order.proxyDepositAddress.toLowerCase()}`;
 
-  // Determine recipient destination address
-  let destination = options?.customRecipient?.trim();
-  if (!destination) {
-    destination = action === "refund" ? order.refundTo : order.solverDepositAddress;
+  if (sweepLocks.has(lockKey)) {
+    return {
+      success: false,
+      message: `A sweep or recovery operation is already actively processing for proxy address ${order.proxyDepositAddress}. Please wait a few seconds and try again.`,
+      order,
+    };
   }
+
+  sweepLocks.add(lockKey);
+  try {
+    const action = options?.action || "forward";
+
+    // Determine recipient destination address
+    let destination = options?.customRecipient?.trim();
+    if (!destination) {
+      destination = action === "refund" ? order.refundTo : order.solverDepositAddress;
+    }
 
   // 1. SOLANA RECOVERY
   if (normChain === "sol") {
@@ -2074,8 +2104,24 @@ export async function recoverProxyDeposit(
 
     // If solver was ALREADY paid in an earlier transaction/run, 100% of remaining tokens in proxy belong to ZkPay Treasury!
     if (action === "forward" && isSolverAlreadyPaid) {
-      console.log(`[Recover] Solver already paid in tx ${order.forwardTxHash}. Sweeping remaining ${formatUnits(tokenBalance, decimals)} ${tokenSymbol} fee to ZkPay Treasury...`);
-      
+      console.log(`[Recover] Solver already paid in tx ${order.forwardTxHash}. Sweeping remaining fee to ZkPay Treasury...`);
+
+      const liveFeeBal = (await publicClient.readContract({
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: "balanceOf",
+        args: [proxyAccount.address],
+      })) as bigint;
+
+      if (liveFeeBal === 0n) {
+        return {
+          success: true,
+          message: `Proxy address balance is 0 ${tokenSymbol}. Solver was already paid (${order.forwardTxHash}) and fee has already been cleared!`,
+          order,
+          destination: treasuryAddress,
+        };
+      }
+
       const ethBalance = await publicClient.getBalance({ address: proxyAccount.address });
       const gasPrice = await publicClient.getGasPrice();
       if (ethBalance < 65000n * gasPrice) {
@@ -2095,7 +2141,7 @@ export async function recoverProxyDeposit(
         address: tokenAddress,
         abi: ERC20_ABI,
         functionName: "transfer",
-        args: [treasuryAddress, tokenBalance],
+        args: [treasuryAddress, liveFeeBal],
       });
       await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` });
       console.log(`[Recover] ✓ Remaining fee swept to ZkPay Treasury: ${feeTxHash}`);
@@ -2107,10 +2153,10 @@ export async function recoverProxyDeposit(
 
       return {
         success: true,
-        message: `Successfully swept remaining ${formatUnits(tokenBalance, decimals)} ${tokenSymbol} fee to ZkPay Treasury (${treasuryAddress})!`,
+        message: `Successfully swept remaining ${formatUnits(liveFeeBal, decimals)} ${tokenSymbol} fee to ZkPay Treasury (${treasuryAddress})!`,
         txHash: feeTxHash,
         order: updated,
-        recoveredAmount: `${formatUnits(tokenBalance, decimals)} ${tokenSymbol}`,
+        recoveredAmount: `${formatUnits(liveFeeBal, decimals)} ${tokenSymbol}`,
         destination: treasuryAddress,
         explorerUrl: getExplorerTxUrl(order.chain, feeTxHash),
       };
@@ -2226,13 +2272,61 @@ export async function recoverProxyDeposit(
     }
 
     // 1. Transfer Net to Solver FIRST (Crucial: Prevents Near Intents solver deadline expiry!)
-    const txHash = await walletClient.writeContract({
-      account: proxyAccount,
+    // Re-verify real-time on-chain token balance before sending transfer!
+    // (A background daemon or previous run may have already swept the balance during gas advance)
+    const liveTokenBal = (await publicClient.readContract({
       address: tokenAddress,
       abi: ERC20_ABI,
-      functionName: "transfer",
-      args: [cleanDestination, netSolverUnits],
-    });
+      functionName: "balanceOf",
+      args: [proxyAccount.address],
+    })) as bigint;
+
+    if (liveTokenBal === 0n) {
+      console.log(`[Recover] Proxy ${proxyAccount.address} balance is 0 ${tokenSymbol}. Funds already swept.`);
+      const updated = await updateProxySwapOrder(order.swapId, {
+        status: action === "refund" ? "SETTLED" : "FORWARDED",
+      });
+      return {
+        success: true,
+        message: `Proxy address balance is 0 ${tokenSymbol}. Funds have already been successfully swept / forwarded on-chain!`,
+        order: updated || order,
+      };
+    }
+
+    const finalSolverUnits = liveTokenBal >= netSolverUnits ? netSolverUnits : liveTokenBal;
+    console.log(`[Recover] Executing ERC-20 transfer of ${formatUnits(finalSolverUnits, decimals)} ${tokenSymbol} to ${cleanDestination}...`);
+
+    let txHash: string;
+    try {
+      txHash = await walletClient.writeContract({
+        account: proxyAccount,
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: "transfer",
+        args: [cleanDestination, finalSolverUnits],
+      });
+    } catch (writeErr: any) {
+      console.error(`[Recover] Transfer failed on-chain:`, writeErr?.message || writeErr);
+      const postBal = (await publicClient.readContract({
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: "balanceOf",
+        args: [proxyAccount.address],
+      }).catch(() => 0n)) as bigint;
+
+      if (postBal === 0n) {
+        const updated = await updateProxySwapOrder(order.swapId, {
+          status: action === "refund" ? "SETTLED" : "FORWARDED",
+        });
+        return {
+          success: true,
+          message: `Proxy ${tokenSymbol} balance is 0. The transfer was successfully executed by a concurrent process.`,
+          order: updated || order,
+        };
+      }
+
+      throw new Error(`On-chain transfer failed: ${writeErr?.shortMessage || writeErr?.message || "Execution reverted"}`);
+    }
 
     if (action === "forward") {
       notifyNearIntentsDepositSubmit(cleanDestination, txHash).catch(() => {});
@@ -2336,6 +2430,8 @@ export async function recoverProxyDeposit(
       destination: cleanDestination,
       explorerUrl,
     };
+  } finally {
+    sweepLocks.delete(lockKey);
   }
 }
 

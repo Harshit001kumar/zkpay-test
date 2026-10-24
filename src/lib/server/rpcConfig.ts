@@ -49,7 +49,16 @@ export function getNowNodesApiKey(): string | undefined {
 export function getAlchemyApiKey(): string | undefined {
   return (
     cleanEnvString(process.env.ALCHEMY_API_KEY) ||
-    cleanEnvString(process.env.NEXT_PUBLIC_ALCHEMY_API_KEY)
+    cleanEnvString(process.env.ALCHEMY_KEY) ||
+    cleanEnvString(process.env.ALCHEMY_APIKEY) ||
+    cleanEnvString(process.env.ALCHEMY_TOKEN) ||
+    cleanEnvString(process.env["alchemy-key"]) ||
+    cleanEnvString(process.env["ALCHEMY-KEY"]) ||
+    cleanEnvString(process.env["alchemy_key"]) ||
+    cleanEnvString(process.env["alchamy-key"]) ||
+    cleanEnvString(process.env["ALCHAMY_KEY"]) ||
+    cleanEnvString(process.env.NEXT_PUBLIC_ALCHEMY_API_KEY) ||
+    cleanEnvString(process.env.NEXT_PUBLIC_ALCHEMY_KEY)
   );
 }
 
