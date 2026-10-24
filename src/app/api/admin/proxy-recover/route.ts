@@ -3,6 +3,7 @@ import { verifyAdminRequest } from "@/lib/server/adminAuth";
 import {
   inspectProxyDepositBalances,
   recoverProxyDeposit,
+  sweepAllProxyDustToRelayer,
 } from "@/lib/server/proxyForwarder";
 import { getRecentProxyOrders } from "@/lib/server/proxySwapStore";
 import {
@@ -89,8 +90,9 @@ export async function GET(req: Request) {
  * POST /api/admin/proxy-recover
  * 
  * Emergency admin sweep tool:
- * Transfers native gas or any ERC-20 / SPL token from a proxy deposit wallet
- * to ANY specified address (e.g. manual user refund or custom rescue address).
+ * 1. Batch dust recycling: sweeps unspent native gas dust from past proxy wallets back to relayer
+ * 2. Transfers native gas or any ERC-20 / SPL token from a proxy deposit wallet
+ *    to ANY specified address (e.g. manual user refund or custom rescue address).
  */
 export async function POST(req: Request) {
   const auth = await verifyAdminRequest(req);
@@ -103,8 +105,24 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
+    const action = body.action || "custom"; // "refund" | "forward" | "custom" | "recycle-dust"
+
+    // ── Batch Dust Recycling to Relayer Gas Tank ──
+    if (action === "recycle-dust" || action === "sweep-dust") {
+      const chain = body.chain || "polygon";
+      const limit = typeof body.limit === "number" ? body.limit : 50;
+      console.log(
+        `[AdminProxyRecover] Admin (${auth.userId || auth.walletAddress}) executing batch proxy dust recycling on ${chain} (limit ${limit})`
+      );
+      const recycleResult = await sweepAllProxyDustToRelayer(chain, limit);
+      return NextResponse.json({
+        success: true,
+        message: `Successfully recycled ${recycleResult.totalSweptFormatted} dust back to the relayer across ${recycleResult.sweptCount} proxy wallets (${recycleResult.skippedCount} skipped/empty).`,
+        ...recycleResult,
+      });
+    }
+
     const depositAddress = body.depositAddress || body.address || body.swapId;
-    const action = body.action || "custom"; // "refund" | "forward" | "custom"
     const customRecipient = body.customRecipient?.trim() || body.destination?.trim();
     const tokenAddress = body.tokenAddress?.trim();
     const tokenType = body.tokenType; // "native" | "token" | "auto"

@@ -36,6 +36,7 @@ import {
   Sparkles,
   Users,
   Trash2,
+  Fuel,
 } from "lucide-react";
 import { formatUpiName } from "@/lib/p2pkit";
 import { CONTRACTS } from "@/lib/constants";
@@ -212,6 +213,11 @@ export default function AdminPage() {
   const [recoverySuccessResult, setRecoverySuccessResult] = useState<any | null>(null);
   const [recoveryExecuteError, setRecoveryExecuteError] = useState<string | null>(null);
 
+  // Batch Proxy Dust Recycler State
+  const [isRecyclingDust, setIsRecyclingDust] = useState(false);
+  const [recycleDustResult, setRecycleDustResult] = useState<any | null>(null);
+  const [recycleDustChain, setRecycleDustChain] = useState<string>("polygon");
+
   // Recent Proxy Orders & RPC Providers
   const [recentProxyOrders, setRecentProxyOrders] = useState<any[]>([]);
   const [isLoadingRecentProxy, setIsLoadingRecentProxy] = useState(false);
@@ -328,6 +334,38 @@ export default function AdminPage() {
       setRecoveryExecuteError(err.message || "Failed to execute recovery transfer");
     } finally {
       setIsExecutingRecovery(false);
+    }
+  };
+
+  const handleRecycleDust = async (chainToRecycle?: string) => {
+    const targetChain = chainToRecycle || recycleDustChain;
+    setIsRecyclingDust(true);
+    setRecycleDustResult(null);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch("/api/admin/proxy-recover", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: "recycle-dust",
+          chain: targetChain,
+          limit: 50,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setRecycleDustResult(data);
+        loadRecentProxyOrders();
+      } else {
+        setRecycleDustResult({ success: false, error: data.error || data.message || "Failed to recycle dust" });
+      }
+    } catch (err: any) {
+      setRecycleDustResult({ success: false, error: err.message || "Failed to recycle dust" });
+    } finally {
+      setIsRecyclingDust(false);
     }
   };
 
@@ -2812,6 +2850,141 @@ export default function AdminPage() {
                       <span>{isExecutingRecovery ? "Executing On-Chain Transfer..." : `Broadcast Transfer to ${recoveryAction === "refund" ? "User Refund Address" : recoveryAction === "forward" ? "Solver Address" : "Custom Address"}`}</span>
                     </button>
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* Tool 4: Batch Proxy Gas Dust Recycler */}
+            <div className="obsidian-glass rounded-2xl p-5 sm:p-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                    <Fuel className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+                      Batch Proxy Gas Dust Recycler
+                    </h3>
+                    <p className="text-xs text-[#909097] font-mono mt-0.5">
+                      Recycle leftover native gas (POL, BNB, ETH) from past or completed proxy deposit wallets back to the relayer gas tank with exact 21k-gas zero-dust transfers.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleRecycleDust()}
+                  disabled={isRecyclingDust}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95 shrink-0 shadow-lg shadow-emerald-500/15"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRecyclingDust ? "animate-spin" : ""}`} />
+                  <span>{isRecyclingDust ? "Recycling Gas Dust..." : "Recycle Stranded Dust to Relayer"}</span>
+                </button>
+              </div>
+
+              {/* Chain Selection Selector */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs font-mono">
+                <div className="flex items-center gap-2">
+                  <span className="text-[#909097] text-[11px] uppercase font-bold">Select Chain:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { id: "polygon", label: "Polygon (POL)" },
+                      { id: "bsc", label: "BSC (BNB)" },
+                      { id: "base", label: "Base (ETH)" },
+                      { id: "arbitrum", label: "Arbitrum (ETH)" },
+                      { id: "ethereum", label: "Ethereum (ETH)" },
+                    ].map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setRecycleDustChain(c.id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          recycleDustChain === c.id
+                            ? "bg-emerald-500 text-black shadow-md shadow-emerald-500/20"
+                            : "bg-white/[0.04] text-[#909097] hover:text-white hover:bg-white/10 border border-white/5"
+                        }`}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <span className="text-[11px] text-[#909097]">
+                  Scans recent proxy orders &bull; 0 wei dust left behind
+                </span>
+              </div>
+
+              {/* Result Feedback Banner */}
+              {recycleDustResult && (
+                <div
+                  className={`p-4 rounded-xl text-xs font-mono space-y-3 ${
+                    recycleDustResult.success
+                      ? "bg-emerald-950/30 border border-emerald-500/30 text-emerald-300"
+                      : "bg-red-950/30 border border-red-500/30 text-red-300"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 font-bold text-sm">
+                    {recycleDustResult.success ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                    )}
+                    <span>
+                      {recycleDustResult.success
+                        ? `Recycled ${recycleDustResult.totalSweptFormatted} to Relayer!`
+                        : `Dust Recycling Failed: ${recycleDustResult.error || "Unknown error"}`}
+                    </span>
+                  </div>
+
+                  {recycleDustResult.success && (
+                    <div className="space-y-2">
+                      <p className="text-[11px] text-emerald-200/90">
+                        Processed wallets: <span className="font-bold text-white">{recycleDustResult.sweptCount} drained</span> &bull;{" "}
+                        <span className="text-[#909097]">{recycleDustResult.skippedCount} skipped (already 0 / below fee threshold)</span>
+                      </p>
+
+                      {recycleDustResult.details && recycleDustResult.details.length > 0 && (
+                        <div className="mt-2 max-h-40 overflow-y-auto space-y-1.5 pr-1">
+                          {recycleDustResult.details.map((d: any, idx: number) => (
+                            <div
+                              key={idx}
+                              className="p-2 rounded-lg bg-black/40 border border-white/5 flex items-center justify-between text-[11px]"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-white font-bold">{d.amount}</span>
+                                <span className="text-[#909097]">from</span>
+                                <span className="text-[#c0c6de] truncate max-w-[140px] sm:max-w-[200px]">
+                                  {d.address}
+                                </span>
+                              </div>
+                              {d.txHash && (
+                                <a
+                                  href={
+                                    recycleDustChain === "polygon"
+                                      ? `https://polygonscan.com/tx/${d.txHash}`
+                                      : recycleDustChain === "bsc"
+                                      ? `https://bscscan.com/tx/${d.txHash}`
+                                      : recycleDustChain === "base"
+                                      ? `https://basescan.org/tx/${d.txHash}`
+                                      : recycleDustChain === "arbitrum"
+                                      ? `https://arbiscan.io/tx/${d.txHash}`
+                                      : `https://etherscan.io/tx/${d.txHash}`
+                                  }
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-emerald-400 hover:underline flex items-center gap-1 font-bold shrink-0"
+                                >
+                                  <span>TX</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

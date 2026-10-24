@@ -695,7 +695,12 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     const nativeSym = chainKey === "polygon" ? "POL" : chainKey === "bsc" ? "BNB" : "ETH";
 
     const transfersCount = partnerFeeUnits > 0n ? 3n : 2n;
-    const gasNeeded = maxFee * 65000n * transfersCount;
+    // Precision dynamic gas: (maxFee * 65,000 gas * count) + 20% safety margin
+    const calculatedGasNeeded = (maxFee * 65000n * transfersCount * 12n) / 10n;
+    const minNeededFloor = chainKey === "polygon"
+      ? parseUnits("0.008", 18)
+      : (chainKey === "bsc" ? parseUnits("0.0006", 18) : 25_000_000_000_000n);
+    const gasNeeded = calculatedGasNeeded > minNeededFloor ? calculatedGasNeeded : minNeededFloor;
 
     if (nativeBalance < gasNeeded) {
       try {
@@ -829,23 +834,29 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       }
     }
 
-    // 4. Sweep leftover native gas dust back to relayer using live fee + L1 reserve
+    // 4. Sweep leftover native gas dust back to relayer (exact 21,000 gas legacy transfer leaving 0 dust)
     try {
       const leftoverNative = await publicClient.getBalance({ address: proxyAddress });
-      const currentGas = await publicClient.getGasPrice();
-      const l1Buffer = (chainKey === "base" || chainKey === "arb") ? 600_000_000_000n : 10_000_000_000n;
-      const dustGasCost = 45000n * currentGas + l1Buffer;
-      // Only sweep if the net recovered value is at least 3x the gas cost of the sweep transaction itself
-      if (leftoverNative >= dustGasCost * 3n) {
+      const gasPrice = await publicClient.getGasPrice();
+      const sweepGas = 21000n;
+      const minGasFloor = chainKey === "polygon" ? 30_000_000_000n : 0n;
+      const calculatedGasPrice = (gasPrice * 115n) / 100n; // 15% priority boost
+      const effectiveGasPrice = calculatedGasPrice > minGasFloor ? calculatedGasPrice : minGasFloor;
+      const txGasCost = sweepGas * effectiveGasPrice;
+
+      if (leftoverNative > (txGasCost * 12n) / 10n) {
         const relayerAddr = getRelayerWalletClientForChain(chainKey).account.address;
+        const valueToSend = leftoverNative - txGasCost;
         const dustTx = await walletClient.sendTransaction({
           account: proxyAccount,
           to: relayerAddr,
-          value: leftoverNative - dustGasCost,
-          gas: 45000n,
+          value: valueToSend,
+          gas: sweepGas,
+          gasPrice: effectiveGasPrice,
+          type: "legacy",
         });
-        await publicClient.waitForTransactionReceipt({ hash: dustTx as `0x${string}` });
-        console.log(`[ProxyForwarder] ✓ Swept ${leftoverNative - dustGasCost} wei ${nativeSym} dust back to relayer: ${dustTx}`);
+        await publicClient.waitForTransactionReceipt({ hash: dustTx as `0x${string}` }).catch(() => {});
+        console.log(`[ProxyForwarder] ✓ Swept ${formatUnits(valueToSend, 18)} ${nativeSym} dust back to relayer: ${dustTx}`);
       }
     } catch (dustErr) {
       console.warn("[ProxyForwarder] Native dust sweep warning (non-fatal):", dustErr);
@@ -2124,9 +2135,15 @@ export async function recoverProxyDeposit(
 
       const ethBalance = await publicClient.getBalance({ address: proxyAccount.address });
       const gasPrice = await publicClient.getGasPrice();
-      if (ethBalance < 65000n * gasPrice) {
+      const feeData = await publicClient.estimateFeesPerGas().catch(() => null);
+      const maxFee = feeData?.maxFeePerGas || (gasPrice * 2n);
+      const gasNeeded = (maxFee * 65000n * 12n) / 10n;
+      const minNeededFloor = normChain === "polygon" ? parseUnits("0.006", 18) : 25_000_000_000_000n;
+      const targetGas = gasNeeded > minNeededFloor ? gasNeeded : minNeededFloor;
+
+      if (ethBalance < targetGas) {
         const relayer = getRelayerWalletClientForChain(normChain);
-        const advanceAmount = normChain === "polygon" ? parseUnits("0.05", 18) : (normChain === "bsc" ? parseUnits("0.001", 18) : 30_000_000_000_000n);
+        const advanceAmount = targetGas - ethBalance;
         const fundTx = await relayer.sendTransaction({
           account: relayer.account,
           to: proxyAccount.address,
@@ -2232,17 +2249,21 @@ export async function recoverProxyDeposit(
     }
 
     const ethBalance = await publicClient.getBalance({ address: proxyAccount.address });
+    const feeData = await publicClient.estimateFeesPerGas().catch(() => null);
     const gasPrice = await publicClient.getGasPrice();
-    const transfersCount = (action === "forward" && totalFeeUnits > 0n) ? 3n : 1n;
-    const minGasNeeded = normChain === "polygon" 
-      ? parseUnits("0.025", 18) 
-      : (normChain === "bsc" ? parseUnits("0.0008", 18) : 65000n * gasPrice * transfersCount);
+    const maxFee = feeData?.maxFeePerGas || (gasPrice * 2n);
+    const transfersCount = (action === "forward" && totalFeeUnits > 0n) ? 2n : 1n;
+    const calculatedGas = (maxFee * 65000n * transfersCount * 12n) / 10n;
+    const minNeededFloor = normChain === "polygon" 
+      ? parseUnits("0.008", 18) 
+      : (normChain === "bsc" ? parseUnits("0.0006", 18) : 25_000_000_000_000n);
+    const gasNeeded = calculatedGas > minNeededFloor ? calculatedGas : minNeededFloor;
 
-    if (ethBalance < minGasNeeded) {
+    if (ethBalance < gasNeeded) {
       try {
         const relayer = getRelayerWalletClientForChain(normChain);
         const relayerBal = await publicClient.getBalance({ address: relayer.account.address });
-        const advanceAmount = normChain === "polygon" ? parseUnits("0.05", 18) : (normChain === "bsc" ? parseUnits("0.001", 18) : 30_000_000_000_000n);
+        const advanceAmount = gasNeeded - ethBalance;
 
         if (relayerBal > advanceAmount * 2n) {
           const fundTx = await relayer.sendTransaction({
@@ -2505,22 +2526,29 @@ export async function recoverProxyDeposit(
       }
     }
 
-    // 4. Sweep leftover native gas dust back to relayer
+    // 4. Sweep leftover native gas dust back to relayer (exact 21,000 gas legacy transfer leaving 0 dust)
     try {
       const leftoverNative = await publicClient.getBalance({ address: proxyAccount.address });
-      const currentGas = await publicClient.getGasPrice();
-      const l1Buffer = (normChain === "base" || normChain === "arb") ? 600_000_000_000n : 10_000_000_000n;
-      const dustGasCost = 45000n * currentGas + l1Buffer;
-      if (leftoverNative >= dustGasCost * 3n) {
+      const gasPrice = await publicClient.getGasPrice();
+      const sweepGas = 21000n;
+      const minGasFloor = normChain === "polygon" ? 30_000_000_000n : 0n;
+      const calculatedGasPrice = (gasPrice * 115n) / 100n;
+      const effectiveGasPrice = calculatedGasPrice > minGasFloor ? calculatedGasPrice : minGasFloor;
+      const txGasCost = sweepGas * effectiveGasPrice;
+
+      if (leftoverNative > (txGasCost * 12n) / 10n) {
         const relayerAddr = getRelayerWalletClientForChain(normChain).account.address;
+        const valueToSend = leftoverNative - txGasCost;
         const dustTx = await walletClient.sendTransaction({
           account: proxyAccount,
           to: relayerAddr,
-          value: leftoverNative - dustGasCost,
-          gas: 45000n,
+          value: valueToSend,
+          gas: sweepGas,
+          gasPrice: effectiveGasPrice,
+          type: "legacy",
         });
-        await publicClient.waitForTransactionReceipt({ hash: dustTx as `0x${string}` });
-        console.log(`[Recover] ✓ Swept dust gas back to relayer: ${dustTx}`);
+        await publicClient.waitForTransactionReceipt({ hash: dustTx as `0x${string}` }).catch(() => {});
+        console.log(`[Recover] ✓ Swept ${formatUnits(valueToSend, 18)} ${nativeSym} dust back to relayer: ${dustTx}`);
       }
     } catch (dustErr) {
       console.warn("[Recover] Native dust sweep warning (non-fatal):", dustErr);
@@ -2618,5 +2646,89 @@ try {
   ensureProxySweeperDaemonRunning();
 } catch (e) {
   // Safe fallback
+}
+
+/**
+ * Sweeps stranded native gas dust from past proxy wallets back to the relayer gas tank.
+ * Can be called manually by admin or periodically to recycle all unspent POL/BNB/ETH.
+ */
+export async function sweepAllProxyDustToRelayer(
+  chainKey: string = "polygon",
+  limit: number = 50
+): Promise<{
+  success: boolean;
+  totalSweptFormatted: string;
+  sweptCount: number;
+  skippedCount: number;
+  details: Array<{ address: string; amount: string; txHash?: string }>;
+}> {
+  const normChain = normalizeChain(chainKey) || chainKey.toLowerCase();
+  const publicClient = getPublicClientForChain(normChain);
+  const relayer = getRelayerWalletClientForChain(normChain);
+  const relayerAddress = relayer.account.address;
+  const nativeSym = normChain === "polygon" ? "POL" : normChain === "bsc" ? "BNB" : "ETH";
+
+  const orders = await getRecentProxyOrders(limit);
+  const chainOrders = orders.filter(
+    (o) => (normalizeChain(o.chain) || o.chain.toLowerCase()) === normChain && o.encryptedPrivateKey
+  );
+
+  let totalSweptWei = 0n;
+  let sweptCount = 0;
+  let skippedCount = 0;
+  const details: Array<{ address: string; amount: string; txHash?: string }> = [];
+
+  const gasPrice = await publicClient.getGasPrice();
+  const sweepGas = 21000n;
+  const minGasFloor = normChain === "polygon" ? 30_000_000_000n : 0n;
+  const calculatedGasPrice = (gasPrice * 115n) / 100n;
+  const effectiveGasPrice = calculatedGasPrice > minGasFloor ? calculatedGasPrice : minGasFloor;
+  const txGasCost = sweepGas * effectiveGasPrice;
+  const minThreshold = (txGasCost * 13n) / 10n; // Needs at least 1.3x gas cost to be worth sweeping
+
+  for (const order of chainOrders) {
+    try {
+      const rawKey = getDecryptedProxyPrivateKey(order);
+      const proxyAccount = privateKeyToAccount(rawKey);
+      const balance = await publicClient.getBalance({ address: proxyAccount.address });
+
+      if (balance <= minThreshold) {
+        skippedCount++;
+        continue;
+      }
+
+      const valueToSend = balance - txGasCost;
+      const walletClient = getWalletClientForChain(normChain, proxyAccount);
+
+      const txHash = await walletClient.sendTransaction({
+        account: proxyAccount,
+        to: relayerAddress,
+        value: valueToSend,
+        gas: sweepGas,
+        gasPrice: effectiveGasPrice,
+        type: "legacy",
+      });
+
+      await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` }).catch(() => {});
+      totalSweptWei += valueToSend;
+      sweptCount++;
+      details.push({
+        address: proxyAccount.address,
+        amount: `${formatUnits(valueToSend, 18)} ${nativeSym}`,
+        txHash,
+      });
+      console.log(`[RecycleDust] ✓ Recycled ${formatUnits(valueToSend, 18)} ${nativeSym} from ${proxyAccount.address} -> relayer: ${txHash}`);
+    } catch (e: any) {
+      console.warn(`[RecycleDust] Failed to sweep ${order.proxyDepositAddress}:`, e?.message || e);
+    }
+  }
+
+  return {
+    success: true,
+    totalSweptFormatted: `${formatUnits(totalSweptWei, 18)} ${nativeSym}`,
+    sweptCount,
+    skippedCount,
+    details,
+  };
 }
 
