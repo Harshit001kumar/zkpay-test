@@ -1,4 +1,7 @@
-import { SVGProps } from "react";
+"use client";
+
+import React, { SVGProps } from "react";
+import Dock, { DockItemData } from "./Dock";
 
 export type BottomNavTab = "home" | "earn" | "cards" | "profile";
 
@@ -8,89 +11,138 @@ interface BottomNavProps {
 }
 
 export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
+  const items: DockItemData[] = [
+    {
+      label: "Home",
+      active: activeTab === "home",
+      onClick: () => onTabChange("home"),
+      icon: <HomeIcon isActive={activeTab === "home"} />,
+    },
+    {
+      label: "Earn",
+      active: activeTab === "earn",
+      onClick: () => onTabChange("earn"),
+      icon: <EarnIcon isActive={activeTab === "earn"} />,
+    },
+    {
+      label: "Cards",
+      active: activeTab === "cards",
+      onClick: () => onTabChange("cards"),
+      icon: <CardsIcon isActive={activeTab === "cards"} />,
+    },
+    {
+      label: "Profile",
+      active: activeTab === "profile",
+      onClick: () => onTabChange("profile"),
+      icon: <ProfileIcon isActive={activeTab === "profile"} />,
+    },
+  ];
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-[#131315]/90 backdrop-blur-glass border-t border-[#46464c] px-6 py-4 flex justify-between items-center z-50 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-      <NavItem 
-        id="home" 
-        label="Home" 
-        isActive={activeTab === "home"} 
-        onClick={() => onTabChange("home")}
-        icon={<HomeIcon />}
-      />
-      <NavItem 
-        id="earn" 
-        label="Earn" 
-        isActive={activeTab === "earn"} 
-        onClick={() => onTabChange("earn")}
-        icon={<EarnIcon />}
-      />
-      <NavItem 
-        id="cards" 
-        label="Cards" 
-        isActive={activeTab === "cards"} 
-        onClick={() => onTabChange("cards")}
-        icon={<CardsIcon />}
-      />
-      <NavItem 
-        id="profile" 
-        label="Profile" 
-        isActive={activeTab === "profile"} 
-        onClick={() => onTabChange("profile")}
-        icon={<ProfileIcon />}
+    <nav
+      aria-label="Bottom Navigation"
+      className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none h-20 flex justify-center items-end pb-[env(safe-area-inset-bottom,0px)]"
+    >
+      <Dock
+        items={items}
+        position="bottom"
+        theme="dark"
+        baseItemSize={48}
+        magnification={64}
+        panelHeight={62}
+        gap={12}
+        roundness={0.65}
+        spring={{ mass: 0.1, stiffness: 160, damping: 14 }}
+        bounce={true}
+        showIndicators={true}
+        showLabels={true}
+        accentColor="#c0c6de"
+        className="pointer-events-auto"
       />
     </nav>
   );
 }
 
-function NavItem({ id, label, isActive, onClick, icon }: { id: string; label: string; isActive: boolean; onClick: () => void; icon: React.ReactNode }) {
+interface NavIconProps extends SVGProps<SVGSVGElement> {
+  isActive?: boolean;
+}
+
+function HomeIcon({ isActive, ...props }: NavIconProps) {
   return (
-    <button 
-      onClick={onClick}
-      className={`flex flex-col items-center justify-center gap-1 min-w-[64px] transition-colors ${
-        isActive ? 'text-[#c0c6de]' : 'text-[#909097] hover:text-[#c6c6cd]'
-      }`}
+    <svg
+      width="1.15em"
+      height="1.15em"
+      viewBox="0 0 24 24"
+      fill={isActive ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth={isActive ? "2" : "1.8"}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`transition-colors duration-200 ${isActive ? "text-[#c0c6de]" : "text-[#909097]"}`}
+      {...props}
     >
-      <div className={`w-6 h-6 flex items-center justify-center ${isActive ? 'fill-current stroke-current' : 'fill-none stroke-current'}`}>
-        {icon}
-      </div>
-      <span className={`text-[10px] font-semibold ${isActive ? 'font-bold' : ''}`}>{label}</span>
-    </button>
-  );
-}
-
-// Minimalist SVGs
-function HomeIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-      <polyline points="9 22 9 12 15 12 15 22"></polyline>
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <polyline points="9 22 9 12 15 12 15 22" />
     </svg>
   );
 }
 
-function EarnIcon(props: SVGProps<SVGSVGElement>) {
+function EarnIcon({ isActive, ...props }: NavIconProps) {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <line x1="12" y1="2" x2="12" y2="22"></line>
-      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+    <svg
+      width="1.15em"
+      height="1.15em"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={isActive ? "2.2" : "1.8"}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`transition-colors duration-200 ${isActive ? "text-[#c0c6de]" : "text-[#909097]"}`}
+      {...props}
+    >
+      <line x1="12" y1="2" x2="12" y2="22" />
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
     </svg>
   );
 }
 
-function CardsIcon(props: SVGProps<SVGSVGElement>) {
+function CardsIcon({ isActive, ...props }: NavIconProps) {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
-      <line x1="1" y1="10" x2="23" y2="10"></line>
+    <svg
+      width="1.15em"
+      height="1.15em"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={isActive ? "2" : "1.8"}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`transition-colors duration-200 ${isActive ? "text-[#c0c6de]" : "text-[#909097]"}`}
+      {...props}
+    >
+      <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+      <line x1="1" y1="10" x2="23" y2="10" />
     </svg>
   );
 }
 
-function ProfileIcon(props: SVGProps<SVGSVGElement>) {
+function ProfileIcon({ isActive, ...props }: NavIconProps) {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-      <circle cx="12" cy="7" r="4"></circle>
+    <svg
+      width="1.15em"
+      height="1.15em"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={isActive ? "2" : "1.8"}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`transition-colors duration-200 ${isActive ? "text-[#c0c6de]" : "text-[#909097]"}`}
+      {...props}
+    >
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
     </svg>
   );
 }
