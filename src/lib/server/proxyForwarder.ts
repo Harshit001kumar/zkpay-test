@@ -1761,10 +1761,10 @@ export async function recoverProxyDeposit(
 
     return {
       success: true,
-      message: `Successfully swept ${(Number(sweepAmountSats) / 1e8).toFixed(8)} LTC to ${destination}!`,
+      message: `Successfully forwarded ${(Number(solverSats) / 1e8).toFixed(8)} LTC to ${destination}${zkpayFeeSats > 0n ? ` (+ fee ${(Number(zkpayFeeSats) / 1e8).toFixed(8)} LTC to ZkPay)` : ""}!`,
       txHash,
       order: updated,
-      recoveredAmount: (Number(sweepAmountSats) / 1e8).toFixed(8) + " LTC",
+      recoveredAmount: (Number(solverSats) / 1e8).toFixed(8) + " LTC",
       destination,
       explorerUrl,
     };
