@@ -553,6 +553,7 @@ export async function checkOrderSettlement(session: PayInSession): Promise<PayIn
         event: "payin.settled",
         sessionId: session.id,
         orderId: session.p2pOrderId,
+        p2pOrderId: session.p2pOrderId,
         recipientUpi: session.recipientUpi,
         fiatAmount: actualFiat,
         currency: "INR",

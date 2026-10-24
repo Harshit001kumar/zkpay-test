@@ -4,7 +4,7 @@ import {
   getPayInSession,
   updatePayInSession,
 } from "@/lib/server/payStore";
-import { dispatchWebhook, isSafeWebhookUrlAsync } from "@/lib/server/webhooks";
+import { isSafeWebhookUrlAsync } from "@/lib/server/webhooks";
 import { requirePublicApiKey, resolvePublicApiAuth } from "@/lib/server/publicApiAuth";
 import { parseAbi, parseUnits, formatUnits } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";

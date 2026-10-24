@@ -19,6 +19,14 @@ export interface WebhookPayload {
   amountUsdc?: string;
   txHash?: string;
   p2pOrderId?: string;
+  orderId?: string;
+  proof?: {
+    verification: string;
+    p2pOrderId?: string;
+    actualFiatAmount?: number;
+    basescanTx?: string;
+    [key: string]: any;
+  };
   // Cross-chain swap event fields
   swapId?: string;
   depositAddress?: string;
@@ -30,6 +38,7 @@ export interface WebhookPayload {
   destinationTxHash?: string;
   recipient?: string;
   timestamp: number;
+  [key: string]: any;
 }
 
 /**
