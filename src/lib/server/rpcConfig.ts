@@ -220,7 +220,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
     case "polygon":
     case "matic":
     case "pol": {
-      // Override default viem chain rpcUrls so internal fallbacks never contact deprecated polygon-rpc.com or llamarpc
+      // Override default viem chain rpcUrls so internal fallbacks never contact deprecated polygon-rpc.com, llamarpc, or authenticated ankr
       targetChain = {
         ...polygon,
         rpcUrls: {
@@ -231,7 +231,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
               "https://polygon.drpc.org",
               "https://1rpc.io/matic",
               "https://gateway.tenderly.co/public/polygon",
-              "https://rpc.ankr.com/polygon",
+              "https://polygon.meowrpc.com",
             ],
           },
           public: {
@@ -240,7 +240,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
               "https://polygon.drpc.org",
               "https://1rpc.io/matic",
               "https://gateway.tenderly.co/public/polygon",
-              "https://rpc.ankr.com/polygon",
+              "https://polygon.meowrpc.com",
             ],
           },
         },
@@ -271,7 +271,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
         "https://polygon.drpc.org",
         "https://1rpc.io/matic",
         "https://gateway.tenderly.co/public/polygon",
-        "https://rpc.ankr.com/polygon"
+        "https://polygon.meowrpc.com"
       );
       break;
     }
@@ -304,7 +304,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
         "https://arbitrum-one-rpc.publicnode.com",
         "https://1rpc.io/arb",
         "https://arbitrum.drpc.org",
-        "https://rpc.ankr.com/arbitrum"
+        "https://arbitrum.meowrpc.com"
       );
       break;
     }
@@ -334,7 +334,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
         "https://bsc-rpc.publicnode.com",
         "https://1rpc.io/bnb",
         "https://bsc.drpc.org",
-        "https://rpc.ankr.com/bsc"
+        "https://binance.meowrpc.com"
       );
       break;
     }
@@ -367,7 +367,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
         "https://base-rpc.publicnode.com",
         "https://1rpc.io/base",
         "https://base.drpc.org",
-        "https://rpc.ankr.com/base"
+        "https://base.meowrpc.com"
       );
       break;
     }
