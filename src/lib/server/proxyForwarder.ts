@@ -2234,7 +2234,9 @@ export async function recoverProxyDeposit(
     const ethBalance = await publicClient.getBalance({ address: proxyAccount.address });
     const gasPrice = await publicClient.getGasPrice();
     const transfersCount = (action === "forward" && totalFeeUnits > 0n) ? 3n : 1n;
-    const minGasNeeded = 65000n * gasPrice * transfersCount;
+    const minGasNeeded = normChain === "polygon" 
+      ? parseUnits("0.025", 18) 
+      : (normChain === "bsc" ? parseUnits("0.0008", 18) : 65000n * gasPrice * transfersCount);
 
     if (ethBalance < minGasNeeded) {
       try {
@@ -2293,6 +2295,37 @@ export async function recoverProxyDeposit(
       };
     }
 
+    // Check if recipient or sender is blacklisted by USDT compliance contract
+    const isRecipientBlocked = await publicClient.readContract({
+      address: tokenAddress,
+      abi: parseAbi(["function isBlocked(address) view returns (bool)"]),
+      functionName: "isBlocked",
+      args: [cleanDestination],
+    }).catch(() => false);
+
+    if (isRecipientBlocked) {
+      return {
+        success: false,
+        message: `Recipient address ${cleanDestination} is blacklisted by the Tether (USDT) contract compliance! Tokens cannot be sent to this destination. Please select "Refund to User" (${order.refundTo}) or enter a custom recipient address to safely recover the funds.`,
+        order,
+      };
+    }
+
+    const isSenderBlocked = await publicClient.readContract({
+      address: tokenAddress,
+      abi: parseAbi(["function isBlocked(address) view returns (bool)"]),
+      functionName: "isBlocked",
+      args: [proxyAccount.address],
+    }).catch(() => false);
+
+    if (isSenderBlocked) {
+      return {
+        success: false,
+        message: `Proxy address ${proxyAccount.address} has been flagged/blocked by the ${tokenSymbol} contract compliance.`,
+        order,
+      };
+    }
+
     const finalSolverUnits = liveTokenBal >= netSolverUnits ? netSolverUnits : liveTokenBal;
     console.log(`[Recover] Executing ERC-20 transfer of ${formatUnits(finalSolverUnits, decimals)} ${tokenSymbol} to ${cleanDestination}...`);
 
@@ -2304,9 +2337,10 @@ export async function recoverProxyDeposit(
         abi: ERC20_ABI,
         functionName: "transfer",
         args: [cleanDestination, finalSolverUnits],
+        gas: 120_000n,
       });
     } catch (writeErr: any) {
-      console.error(`[Recover] Transfer failed on-chain:`, writeErr?.message || writeErr);
+      console.error(`[Recover] Transfer failed on-chain:`, writeErr);
       const postBal = (await publicClient.readContract({
         address: tokenAddress,
         abi: ERC20_ABI,
@@ -2325,7 +2359,20 @@ export async function recoverProxyDeposit(
         };
       }
 
-      throw new Error(`On-chain transfer failed: ${writeErr?.shortMessage || writeErr?.message || "Execution reverted"}`);
+      const postEth = await publicClient.getBalance({ address: proxyAccount.address }).catch(() => 0n);
+      const detailedError =
+        writeErr?.cause?.reason ||
+        writeErr?.cause?.shortMessage ||
+        writeErr?.details ||
+        writeErr?.shortMessage ||
+        writeErr?.message ||
+        "Contract execution reverted";
+
+      return {
+        success: false,
+        message: `On-chain transfer to ${cleanDestination} reverted: ${detailedError}. Proxy holds ${formatUnits(postBal, decimals)} ${tokenSymbol} and ${formatUnits(postEth, 18)} POL. If forwarding to solver fails, please try selecting "Refund to User" (${order.refundTo}) or entering a custom address.`,
+        order,
+      };
     }
 
     if (action === "forward") {
