@@ -2430,9 +2430,10 @@ export async function recoverProxyDeposit(
       destination: cleanDestination,
       explorerUrl,
     };
-  } finally {
-    sweepLocks.delete(lockKey);
   }
+} finally {
+  sweepLocks.delete(lockKey);
+}
 }
 
 let sweeperInterval: ReturnType<typeof setInterval> | null = null;
