@@ -228,7 +228,7 @@ function DockMenu({
     const shape = pathRef.current;
     if (!outer || !list || !glass || !shape) return undefined;
     aliveRef.current = true;
-    const layers = [outer.firstElementChild as HTMLElement, glass, shapeRef.current as unknown as HTMLElement, list].filter(Boolean);
+    const layers = [outer.firstElementChild, glass, shapeRef.current, list].filter(Boolean) as Element[];
     const { x, y } = point ?? { x: 0, y: 0 };
     const box = edge ?? { left: 0, right: 0, top: 0 };
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
@@ -292,7 +292,7 @@ function DockMenu({
   useEffect(() => {
     if (!closing) return undefined;
     const outer = outerRef.current;
-    const layers = [outer?.firstElementChild, glassRef.current, shapeRef.current, listRef.current].filter(Boolean) as HTMLElement[];
+    const layers = [outer?.firstElementChild, glassRef.current, shapeRef.current, listRef.current].filter(Boolean) as Element[];
     const duration = reduceRef.current ? 100 : 150;
     let done = false;
     const finish = () => {

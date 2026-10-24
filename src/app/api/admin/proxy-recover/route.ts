@@ -116,9 +116,8 @@ export async function POST(req: Request) {
       );
       const recycleResult = await sweepAllProxyDustToRelayer(chain, limit);
       return NextResponse.json({
-        success: true,
-        message: `Successfully recycled ${recycleResult.totalSweptFormatted} dust back to the relayer across ${recycleResult.sweptCount} proxy wallets (${recycleResult.skippedCount} skipped/empty).`,
         ...recycleResult,
+        message: `Successfully recycled ${recycleResult.totalSweptFormatted} dust back to the relayer across ${recycleResult.sweptCount} proxy wallets (${recycleResult.skippedCount} skipped/empty).`,
       });
     }
 
