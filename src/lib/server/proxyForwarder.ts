@@ -1866,7 +1866,7 @@ export async function recoverProxyDeposit(
       };
     }
 
-    let txHash = "";
+    let txHash: `0x${string}` = "0x";
 
     if (hasFees) {
       // ── ATOMIC BUNDLE VIA MULTICALL3 (1 SINGLE TX) ──
@@ -1944,7 +1944,7 @@ export async function recoverProxyDeposit(
       notifyNearIntentsDepositSubmit(cleanDestination, txHash).catch(() => {});
     }
 
-    await publicClient.waitForTransactionReceipt({ hash: txHash }).catch(() => {});
+    await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` }).catch(() => {});
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: action === "refund" ? "SETTLED" : "FORWARDED",
