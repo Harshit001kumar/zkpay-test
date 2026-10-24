@@ -529,6 +529,22 @@ bot.command('checklink', async (ctx) => {
         example: "500"
       },
       {
+        name: "refundAddress",
+        type: "string",
+        location: "body",
+        required: false,
+        description: "User 0x EVM address on Base. If order is under minimum (< $1.00) or cancelled by merchant, refund is automatically sent here.",
+        example: "0x4747883abdf84ad96565415514de298e3a3fd3e1"
+      },
+      {
+        name: "tipUsdc",
+        type: "number",
+        location: "body",
+        required: false,
+        description: "Optional provider tip in USDC (e.g. 0.50). Carved out and swept directly to ZkPay Treasury.",
+        example: "0.50"
+      },
+      {
         name: "webhookUrl",
         type: "string",
         location: "body",
@@ -548,6 +564,8 @@ bot.command('checklink', async (ctx) => {
     body: {
       recipientUpi: "merchant@okaxis",
       amountINR: 500,
+      refundAddress: "0x4747883abdf84ad96565415514de298e3a3fd3e1",
+      tipUsdc: 0.50,
       webhookUrl: "https://my-bot.com/webhook"
     },
     response: {
@@ -557,12 +575,18 @@ bot.command('checklink', async (ctx) => {
       clientSecret: "sec_8f7a2c9b1d",
       statusUrl: "/api/v1/payin-sessions?id=ses_live_8f7a2c9b1d&token=sec_8f7a2c9b1d",
       payinAddress: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
-      network: "Base Mainnet",
-      expectedAmountUsdc: "5.76",
+      network: "Base Mainnet (Chain ID: 8453)",
+      expectedAmountUsdc: "6.26",
+      usdcPrincipal: "5.60",
+      feeUsdc: "0.06",
+      protocolFeeUsdc: "0.10",
+      tipUsdc: "0.50",
+      refundAddress: "0x4747883abdf84ad96565415514de298e3a3fd3e1",
+      gasSponsorship: "Sponsored by ZkPay Relayer (Executed directly from Relayer; if failed, gas fee is paid in USDC from deposit)",
       fiatAmount: "₹ 500.00",
       recipientUpi: "merchant@okaxis",
       expiresInSeconds: 1800,
-      qrCodeUrl: "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=ethereum%3A0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913%408453%2Ftransfer%3Faddress%3D0x742d35Cc6634C0532925a3b844Bc454e4438f44e%26uint256%3D5760000"
+      qrCodeUrl: "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=ethereum%3A0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913%408453%2Ftransfer%3Faddress%3D0x742d35Cc6634C0532925a3b844Bc454e4438f44e%26uint256%3D6260000"
     },
     codeExamples: {
       curl: `curl -X POST "https://zkpay.top/api/v1/payin-sessions" \\
@@ -682,8 +706,23 @@ bot.command('pay', async (ctx) => {
       status: "SETTLED",
       recipientUpi: "merchant@okaxis",
       fiatAmount: "₹ 500.00",
-      receivedUsdc: "5.76 USDC",
+      expectedAmountUsdc: "6.26 USDC",
+      receivedUsdc: "6.26",
+      feeUsdc: "0.06",
+      tipUsdc: "0.50",
+      refundAddress: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
       payinAddress: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+      p2pOrderId: "4210",
+      proof: {
+        verification: "P2P.me Protocol Escrow Verified",
+        p2pOrderId: "4210",
+        actualFiatAmount: "₹ 500.00",
+        actualUsdcAmount: "5.60",
+        recipientUpi: "merchant@okaxis",
+        txHash: "0x3e17b889a74c76b97adce206256f17e3be992c6b45a0b5a1532050efb064bb19",
+        basescanUrl: "https://basescan.org/tx/0x3e17b889a74c76b97adce206256f17e3be992c6b45a0b5a1532050efb064bb19",
+        settledAt: 1727382180000
+      },
       settledAt: 1727382180000
     },
     codeExamples: {
@@ -700,9 +739,9 @@ const clientSecret = "sec_8f7a2c9b1d";
 
 const res = await fetch(\`https://zkpay.top/api/v1/payin-sessions?id=\${sessionId}&token=\${clientSecret}\`);
 const data = await res.json();
-console.log(\`Status: \${data.status}\`); // AWAITING_PAYMENT -> PAYMENT_DETECTED -> SETTLED / EXPIRED
-if (data.status === "SETTLED") {
-  console.log(\`Received: \${data.receivedUsdc}, Disbursed: \${data.fiatAmount}\`);
+console.log(\`Status: \${data.status}\`); // AWAITING_PAYMENT -> ORDER_PLACED -> AWAITING_FIAT_PAYMENT -> SETTLED
+if (data.status === "SETTLED" && data.proof) {
+  console.log(\`Verified P2P Order #\${data.proof.p2pOrderId}: \${data.proof.basescanUrl}\`);
 }`,
       python: `import requests
 

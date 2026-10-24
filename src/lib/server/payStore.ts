@@ -20,6 +20,21 @@ export interface PayLink {
   apiKeyId?: string;
 }
 
+export type PayInStatus =
+  | "AWAITING_PAYMENT"
+  | "DETECTED"
+  | "PROCESSING"
+  | "ORDER_PLACED"
+  | "DELIVERING_HANDSHAKE"
+  | "AWAITING_FIAT_PAYMENT"
+  | "SETTLED"
+  | "REJECTED_UNDER_MINIMUM"
+  | "STORED_IN_REFUND_WALLET"
+  | "REFUNDED_TO_USER"
+  | "CANCELLED_AND_REFUNDED"
+  | "FAILED_AND_REFUNDED"
+  | "EXPIRED";
+
 export interface PayInSession {
   id: string;
   clientSecret?: string; // Secret token for public checkout polling
@@ -32,7 +47,7 @@ export interface PayInSession {
   encryptedPrivateKey?: string; // AES-256-GCM encrypted ephemeral key (raw key is NEVER stored)
   payinPrivateKey?: string; // Backwards-compatible property (deprecated)
   sweepLock?: boolean; // Concurrency lock for EIP-3009 relay
-  status: "AWAITING_PAYMENT" | "DETECTED" | "PROCESSING" | "SETTLED" | "EXPIRED";
+  status: PayInStatus;
   webhookUrl?: string;
   createdAt: number;
   expiresAt: number;
@@ -42,6 +57,21 @@ export interface PayInSession {
   creatorUserId?: string;
   creatorWalletAddress?: string;
   apiKeyId?: string;
+
+  // Gas, Tip & Refund Fields
+  gasFeeUsdc?: string; // Gas fee paid in USDC by user (if operation failed or was cancelled)
+  tipUsdc?: string; // Explicit tip for provider (swept to treasury)
+  tipTxHash?: string; // Tx hash of the tip sweep
+  refundAddress?: string; // User-provided refund destination address
+  underpaidPenaltyUsdc?: string; // Deducted penalty fee if < $1.00
+  refundTxHash?: string; // Tx hash of refund transfer
+  refundStatus?: "PENDING" | "REFUNDED_TO_USER" | "STORED_IN_REFUND_WALLET" | "MANUALLY_REFUNDED";
+
+  // Payment proof metadata
+  actualFiatAmount?: number; // Exact INR amount delivered
+  actualUsdcAmount?: string; // Exact USDC released from escrow
+  completedTxHash?: string; // On-chain completion tx hash on Base
+  settledAt?: number; // Timestamp of completion
 }
 
 // In-memory stores — MVP, with TTL and secure key isolation
@@ -234,4 +264,8 @@ export function expireOldSessions(): number {
     }
   }
   return expired;
+}
+
+export function listAllPayInSessions(): PayInSession[] {
+  return Array.from(payInSessions.values()).sort((a, b) => b.createdAt - a.createdAt);
 }

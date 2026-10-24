@@ -41,6 +41,13 @@ import { formatUpiName } from "@/lib/p2pkit";
 import { CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
 import { encodeFunctionData, parseUnits } from "viem";
+import {
+  getAdminPaymentOverview,
+  executeManualRefundAction,
+  retryHandshakeAction,
+  forceCancelOrderAction,
+  AdminPaymentOverview,
+} from "@/lib/server/adminPaymentActions";
 
 interface AdminStats {
   network: {
@@ -116,7 +123,7 @@ interface OrderItem {
   timestamp: number;
 }
 
-type AdminTab = "overview" | "orders" | "rewards" | "tools";
+type AdminTab = "overview" | "orders" | "payments" | "rewards" | "tools";
 
 export default function AdminPage() {
   const { ready, authenticated, user, login, logout, getAccessToken } = usePrivy();
@@ -131,6 +138,16 @@ export default function AdminPage() {
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Payments & Fund Recovery Console State
+  const [paymentData, setPaymentData] = useState<AdminPaymentOverview | null>(null);
+  const [isLoadingPaymentData, setIsLoadingPaymentData] = useState(false);
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>("ALL");
+  const [manualRefundSession, setManualRefundSession] = useState<any | null>(null);
+  const [manualRefundRecipient, setManualRefundRecipient] = useState<string>("");
+  const [manualRefundAmount, setManualRefundAmount] = useState<string>("");
+  const [isExecutingAdminAction, setIsExecutingAdminAction] = useState(false);
+  const [adminActionResult, setAdminActionResult] = useState<{ success: boolean; message: string; txHash?: string } | null>(null);
 
   // Rewards State
   const [rewardsData, setRewardsData] = useState<any>(null);
@@ -567,11 +584,31 @@ export default function AdminPage() {
     verifyAdmin();
   }, [verifyAdmin]);
 
+  const loadPayments = useCallback(async () => {
+    setIsLoadingPaymentData(true);
+    try {
+      const res = await getAdminPaymentOverview();
+      if (res.success) {
+        setPaymentData(res);
+      }
+    } catch (err: any) {
+      console.warn("[Admin] loadPayments warning:", err);
+    } finally {
+      setIsLoadingPaymentData(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (isAuthorized) {
       loadAdminData();
     }
   }, [isAuthorized, loadAdminData]);
+
+  useEffect(() => {
+    if (isAuthorized && activeTab === "payments") {
+      loadPayments();
+    }
+  }, [isAuthorized, activeTab, loadPayments]);
 
   useEffect(() => {
     if (isAuthorized && activeTab === "tools") {
@@ -760,10 +797,10 @@ export default function AdminPage() {
       <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-5 space-y-6">
 
         {/* Segmented Tab Bar (Mobile-First) */}
-        <div className="grid grid-cols-4 p-1 rounded-2xl bg-black/40 border border-white/10 max-w-xl mx-auto sm:mx-0">
+        <div className="grid grid-cols-5 p-1 rounded-2xl bg-black/40 border border-white/10 max-w-2xl mx-auto sm:mx-0">
           <button
             onClick={() => setActiveTab("overview")}
-            className={`py-2 px-3 rounded-xl text-xs font-mono font-bold transition-all ${
+            className={`py-2 px-2.5 rounded-xl text-xs font-mono font-bold transition-all ${
               activeTab === "overview"
                 ? "bg-white/10 text-white shadow-sm border border-white/15"
                 : "text-[#909097] hover:text-[#e5e2e3]"
@@ -773,7 +810,7 @@ export default function AdminPage() {
           </button>
           <button
             onClick={() => setActiveTab("orders")}
-            className={`py-2 px-3 rounded-xl text-xs font-mono font-bold transition-all relative ${
+            className={`py-2 px-2.5 rounded-xl text-xs font-mono font-bold transition-all relative ${
               activeTab === "orders"
                 ? "bg-white/10 text-white shadow-sm border border-white/15"
                 : "text-[#909097] hover:text-[#e5e2e3]"
@@ -787,8 +824,23 @@ export default function AdminPage() {
             )}
           </button>
           <button
+            onClick={() => setActiveTab("payments")}
+            className={`py-2 px-2.5 rounded-xl text-xs font-mono font-bold transition-all relative ${
+              activeTab === "payments"
+                ? "bg-white/10 text-white shadow-sm border border-white/15"
+                : "text-[#909097] hover:text-[#e5e2e3]"
+            }`}
+          >
+            <span>Payments</span>
+            {paymentData?.stats?.storedRefundsCount ? (
+              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 text-[9px] font-bold">
+                {paymentData.stats.storedRefundsCount}
+              </span>
+            ) : null}
+          </button>
+          <button
             onClick={() => setActiveTab("rewards")}
-            className={`py-2 px-3 rounded-xl text-xs font-mono font-bold transition-all relative ${
+            className={`py-2 px-2.5 rounded-xl text-xs font-mono font-bold transition-all relative ${
               activeTab === "rewards"
                 ? "bg-white/10 text-white shadow-sm border border-white/15"
                 : "text-[#909097] hover:text-[#e5e2e3]"
@@ -803,7 +855,7 @@ export default function AdminPage() {
           </button>
           <button
             onClick={() => setActiveTab("tools")}
-            className={`py-2 px-3 rounded-xl text-xs font-mono font-bold transition-all ${
+            className={`py-2 px-2.5 rounded-xl text-xs font-mono font-bold transition-all ${
               activeTab === "tools"
                 ? "bg-white/10 text-white shadow-sm border border-white/15"
                 : "text-[#909097] hover:text-[#e5e2e3]"
@@ -1778,6 +1830,391 @@ export default function AdminPage() {
                 </table>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ────────────── TAB 3: PAYMENTS & FUND RECOVERY ────────────── */}
+        {activeTab === "payments" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Header & Quick Refresh */}
+            <div className="obsidian-glass rounded-2xl p-5 sm:p-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shrink-0">
+                    <CreditCard className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+                      Payment API Sessions & Fund Recovery
+                    </h3>
+                    <p className="text-xs text-[#909097] font-mono mt-0.5">
+                      On-chain P2P session tracker, tipping router, and manual refund console (Server-Action Secured)
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={loadPayments}
+                  disabled={isLoadingPaymentData}
+                  className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-mono text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95 shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingPaymentData ? "animate-spin" : ""}`} />
+                  <span>{isLoadingPaymentData ? "Refreshing..." : "Refresh Sessions"}</span>
+                </button>
+              </div>
+
+              {/* Action Result Notification Banner */}
+              {adminActionResult && (
+                <div
+                  className={`p-4 rounded-xl border text-xs font-mono flex items-start gap-2.5 ${
+                    adminActionResult.success
+                      ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-300"
+                      : "bg-red-950/40 border-red-500/30 text-red-300"
+                  }`}
+                >
+                  {adminActionResult.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                  )}
+                  <div className="space-y-1 flex-1">
+                    <p>{adminActionResult.message}</p>
+                    {adminActionResult.txHash && (
+                      <a
+                        href={`https://basescan.org/tx/${adminActionResult.txHash}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-white underline inline-flex items-center gap-1 font-bold"
+                      >
+                        <span>View on Basescan: {adminActionResult.txHash.slice(0, 16)}...</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAdminActionResult(null)}
+                    className="text-[#909097] hover:text-white text-xs"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              {/* Wallet Telemetry Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 text-xs font-mono">
+                {/* Card 1: Treasury */}
+                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
+                  <div className="flex items-center justify-between text-[#909097]">
+                    <span className="text-[10px] uppercase font-bold">Treasury Balance</span>
+                    <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                  </div>
+                  <div className="text-lg font-bold text-white font-mono">
+                    ${paymentData?.wallets?.treasuryBalanceUsdc || "0.00"} <span className="text-xs text-[#909097]">USDC</span>
+                  </div>
+                  <p className="text-[10px] text-[#909097] truncate">1% fees + tips + penalties</p>
+                </div>
+
+                {/* Card 2: Refund Wallet */}
+                <div className={`p-4 rounded-xl border space-y-1 transition-all ${
+                  (paymentData?.stats?.storedRefundsCount || 0) > 0
+                    ? "bg-amber-950/20 border-amber-500/30 text-amber-200"
+                    : "bg-white/[0.03] border-white/10"
+                }`}>
+                  <div className="flex items-center justify-between text-[#909097]">
+                    <span className="text-[10px] uppercase font-bold">ZkPay Refund Wallet</span>
+                    <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+                  </div>
+                  <div className="text-lg font-bold text-white font-mono">
+                    ${paymentData?.wallets?.refundWalletBalanceUsdc || "0.00"} <span className="text-xs text-[#909097]">USDC</span>
+                  </div>
+                  <p className="text-[10px] text-amber-400 font-bold">
+                    {paymentData?.stats?.storedRefundsCount || 0} Unclaimed Refunds
+                  </p>
+                </div>
+
+                {/* Card 3: Relayer Gas */}
+                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
+                  <div className="flex items-center justify-between text-[#909097]">
+                    <span className="text-[10px] uppercase font-bold">Relayer Gas Tank</span>
+                    <Zap className="w-3.5 h-3.5 text-blue-400" />
+                  </div>
+                  <div className="text-lg font-bold text-white font-mono">
+                    {paymentData?.relayer?.balanceEth || "0.0000"} <span className="text-xs text-[#909097]">ETH</span>
+                  </div>
+                  <p className="text-[10px] text-emerald-400">
+                    {paymentData?.relayer?.healthy ? "✓ Healthy Gas Buffer" : "⚠ Low Gas Level"}
+                  </p>
+                </div>
+
+                {/* Card 4: Session Metrics */}
+                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
+                  <div className="flex items-center justify-between text-[#909097]">
+                    <span className="text-[10px] uppercase font-bold">Session Overview</span>
+                    <Activity className="w-3.5 h-3.5 text-purple-400" />
+                  </div>
+                  <div className="text-lg font-bold text-white font-mono">
+                    {paymentData?.stats?.totalSessions || 0} <span className="text-xs text-[#909097]">Total</span>
+                  </div>
+                  <p className="text-[10px] text-[#909097]">
+                    {paymentData?.stats?.settledSessions || 0} Settled • {paymentData?.stats?.activeSessions || 0} Active
+                  </p>
+                </div>
+              </div>
+
+              {/* Status Filter Tabs */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-mono scrollbar-none">
+                {["ALL", "AWAITING_PAYMENT", "ORDER_PLACED", "AWAITING_FIAT_PAYMENT", "SETTLED", "STORED_IN_REFUND_WALLET", "REFUNDED_TO_USER", "FAILED_AND_REFUNDED", "CANCELLED_AND_REFUNDED", "REJECTED_UNDER_MINIMUM"].map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setPaymentStatusFilter(st)}
+                    className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold uppercase transition-all whitespace-nowrap ${
+                      paymentStatusFilter === st
+                        ? "bg-white/15 border-white/30 text-white"
+                        : "bg-white/[0.02] border-white/5 text-[#909097] hover:text-white"
+                    }`}
+                  >
+                    {st.replace(/_/g, " ")}
+                  </button>
+                ))}
+              </div>
+
+              {/* Sessions Table */}
+              <div className="overflow-x-auto rounded-xl border border-white/10">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead className="bg-white/5 border-b border-white/10 text-[#909097] uppercase text-[10px]">
+                    <tr>
+                      <th className="py-3 px-3.5">Session / Date</th>
+                      <th className="py-3 px-3.5">Recipient UPI</th>
+                      <th className="py-3 px-3.5">USDC Exp / Recv</th>
+                      <th className="py-3 px-3.5">Tip</th>
+                      <th className="py-3 px-3.5">Fiat Delivered</th>
+                      <th className="py-3 px-3.5">Status</th>
+                      <th className="py-3 px-3.5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {paymentData?.sessions && paymentData.sessions.length > 0 ? (
+                      paymentData.sessions
+                        .filter((s) => paymentStatusFilter === "ALL" || s.status === paymentStatusFilter)
+                        .map((s) => (
+                          <tr key={s.id} className="hover:bg-white/[0.02] transition-colors">
+                            <td className="py-3 px-3.5">
+                              <div className="font-bold text-white truncate max-w-[130px]">{s.id}</div>
+                              <div className="text-[10px] text-[#909097]">
+                                {new Date(s.createdAt).toLocaleDateString()} {new Date(s.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              </div>
+                            </td>
+                            <td className="py-3 px-3.5">
+                              <span className="text-white font-bold">{s.recipientUpi}</span>
+                              {s.p2pOrderId && (
+                                <div className="text-[10px] text-purple-400">Order #{s.p2pOrderId}</div>
+                              )}
+                            </td>
+                            <td className="py-3 px-3.5">
+                              <div className="text-white font-bold">${s.receivedUsdc || "0.00"} <span className="text-[#909097] font-normal text-[10px]">/ ${s.expectedUsdc}</span></div>
+                              {s.gasFeeUsdc && (
+                                <div className="text-[9px] text-amber-400">
+                                  Gas Paid: ${s.gasFeeUsdc} USDC
+                                </div>
+                              )}
+                              {s.refundAddress && (
+                                <div className="text-[9px] text-[#909097] truncate max-w-[110px]" title={s.refundAddress}>
+                                  Refund: {s.refundAddress.slice(0, 6)}...
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-3 px-3.5">
+                              {s.tipUsdc ? (
+                                <span className="text-emerald-400 font-bold">+${s.tipUsdc}</span>
+                              ) : (
+                                <span className="text-[#909097]">-</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3.5">
+                              <span className="text-emerald-300 font-bold">
+                                ₹ {s.amountINR ? s.amountINR.toLocaleString("en-IN") : "0"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3.5">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase inline-block ${
+                                  s.status === "SETTLED"
+                                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                                    : s.status === "ORDER_PLACED" || s.status === "DELIVERING_HANDSHAKE"
+                                    ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                                    : s.status === "STORED_IN_REFUND_WALLET"
+                                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse"
+                                    : s.status === "REFUNDED_TO_USER"
+                                    ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                                    : s.status === "FAILED_AND_REFUNDED" || s.status === "CANCELLED_AND_REFUNDED"
+                                    ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                                    : s.status === "REJECTED_UNDER_MINIMUM"
+                                    ? "bg-red-500/20 text-red-300 border border-red-500/30"
+                                    : "bg-white/10 text-white border border-white/20"
+                                }`}
+                              >
+                                {s.status.replace(/_/g, " ")}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3.5 text-right space-x-1.5 whitespace-nowrap">
+                              {s.status === "STORED_IN_REFUND_WALLET" && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setManualRefundSession(s);
+                                    setManualRefundRecipient(s.refundAddress || "");
+                                    setManualRefundAmount(s.receivedUsdc || s.expectedUsdc);
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 text-[10px] font-bold uppercase transition-all"
+                                >
+                                  Refund User
+                                </button>
+                              )}
+                              {s.status === "ORDER_PLACED" && (
+                                <button
+                                  type="button"
+                                  disabled={isExecutingAdminAction}
+                                  onClick={async () => {
+                                    setIsExecutingAdminAction(true);
+                                    const res = await retryHandshakeAction(s.id);
+                                    setAdminActionResult(res);
+                                    setIsExecutingAdminAction(false);
+                                    loadPayments();
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-300 text-[10px] font-bold uppercase transition-all"
+                                >
+                                  Retry Handshake
+                                </button>
+                              )}
+                              {s.status !== "SETTLED" && s.status !== "REFUNDED_TO_USER" && s.p2pOrderId && (
+                                <button
+                                  type="button"
+                                  disabled={isExecutingAdminAction}
+                                  onClick={async () => {
+                                    if (!confirm(`Cancel order #${s.p2pOrderId} on Diamond and refund?`)) return;
+                                    setIsExecutingAdminAction(true);
+                                    const res = await forceCancelOrderAction(s.id);
+                                    setAdminActionResult(res);
+                                    setIsExecutingAdminAction(false);
+                                    loadPayments();
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-300 text-[10px] font-bold uppercase transition-all"
+                                >
+                                  Cancel & Refund
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                    ) : (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-[#909097]">
+                          No payment sessions found.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Manual Refund Modal */}
+            {manualRefundSession && (
+              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+                <div className="w-full max-w-lg bg-[#141418] border border-white/15 rounded-3xl p-6 space-y-5 shadow-2xl animate-in zoom-in-95 duration-200">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-300">
+                        <ShieldAlert className="w-4 h-4" />
+                      </div>
+                      <h4 className="text-sm font-bold text-white font-mono uppercase tracking-wider">
+                        Dispatch Manual User Refund
+                      </h4>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setManualRefundSession(null)}
+                      className="text-[#909097] hover:text-white"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="space-y-3 text-xs font-mono">
+                    <div className="p-3 rounded-xl bg-white/[0.02] border border-white/10 space-y-1">
+                      <div className="text-[#909097] text-[10px]">Session Details</div>
+                      <div className="text-white font-bold">{manualRefundSession.id} • {manualRefundSession.recipientUpi}</div>
+                      <div className="text-[#909097] text-[10px]">Original INR: ₹{manualRefundSession.amountINR}</div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-[#909097]">
+                        Destination 0x EVM Address (Recipient)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="0x..."
+                        value={manualRefundRecipient}
+                        onChange={(e) => setManualRefundRecipient(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/15 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-[#909097]">
+                        Refund Amount (USDC)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 5.50"
+                        value={manualRefundAmount}
+                        onChange={(e) => setManualRefundAmount(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/15 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setManualRefundSession(null)}
+                      className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[#909097] font-mono text-xs font-bold uppercase transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isExecutingAdminAction || !manualRefundRecipient.trim() || !manualRefundAmount.trim()}
+                      onClick={async () => {
+                        setIsExecutingAdminAction(true);
+                        const res = await executeManualRefundAction({
+                          sessionId: manualRefundSession.id,
+                          destinationAddress: manualRefundRecipient.trim(),
+                          amountUsdc: manualRefundAmount.trim(),
+                        });
+                        setAdminActionResult(res);
+                        setIsExecutingAdminAction(false);
+                        setManualRefundSession(null);
+                        loadPayments();
+                      }}
+                      className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-mono text-xs font-bold uppercase transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
+                    >
+                      {isExecutingAdminAction ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Sending Refund...</span>
+                        </>
+                      ) : (
+                        <span>Confirm & Dispatch Transfer</span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

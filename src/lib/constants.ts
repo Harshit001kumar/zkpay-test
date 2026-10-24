@@ -12,6 +12,11 @@ export const CONTRACTS = {
   // ZkPay Treasury (receives 1% platform fee)
   TREASURY: TREASURY as `0x${string}`,
 
+  // ZkPay Refund Wallet (holds unclaimed user refunds)
+  REFUND_WALLET: (process.env.NEXT_PUBLIC_REFUND_WALLET_ADDRESS ||
+    process.env.ZKPAY_REFUND_WALLET ||
+    TREASURY) as `0x${string}`,
+
   // Default Base Mainnet ERC-4626 Vault (Steakhouse Prime Instant USDC on Morpho Blue on Base)
   EARN_VAULT: (process.env.NEXT_PUBLIC_EARN_VAULT_ADDRESS || "0xbeef0e0834849aCC03f0089F01f4F1Eeb06873C9") as `0x${string}`,
 
@@ -80,6 +85,15 @@ export const CURRENCIES = [
 
 // Platform fee (1% take rate on transactions)
 export const PLATFORM_FEE_BPS = 100; // 100 basis points = 1%
+
+// Minimum payment amount required to process offramp (in USDC)
+export const MIN_PAYMENT_USDC = 1.00;
+
+// Underpayment penalty fee deducted to ZkPay Treasury if deposit is < $1.00 (in USDC)
+export const UNDERPAID_PENALTY_USDC = 0.15;
+
+// Standard gas relay fee in USDC (deducted if transaction fails or is cancelled to reimburse relayer)
+export const RELAY_GAS_FEE_USDC = 0.05;
 
 export const APP_NAME = "ZkPay";
 export const APP_DESCRIPTION = "Crypto to Fiat - Scan and Pay";

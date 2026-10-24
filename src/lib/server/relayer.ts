@@ -1,6 +1,6 @@
 import { createWalletClient, fallback, parseEther, formatEther, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { CONTRACTS } from "@/lib/constants";
+import { CONTRACTS, RELAY_GAS_FEE_USDC } from "@/lib/constants";
 import { getResilientPublicClient } from "@/lib/server/p2pRates";
 import { getEvmRpcConfig } from "@/lib/server/rpcConfig";
 
@@ -272,4 +272,68 @@ export async function prefundAccount(
   );
 
   return { hash, alreadyFunded: false };
+}
+
+/**
+ * Calculates or estimates the gas fee in USDC for a relayed transaction.
+ * Defaults to RELAY_GAS_FEE_USDC ($0.05).
+ */
+export async function calculateGasFeeInUsdc(gasEstimate?: bigint): Promise<number> {
+  if (!gasEstimate) return RELAY_GAS_FEE_USDC;
+  try {
+    const publicClient = getResilientPublicClient();
+    const gasPrice = await publicClient.getGasPrice();
+    const ethCostWei = gasEstimate * gasPrice;
+    // Base L2 gas in USD
+    const ethPriceUsd = 3000;
+    const calculated = (Number(ethCostWei) / 1e18) * ethPriceUsd;
+    return Math.max(0.02, Number(calculated.toFixed(2)));
+  } catch {
+    return RELAY_GAS_FEE_USDC;
+  }
+}
+
+/**
+ * Sends USDC directly from the Relayer wallet to a recipient (used for refunds).
+ */
+export async function sendUsdcFromRelayer(toAddress: `0x${string}`, amountWei: bigint): Promise<string> {
+  const relayerWallet = getRelayerWalletClient();
+  const publicClient = getResilientPublicClient();
+  const txHash = await relayerWallet.writeContract({
+    address: CONTRACTS.USDC as `0x${string}`,
+    abi: parseAbi(["function transfer(address to, uint256 amount) returns (bool)"]),
+    functionName: "transfer",
+    args: [toAddress, amountWei],
+  });
+  await publicClient.waitForTransactionReceipt({ hash: txHash, confirmations: 1 });
+  return txHash;
+}
+
+/**
+ * Ensures the Relayer wallet has approved the Diamond contract for USDC.
+ * Approves maxUint256 once so individual orders execute with 0 extra approval gas.
+ */
+export async function ensureRelayerDiamondApproved(minAmountWei: bigint): Promise<void> {
+  const publicClient = getResilientPublicClient();
+  const relayerWallet = getRelayerWalletClient();
+  const relayerAddress = getRelayerAddress();
+
+  const allowance = (await publicClient.readContract({
+    address: CONTRACTS.USDC as `0x${string}`,
+    abi: parseAbi(["function allowance(address owner, address spender) view returns (uint256)"]),
+    functionName: "allowance",
+    args: [relayerAddress, CONTRACTS.DIAMOND as `0x${string}`],
+  })) as bigint;
+
+  if (allowance < minAmountWei) {
+    console.log("[Relayer] Approving Diamond for USDC allowance...");
+    const maxUint256 = 115792089237316195423570985008687907853269984665640564039457584007913129639935n;
+    const approveTx = await relayerWallet.writeContract({
+      address: CONTRACTS.USDC as `0x${string}`,
+      abi: parseAbi(["function approve(address spender, uint256 amount) returns (bool)"]),
+      functionName: "approve",
+      args: [CONTRACTS.DIAMOND as `0x${string}`, maxUint256],
+    });
+    await publicClient.waitForTransactionReceipt({ hash: approveTx });
+  }
 }

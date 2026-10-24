@@ -332,7 +332,9 @@ Request body:
 {
   "recipientUpi": "merchant@okaxis",
   "amountINR": 500,
-  "webhookUrl": "https://my-bot.com/webhook"
+  "refundAddress": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", // optional: refund destination if underpaid or cancelled
+  "tipUsdc": 0.50, // optional: provider tip swept to ZkPay Treasury
+  "webhookUrl": "https://my-bot.com/webhook" // optional
 }
 
 Response:
@@ -343,8 +345,13 @@ Response:
   "clientSecret": "sec_8f7a2c9b1d",
   "statusUrl": "/api/v1/payin-sessions?id=ses_live_8f7a2c9b1d&token=sec_8f7a2c9b1d",
   "payinAddress": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
-  "network": "Base Mainnet",
-  "expectedAmountUsdc": "5.76",
+  "network": "Base Mainnet (Chain ID: 8453)",
+  "expectedAmountUsdc": "6.26",
+  "usdcPrincipal": "5.60",
+  "feeUsdc": "0.06",
+  "protocolFeeUsdc": "0.10",
+  "tipUsdc": "0.50",
+  "refundAddress": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
   "fiatAmount": "₹ 500.00",
   "recipientUpi": "merchant@okaxis",
   "expiresInSeconds": 1800,
@@ -352,7 +359,7 @@ Response:
 }
 
 ### 5. GET /api/v1/payin-sessions?id={sessionId}&token={clientSecret}
-Check on-chain deposit status. Returns updated state once USDC is detected.
+Check on-chain deposit status. Returns updated state once USDC is detected, and verified payment proof upon completion.
 
 Provide either:
 - ?token= (clientSecret from creation) for full unmasked details, OR
@@ -365,8 +372,21 @@ Response (settled):
   "status": "SETTLED",
   "recipientUpi": "merchant@okaxis",
   "fiatAmount": "₹ 500.00",
-  "receivedUsdc": "5.76 USDC",
-  "payinAddress": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
+  "expectedAmountUsdc": "6.26 USDC",
+  "receivedUsdc": "6.26",
+  "payinAddress": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+  "p2pOrderId": "4210",
+  "proof": {
+    "verification": "P2P.me Protocol Escrow Verified",
+    "p2pOrderId": "4210",
+    "actualFiatAmount": "₹ 500.00",
+    "actualUsdcAmount": "5.60",
+    "recipientUpi": "merchant@okaxis",
+    "txHash": "0x3e17b889a74c76b97adce206256f17e3be992c6b45a0b5a1532050efb064bb19",
+    "basescanUrl": "https://basescan.org/tx/0x3e17b889a74c76b97adce206256f17e3be992c6b45a0b5a1532050efb064bb19",
+    "settledAt": 1727382180000
+  },
+  "settledAt": 1727382180000
 }
 
 ## Integration Flows
@@ -405,7 +425,8 @@ bot.command('pay', async (ctx) => {
 
 ## Fee Structure
 - Platform fee: 1% (100 bps) on every transaction
-- Fee is deducted from the sender's USDC before settlement
+- Gas fee sponsorship: Transactions are executed directly from the ZkPay Relayer wallet. Users/deposit addresses never need to hold ETH.
+- Gas on failure: If a payment order fails or is cancelled, the network gas fee ($0.05 USDC) is paid in USDC directly from the deposit, and the remaining USDC balance is refunded to the user's refund address.
 - No-KYC offramp limit: 100 USDC per transaction (INR)
 - Settlement time: Typically under 3 minutes
 
