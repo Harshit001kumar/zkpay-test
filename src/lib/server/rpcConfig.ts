@@ -422,6 +422,6 @@ export function getResilientPublicClientForChain(chainStr: string) {
   const { chain, transports } = getEvmRpcConfig(chainStr);
   return createPublicClient({
     chain,
-    transport: fallback(transports, { rank: false }),
+    transport: fallback(transports, { rank: false, retryCount: 3 }),
   });
 }

@@ -354,7 +354,7 @@ function getWalletClientForChain(chainStr: string, account: any) {
   return createWalletClient({
     account,
     chain,
-    transport: fallback(transports, { rank: false }),
+    transport: fallback(transports, { rank: false, retryCount: 3 }),
   });
 }
 
@@ -2329,7 +2329,9 @@ export async function recoverProxyDeposit(
     const finalSolverUnits = liveTokenBal >= netSolverUnits ? netSolverUnits : liveTokenBal;
     console.log(`[Recover] Executing ERC-20 transfer of ${formatUnits(finalSolverUnits, decimals)} ${tokenSymbol} to ${cleanDestination}...`);
 
-    let txHash: string;
+    let txHash: string | undefined;
+    let writeErr: any;
+
     try {
       txHash = await walletClient.writeContract({
         account: proxyAccount,
@@ -2339,7 +2341,72 @@ export async function recoverProxyDeposit(
         args: [cleanDestination, finalSolverUnits],
         gas: 120_000n,
       });
-    } catch (writeErr: any) {
+    } catch (err: any) {
+      writeErr = err;
+      console.warn(`[Recover] Primary writeContract failed, attempting direct multi-RPC raw broadcast:`, err?.message || err);
+
+      try {
+        const { urls } = getEvmRpcConfig(normChain);
+        const calldata = encodeFunctionData({
+          abi: ERC20_ABI,
+          functionName: "transfer",
+          args: [cleanDestination, finalSolverUnits],
+        });
+
+        const nonce = await publicClient.getTransactionCount({
+          address: proxyAccount.address,
+        });
+
+        const feeData = await publicClient.estimateFeesPerGas().catch(() => null);
+        const gasPrice = await publicClient.getGasPrice().catch(() => 35_000_000_000n);
+        const maxPriorityFeePerGas = feeData?.maxPriorityFeePerGas || 35_000_000_000n;
+        const maxFeePerGas = feeData?.maxFeePerGas || (gasPrice * 2n);
+
+        const rawTx = await proxyAccount.signTransaction({
+          to: tokenAddress,
+          data: calldata,
+          gas: 120_000n,
+          nonce,
+          chainId: CHAIN_IDS[normChain] || 137,
+          type: "eip1559",
+          maxFeePerGas,
+          maxPriorityFeePerGas,
+        });
+
+        for (const url of urls) {
+          try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 6000);
+            const resp = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                jsonrpc: "2.0",
+                id: Date.now(),
+                method: "eth_sendRawTransaction",
+                params: [rawTx],
+              }),
+              signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            const data = await resp.json();
+            if (data?.result && typeof data.result === "string" && data.result.startsWith("0x")) {
+              txHash = data.result;
+              console.log(`[Recover] ✓ Direct multi-RPC broadcast succeeded via ${url}: ${txHash}`);
+              break;
+            } else if (data?.error) {
+              console.warn(`[Recover] Direct broadcast to ${url} rejected:`, data.error?.message || data.error);
+            }
+          } catch (netErr) {
+            // try next endpoint in urls list
+          }
+        }
+      } catch (rawErr: any) {
+        console.warn(`[Recover] Raw transaction preparation failed:`, rawErr?.message || rawErr);
+      }
+    }
+
+    if (!txHash) {
       console.error(`[Recover] Transfer failed on-chain:`, writeErr);
       const postBal = (await publicClient.readContract({
         address: tokenAddress,
@@ -2366,11 +2433,11 @@ export async function recoverProxyDeposit(
         writeErr?.details ||
         writeErr?.shortMessage ||
         writeErr?.message ||
-        "Contract execution reverted";
+        "HTTP request failed";
 
       return {
         success: false,
-        message: `On-chain transfer to ${cleanDestination} reverted: ${detailedError}. Proxy holds ${formatUnits(postBal, decimals)} ${tokenSymbol} and ${formatUnits(postEth, 18)} POL. If forwarding to solver fails, please try selecting "Refund to User" (${order.refundTo}) or entering a custom address.`,
+        message: `On-chain transfer to ${cleanDestination} failed: ${detailedError}. Proxy holds ${formatUnits(postBal, decimals)} ${tokenSymbol} and ${formatUnits(postEth, 18)} POL. Please retry in a few seconds or check RPC connectivity.`,
         order,
       };
     }
@@ -2380,7 +2447,7 @@ export async function recoverProxyDeposit(
     }
 
     // CRITICAL: Wait for solver forward to confirm so the proxy account's nonce increments on-chain before sending fee!
-    await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+    await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` }).catch(() => {});
     console.log(`[Recover] ✓ Solver forward confirmed on-chain: ${txHash}`);
 
     // 2. Transfer ZkPay fee to Treasury (if action === "forward")
