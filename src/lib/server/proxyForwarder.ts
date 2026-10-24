@@ -2528,6 +2528,7 @@ export async function recoverProxyDeposit(
 
     // 4. Sweep leftover native gas dust back to relayer (exact 21,000 gas legacy transfer leaving 0 dust)
     try {
+      const nativeSym = normChain === "polygon" ? "POL" : normChain === "bsc" ? "BNB" : "ETH";
       const leftoverNative = await publicClient.getBalance({ address: proxyAccount.address });
       const gasPrice = await publicClient.getGasPrice();
       const sweepGas = 21000n;
