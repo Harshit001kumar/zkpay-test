@@ -1639,13 +1639,36 @@ export async function recoverProxyDeposit(
     }
 
     const privKeyHex = getDecryptedProxyPrivateKey(order);
-    const sweepAmount = lamports - MIN_NETWORK_FEE;
+
+    let zkpayFeeLamports = 0n;
+    let partnerFeeLamports = 0n;
+    if (action === "forward") {
+      if (order.zkpayFeeBps !== undefined) {
+        zkpayFeeLamports = (lamports * BigInt(order.zkpayFeeBps)) / 10000n;
+        if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
+          partnerFeeLamports = (lamports * BigInt(order.partnerFeeBps!)) / 10000n;
+        }
+      } else if (order.feeAmount && order.totalAmountIn) {
+        zkpayFeeLamports = (lamports * BigInt(order.feeAmount)) / BigInt(order.totalAmountIn);
+      }
+    }
+
+    const SOLANA_RENT_EXEMPT_MIN = 890_880n;
+    const effectiveZkpayFee = zkpayFeeLamports >= SOLANA_RENT_EXEMPT_MIN ? zkpayFeeLamports : 0n;
+    const effectivePartnerFee = partnerFeeLamports >= SOLANA_RENT_EXEMPT_MIN ? partnerFeeLamports : 0n;
+    const solverLamports = (action === "forward")
+      ? lamports - MIN_NETWORK_FEE - effectiveZkpayFee - effectivePartnerFee
+      : lamports - MIN_NETWORK_FEE;
 
     const txHash = await sendSolanaTransfer({
       fromPubkeyBase58: order.proxyDepositAddress,
       fromPrivKeyHex: privKeyHex,
       toPubkeyBase58: destination,
-      transferLamports: sweepAmount,
+      transferLamports: solverLamports,
+      feeRecipientBase58: effectiveZkpayFee > 0n ? order.treasuryAddress : null,
+      feeLamports: effectiveZkpayFee,
+      partnerRecipientBase58: (effectivePartnerFee > 0n && order.partnerFeeRecipient) ? order.partnerFeeRecipient : null,
+      partnerLamports: effectivePartnerFee,
     });
 
     if (action === "forward") {
@@ -1655,6 +1678,7 @@ export async function recoverProxyDeposit(
     const updated = await updateProxySwapOrder(order.swapId, {
       status: action === "refund" ? "SETTLED" : "FORWARDED",
       forwardTxHash: txHash,
+      feeTxHash: (action === "forward" && (effectiveZkpayFee > 0n || effectivePartnerFee > 0n)) ? txHash : undefined,
       error: action === "refund" ? `Manually refunded to ${destination}` : undefined,
     });
 
@@ -1662,10 +1686,10 @@ export async function recoverProxyDeposit(
 
     return {
       success: true,
-      message: `Successfully swept ${sweepAmount} lamports to ${destination}!`,
+      message: `Successfully forwarded ${solverLamports} lamports to ${destination}${effectiveZkpayFee > 0n ? ` (+ fee ${effectiveZkpayFee} lamports to ZkPay)` : ""}!`,
       txHash,
       order: updated,
-      recoveredAmount: (Number(sweepAmount) / 1e9).toFixed(6) + " SOL",
+      recoveredAmount: (Number(solverLamports) / 1e9).toFixed(6) + " SOL",
       destination,
       explorerUrl,
     };
@@ -1694,15 +1718,32 @@ export async function recoverProxyDeposit(
     }
 
     const privKeyHex = getDecryptedProxyPrivateKey(order);
-    const sweepAmountSats = balanceSatoshis - MINER_FEE_SATOSHIS;
+
+    let zkpayFeeSats = 0n;
+    let partnerFeeSats = 0n;
+    if (action === "forward") {
+      if (order.zkpayFeeBps !== undefined) {
+        zkpayFeeSats = (balanceSatoshis * BigInt(order.zkpayFeeBps)) / 10000n;
+        if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
+          partnerFeeSats = (balanceSatoshis * BigInt(order.partnerFeeBps!)) / 10000n;
+        }
+      } else if (order.feeAmount && order.totalAmountIn) {
+        zkpayFeeSats = (balanceSatoshis * BigInt(order.feeAmount)) / BigInt(order.totalAmountIn);
+      }
+    }
+
+    const solverSats = (action === "forward")
+      ? balanceSatoshis - MINER_FEE_SATOSHIS - zkpayFeeSats - partnerFeeSats
+      : balanceSatoshis - MINER_FEE_SATOSHIS;
 
     const txHash = await sweepLtcDeposit({
       proxyAddress: order.proxyDepositAddress,
       privKeyHex,
       solverAddress: destination,
-      treasuryAddress: destination,
-      zkpayFeeSatoshis: 0n,
-      partnerFeeSatoshis: 0n,
+      treasuryAddress: order.treasuryAddress || destination,
+      partnerAddress: order.partnerFeeRecipient || undefined,
+      zkpayFeeSatoshis: zkpayFeeSats,
+      partnerFeeSatoshis: partnerFeeSats,
     });
 
     if (action === "forward") {
@@ -1712,6 +1753,7 @@ export async function recoverProxyDeposit(
     const updated = await updateProxySwapOrder(order.swapId, {
       status: action === "refund" ? "SETTLED" : "FORWARDED",
       forwardTxHash: txHash,
+      feeTxHash: (action === "forward" && (zkpayFeeSats > 0n || partnerFeeSats > 0n)) ? txHash : undefined,
       error: action === "refund" ? `Manually refunded to ${destination}` : undefined,
     });
 
@@ -1778,51 +1820,136 @@ export async function recoverProxyDeposit(
     const gasLimit = estimatedGas > 21000n ? (estimatedGas * 130n) / 100n : 45000n;
 
     // Critical: Base and Arbitrum are L2s that charge an L1 DA fee on top of execution gas.
-    // We reserve 600 gwei (~0.0000006 ETH) for L1 DA overhead on Base/Arb to ensure balance covers cost.
     const l1DataReserve = (normChain === "base" || normChain === "arb") ? 600_000_000_000n : 10_000_000_000n;
     const totalGasReserve = (gasLimit * maxFee) + l1DataReserve;
 
-    if (balanceWei <= totalGasReserve) {
+    const treasuryAddress = getAddress((order.treasuryAddress || CONTRACTS.TREASURY) as `0x${string}`);
+    let zkpayFeeWei = 0n;
+    let partnerFeeWei = 0n;
+
+    if (action === "forward") {
+      if (order.zkpayFeeBps !== undefined) {
+        zkpayFeeWei = (balanceWei * BigInt(order.zkpayFeeBps)) / 10000n;
+        if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
+          partnerFeeWei = (balanceWei * BigInt(order.partnerFeeBps!)) / 10000n;
+        }
+      } else if (order.feeAmount && order.totalAmountIn) {
+        zkpayFeeWei = (balanceWei * BigInt(order.feeAmount)) / BigInt(order.totalAmountIn);
+      }
+    }
+
+    const hasFees =
+      action === "forward" &&
+      ((zkpayFeeWei > 0n && treasuryAddress.toLowerCase() !== cleanDestination.toLowerCase()) ||
+        (partnerFeeWei > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)));
+
+    const totalReserveAndFees = totalGasReserve + zkpayFeeWei + partnerFeeWei;
+
+    if (balanceWei <= totalReserveAndFees) {
       return {
         success: false,
-        message: `Proxy address has insufficient native balance to sweep (${balanceWei} wei). Total gas and L1 DA reserve required: ${totalGasReserve} wei.`,
+        message: `Proxy address has insufficient native balance to sweep (${balanceWei} wei). Total gas and fees required: ${totalReserveAndFees} wei.`,
         order,
       };
     }
 
-    const maxSweepable = balanceWei - totalGasReserve;
-    const sweepAmount = options?.amount
+    const maxSweepable = balanceWei - totalReserveAndFees;
+    const netSolverWei = options?.amount
       ? (parseUnits(options.amount, 18) > maxSweepable ? maxSweepable : parseUnits(options.amount, 18))
       : maxSweepable;
 
-    if (sweepAmount <= 0n) {
+    if (netSolverWei <= 0n) {
       return {
         success: false,
-        message: `Calculated sweep amount is 0 wei after gas reserve.`,
+        message: `Calculated sweep amount is 0 wei after gas reserve and fees.`,
         order,
       };
     }
 
-    const txParams: any = {
-      account: proxyAccount,
-      to: cleanDestination,
-      value: sweepAmount,
-      gas: gasLimit,
-    };
-    if (feeData?.maxFeePerGas) {
-      txParams.maxFeePerGas = maxFee;
-      txParams.maxPriorityFeePerGas = maxPriorityFee;
+    let txHash = "";
+
+    if (hasFees) {
+      // ── ATOMIC BUNDLE VIA MULTICALL3 (1 SINGLE TX) ──
+      try {
+        const calls: { target: `0x${string}`; allowFailure: boolean; value: bigint; callData: `0x${string}` }[] = [];
+        // 1. Solver (Call #1)
+        calls.push({
+          target: cleanDestination,
+          allowFailure: false,
+          value: netSolverWei,
+          callData: "0x",
+        });
+        // 2. ZkPay fee to Treasury
+        if (zkpayFeeWei > 0n && treasuryAddress.toLowerCase() !== cleanDestination.toLowerCase()) {
+          calls.push({
+            target: treasuryAddress,
+            allowFailure: false,
+            value: zkpayFeeWei,
+            callData: "0x",
+          });
+        }
+        // 3. Partner fee
+        if (partnerFeeWei > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
+          calls.push({
+            target: getAddress(order.partnerFeeRecipient),
+            allowFailure: false,
+            value: partnerFeeWei,
+            callData: "0x",
+          });
+        }
+
+        const totalBundleValue = netSolverWei + zkpayFeeWei + partnerFeeWei;
+        txHash = await walletClient.writeContract({
+          account: proxyAccount,
+          address: MULTICALL3_ADDRESS,
+          abi: MULTICALL3_ABI,
+          functionName: "aggregate3Value",
+          args: [calls],
+          value: totalBundleValue,
+        });
+        console.log(`[Recover] ✓ Atomic Multicall3 bundled native forward to solver + fees in 1 tx: ${txHash}`);
+      } catch (bundleErr) {
+        console.warn("[Recover] Multicall3 bundle failed, falling back to direct transfer:", bundleErr);
+        const txParams: any = {
+          account: proxyAccount,
+          to: cleanDestination,
+          value: netSolverWei,
+          gas: gasLimit,
+        };
+        if (feeData?.maxFeePerGas) {
+          txParams.maxFeePerGas = maxFee;
+          txParams.maxPriorityFeePerGas = maxPriorityFee;
+        } else {
+          txParams.gasPrice = maxFee;
+        }
+        txHash = await walletClient.sendTransaction(txParams);
+      }
     } else {
-      txParams.gasPrice = maxFee;
+      const txParams: any = {
+        account: proxyAccount,
+        to: cleanDestination,
+        value: netSolverWei,
+        gas: gasLimit,
+      };
+      if (feeData?.maxFeePerGas) {
+        txParams.maxFeePerGas = maxFee;
+        txParams.maxPriorityFeePerGas = maxPriorityFee;
+      } else {
+        txParams.gasPrice = maxFee;
+      }
+      txHash = await walletClient.sendTransaction(txParams);
     }
 
-    const txHash = await walletClient.sendTransaction(txParams);
+    if (action === "forward") {
+      notifyNearIntentsDepositSubmit(cleanDestination, txHash).catch(() => {});
+    }
 
     await publicClient.waitForTransactionReceipt({ hash: txHash }).catch(() => {});
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: action === "refund" ? "SETTLED" : "FORWARDED",
       forwardTxHash: txHash,
+      feeTxHash: (action === "forward" && hasFees) ? txHash : undefined,
       error: action === "refund" ? `Manually refunded to ${cleanDestination}` : undefined,
     });
 
@@ -1830,10 +1957,10 @@ export async function recoverProxyDeposit(
 
     return {
       success: true,
-      message: `Successfully swept ${(Number(sweepAmount) / 1e18).toFixed(6)} native gas tokens to ${cleanDestination}!`,
+      message: `Successfully forwarded ${(Number(netSolverWei) / 1e18).toFixed(6)} native gas tokens to ${cleanDestination}${zkpayFeeWei > 0n ? ` (+ fee ${(Number(zkpayFeeWei) / 1e18).toFixed(6)} to ZkPay)` : ""}!`,
       txHash,
       order: updated,
-      recoveredAmount: (Number(sweepAmount) / 1e18).toFixed(6),
+      recoveredAmount: (Number(netSolverWei) / 1e18).toFixed(6),
       destination: cleanDestination,
       explorerUrl,
     };
@@ -1902,22 +2029,68 @@ export async function recoverProxyDeposit(
       };
     }
 
-    const sweepAmount = options?.amount
-      ? parseUnits(options.amount, decimals)
-      : tokenBalance;
+    const isStable = upperSymbol === "USDC" || upperSymbol === "USDT";
+    const fixedFeeUnits = isStable
+      ? (order.fixedFeeAmount ? BigInt(order.fixedFeeAmount) : (decimals >= 2 ? 5n * 10n ** BigInt(decimals - 2) : 0n))
+      : 0n;
+
+    let zkpayFeeUnits = 0n;
+    let partnerFeeUnits = 0n;
+    const treasuryAddress = getAddress((order.treasuryAddress || CONTRACTS.TREASURY) as `0x${string}`);
+
+    if (action === "forward") {
+      if (order.zkpayFeeBps !== undefined) {
+        zkpayFeeUnits = (tokenBalance * BigInt(order.zkpayFeeBps)) / 10000n + fixedFeeUnits;
+        if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
+          partnerFeeUnits = (tokenBalance * BigInt(order.partnerFeeBps!)) / 10000n;
+        }
+      } else if (order.feeAmount && order.totalAmountIn) {
+        zkpayFeeUnits = (tokenBalance * BigInt(order.feeAmount)) / BigInt(order.totalAmountIn);
+      }
+    }
+
+    const totalFeeUnits = zkpayFeeUnits + partnerFeeUnits;
+    const netSolverUnits = (action === "forward" && tokenBalance > totalFeeUnits)
+      ? tokenBalance - totalFeeUnits
+      : (options?.amount ? parseUnits(options.amount, decimals) : tokenBalance);
+
+    const sweepAmount = netSolverUnits;
 
     // Check if USDC supports gasless EIP-3009 transfer
     if (EIP3009_USDC[normChain] && tokenAddress.toLowerCase() === EIP3009_USDC[normChain].toLowerCase()) {
       try {
         console.log(`[Recover] Attempting gasless EIP-3009 USDC transfer on ${normChain}...`);
-        const txHash = await executeGaslessUsdcTransfer({
-          proxyAccount,
-          tokenAddress,
-          to: cleanDestination,
-          value: sweepAmount,
-          chainKey: normChain,
-          publicClient,
-        });
+        let txHash = "";
+
+        if (action === "forward" && totalFeeUnits > 0n) {
+          const outputs: GaslessTransferOutput[] = [
+            { to: cleanDestination, value: netSolverUnits },
+          ];
+          if (zkpayFeeUnits > 0n && treasuryAddress.toLowerCase() !== cleanDestination.toLowerCase()) {
+            outputs.push({ to: treasuryAddress, value: zkpayFeeUnits });
+          }
+          if (partnerFeeUnits > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
+            outputs.push({ to: getAddress(order.partnerFeeRecipient), value: partnerFeeUnits });
+          }
+
+          txHash = await executeBundledGaslessUsdcTransfers({
+            proxyAccount,
+            tokenAddress,
+            outputs,
+            chainKey: normChain,
+            publicClient,
+          });
+          console.log(`[Recover] ✓ Atomic gasless Multicall3 bundled Solver + ZkPay + Partner in 1 tx: ${txHash}`);
+        } else {
+          txHash = await executeGaslessUsdcTransfer({
+            proxyAccount,
+            tokenAddress,
+            to: cleanDestination,
+            value: sweepAmount,
+            chainKey: normChain,
+            publicClient,
+          });
+        }
 
         if (action === "forward") {
           notifyNearIntentsDepositSubmit(cleanDestination, txHash).catch(() => {});
@@ -1926,16 +2099,17 @@ export async function recoverProxyDeposit(
         const updated = await updateProxySwapOrder(order.swapId, {
           status: action === "refund" ? "SETTLED" : "FORWARDED",
           forwardTxHash: txHash,
+          feeTxHash: (action === "forward" && totalFeeUnits > 0n) ? txHash : undefined,
           error: action === "refund" ? `Manually refunded to ${cleanDestination}` : undefined,
         });
 
         const explorerUrl = getExplorerTxUrl(order.chain, txHash);
         return {
           success: true,
-          message: `Successfully swept ${formatUnits(sweepAmount, decimals)} ${tokenSymbol} via gasless relayer to ${cleanDestination}!`,
+          message: `Successfully forwarded ${formatUnits(netSolverUnits, decimals)} ${tokenSymbol} to ${cleanDestination}${zkpayFeeUnits > 0n ? ` (+ fee ${formatUnits(zkpayFeeUnits, decimals)} to ZkPay in 1 tx)` : ""}!`,
           txHash,
           order: updated,
-          recoveredAmount: `${formatUnits(sweepAmount, decimals)} ${tokenSymbol}`,
+          recoveredAmount: `${formatUnits(netSolverUnits, decimals)} ${tokenSymbol}`,
           destination: cleanDestination,
           explorerUrl,
         };
@@ -1946,7 +2120,8 @@ export async function recoverProxyDeposit(
 
     const ethBalance = await publicClient.getBalance({ address: proxyAccount.address });
     const gasPrice = await publicClient.getGasPrice();
-    const minGasNeeded = 60000n * gasPrice;
+    const transfersCount = (action === "forward" && totalFeeUnits > 0n) ? 3n : 1n;
+    const minGasNeeded = 65000n * gasPrice * transfersCount;
 
     if (ethBalance < minGasNeeded) {
       try {
@@ -1962,6 +2137,8 @@ export async function recoverProxyDeposit(
           });
           await publicClient.waitForTransactionReceipt({ hash: fundTx });
           console.log(`[Recover] ✓ Gas advance to proxy ${proxyAccount.address} on ${normChain}: ${fundTx}`);
+          // 2.5s propagation sleep to ensure Bor RPC nodes have updated proxy balance
+          await new Promise((r) => setTimeout(r, 2500));
         } else {
           const nativeSym = normChain === "polygon" ? "POL" : normChain === "bsc" ? "BNB" : "ETH";
           return {
@@ -1981,23 +2158,82 @@ export async function recoverProxyDeposit(
       }
     }
 
+    // 1. Transfer Net to Solver FIRST (Crucial: Prevents Near Intents solver deadline expiry!)
     const txHash = await walletClient.writeContract({
       account: proxyAccount,
       address: tokenAddress,
       abi: ERC20_ABI,
       functionName: "transfer",
-      args: [cleanDestination, sweepAmount],
+      args: [cleanDestination, netSolverUnits],
     });
 
     if (action === "forward") {
       notifyNearIntentsDepositSubmit(cleanDestination, txHash).catch(() => {});
     }
 
+    // 2. Transfer ZkPay fee to Treasury (if action === "forward")
+    let feeTxHash = "";
+    if (action === "forward" && zkpayFeeUnits > 0n && treasuryAddress.toLowerCase() !== cleanDestination.toLowerCase()) {
+      try {
+        feeTxHash = await walletClient.writeContract({
+          account: proxyAccount,
+          address: tokenAddress,
+          abi: ERC20_ABI,
+          functionName: "transfer",
+          args: [treasuryAddress, zkpayFeeUnits],
+        });
+        console.log(`[Recover] Token ZkPay fee transfer broadcast: ${feeTxHash}`);
+        await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` }).catch(() => {});
+      } catch (feeErr) {
+        console.warn("[Recover] Token ZkPay fee transfer error:", feeErr);
+      }
+    }
+
+    // 3. Transfer Partner fee
+    let partnerTxHash = "";
+    if (action === "forward" && partnerFeeUnits > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
+      try {
+        partnerTxHash = await walletClient.writeContract({
+          account: proxyAccount,
+          address: tokenAddress,
+          abi: ERC20_ABI,
+          functionName: "transfer",
+          args: [getAddress(order.partnerFeeRecipient), partnerFeeUnits],
+        });
+        console.log(`[Recover] Token partner fee transfer broadcast: ${partnerTxHash}`);
+        await publicClient.waitForTransactionReceipt({ hash: partnerTxHash as `0x${string}` }).catch(() => {});
+      } catch (partnerErr) {
+        console.warn("[Recover] Token partner fee transfer error:", partnerErr);
+      }
+    }
+
     await publicClient.waitForTransactionReceipt({ hash: txHash }).catch(() => {});
+
+    // 4. Sweep leftover native gas dust back to relayer
+    try {
+      const leftoverNative = await publicClient.getBalance({ address: proxyAccount.address });
+      const currentGas = await publicClient.getGasPrice();
+      const l1Buffer = (normChain === "base" || normChain === "arb") ? 600_000_000_000n : 10_000_000_000n;
+      const dustGasCost = 45000n * currentGas + l1Buffer;
+      if (leftoverNative >= dustGasCost * 3n) {
+        const relayerAddr = getRelayerWalletClientForChain(normChain).account.address;
+        const dustTx = await walletClient.sendTransaction({
+          account: proxyAccount,
+          to: relayerAddr,
+          value: leftoverNative - dustGasCost,
+          gas: 45000n,
+        });
+        await publicClient.waitForTransactionReceipt({ hash: dustTx as `0x${string}` });
+        console.log(`[Recover] ✓ Swept dust gas back to relayer: ${dustTx}`);
+      }
+    } catch (dustErr) {
+      console.warn("[Recover] Native dust sweep warning (non-fatal):", dustErr);
+    }
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: action === "refund" ? "SETTLED" : "FORWARDED",
       forwardTxHash: txHash,
+      feeTxHash: feeTxHash || (action === "forward" ? txHash : undefined),
       error: action === "refund" ? `Manually refunded to ${cleanDestination}` : undefined,
     });
 
@@ -2005,10 +2241,10 @@ export async function recoverProxyDeposit(
 
     return {
       success: true,
-      message: `Successfully swept ${formatUnits(sweepAmount, decimals)} ${tokenSymbol} to ${cleanDestination}!`,
+      message: `Successfully forwarded ${formatUnits(netSolverUnits, decimals)} ${tokenSymbol} to ${cleanDestination}${zkpayFeeUnits > 0n ? ` (+ fee ${formatUnits(zkpayFeeUnits, decimals)} to ZkPay)` : ""}!`,
       txHash,
       order: updated,
-      recoveredAmount: `${formatUnits(sweepAmount, decimals)} ${tokenSymbol}`,
+      recoveredAmount: `${formatUnits(netSolverUnits, decimals)} ${tokenSymbol}`,
       destination: cleanDestination,
       explorerUrl,
     };

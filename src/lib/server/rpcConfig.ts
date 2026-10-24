@@ -220,7 +220,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
     case "polygon":
     case "matic":
     case "pol": {
-      // Override default viem chain rpcUrls so internal fallbacks never contact deprecated polygon-rpc.com
+      // Override default viem chain rpcUrls so internal fallbacks never contact deprecated polygon-rpc.com or llamarpc
       targetChain = {
         ...polygon,
         rpcUrls: {
@@ -231,7 +231,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
               "https://polygon.drpc.org",
               "https://1rpc.io/matic",
               "https://gateway.tenderly.co/public/polygon",
-              "https://polygon.llamarpc.com",
+              "https://rpc.ankr.com/polygon",
             ],
           },
           public: {
@@ -240,7 +240,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
               "https://polygon.drpc.org",
               "https://1rpc.io/matic",
               "https://gateway.tenderly.co/public/polygon",
-              "https://polygon.llamarpc.com",
+              "https://rpc.ankr.com/polygon",
             ],
           },
         },
@@ -271,7 +271,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
         "https://polygon.drpc.org",
         "https://1rpc.io/matic",
         "https://gateway.tenderly.co/public/polygon",
-        "https://polygon.llamarpc.com"
+        "https://rpc.ankr.com/polygon"
       );
       break;
     }
@@ -302,9 +302,9 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
       publicUrls.push(
         "https://arb1.arbitrum.io/rpc",
         "https://arbitrum-one-rpc.publicnode.com",
-        "https://arbitrum.llamarpc.com",
         "https://1rpc.io/arb",
-        "https://arbitrum.drpc.org"
+        "https://arbitrum.drpc.org",
+        "https://rpc.ankr.com/arbitrum"
       );
       break;
     }
@@ -332,9 +332,9 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
       publicUrls.push(
         "https://bsc-dataseed.binance.org",
         "https://bsc-rpc.publicnode.com",
-        "https://binance.llamarpc.com",
         "https://1rpc.io/bnb",
-        "https://bsc.drpc.org"
+        "https://bsc.drpc.org",
+        "https://rpc.ankr.com/bsc"
       );
       break;
     }
@@ -365,9 +365,9 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
       publicUrls.push(
         "https://mainnet.base.org",
         "https://base-rpc.publicnode.com",
-        "https://base.llamarpc.com",
         "https://1rpc.io/base",
-        "https://base.drpc.org"
+        "https://base.drpc.org",
+        "https://rpc.ankr.com/base"
       );
       break;
     }
