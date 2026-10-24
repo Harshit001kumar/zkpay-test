@@ -20,6 +20,7 @@ import {
   getProxyOrderByAddress,
   getProxyOrderBySwapId,
   getPendingProxyOrders,
+  getRecentProxyOrders,
   updateProxySwapOrder,
   getDecryptedProxyPrivateKey,
 } from "./proxySwapStore";
