@@ -181,7 +181,7 @@ export default function PayPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          linkId: linkData.id || id,
+          linkId: linkData.linkId || linkId,
           recipientUpi: linkData.recipientUpi,
           amountINR: inrRaw,
           webhookUrl: linkData.webhookUrl,
