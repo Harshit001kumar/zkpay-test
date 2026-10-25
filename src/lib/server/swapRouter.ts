@@ -32,6 +32,7 @@ import { generateProxyDepositWallet, isProxySupportedChain } from "./proxyWallet
 import {
   saveProxySwapOrder,
   getProxyOrderByAddress,
+  updateProxySwapOrder,
   ProxySwapOrder,
 } from "./proxySwapStore";
 import { checkAndForwardProxyDeposit } from "./proxyForwarder";
@@ -1121,20 +1122,44 @@ export async function getSwapStatus(depositAddress: string) {
       }
     }
 
-    // If forwarded to solver, query Near Intents with solverDepositAddress
-    if (currentOrder.status === "FORWARDED" || currentOrder.status === "SETTLED") {
+    // Query Near Intents with solverDepositAddress (also reconciles orders where solver already settled)
+    if (currentOrder.solverDepositAddress) {
       try {
         const solverStatus = await fetchNearIntentsStatus(currentOrder.solverDepositAddress);
-        return {
-          ...solverStatus,
-          depositAddress: currentOrder.proxyDepositAddress,
-          proxyDepositAddress: currentOrder.proxyDepositAddress,
-          solverDepositAddress: currentOrder.solverDepositAddress,
-          splitFeeTxHash: currentOrder.feeTxHash || null,
-          forwardTxHash: currentOrder.forwardTxHash || null,
-          feeNote: currentOrder.feeNote || null,
-          status: solverStatus.status === "pending" ? "processing" : solverStatus.status,
-        };
+        const isSolverActiveOrDone =
+          solverStatus.status === "settled" ||
+          solverStatus.status === "processing" ||
+          solverStatus.status === "refunded" ||
+          solverStatus.rawStatus === "KNOWN_DEPOSIT_TX";
+
+        if (solverStatus.status === "settled" && currentOrder.status !== "SETTLED") {
+          currentOrder =
+            (await updateProxySwapOrder(currentOrder.swapId, {
+              status: "SETTLED",
+              ...(solverStatus.originTxHash && !currentOrder.forwardTxHash
+                ? { forwardTxHash: solverStatus.originTxHash }
+                : {}),
+            })) || currentOrder;
+        } else if (isSolverActiveOrDone && currentOrder.status === "PENDING_DEPOSIT") {
+          currentOrder =
+            (await updateProxySwapOrder(currentOrder.swapId, {
+              status: "FORWARDED",
+              ...(solverStatus.originTxHash ? { forwardTxHash: solverStatus.originTxHash } : {}),
+            })) || currentOrder;
+        }
+
+        if (currentOrder.status === "FORWARDED" || currentOrder.status === "SETTLED" || isSolverActiveOrDone) {
+          return {
+            ...solverStatus,
+            depositAddress: currentOrder.proxyDepositAddress,
+            proxyDepositAddress: currentOrder.proxyDepositAddress,
+            solverDepositAddress: currentOrder.solverDepositAddress,
+            splitFeeTxHash: currentOrder.feeTxHash || null,
+            forwardTxHash: currentOrder.forwardTxHash || solverStatus.originTxHash || null,
+            feeNote: currentOrder.feeNote || null,
+            status: solverStatus.status === "pending" ? "processing" : solverStatus.status,
+          };
+        }
       } catch (solverErr) {
         console.warn("[SwapRouter] Solver status query warning:", solverErr);
       }

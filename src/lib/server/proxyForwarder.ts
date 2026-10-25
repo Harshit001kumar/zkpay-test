@@ -355,8 +355,149 @@ function getWalletClientForChain(chainStr: string, account: any) {
   return createWalletClient({
     account,
     chain,
-    transport: fallback(transports, { rank: false, retryCount: 3 }),
+    transport: fallback(transports, { rank: false, retryCount: 2 }),
   });
+}
+
+/**
+ * Resilient ERC-20 transfer helper that:
+ * 1. Uses a realistic 70,000 gas limit (standard ERC-20 transfer uses ~46k gas) so existing gas balances (e.g. 0.025 POL) cover up to ~365 gwei without failing.
+ * 2. Signs a Type-0 legacy transaction with Polygon minimum gas floor (35 gwei), avoiding all EIP-1559 maxFeePerGas < maxPriorityFeePerGas errors.
+ * 3. Automatically clamps gasPrice to available native balance if sufficient for network inclusion.
+ * 4. Broadcasts via walletClient first, then falls back to direct raw broadcast across all configured RPC endpoints (with headers).
+ */
+async function sendResilientErc20Transfer(params: {
+  chainKey: string;
+  publicClient: any;
+  walletClient: any;
+  proxyAccount: ReturnType<typeof privateKeyToAccount>;
+  tokenAddress: `0x${string}`;
+  to: `0x${string}`;
+  amount: bigint;
+}): Promise<{ txHash?: `0x${string}`; error?: string }> {
+  const { chainKey, publicClient, walletClient, proxyAccount, tokenAddress, to, amount } = params;
+  const gasLimit = 70_000n;
+  const minGasFloor = chainKey === "polygon" ? 35_000_000_000n : 0n;
+  const baseGasPrice = (await publicClient
+    .getGasPrice()
+    .catch(() => (chainKey === "polygon" ? 40_000_000_000n : 1_000_000_000n))) as bigint;
+
+  let effectiveGasPrice = (baseGasPrice * 125n) / 100n;
+  if (effectiveGasPrice < minGasFloor) {
+    effectiveGasPrice = minGasFloor;
+  }
+
+  // Ensure gasLimit * effectiveGasPrice never exceeds the proxy wallet's current native balance if it can afford baseGasPrice
+  const nativeBal = (await publicClient.getBalance({ address: proxyAccount.address }).catch(() => 0n)) as bigint;
+  if (nativeBal > 0n && nativeBal < gasLimit * effectiveGasPrice) {
+    const maxAffordableGasPrice = (nativeBal * 96n) / (100n * gasLimit);
+    if (maxAffordableGasPrice >= minGasFloor && maxAffordableGasPrice >= (baseGasPrice * 90n) / 100n) {
+      effectiveGasPrice = maxAffordableGasPrice;
+    }
+  }
+
+  let primaryErr: any;
+  try {
+    const hash = await walletClient.writeContract({
+      account: proxyAccount,
+      address: tokenAddress,
+      abi: ERC20_ABI,
+      functionName: "transfer",
+      args: [to, amount],
+      gas: gasLimit,
+      gasPrice: effectiveGasPrice,
+      type: "legacy",
+    });
+    if (hash) {
+      return { txHash: hash as `0x${string}` };
+    }
+  } catch (err: any) {
+    primaryErr = err;
+    console.warn(`[ProxyForwarder] writeContract failed on ${chainKey}, falling back to multi-RPC raw broadcast:`, err?.shortMessage || err?.message || err);
+  }
+
+  // Fallback: sign legacy raw transaction locally and broadcast across all endpoints
+  const rpcErrors: string[] = [];
+  try {
+    const { endpoints } = getEvmRpcConfig(chainKey);
+    const calldata = encodeFunctionData({
+      abi: ERC20_ABI,
+      functionName: "transfer",
+      args: [to, amount],
+    });
+
+    const nonce = await publicClient.getTransactionCount({
+      address: proxyAccount.address,
+      blockTag: "pending",
+    }).catch(() =>
+      publicClient.getTransactionCount({
+        address: proxyAccount.address,
+      })
+    );
+
+    const rawTx = await proxyAccount.signTransaction({
+      to: tokenAddress,
+      data: calldata,
+      gas: gasLimit,
+      nonce,
+      chainId: CHAIN_IDS[chainKey] || 137,
+      type: "legacy",
+      gasPrice: effectiveGasPrice,
+    });
+
+    for (const ep of endpoints) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 6000);
+        const resp = await fetch(ep.url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(ep.headers || {}),
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: Date.now(),
+            method: "eth_sendRawTransaction",
+            params: [rawTx],
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        if (!resp.ok) {
+          rpcErrors.push(`${ep.url}: HTTP ${resp.status}`);
+          continue;
+        }
+
+        const data = await resp.json();
+        if (data?.result && typeof data.result === "string" && data.result.startsWith("0x")) {
+          console.log(`[ProxyForwarder] ✓ Direct multi-RPC broadcast succeeded via ${ep.url}: ${data.result}`);
+          return { txHash: data.result as `0x${string}` };
+        } else if (data?.error) {
+          const msg = data.error?.message || JSON.stringify(data.error);
+          rpcErrors.push(msg);
+          console.warn(`[ProxyForwarder] Direct broadcast to ${ep.url} rejected: ${msg}`);
+        }
+      } catch (netErr: any) {
+        rpcErrors.push(netErr?.message || "Network timeout");
+      }
+    }
+  } catch (rawErr: any) {
+    rpcErrors.push(rawErr?.message || String(rawErr));
+  }
+
+  const fallbackErrorMsg =
+    rpcErrors.find((e) => !e.includes("HTTP ")) ||
+    rpcErrors[0] ||
+    primaryErr?.cause?.reason ||
+    primaryErr?.cause?.shortMessage ||
+    primaryErr?.details ||
+    primaryErr?.shortMessage ||
+    primaryErr?.message ||
+    "RPC broadcast failed";
+
+  return { error: String(fallbackErrorMsg).replace(/\.+$/, "") };
 }
 
 
@@ -600,6 +741,43 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     const expectedAtomic = BigInt(order.totalAmountIn);
 
     if (tokenBalance < (expectedAtomic * 90n) / 100n || tokenBalance === 0n) {
+      // Reconcile if the proxy wallet ALREADY executed the solver transfer on-chain (nonce > 0)
+      // and only the ZkPay fee (or 0 balance) remains in the proxy wallet!
+      const proxyNonce = await publicClient.getTransactionCount({ address: proxyAddress }).catch(() => 0);
+      if (proxyNonce > 0) {
+        console.log(
+          `[ProxyForwarder] Reconciling order ${order.swapId}: proxy ${proxyAddress} has on-chain nonce=${proxyNonce} and remaining balance=${tokenBalance.toString()} ${upperSymbol}. Solver transfer already occurred.`
+        );
+        let feeTxHash = order.feeTxHash || "";
+        if (tokenBalance > 0n && expectedAtomic > 0n && tokenBalance < (expectedAtomic * 80n) / 100n) {
+          try {
+            const rawKey = getDecryptedProxyPrivateKey(order);
+            const proxyAccount = privateKeyToAccount(rawKey);
+            const walletClient = getWalletClientForChain(order.chain, proxyAccount);
+            const feeRes = await sendResilientErc20Transfer({
+              chainKey,
+              publicClient,
+              walletClient,
+              proxyAccount,
+              tokenAddress,
+              to: treasuryAddress,
+              amount: tokenBalance,
+            });
+            if (feeRes.txHash) {
+              feeTxHash = feeRes.txHash;
+              await publicClient.waitForTransactionReceipt({ hash: feeRes.txHash }).catch(() => {});
+              console.log(`[ProxyForwarder] ✓ Reconciled & swept remaining fee (${tokenBalance.toString()}) to Treasury: ${feeRes.txHash}`);
+            }
+          } catch (reconcileErr) {
+            console.warn(`[ProxyForwarder] Reconcile fee sweep warning for ${order.swapId}:`, reconcileErr);
+          }
+        }
+        const updated = await updateProxySwapOrder(order.swapId, {
+          status: "FORWARDED",
+          ...(feeTxHash ? { feeTxHash } : {}),
+        });
+        return updated || order;
+      }
       return order; // Awaiting deposit
     }
 
@@ -759,20 +937,37 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       return order;
     }
 
-    let forwardTxHash: string;
-    try {
-      forwardTxHash = await walletClient.writeContract({
-        account: proxyAccount,
-        address: tokenAddress,
-        abi: ERC20_ABI,
-        functionName: "transfer",
-        args: [solverAddress, finalNetTokens],
-      });
-      console.log(`[ProxyForwarder] Net token forward to solver broadcast FIRST: ${forwardTxHash}`);
-    } catch (writeErr: any) {
-      console.warn(`[ProxyForwarder] Solver transfer writeContract failed:`, writeErr?.message || writeErr);
+    const forwardRes = await sendResilientErc20Transfer({
+      chainKey,
+      publicClient,
+      walletClient,
+      proxyAccount,
+      tokenAddress,
+      to: solverAddress,
+      amount: finalNetTokens,
+    });
+
+    if (!forwardRes.txHash) {
+      console.warn(`[ProxyForwarder] Solver transfer failed:`, forwardRes.error);
+      await updateProxySwapOrder(order.swapId, {
+        status: "PENDING_DEPOSIT",
+        lastAttemptAt: Date.now(),
+        error: forwardRes.error,
+      }).catch(() => {});
       return order;
     }
+
+    const forwardTxHash = forwardRes.txHash;
+    console.log(`[ProxyForwarder] Net token forward to solver broadcast FIRST: ${forwardTxHash}`);
+
+    // Immediately checkpoint status & forwardTxHash in DB so order never reverts to PENDING_DEPOSIT
+    await updateProxySwapOrder(order.swapId, {
+      status: "FORWARDED",
+      depositTxHash: forwardTxHash,
+      forwardTxHash,
+      error: undefined,
+    }).catch(() => {});
+
     // Immediately notify Near Intents 1Click so mempool indexer recognizes the deposit!
     notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
 
@@ -792,16 +987,21 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
         })) as bigint;
         const feeToSend = remainingBal >= zkpayFeeUnits ? zkpayFeeUnits : remainingBal;
         if (feeToSend > 0n) {
-          feeTxHash = await walletClient.writeContract({
-            account: proxyAccount,
-            address: tokenAddress,
-            abi: ERC20_ABI,
-            functionName: "transfer",
-            args: [treasuryAddress, feeToSend],
+          const feeRes = await sendResilientErc20Transfer({
+            chainKey,
+            publicClient,
+            walletClient,
+            proxyAccount,
+            tokenAddress,
+            to: treasuryAddress,
+            amount: feeToSend,
           });
-          console.log(`[ProxyForwarder] Token ZkPay fee transfer broadcast: ${feeTxHash}`);
-          await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` }).catch(() => {});
-          console.log(`[ProxyForwarder] ✓ Token ZkPay fee confirmed on-chain: ${feeTxHash}`);
+          if (feeRes.txHash) {
+            feeTxHash = feeRes.txHash;
+            console.log(`[ProxyForwarder] Token ZkPay fee transfer broadcast: ${feeTxHash}`);
+            await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` }).catch(() => {});
+            console.log(`[ProxyForwarder] ✓ Token ZkPay fee confirmed on-chain: ${feeTxHash}`);
+          }
         }
       } catch (feeErr) {
         console.error("[ProxyForwarder] Token ZkPay fee transfer error:", feeErr);
@@ -820,15 +1020,20 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
         })) as bigint;
         const partnerToSend = remainingBal >= partnerFeeUnits ? partnerFeeUnits : remainingBal;
         if (partnerToSend > 0n) {
-          partnerTxHash = await walletClient.writeContract({
-            account: proxyAccount,
-            address: tokenAddress,
-            abi: ERC20_ABI,
-            functionName: "transfer",
-            args: [getAddress(order.partnerFeeRecipient), partnerToSend],
+          const partnerRes = await sendResilientErc20Transfer({
+            chainKey,
+            publicClient,
+            walletClient,
+            proxyAccount,
+            tokenAddress,
+            to: getAddress(order.partnerFeeRecipient),
+            amount: partnerToSend,
           });
-          console.log(`[ProxyForwarder] Token partner fee transfer broadcast: ${partnerTxHash}`);
-          await publicClient.waitForTransactionReceipt({ hash: partnerTxHash as `0x${string}` }).catch(() => {});
+          if (partnerRes.txHash) {
+            partnerTxHash = partnerRes.txHash;
+            console.log(`[ProxyForwarder] Token partner fee transfer broadcast: ${partnerTxHash}`);
+            await publicClient.waitForTransactionReceipt({ hash: partnerTxHash as `0x${string}` }).catch(() => {});
+          }
         }
       } catch (partnerErr) {
         console.error("[ProxyForwarder] Token partner fee transfer error:", partnerErr);
@@ -2112,11 +2317,20 @@ export async function recoverProxyDeposit(
       }
     }
 
-    const isSolverAlreadyPaid = Boolean(order.forwardTxHash);
+    const proxyNonce = await publicClient.getTransactionCount({ address: proxyAccount.address }).catch(() => 0);
+    const expectedAtomic = BigInt(order.totalAmountIn || "0");
+    const isOnlyFeeRemaining =
+      expectedAtomic > 0n &&
+      tokenBalance > 0n &&
+      tokenBalance < (expectedAtomic * 80n) / 100n &&
+      proxyNonce > 0;
+    const isSolverAlreadyPaid = Boolean(order.forwardTxHash) || isOnlyFeeRemaining;
 
     // If solver was ALREADY paid in an earlier transaction/run, 100% of remaining tokens in proxy belong to ZkPay Treasury!
     if (action === "forward" && isSolverAlreadyPaid) {
-      console.log(`[Recover] Solver already paid in tx ${order.forwardTxHash}. Sweeping remaining fee to ZkPay Treasury...`);
+      console.log(
+        `[Recover] Solver already paid (tx=${order.forwardTxHash || "on-chain"}, nonce=${proxyNonce}). Sweeping remaining fee (${tokenBalance.toString()}) to ZkPay Treasury...`
+      );
 
       const liveFeeBal = (await publicClient.readContract({
         address: tokenAddress,
@@ -2126,42 +2340,57 @@ export async function recoverProxyDeposit(
       })) as bigint;
 
       if (liveFeeBal === 0n) {
+        const updated = await updateProxySwapOrder(order.swapId, { status: "FORWARDED" });
         return {
           success: true,
-          message: `Proxy address balance is 0 ${tokenSymbol}. Solver was already paid (${order.forwardTxHash}) and fee has already been cleared!`,
-          order,
+          message: `Proxy address balance is 0 ${tokenSymbol}. Solver was already paid and fee has already been cleared!`,
+          order: updated || order,
           destination: treasuryAddress,
         };
       }
 
       const ethBalance = await publicClient.getBalance({ address: proxyAccount.address });
-      const gasPrice = await publicClient.getGasPrice();
-      const feeData = await publicClient.estimateFeesPerGas().catch(() => null);
-      const maxFee = feeData?.maxFeePerGas || (gasPrice * 2n);
-      const gasNeeded = (maxFee * 65000n * 12n) / 10n;
-      const minNeededFloor = normChain === "polygon" ? parseUnits("0.006", 18) : 25_000_000_000_000n;
+      const gasPrice = await publicClient.getGasPrice().catch(() => 35_000_000_000n);
+      const minNeededFloor = normChain === "polygon" ? parseUnits("0.004", 18) : 25_000_000_000_000n;
+      const gasNeeded = (gasPrice * 70_000n * 12n) / 10n;
       const targetGas = gasNeeded > minNeededFloor ? gasNeeded : minNeededFloor;
 
       if (ethBalance < targetGas) {
-        const relayer = getRelayerWalletClientForChain(normChain);
-        const advanceAmount = targetGas - ethBalance;
-        const fundTx = await relayer.sendTransaction({
-          account: relayer.account,
-          to: proxyAccount.address,
-          value: advanceAmount,
-        });
-        await publicClient.waitForTransactionReceipt({ hash: fundTx });
-        await new Promise((r) => setTimeout(r, 2500));
+        try {
+          const relayer = getRelayerWalletClientForChain(normChain);
+          const advanceAmount = targetGas - ethBalance;
+          const fundTx = await relayer.sendTransaction({
+            account: relayer.account,
+            to: proxyAccount.address,
+            value: advanceAmount,
+          });
+          await publicClient.waitForTransactionReceipt({ hash: fundTx });
+          await new Promise((r) => setTimeout(r, 2500));
+        } catch (fundErr) {
+          console.warn("[Recover] Optional gas advance warning during fee sweep:", fundErr);
+        }
       }
 
-      const feeTxHash = await walletClient.writeContract({
-        account: proxyAccount,
-        address: tokenAddress,
-        abi: ERC20_ABI,
-        functionName: "transfer",
-        args: [treasuryAddress, liveFeeBal],
+      const feeRes = await sendResilientErc20Transfer({
+        chainKey: normChain,
+        publicClient,
+        walletClient,
+        proxyAccount,
+        tokenAddress,
+        to: treasuryAddress,
+        amount: liveFeeBal,
       });
-      await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` });
+
+      if (!feeRes.txHash) {
+        return {
+          success: false,
+          message: `Failed to sweep remaining ${formatUnits(liveFeeBal, decimals)} ${tokenSymbol} fee to Treasury (${treasuryAddress}): ${feeRes.error}`,
+          order,
+        };
+      }
+
+      const feeTxHash = feeRes.txHash;
+      await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` }).catch(() => {});
       console.log(`[Recover] ✓ Remaining fee swept to ZkPay Treasury: ${feeTxHash}`);
 
       const updated = await updateProxySwapOrder(order.swapId, {
@@ -2171,7 +2400,7 @@ export async function recoverProxyDeposit(
 
       return {
         success: true,
-        message: `Successfully swept remaining ${formatUnits(liveFeeBal, decimals)} ${tokenSymbol} fee to ZkPay Treasury (${treasuryAddress})!`,
+        message: `Solver was already paid! Successfully swept remaining ${formatUnits(liveFeeBal, decimals)} ${tokenSymbol} platform fee to ZkPay Treasury (${treasuryAddress})!`,
         txHash: feeTxHash,
         order: updated,
         recoveredAmount: `${formatUnits(liveFeeBal, decimals)} ${tokenSymbol}`,
@@ -2351,85 +2580,20 @@ export async function recoverProxyDeposit(
     const finalSolverUnits = liveTokenBal >= netSolverUnits ? netSolverUnits : liveTokenBal;
     console.log(`[Recover] Executing ERC-20 transfer of ${formatUnits(finalSolverUnits, decimals)} ${tokenSymbol} to ${cleanDestination}...`);
 
-    let txHash: string | undefined;
-    let writeErr: any;
+    const transferRes = await sendResilientErc20Transfer({
+      chainKey: normChain,
+      publicClient,
+      walletClient,
+      proxyAccount,
+      tokenAddress,
+      to: cleanDestination,
+      amount: finalSolverUnits,
+    });
 
-    try {
-      txHash = await walletClient.writeContract({
-        account: proxyAccount,
-        address: tokenAddress,
-        abi: ERC20_ABI,
-        functionName: "transfer",
-        args: [cleanDestination, finalSolverUnits],
-        gas: 120_000n,
-      });
-    } catch (err: any) {
-      writeErr = err;
-      console.warn(`[Recover] Primary writeContract failed, attempting direct multi-RPC raw broadcast:`, err?.message || err);
-
-      try {
-        const { urls } = getEvmRpcConfig(normChain);
-        const calldata = encodeFunctionData({
-          abi: ERC20_ABI,
-          functionName: "transfer",
-          args: [cleanDestination, finalSolverUnits],
-        });
-
-        const nonce = await publicClient.getTransactionCount({
-          address: proxyAccount.address,
-        });
-
-        const feeData = await publicClient.estimateFeesPerGas().catch(() => null);
-        const gasPrice = await publicClient.getGasPrice().catch(() => 35_000_000_000n);
-        const maxPriorityFeePerGas = feeData?.maxPriorityFeePerGas || 35_000_000_000n;
-        const maxFeePerGas = feeData?.maxFeePerGas || (gasPrice * 2n);
-
-        const rawTx = await proxyAccount.signTransaction({
-          to: tokenAddress,
-          data: calldata,
-          gas: 120_000n,
-          nonce,
-          chainId: CHAIN_IDS[normChain] || 137,
-          type: "eip1559",
-          maxFeePerGas,
-          maxPriorityFeePerGas,
-        });
-
-        for (const url of urls) {
-          try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 6000);
-            const resp = await fetch(url, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                jsonrpc: "2.0",
-                id: Date.now(),
-                method: "eth_sendRawTransaction",
-                params: [rawTx],
-              }),
-              signal: controller.signal,
-            });
-            clearTimeout(timeout);
-            const data = await resp.json();
-            if (data?.result && typeof data.result === "string" && data.result.startsWith("0x")) {
-              txHash = data.result;
-              console.log(`[Recover] ✓ Direct multi-RPC broadcast succeeded via ${url}: ${txHash}`);
-              break;
-            } else if (data?.error) {
-              console.warn(`[Recover] Direct broadcast to ${url} rejected:`, data.error?.message || data.error);
-            }
-          } catch (netErr) {
-            // try next endpoint in urls list
-          }
-        }
-      } catch (rawErr: any) {
-        console.warn(`[Recover] Raw transaction preparation failed:`, rawErr?.message || rawErr);
-      }
-    }
+    const txHash = transferRes.txHash;
 
     if (!txHash) {
-      console.error(`[Recover] Transfer failed on-chain:`, writeErr);
+      console.error(`[Recover] Transfer failed on-chain:`, transferRes.error);
       const postBal = (await publicClient.readContract({
         address: tokenAddress,
         abi: ERC20_ABI,
@@ -2449,20 +2613,22 @@ export async function recoverProxyDeposit(
       }
 
       const postEth = await publicClient.getBalance({ address: proxyAccount.address }).catch(() => 0n);
-      const detailedError =
-        writeErr?.cause?.reason ||
-        writeErr?.cause?.shortMessage ||
-        writeErr?.details ||
-        writeErr?.shortMessage ||
-        writeErr?.message ||
-        "HTTP request failed";
+      const detailedError = transferRes.error || "RPC broadcast failed";
+      const nativeSym = normChain === "polygon" ? "POL" : normChain === "bsc" ? "BNB" : "ETH";
 
       return {
         success: false,
-        message: `On-chain transfer to ${cleanDestination} failed: ${detailedError}. Proxy holds ${formatUnits(postBal, decimals)} ${tokenSymbol} and ${formatUnits(postEth, 18)} POL. Please retry in a few seconds or check RPC connectivity.`,
+        message: `On-chain transfer to ${cleanDestination} failed: ${detailedError}. Proxy holds ${formatUnits(postBal, decimals)} ${tokenSymbol} and ${formatUnits(postEth, 18)} ${nativeSym}. Please retry in a few seconds or check RPC connectivity.`,
         order,
       };
     }
+
+    // Immediately checkpoint status & forwardTxHash in DB so order never remains in PENDING_DEPOSIT
+    await updateProxySwapOrder(order.swapId, {
+      status: action === "refund" ? "SETTLED" : "FORWARDED",
+      forwardTxHash: txHash,
+      error: action === "refund" ? `Manually refunded to ${cleanDestination}` : undefined,
+    }).catch(() => {});
 
     if (action === "forward") {
       notifyNearIntentsDepositSubmit(cleanDestination, txHash).catch(() => {});
@@ -2484,16 +2650,21 @@ export async function recoverProxyDeposit(
         })) as bigint;
         const feeToSend = remainingBal >= zkpayFeeUnits ? zkpayFeeUnits : remainingBal;
         if (feeToSend > 0n) {
-          feeTxHash = await walletClient.writeContract({
-            account: proxyAccount,
-            address: tokenAddress,
-            abi: ERC20_ABI,
-            functionName: "transfer",
-            args: [treasuryAddress, feeToSend],
+          const feeRes = await sendResilientErc20Transfer({
+            chainKey: normChain,
+            publicClient,
+            walletClient,
+            proxyAccount,
+            tokenAddress,
+            to: treasuryAddress,
+            amount: feeToSend,
           });
-          console.log(`[Recover] Token ZkPay fee transfer broadcast: ${feeTxHash}`);
-          await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` });
-          console.log(`[Recover] ✓ Token ZkPay fee confirmed on-chain: ${feeTxHash}`);
+          if (feeRes.txHash) {
+            feeTxHash = feeRes.txHash;
+            console.log(`[Recover] Token ZkPay fee transfer broadcast: ${feeTxHash}`);
+            await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` }).catch(() => {});
+            console.log(`[Recover] ✓ Token ZkPay fee confirmed on-chain: ${feeTxHash}`);
+          }
         }
       } catch (feeErr) {
         console.error("[Recover] Token ZkPay fee transfer error:", feeErr);
@@ -2512,15 +2683,20 @@ export async function recoverProxyDeposit(
         })) as bigint;
         const partnerToSend = remainingBal >= partnerFeeUnits ? partnerFeeUnits : remainingBal;
         if (partnerToSend > 0n) {
-          partnerTxHash = await walletClient.writeContract({
-            account: proxyAccount,
-            address: tokenAddress,
-            abi: ERC20_ABI,
-            functionName: "transfer",
-            args: [getAddress(order.partnerFeeRecipient), partnerToSend],
+          const partnerRes = await sendResilientErc20Transfer({
+            chainKey: normChain,
+            publicClient,
+            walletClient,
+            proxyAccount,
+            tokenAddress,
+            to: getAddress(order.partnerFeeRecipient),
+            amount: partnerToSend,
           });
-          console.log(`[Recover] Token partner fee transfer broadcast: ${partnerTxHash}`);
-          await publicClient.waitForTransactionReceipt({ hash: partnerTxHash as `0x${string}` });
+          if (partnerRes.txHash) {
+            partnerTxHash = partnerRes.txHash;
+            console.log(`[Recover] Token partner fee transfer broadcast: ${partnerTxHash}`);
+            await publicClient.waitForTransactionReceipt({ hash: partnerTxHash as `0x${string}` }).catch(() => {});
+          }
         }
       } catch (partnerErr) {
         console.error("[Recover] Token partner fee transfer error:", partnerErr);

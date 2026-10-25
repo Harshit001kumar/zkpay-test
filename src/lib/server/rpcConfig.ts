@@ -206,11 +206,17 @@ export async function fetchResilientSolanaRpc(method: string, params: any[]): Pr
 // 2. EVM MULTI-CHAIN RPC CONFIGURATION & TRANSPORTS
 // ─────────────────────────────────────────────────────────────
 
+export interface EvmRpcEndpoint {
+  url: string;
+  headers?: Record<string, string>;
+}
+
 export interface EvmRpcConfig {
   chain: Chain;
   key: string;
   transports: Transport[];
   urls: string[];
+  endpoints: EvmRpcEndpoint[];
 }
 
 export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
@@ -222,7 +228,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
   let targetChain: Chain = base;
   let key = "base";
   const customUrls: string[] = [];
-  const premiumUrls: { url: string; headers?: Record<string, string> }[] = [];
+  const premiumUrls: EvmRpcEndpoint[] = [];
   const publicUrls: string[] = [];
 
   switch (c) {
@@ -239,8 +245,8 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
               "https://polygon-bor-rpc.publicnode.com",
               "https://polygon.drpc.org",
               "https://1rpc.io/matic",
+              "https://rpc-mainnet.matic.quiknode.pro",
               "https://gateway.tenderly.co/public/polygon",
-              "https://polygon.meowrpc.com",
             ],
           },
           public: {
@@ -248,8 +254,8 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
               "https://polygon-bor-rpc.publicnode.com",
               "https://polygon.drpc.org",
               "https://1rpc.io/matic",
+              "https://rpc-mainnet.matic.quiknode.pro",
               "https://gateway.tenderly.co/public/polygon",
-              "https://polygon.meowrpc.com",
             ],
           },
         },
@@ -262,6 +268,20 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
         cleanEnvString(process.env.MATIC_RPC_URL);
       if (custom) customUrls.push(custom);
 
+      // Put high-availability public Polygon Bor RPCs ahead of generic multi-chain keys
+      // that may not have Polygon add-on enabled (avoiding 403/401 stalls).
+      publicUrls.push(
+        "https://polygon-bor-rpc.publicnode.com",
+        "https://polygon.drpc.org",
+        "https://1rpc.io/matic",
+        "https://rpc-mainnet.matic.quiknode.pro",
+        "https://gateway.tenderly.co/public/polygon",
+        "https://polygon.meowrpc.com"
+      );
+
+      if (alchemyKey) {
+        premiumUrls.push({ url: `https://polygon-mainnet.g.alchemy.com/v2/${alchemyKey}` });
+      }
       if (infuraKey) {
         premiumUrls.push({ url: `https://polygon-mainnet.infura.io/v3/${infuraKey}` });
       }
@@ -271,17 +291,6 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
           headers: { "api-key": nowNodesKey },
         });
       }
-      if (alchemyKey) {
-        premiumUrls.push({ url: `https://polygon-mainnet.g.alchemy.com/v2/${alchemyKey}` });
-      }
-
-      publicUrls.push(
-        "https://polygon-bor-rpc.publicnode.com",
-        "https://polygon.drpc.org",
-        "https://1rpc.io/matic",
-        "https://gateway.tenderly.co/public/polygon",
-        "https://polygon.meowrpc.com"
-      );
       break;
     }
 
@@ -382,29 +391,54 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
     }
   }
 
-  // Build transports in priority order: Custom -> Premium (Infura/NowNodes) -> Public Fallbacks
+  // Build transports in priority order
   const transports: Transport[] = [];
   const urls: string[] = [];
+  const endpoints: EvmRpcEndpoint[] = [];
 
   for (const u of customUrls) {
     urls.push(u);
-    transports.push(http(u, { timeout: 8000, retryCount: 2 }));
+    endpoints.push({ url: u });
+    transports.push(http(u, { timeout: 6500, retryCount: 1 }));
   }
 
-  for (const p of premiumUrls) {
-    urls.push(p.url);
-    transports.push(
-      http(p.url, {
-        fetchOptions: p.headers ? { headers: p.headers } : undefined,
-        timeout: 8000,
-        retryCount: 3,
-      })
-    );
-  }
-
-  for (const u of publicUrls) {
-    urls.push(u);
-    transports.push(http(u, { timeout: 7000, retryCount: 2 }));
+  // On Polygon, generic INFURA_API_KEY / ALCHEMY_API_KEY configured for Base often return HTTP 403 Forbidden
+  // unless the Polygon add-on is explicitly enabled on that key. Prioritize verified Bor public nodes first
+  // (after any explicit POLYGON_RPC_URL), followed by premium keys.
+  if (key === "polygon") {
+    for (const u of publicUrls) {
+      urls.push(u);
+      endpoints.push({ url: u });
+      transports.push(http(u, { timeout: 6000, retryCount: 1 }));
+    }
+    for (const p of premiumUrls) {
+      urls.push(p.url);
+      endpoints.push(p);
+      transports.push(
+        http(p.url, {
+          fetchOptions: p.headers ? { headers: p.headers } : undefined,
+          timeout: 6500,
+          retryCount: 1,
+        })
+      );
+    }
+  } else {
+    for (const p of premiumUrls) {
+      urls.push(p.url);
+      endpoints.push(p);
+      transports.push(
+        http(p.url, {
+          fetchOptions: p.headers ? { headers: p.headers } : undefined,
+          timeout: 7000,
+          retryCount: 1,
+        })
+      );
+    }
+    for (const u of publicUrls) {
+      urls.push(u);
+      endpoints.push({ url: u });
+      transports.push(http(u, { timeout: 6500, retryCount: 1 }));
+    }
   }
 
   return {
@@ -412,6 +446,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
     key,
     transports,
     urls,
+    endpoints,
   };
 }
 
@@ -422,6 +457,6 @@ export function getResilientPublicClientForChain(chainStr: string) {
   const { chain, transports } = getEvmRpcConfig(chainStr);
   return createPublicClient({
     chain,
-    transport: fallback(transports, { rank: false, retryCount: 3 }),
+    transport: fallback(transports, { rank: false, retryCount: 2 }),
   });
 }
