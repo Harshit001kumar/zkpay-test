@@ -361,9 +361,9 @@ function getWalletClientForChain(chainStr: string, account: any) {
 
 /**
  * Resilient ERC-20 transfer helper that:
- * 1. Uses a realistic 70,000 gas limit (standard ERC-20 transfer uses ~46k gas) so existing gas balances (e.g. 0.025 POL) cover up to ~365 gwei without failing.
+ * 1. Uses a 90,000 gas limit so upgradeable proxy tokens (e.g. Polygon USDT0) with cold SSTORE to fresh solver addresses never revert with Out of Gas.
  * 2. Signs a Type-0 legacy transaction with Polygon minimum gas floor (35 gwei), avoiding all EIP-1559 maxFeePerGas < maxPriorityFeePerGas errors.
- * 3. Automatically clamps gasPrice to available native balance if sufficient for network inclusion.
+ * 3. Pre-flight checks native balance before EVERY transfer (including Tx #2 fee transfers): clamps gasPrice if affordable, or automatically advances a top-up from the relayer if gas spiked mid-sweep.
  * 4. Broadcasts via walletClient first, then falls back to direct raw broadcast across all configured RPC endpoints (with headers).
  */
 async function sendResilientErc20Transfer(params: {
@@ -376,7 +376,7 @@ async function sendResilientErc20Transfer(params: {
   amount: bigint;
 }): Promise<{ txHash?: `0x${string}`; error?: string }> {
   const { chainKey, publicClient, walletClient, proxyAccount, tokenAddress, to, amount } = params;
-  const gasLimit = 70_000n;
+  const gasLimit = 90_000n;
   const minGasFloor = chainKey === "polygon" ? 35_000_000_000n : 0n;
   const baseGasPrice = (await publicClient
     .getGasPrice()
@@ -387,8 +387,39 @@ async function sendResilientErc20Transfer(params: {
     effectiveGasPrice = minGasFloor;
   }
 
-  // Ensure gasLimit * effectiveGasPrice never exceeds the proxy wallet's current native balance if it can afford baseGasPrice
-  const nativeBal = (await publicClient.getBalance({ address: proxyAccount.address }).catch(() => 0n)) as bigint;
+  const minViableGasPrice = baseGasPrice > minGasFloor ? baseGasPrice : minGasFloor;
+
+  // Pre-flight native gas check before this transfer (protects both Tx #1 and Tx #2!)
+  let nativeBal = (await publicClient.getBalance({ address: proxyAccount.address }).catch(() => 0n)) as bigint;
+  if (nativeBal < gasLimit * minViableGasPrice) {
+    // Proxy wallet does not have enough native gas to cover 90,000 gas at current network gasPrice -> top up from relayer!
+    try {
+      const relayer = getRelayerWalletClientForChain(chainKey);
+      const minTopUpFloor =
+        chainKey === "polygon"
+          ? parseUnits("0.025", 18)
+          : chainKey === "bsc"
+          ? parseUnits("0.0005", 18)
+          : 15_000_000_000_000n;
+      const neededForTx = (gasLimit * effectiveGasPrice * 14n) / 10n;
+      const targetBal = neededForTx > minTopUpFloor ? neededForTx : minTopUpFloor;
+      if (targetBal > nativeBal) {
+        const topUpAmount = targetBal - nativeBal;
+        const fundTx = await relayer.sendTransaction({
+          account: relayer.account,
+          to: proxyAccount.address,
+          value: topUpAmount,
+        });
+        await publicClient.waitForTransactionReceipt({ hash: fundTx }).catch(() => {});
+        await new Promise((r) => setTimeout(r, 2000));
+        nativeBal = (await publicClient.getBalance({ address: proxyAccount.address }).catch(() => nativeBal + topUpAmount)) as bigint;
+        console.log(`[ProxyForwarder] ✓ Pre-flight gas top-up (${formatUnits(topUpAmount, 18)}) to ${proxyAccount.address}: ${fundTx}`);
+      }
+    } catch (topUpErr: any) {
+      console.warn(`[ProxyForwarder] Pre-flight gas top-up warning on ${chainKey}:`, topUpErr?.message || topUpErr);
+    }
+  }
+
   if (nativeBal > 0n && nativeBal < gasLimit * effectiveGasPrice) {
     const maxAffordableGasPrice = (nativeBal * 96n) / (100n * gasLimit);
     if (maxAffordableGasPrice >= minGasFloor && maxAffordableGasPrice >= (baseGasPrice * 90n) / 100n) {
@@ -870,15 +901,18 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     const nativeBalance = await publicClient.getBalance({ address: proxyAddress });
     const feeData = await publicClient.estimateFeesPerGas().catch(() => null);
     const gasPrice = await publicClient.getGasPrice();
-    const maxFee = feeData?.maxFeePerGas || gasPrice;
+    const rawMaxFee = feeData?.maxFeePerGas && feeData.maxFeePerGas > gasPrice ? feeData.maxFeePerGas : gasPrice;
+    const minPolygonGasPrice = chainKey === "polygon" ? 40_000_000_000n : 0n;
+    const maxFee = rawMaxFee > minPolygonGasPrice ? rawMaxFee : minPolygonGasPrice;
     const nativeSym = chainKey === "polygon" ? "POL" : chainKey === "bsc" ? "BNB" : "ETH";
 
     const transfersCount = partnerFeeUnits > 0n ? 3n : 2n;
-    // Precision dynamic gas: (maxFee * 65,000 gas * count) + 20% safety margin
-    const calculatedGasNeeded = (maxFee * 65000n * transfersCount * 12n) / 10n;
+    // Dynamic gas: (maxFee * 95,000 gas * count) + 50% safety margin for multi-block baseFee spikes
+    // (All unused native gas is automatically swept back to the relayer in Step 4)
+    const calculatedGasNeeded = (maxFee * 95000n * transfersCount * 15n) / 10n;
     const minNeededFloor = chainKey === "polygon"
-      ? parseUnits("0.008", 18)
-      : (chainKey === "bsc" ? parseUnits("0.0006", 18) : 25_000_000_000_000n);
+      ? parseUnits("0.035", 18)
+      : (chainKey === "bsc" ? parseUnits("0.0009", 18) : 35_000_000_000_000n);
     const gasNeeded = calculatedGasNeeded > minNeededFloor ? calculatedGasNeeded : minNeededFloor;
 
     if (nativeBalance < gasNeeded) {
@@ -2350,9 +2384,9 @@ export async function recoverProxyDeposit(
       }
 
       const ethBalance = await publicClient.getBalance({ address: proxyAccount.address });
-      const gasPrice = await publicClient.getGasPrice().catch(() => 35_000_000_000n);
-      const minNeededFloor = normChain === "polygon" ? parseUnits("0.004", 18) : 25_000_000_000_000n;
-      const gasNeeded = (gasPrice * 70_000n * 12n) / 10n;
+      const gasPrice = await publicClient.getGasPrice().catch(() => 40_000_000_000n);
+      const minNeededFloor = normChain === "polygon" ? parseUnits("0.02", 18) : 30_000_000_000_000n;
+      const gasNeeded = (gasPrice * 95_000n * 15n) / 10n;
       const targetGas = gasNeeded > minNeededFloor ? gasNeeded : minNeededFloor;
 
       if (ethBalance < targetGas) {
@@ -2481,12 +2515,14 @@ export async function recoverProxyDeposit(
     const ethBalance = await publicClient.getBalance({ address: proxyAccount.address });
     const feeData = await publicClient.estimateFeesPerGas().catch(() => null);
     const gasPrice = await publicClient.getGasPrice();
-    const maxFee = feeData?.maxFeePerGas || (gasPrice * 2n);
+    const rawMaxFee = feeData?.maxFeePerGas && feeData.maxFeePerGas > gasPrice ? feeData.maxFeePerGas : (gasPrice * 13n) / 10n;
+    const minPolygonGasPrice = normChain === "polygon" ? 40_000_000_000n : 0n;
+    const maxFee = rawMaxFee > minPolygonGasPrice ? rawMaxFee : minPolygonGasPrice;
     const transfersCount = (action === "forward" && totalFeeUnits > 0n) ? 2n : 1n;
-    const calculatedGas = (maxFee * 65000n * transfersCount * 12n) / 10n;
+    const calculatedGas = (maxFee * 95000n * transfersCount * 15n) / 10n;
     const minNeededFloor = normChain === "polygon" 
-      ? parseUnits("0.008", 18) 
-      : (normChain === "bsc" ? parseUnits("0.0006", 18) : 25_000_000_000_000n);
+      ? parseUnits("0.035", 18) 
+      : (normChain === "bsc" ? parseUnits("0.0009", 18) : 35_000_000_000_000n);
     const gasNeeded = calculatedGas > minNeededFloor ? calculatedGas : minNeededFloor;
 
     if (ethBalance < gasNeeded) {
