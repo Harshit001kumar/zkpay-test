@@ -772,42 +772,70 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     const expectedAtomic = BigInt(order.totalAmountIn);
 
     if (tokenBalance < (expectedAtomic * 90n) / 100n || tokenBalance === 0n) {
-      // Reconcile if the proxy wallet ALREADY executed the solver transfer on-chain (nonce > 0)
-      // and only the ZkPay fee (or 0 balance) remains in the proxy wallet!
+      // Reconcile ONLY if the proxy wallet genuinely already executed the solver transfer on-chain
+      // and ONLY the small ZkPay fee (or 0 balance) remains in the proxy wallet!
+      // Never trigger this if the user's principal is still in the wallet or if forwardTxHash reverted.
       const proxyNonce = await publicClient.getTransactionCount({ address: proxyAddress }).catch(() => 0);
-      if (proxyNonce > 0) {
-        console.log(
-          `[ProxyForwarder] Reconciling order ${order.swapId}: proxy ${proxyAddress} has on-chain nonce=${proxyNonce} and remaining balance=${tokenBalance.toString()} ${upperSymbol}. Solver transfer already occurred.`
-        );
-        let feeTxHash = order.feeTxHash || "";
-        if (tokenBalance > 0n && expectedAtomic > 0n && tokenBalance < (expectedAtomic * 80n) / 100n) {
-          try {
-            const rawKey = getDecryptedProxyPrivateKey(order);
-            const proxyAccount = privateKeyToAccount(rawKey);
-            const walletClient = getWalletClientForChain(order.chain, proxyAccount);
-            const feeRes = await sendResilientErc20Transfer({
-              chainKey,
-              publicClient,
-              walletClient,
-              proxyAccount,
-              tokenAddress,
-              to: treasuryAddress,
-              amount: tokenBalance,
-            });
-            if (feeRes.txHash) {
-              feeTxHash = feeRes.txHash;
-              await publicClient.waitForTransactionReceipt({ hash: feeRes.txHash }).catch(() => {});
-              console.log(`[ProxyForwarder] ✓ Reconciled & swept remaining fee (${tokenBalance.toString()}) to Treasury: ${feeRes.txHash}`);
-            }
-          } catch (reconcileErr) {
-            console.warn(`[ProxyForwarder] Reconcile fee sweep warning for ${order.swapId}:`, reconcileErr);
+      const expectedOrderFee = order.feeAmount ? BigInt(order.feeAmount) : (expectedAtomic * 3n) / 100n;
+      const maxFeeCeiling = expectedOrderFee > 0n ? expectedOrderFee * 2n : (expectedAtomic * 20n) / 100n;
+
+      if (
+        proxyNonce > 0 &&
+        expectedAtomic > 0n &&
+        tokenBalance <= maxFeeCeiling &&
+        tokenBalance < (expectedAtomic * 35n) / 100n
+      ) {
+        // Verify that if order.forwardTxHash is recorded, it did NOT revert on-chain
+        let solverTxReverted = false;
+        if (order.forwardTxHash && order.forwardTxHash.startsWith("0x")) {
+          const prevReceipt = await publicClient
+            .getTransactionReceipt({ hash: order.forwardTxHash as `0x${string}` })
+            .catch(() => null);
+          if (prevReceipt && prevReceipt.status === "reverted") {
+            solverTxReverted = true;
           }
         }
-        const updated = await updateProxySwapOrder(order.swapId, {
-          status: "FORWARDED",
-          ...(feeTxHash ? { feeTxHash } : {}),
-        });
-        return updated || order;
+
+        if (!solverTxReverted) {
+          console.log(
+            `[ProxyForwarder] Reconciling order ${order.swapId}: proxy ${proxyAddress} has on-chain nonce=${proxyNonce} and remaining fee balance=${tokenBalance.toString()} ${upperSymbol}. Solver transfer already occurred.`
+          );
+          let feeTxHash = order.feeTxHash || "";
+          if (tokenBalance > 0n) {
+            try {
+              const rawKey = getDecryptedProxyPrivateKey(order);
+              const proxyAccount = privateKeyToAccount(rawKey);
+              const walletClient = getWalletClientForChain(order.chain, proxyAccount);
+              const feeRes = await sendResilientErc20Transfer({
+                chainKey,
+                publicClient,
+                walletClient,
+                proxyAccount,
+                tokenAddress,
+                to: treasuryAddress,
+                amount: tokenBalance,
+              });
+              if (feeRes.txHash) {
+                const feeReceipt = await publicClient
+                  .waitForTransactionReceipt({ hash: feeRes.txHash })
+                  .catch(() => null);
+                if (!feeReceipt || feeReceipt.status === "success") {
+                  feeTxHash = feeRes.txHash;
+                  console.log(
+                    `[ProxyForwarder] ✓ Reconciled & swept remaining fee (${tokenBalance.toString()}) to Treasury: ${feeRes.txHash}`
+                  );
+                }
+              }
+            } catch (reconcileErr) {
+              console.warn(`[ProxyForwarder] Reconcile fee sweep warning for ${order.swapId}:`, reconcileErr);
+            }
+          }
+          const updated = await updateProxySwapOrder(order.swapId, {
+            status: "FORWARDED",
+            ...(feeTxHash ? { feeTxHash } : {}),
+          });
+          return updated || order;
+        }
       }
       return order; // Awaiting deposit
     }
@@ -994,7 +1022,43 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     const forwardTxHash = forwardRes.txHash;
     console.log(`[ProxyForwarder] Net token forward to solver broadcast FIRST: ${forwardTxHash}`);
 
-    // Immediately checkpoint status & forwardTxHash in DB so order never reverts to PENDING_DEPOSIT
+    // CRITICAL: Wait for solver forward receipt and verify it succeeded on-chain BEFORE saving forwardTxHash or sending fees!
+    const solverReceipt = await publicClient
+      .waitForTransactionReceipt({ hash: forwardTxHash as `0x${string}`, timeout: 45_000 })
+      .catch(() => null);
+
+    if (solverReceipt && solverReceipt.status === "reverted") {
+      console.error(
+        `[ProxyForwarder] ✗ Solver transfer REVERTED on-chain (${forwardTxHash}) for order ${order.swapId}! Aborting fee sweep.`
+      );
+      await updateProxySwapOrder(order.swapId, {
+        status: "PENDING_DEPOSIT",
+        forwardTxHash: undefined,
+        lastAttemptAt: Date.now(),
+        error: `Solver transfer transaction ${forwardTxHash} reverted on-chain.`,
+      }).catch(() => {});
+      return order;
+    }
+
+    // If receipt timed out, verify on-chain whether the tokens actually left the proxy wallet
+    if (!solverReceipt) {
+      const postBalCheck = (await publicClient
+        .readContract({
+          address: tokenAddress,
+          abi: ERC20_ABI,
+          functionName: "balanceOf",
+          args: [proxyAddress],
+        })
+        .catch(() => remainingTokenBalance)) as bigint;
+      if (postBalCheck >= remainingTokenBalance) {
+        console.warn(
+          `[ProxyForwarder] Solver transfer ${forwardTxHash} receipt not yet available and balance unchanged. Will re-verify on next tick.`
+        );
+        return order;
+      }
+    }
+
+    // Confirmed on-chain: immediately checkpoint status & forwardTxHash in DB so order never reverts to PENDING_DEPOSIT
     await updateProxySwapOrder(order.swapId, {
       status: "FORWARDED",
       depositTxHash: forwardTxHash,
@@ -1002,11 +1066,8 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       error: undefined,
     }).catch(() => {});
 
-    // Immediately notify Near Intents 1Click so mempool indexer recognizes the deposit!
+    // Immediately notify Near Intents 1Click so indexer recognizes the deposit!
     notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
-
-    // CRITICAL: Wait for solver forward to confirm so the proxy account's nonce increments on-chain before sending fee!
-    await publicClient.waitForTransactionReceipt({ hash: forwardTxHash as `0x${string}` }).catch(() => {});
     console.log(`[ProxyForwarder] ✓ Solver forward confirmed on-chain: ${forwardTxHash}`);
 
     // 2. Transfer ZkPay fee to Treasury
@@ -1031,10 +1092,16 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
             amount: feeToSend,
           });
           if (feeRes.txHash) {
-            feeTxHash = feeRes.txHash;
-            console.log(`[ProxyForwarder] Token ZkPay fee transfer broadcast: ${feeTxHash}`);
-            await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` }).catch(() => {});
-            console.log(`[ProxyForwarder] ✓ Token ZkPay fee confirmed on-chain: ${feeTxHash}`);
+            console.log(`[ProxyForwarder] Token ZkPay fee transfer broadcast: ${feeRes.txHash}`);
+            const feeReceipt = await publicClient
+              .waitForTransactionReceipt({ hash: feeRes.txHash as `0x${string}` })
+              .catch(() => null);
+            if (!feeReceipt || feeReceipt.status === "success") {
+              feeTxHash = feeRes.txHash;
+              console.log(`[ProxyForwarder] ✓ Token ZkPay fee confirmed on-chain: ${feeTxHash}`);
+            } else {
+              console.warn(`[ProxyForwarder] ✗ Token ZkPay fee transfer reverted on-chain: ${feeRes.txHash}`);
+            }
           }
         }
       } catch (feeErr) {
@@ -2351,19 +2418,39 @@ export async function recoverProxyDeposit(
       }
     }
 
+    const totalFeeUnits = zkpayFeeUnits + partnerFeeUnits;
     const proxyNonce = await publicClient.getTransactionCount({ address: proxyAccount.address }).catch(() => 0);
     const expectedAtomic = BigInt(order.totalAmountIn || "0");
-    const isOnlyFeeRemaining =
-      expectedAtomic > 0n &&
-      tokenBalance > 0n &&
-      tokenBalance < (expectedAtomic * 80n) / 100n &&
-      proxyNonce > 0;
-    const isSolverAlreadyPaid = Boolean(order.forwardTxHash) || isOnlyFeeRemaining;
+    const expectedOrderFee = order.feeAmount ? BigInt(order.feeAmount) : totalFeeUnits;
+    const maxFeeCeiling = expectedOrderFee > 0n ? expectedOrderFee * 2n : totalFeeUnits * 2n;
 
-    // If solver was ALREADY paid in an earlier transaction/run, 100% of remaining tokens in proxy belong to ZkPay Treasury!
+    // CRITICAL GUARD:
+    // Never treat the proxy balance as "only fee remaining" if the user's swap principal is still in the wallet!
+    // Even if order.forwardTxHash was set or proxyNonce > 0 from a previously reverted transaction,
+    // if tokenBalance > maxFeeCeiling, the solver was NOT paid and the principal is still in the proxy wallet.
+    let hasVerifiedForwardTx = false;
+    if (order.forwardTxHash && order.forwardTxHash.startsWith("0x")) {
+      const prevReceipt = await publicClient
+        .getTransactionReceipt({ hash: order.forwardTxHash as `0x${string}` })
+        .catch(() => null);
+      if (prevReceipt && prevReceipt.status === "success") {
+        hasVerifiedForwardTx = true;
+      }
+    }
+
+    const isBalanceOnlyFee =
+      tokenBalance > 0n &&
+      maxFeeCeiling > 0n &&
+      tokenBalance <= maxFeeCeiling &&
+      (expectedAtomic === 0n || tokenBalance < (expectedAtomic * 35n) / 100n);
+
+    const isSolverAlreadyPaid = isBalanceOnlyFee && (hasVerifiedForwardTx || proxyNonce > 0);
+
+    // If solver was ALREADY paid in an earlier verified transaction and ONLY the small platform fee remains in the proxy wallet,
+    // sweep the remaining fee to ZkPay Treasury!
     if (action === "forward" && isSolverAlreadyPaid) {
       console.log(
-        `[Recover] Solver already paid (tx=${order.forwardTxHash || "on-chain"}, nonce=${proxyNonce}). Sweeping remaining fee (${tokenBalance.toString()}) to ZkPay Treasury...`
+        `[Recover] Solver already paid (tx=${order.forwardTxHash || "on-chain"}, nonce=${proxyNonce}) and only fee (${tokenBalance.toString()}) remains. Sweeping fee to ZkPay Treasury...`
       );
 
       const liveFeeBal = (await publicClient.readContract({
@@ -2424,7 +2511,18 @@ export async function recoverProxyDeposit(
       }
 
       const feeTxHash = feeRes.txHash;
-      await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` }).catch(() => {});
+      const feeReceipt = await publicClient
+        .waitForTransactionReceipt({ hash: feeTxHash as `0x${string}`, timeout: 45_000 })
+        .catch(() => null);
+
+      if (feeReceipt && feeReceipt.status === "reverted") {
+        return {
+          success: false,
+          message: `Fee transfer transaction ${feeTxHash} reverted on-chain. Please retry.`,
+          order,
+        };
+      }
+
       console.log(`[Recover] ✓ Remaining fee swept to ZkPay Treasury: ${feeTxHash}`);
 
       const updated = await updateProxySwapOrder(order.swapId, {
@@ -2443,7 +2541,6 @@ export async function recoverProxyDeposit(
       };
     }
 
-    const totalFeeUnits = zkpayFeeUnits + partnerFeeUnits;
     const netSolverUnits = (action === "forward" && tokenBalance > totalFeeUnits)
       ? tokenBalance - totalFeeUnits
       : (options?.amount ? parseUnits(options.amount, decimals) : tokenBalance);
@@ -2659,7 +2756,28 @@ export async function recoverProxyDeposit(
       };
     }
 
-    // Immediately checkpoint status & forwardTxHash in DB so order never remains in PENDING_DEPOSIT
+    // CRITICAL: Wait for solver/recipient transfer receipt and verify it succeeded on-chain BEFORE saving forwardTxHash or sending fee!
+    const solverReceipt = await publicClient
+      .waitForTransactionReceipt({ hash: txHash as `0x${string}`, timeout: 45_000 })
+      .catch(() => null);
+
+    if (solverReceipt && solverReceipt.status === "reverted") {
+      console.error(`[Recover] ✗ Transfer to ${cleanDestination} REVERTED on-chain: ${txHash}`);
+      await updateProxySwapOrder(order.swapId, {
+        status: "PENDING_DEPOSIT",
+        forwardTxHash: undefined,
+        error: `Transfer transaction ${txHash} reverted on-chain.`,
+      }).catch(() => {});
+      return {
+        success: false,
+        message: `On-chain transfer to ${cleanDestination} reverted on-chain (tx: ${txHash}). Funds are still safely in the proxy wallet; please retry.`,
+        txHash,
+        order,
+        explorerUrl: getExplorerTxUrl(order.chain, txHash),
+      };
+    }
+
+    // Confirmed on-chain: checkpoint status & forwardTxHash in DB so order never remains in PENDING_DEPOSIT
     await updateProxySwapOrder(order.swapId, {
       status: action === "refund" ? "SETTLED" : "FORWARDED",
       forwardTxHash: txHash,
@@ -2670,9 +2788,7 @@ export async function recoverProxyDeposit(
       notifyNearIntentsDepositSubmit(cleanDestination, txHash).catch(() => {});
     }
 
-    // CRITICAL: Wait for solver forward to confirm so the proxy account's nonce increments on-chain before sending fee!
-    await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` }).catch(() => {});
-    console.log(`[Recover] ✓ Solver forward confirmed on-chain: ${txHash}`);
+    console.log(`[Recover] ✓ Transfer to ${cleanDestination} confirmed on-chain: ${txHash}`);
 
     // 2. Transfer ZkPay fee to Treasury (if action === "forward")
     let feeTxHash = "";
@@ -2696,10 +2812,16 @@ export async function recoverProxyDeposit(
             amount: feeToSend,
           });
           if (feeRes.txHash) {
-            feeTxHash = feeRes.txHash;
-            console.log(`[Recover] Token ZkPay fee transfer broadcast: ${feeTxHash}`);
-            await publicClient.waitForTransactionReceipt({ hash: feeTxHash as `0x${string}` }).catch(() => {});
-            console.log(`[Recover] ✓ Token ZkPay fee confirmed on-chain: ${feeTxHash}`);
+            console.log(`[Recover] Token ZkPay fee transfer broadcast: ${feeRes.txHash}`);
+            const feeReceipt = await publicClient
+              .waitForTransactionReceipt({ hash: feeRes.txHash as `0x${string}` })
+              .catch(() => null);
+            if (!feeReceipt || feeReceipt.status === "success") {
+              feeTxHash = feeRes.txHash;
+              console.log(`[Recover] ✓ Token ZkPay fee confirmed on-chain: ${feeTxHash}`);
+            } else {
+              console.warn(`[Recover] ✗ Token ZkPay fee transfer reverted on-chain: ${feeRes.txHash}`);
+            }
           }
         }
       } catch (feeErr) {

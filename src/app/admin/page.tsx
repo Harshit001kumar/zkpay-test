@@ -264,7 +264,11 @@ export default function AdminPage() {
       if (data.providers) setRpcProviders(data.providers);
       if (res.ok && data.report) {
         setProxyReport(data.report);
-        setCustomRecipientInput(data.report.refundTo || "");
+        setCustomRecipientInput(
+          recoveryAction === "forward"
+            ? data.report.solverDepositAddress || ""
+            : data.report.refundTo || ""
+        );
 
         // Pre-select asset type based on detected balances
         const tokensWithBalance = (data.report.tokens || []).filter(
