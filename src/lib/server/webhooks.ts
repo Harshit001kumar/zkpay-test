@@ -6,11 +6,14 @@ export interface WebhookPayload {
     | "payin.detected"
     | "payin.settled"
     | "payin.failed"
+    | "payin.rejected_under_minimum"
+    | "payin.refunded"
     | "paylink.paid"
     | "swap.deposit_detected"
     | "swap.settled"
     | "swap.failed"
-    | "swap.refunded";
+    | "swap.refunded"
+    | (string & {});
   sessionId?: string;
   linkId?: string;
   recipientUpi?: string;
