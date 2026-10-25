@@ -572,7 +572,7 @@ bot.command('checklink', async (ctx) => {
     "pin": "4829",
     "recipientUpi": "user@okhdfcbank"
   }'`,
-      javascript: `const res = await fetch("https://zkpay.top/api/v1/paylinks/claim", {
+      js: `const res = await fetch("https://zkpay.top/api/v1/paylinks/claim", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
@@ -590,7 +590,41 @@ res = requests.post("https://zkpay.top/api/v1/paylinks/claim", json={
     "pin": "4829",
     "recipientUpi": "user@okhdfcbank"
 })
-print(res.json())`
+print(res.json())`,
+      telegram: `// Node.js Telegram Bot Example (telegraf) - Claim Escrow Payout with PIN
+bot.command('claim', async (ctx) => {
+  const parts = ctx.message.text.split(' ');
+  const linkId = parts[1];
+  const pin = parts[2];
+  const upi = parts[3];
+
+  if (!linkId || !pin || !upi) {
+    return ctx.reply('Usage: /claim <linkId> <4-digit PIN> <recipientUpi>');
+  }
+
+  const res = await fetch('https://zkpay.top/api/v1/paylinks/claim', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      linkId,
+      pin,
+      recipientUpi: upi
+    })
+  });
+  const data = await res.json();
+
+  if (data.success) {
+    await ctx.reply(
+      \`✅ *Escrow Payout Claimed!*\\n\\n\` +
+      \`• *Link ID:* \`\${data.linkId}\`\\n\` +
+      \`• *UPI:* \`\${data.recipientUpi}\`\\n\` +
+      (data.txHash ? \`• *Base Tx:* [View on Basescan](https://basescan.org/tx/\${data.txHash})\\n\` : ''),
+      { parse_mode: 'Markdown' }
+    );
+  } else {
+    await ctx.reply(\`❌ *Claim Failed:* \${data.error}\`, { parse_mode: 'Markdown' });
+  }
+});`
     }
   },
 
