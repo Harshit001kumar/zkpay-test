@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { encodeFunctionData, parseUnits, formatUnits } from "viem";
 import { base } from "viem/chains";
 import { useReadContract } from "wagmi";
@@ -26,14 +26,17 @@ import { ShimmerButton } from "@/components/ui/ShimmerButton";
 
 interface PayLinkData {
   linkId: string;
+  mode?: "request" | "disburse";
   title: string;
   amountINR: string;
+  amountINRRaw?: number;
   estimatedUsdc: string;
-  recipientUpi: string;
+  recipientUpi?: string;
   type: string;
   status: string;
   rate: string;
   payUrl: string;
+  qrCodeUrl?: string;
   createdAt: number;
   paidAt?: number;
   txHash?: string;
@@ -41,9 +44,22 @@ interface PayLinkData {
   webhookUrl?: string;
   p2pOrderId?: string;
   creatorWalletAddress?: string;
+  escrowAddress?: string;
+  hasPin?: boolean;
+  failedAttemptsRemaining?: number;
+  claimantUpi?: string;
+  claimedAt?: number;
 }
 
-type PayStep = "loading" | "details" | "qr" | "processing" | "success" | "error" | "expired";
+type PayStep =
+  | "loading"
+  | "details"
+  | "claim"
+  | "processing"
+  | "success"
+  | "error"
+  | "expired"
+  | "locked";
 
 export default function PayPage() {
   const params = useParams();
@@ -57,6 +73,21 @@ export default function PayPage() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<"wallet" | "qr">("wallet");
+
+  // Claim Mode State (mode === "disburse")
+  const [claimPin, setClaimPin] = useState("");
+  const [showPin, setShowPin] = useState(false);
+  const [claimUpi, setClaimUpi] = useState("");
+  const [isClaiming, setIsClaiming] = useState(false);
+  const [claimAttemptsRemaining, setClaimAttemptsRemaining] = useState<number>(5);
+
+  // Direct QR Crypto Deposit State (mode === "request" Tab 2)
+  const [ephemeralDepositAddress, setEphemeralDepositAddress] = useState<string | null>(null);
+  const [ephemeralSessionId, setEphemeralSessionId] = useState<string | null>(null);
+  const [isCreatingDeposit, setIsCreatingDeposit] = useState(false);
+  const [customRefundAddress, setCustomRefundAddress] = useState("");
+  const [depositResult, setDepositResult] = useState<any | null>(null);
+  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Read live USDC balance of the active wallet on Base
   const { data: rawBal, refetch: refetchBal } = useReadContract({
@@ -75,44 +106,62 @@ export default function PayPage() {
   const usdcAmount = linkData ? parseFloat(linkData.estimatedUsdc.replace(/[^0-9.]/g, "")) || 0 : 0;
   const isBalanceSufficient = availableUsdc >= usdcAmount;
 
-  // Fetch Pay Link data
-  useEffect(() => {
+  // Fetch Pay Link Data
+  const fetchLink = useCallback(async () => {
     if (!linkId) return;
+    try {
+      const res = await fetch(`/api/v1/paylinks?id=${linkId}`);
+      const data = await res.json();
 
-    const fetchLink = async () => {
-      try {
-        const res = await fetch(`/api/v1/paylinks?id=${linkId}`);
-        const data = await res.json();
-
-        if (!res.ok || !data.success) {
-          setError(data.error || "Pay link not found");
-          setStep("error");
-          return;
-        }
-
-        if (data.status === "PAID") {
-          setLinkData(data);
-          setTxHash(data.txHash);
-          setStep("success");
-          return;
-        }
-
-        if (data.status === "EXPIRED") {
-          setLinkData(data);
-          setStep("expired");
-          return;
-        }
-
-        setLinkData(data);
-        setStep("details");
-      } catch (err: any) {
-        setError(err.message || "Failed to load payment details");
+      if (!res.ok || !data.success) {
+        setError(data.error || "Pay link not found");
         setStep("error");
+        return;
       }
-    };
 
-    fetchLink();
+      setLinkData(data);
+      if (data.failedAttemptsRemaining !== undefined) {
+        setClaimAttemptsRemaining(data.failedAttemptsRemaining);
+      }
+
+      // Check Status
+      if (data.status === "PIN_LOCKED" || (data.failedAttemptsRemaining !== undefined && data.failedAttemptsRemaining <= 0)) {
+        setStep("locked");
+        return;
+      }
+
+      if (data.status === "PAID" && data.type !== "reusable") {
+        setTxHash(data.txHash || null);
+        setStep("success");
+        return;
+      }
+
+      if (data.status === "EXPIRED" || data.status === "CANCELLED" || data.status === "REFUNDED") {
+        setStep("expired");
+        return;
+      }
+
+      if (data.mode === "disburse") {
+        setStep("claim");
+      } else {
+        setStep("details");
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to load payment details");
+      setStep("error");
+    }
   }, [linkId]);
+
+  useEffect(() => {
+    fetchLink();
+  }, [fetchLink]);
+
+  // Clean up polling timer
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
+  }, []);
 
   const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
@@ -120,7 +169,63 @@ export default function PayPage() {
     setTimeout(() => setCopied(false), 2000);
   }, []);
 
-  // Handle wallet payment on Base
+  // ────────────────── Tab 2: Initialize Real Crypto QR Deposit Address ──────────────────
+  const initCryptoDeposit = async () => {
+    if (ephemeralDepositAddress || isCreatingDeposit || !linkData) return;
+    setIsCreatingDeposit(true);
+    try {
+      const inrRaw = linkData.amountINRRaw || Number(linkData.amountINR.replace(/[^0-9.]/g, ""));
+      const targetRefund = customRefundAddress.trim() || activeAddress || undefined;
+
+      const res = await fetch("/api/v1/payin-sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipientUpi: linkData.recipientUpi,
+          amountINR: inrRaw,
+          webhookUrl: linkData.webhookUrl,
+          refundAddress: targetRefund,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success && data.payinAddress) {
+        setEphemeralDepositAddress(data.payinAddress);
+        setEphemeralSessionId(data.sessionId);
+
+        // Start background polling for on-chain deposit detection
+        if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+        pollTimerRef.current = setInterval(async () => {
+          try {
+            const checkRes = await fetch(`/api/v1/payin-sessions?id=${data.sessionId}`);
+            const checkData = await checkRes.json();
+            if (checkData.success) {
+              if (
+                checkData.status === "REFUNDED_TO_USER" ||
+                checkData.status === "STORED_IN_REFUND_WALLET" ||
+                checkData.status === "REJECTED_UNDER_MINIMUM"
+              ) {
+                if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+                setDepositResult(checkData);
+                setStep("error");
+              } else if (checkData.status === "SETTLED" || checkData.status === "ORDER_PLACED") {
+                if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+                setDepositResult(checkData);
+                setTxHash(checkData.txHash || checkData.completedTxHash || null);
+                setStep("success");
+              }
+            }
+          } catch {}
+        }, 3500);
+      }
+    } catch (err) {
+      console.warn("[PayPage] Failed to init ephemeral crypto deposit:", err);
+    } finally {
+      setIsCreatingDeposit(false);
+    }
+  };
+
+  // ────────────────── Mode 1: 1-Click Connected Wallet Payment ──────────────────
   const handleWalletPay = async () => {
     if (!linkData) return;
 
@@ -163,15 +268,12 @@ export default function PayPage() {
       const feeWei = usdcWei / 100n;
       const principalWei = usdcWei - feeWei;
 
-      // Fee goes to ZkPay Treasury
       const feeData = encodeFunctionData({
         abi: ERC20_ABI,
         functionName: "transfer",
         args: [CONTRACTS.TREASURY, feeWei],
       });
 
-      // If creator specified an on-chain Base wallet, principal goes directly to merchant wallet.
-      // Otherwise, approve P2P Diamond for protocol settlement.
       const hasDirectMerchantWallet =
         linkData.creatorWalletAddress &&
         linkData.creatorWalletAddress.startsWith("0x") &&
@@ -189,7 +291,6 @@ export default function PayPage() {
       });
 
       if (hasDirectMerchantWallet) {
-        // Direct crypto transfer to merchant wallet
         calls.push({
           to: CONTRACTS.USDC as `0x${string}`,
           data: encodeFunctionData({
@@ -200,7 +301,6 @@ export default function PayPage() {
           value: 0n,
         });
       } else {
-        // P2P protocol UPI offramp settlement
         const priceCfg = await getOfframpPrice("INR");
         const liveSellPrice = priceCfg?.sellPrice || parseUnits(linkData.rate || "90", 6);
 
@@ -261,7 +361,6 @@ export default function PayPage() {
           const receipt = await client.waitForTransactionReceipt({ hash: txH as `0x${string}` });
           parsedOrderId = await parseOrderIdFromReceipt(receipt, activeAddress);
           if (parsedOrderId) {
-            // Asynchronously wait for match and deliver UPI payout address to merchant
             (async () => {
               try {
                 for (let i = 0; i < 40; i++) {
@@ -270,7 +369,7 @@ export default function PayPage() {
                     if (smartClient) {
                       await sendPayoutAddress(smartClient as any, {
                         orderId: parsedOrderId!,
-                        paymentAddress: linkData.recipientUpi,
+                        paymentAddress: linkData.recipientUpi || "",
                         merchantPublicKey: currentOrder.pubkey,
                       });
                     }
@@ -280,7 +379,7 @@ export default function PayPage() {
                   await new Promise((r) => setTimeout(r, 3000));
                 }
               } catch (deliverErr) {
-                console.warn("[PayPage] UPI payout delivery error:", deliverErr);
+                console.warn("[PayPage] UPI payout delivery warning:", deliverErr);
               }
             })();
           }
@@ -289,7 +388,7 @@ export default function PayPage() {
         }
       }
 
-      // Record transaction in user history
+      // Record transaction in history
       const parsedInr = parseFloat(linkData.amountINR.replace(/[^0-9.]/g, "")) || 0;
       saveTransaction({
         hash: txH,
@@ -298,13 +397,13 @@ export default function PayPage() {
         amountINR: parsedInr,
         amountUSDC: targetUsdc,
         fee: targetUsdc * 0.01,
-        recipient: linkData.recipientUpi,
+        recipient: linkData.recipientUpi || "Merchant",
         orderId: parsedOrderId ? parsedOrderId.toString() : undefined,
         network: "Base Mainnet",
         timestamp: Date.now(),
       });
 
-      // Confirm settlement with on-chain transaction hash and orderId
+      // Confirm settlement with PATCH
       try {
         await fetch("/api/v1/paylinks", {
           method: "PATCH",
@@ -317,7 +416,7 @@ export default function PayPage() {
           }),
         });
       } catch (confirmErr) {
-        console.warn("[PayPage] Auto-confirm error:", confirmErr);
+        console.warn("[PayPage] Auto-confirm warning:", confirmErr);
       }
 
       refetchBal?.();
@@ -330,9 +429,67 @@ export default function PayPage() {
     }
   };
 
+  // ────────────────── Mode 2: Claimable Escrow Disbursement (PIN + UPI) ──────────────────
+  const handleClaim = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!claimPin || !/^\d{4}$/.test(claimPin.trim())) {
+      setError("Please enter a valid 4-digit numeric PIN.");
+      return;
+    }
+
+    const cleanUpi = claimUpi.trim().toLowerCase();
+    if (!cleanUpi || !cleanUpi.includes("@")) {
+      setError("Please enter a valid recipient UPI ID (e.g. name@okaxis).");
+      return;
+    }
+
+    try {
+      setIsClaiming(true);
+      setError(null);
+
+      const res = await fetch("/api/v1/paylinks/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          linkId,
+          pin: claimPin.trim(),
+          recipientUpi: cleanUpi,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        if (data.failedAttemptsRemaining !== undefined) {
+          setClaimAttemptsRemaining(data.failedAttemptsRemaining);
+        }
+        if (data.status === "PIN_LOCKED" || (data.failedAttemptsRemaining !== undefined && data.failedAttemptsRemaining <= 0)) {
+          setStep("locked");
+          return;
+        }
+        throw new Error(data.error || "Failed to claim payment. Please check your PIN.");
+      }
+
+      setTxHash(data.txHash || null);
+      setLinkData((prev) => prev ? { ...prev, claimantUpi: cleanUpi, status: "PAID" } : null);
+      setStep("success");
+    } catch (claimErr: any) {
+      setError(claimErr.message || "Failed to claim payment.");
+    } finally {
+      setIsClaiming(false);
+    }
+  };
+
+  // EIP-681 Base USDC URI for Mobile Wallets (Metamask / Phantom / Coinbase)
+  const usdcTargetAmount = linkData ? parseFloat(linkData.estimatedUsdc.replace(/[^0-9.]/g, "")) || 0 : 0;
+  const usdcWeiUnits = parseUnits(usdcTargetAmount.toFixed(6), 6).toString();
+  const eip681DepositUri = ephemeralDepositAddress
+    ? `ethereum:${CONTRACTS.USDC}@8453/transfer?address=${ephemeralDepositAddress}&uint256=${usdcWeiUnits}`
+    : "";
+
   return (
     <div className="min-h-screen bg-[#131315] text-[#e5e2e3] font-body-md flex flex-col justify-between p-4 md:p-8 relative overflow-hidden selection:bg-[#c0c6de]/30">
-      {/* Ambient Radial Mesh (Zero GPU filter overhead) */}
+      {/* Ambient Radial Mesh */}
       <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(192,198,222,0.05),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(185,199,224,0.05),transparent_50%)]" />
 
       {/* Top Header */}
@@ -343,10 +500,10 @@ export default function PayPage() {
           </div>
           <div>
             <h1 className="text-base font-bold tracking-tight text-[#e5e2e3] leading-none">
-              ZkPay <span className="text-[#c0c6de] font-normal">Checkout</span>
+              ZkPay <span className="text-[#c0c6de] font-normal">{linkData?.mode === "disburse" ? "Payout" : "Checkout"}</span>
             </h1>
             <span className="font-label-caps text-[8px] text-[#c6c6cd]/60 tracking-[0.25em] font-bold uppercase">
-              DECENTRALIZED SETTLEMENT
+              {linkData?.mode === "disburse" ? "PIN-SECURED ESCROW" : "DECENTRALIZED SETTLEMENT"}
             </span>
           </div>
         </div>
@@ -377,30 +534,28 @@ export default function PayPage() {
                 >
                   <div className="w-10 h-10 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin" />
                   <p className="font-label-caps text-[10px] text-[#c6c6cd] tracking-[0.25em]">
-                    CONNECTING TO BASE NETWORK...
+                    VERIFYING BASE ESCROW...
                   </p>
                 </motion.div>
               )}
 
-              {/* ─── 2. Invoice Details View ─── */}
-              {step === "details" && linkData && (
+              {/* ─── 2. Invoice Checkout Mode (mode === "request") ─── */}
+              {step === "details" && linkData && linkData.mode !== "disburse" && (
                 <motion.div
                   key="details"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
                 >
-                  {/* Category Header */}
                   <div className="flex items-center justify-between mb-4">
                     <span className="font-label-caps text-[#c0c6de] text-[10px] tracking-[0.25em] font-bold">
-                      OFFICIAL INVOICE
+                      {linkData.type === "reusable" ? "REUSABLE INVOICE" : "OFFICIAL INVOICE"}
                     </span>
                     <span className="font-mono text-xs text-[#c6c6cd]/60 px-2 py-0.5 rounded bg-white/5 border border-white/10">
                       {linkData.linkId}
                     </span>
                   </div>
 
-                  {/* Invoice Title & Payee */}
                   <h2 className="text-2xl font-bold text-[#e5e2e3] tracking-tight mb-1">
                     {linkData.title}
                   </h2>
@@ -430,7 +585,10 @@ export default function PayPage() {
                     </button>
 
                     <button
-                      onClick={() => setActiveTab("qr")}
+                      onClick={() => {
+                        setActiveTab("qr");
+                        initCryptoDeposit();
+                      }}
                       className={`relative py-2.5 rounded-lg text-xs font-label-caps tracking-[0.15em] font-bold transition-all ${
                         activeTab === "qr" ? "text-[#131315]" : "text-[#c6c6cd] hover:text-white"
                       }`}
@@ -449,10 +607,9 @@ export default function PayPage() {
                     </button>
                   </div>
 
-                  {/* Tab 1: 1-Click Wallet Checkout */}
                   {activeTab === "wallet" ? (
+                    /* Tab 1: 1-Click Connected Wallet */
                     <div className="space-y-6">
-                      {/* Amount Hero Card */}
                       <div className="p-6 rounded-2xl bg-white/[0.03] border border-white/15">
                         <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold block mb-2">
                           PAYABLE FIAT TOTAL
@@ -470,7 +627,6 @@ export default function PayPage() {
                         </div>
                       </div>
 
-                      {/* Active Account Status & Live Balance */}
                       {authenticated && (
                         <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-xs">
                           <div className="flex items-center gap-2">
@@ -489,46 +645,6 @@ export default function PayPage() {
                             <span className={`font-mono text-xs font-semibold ${isBalanceSufficient ? "text-emerald-400" : "text-amber-400"}`}>
                               ${availableUsdc.toFixed(2)} USDC
                             </span>
-                            {activeAddress && (
-                              <button
-                                type="button"
-                                onClick={() => copyToClipboard(activeAddress)}
-                                title="Copy wallet address to fund"
-                                className="text-[#909097] hover:text-white transition-colors"
-                              >
-                                <span className="material-symbols-outlined text-xs">
-                                  {copied ? "check" : "content_copy"}
-                                </span>
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Insufficient Balance Alert */}
-                      {authenticated && !isBalanceSufficient && usdcAmount > 0 && (
-                        <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/30 space-y-2.5 text-xs text-amber-200">
-                          <div className="flex items-start gap-2">
-                            <span className="material-symbols-outlined text-base text-amber-400 shrink-0 mt-0.5">warning</span>
-                            <div>
-                              <p className="font-semibold text-amber-300">Insufficient USDC Balance</p>
-                              <p className="text-[11px] text-amber-200/80 mt-0.5 leading-relaxed">
-                                Your wallet has <span className="font-mono font-bold text-white">${availableUsdc.toFixed(2)} USDC</span>, but this invoice requires <span className="font-mono font-bold text-white">${usdcAmount.toFixed(2)} USDC</span> on Base.
-                              </p>
-                            </div>
-                          </div>
-                          <div className="pt-2 border-t border-amber-500/20 flex items-center justify-between text-[11px]">
-                            <span className="text-amber-200/70 font-mono truncate max-w-[200px]">
-                              {activeAddress}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => activeAddress && copyToClipboard(activeAddress)}
-                              className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-medium transition-colors inline-flex items-center gap-1 shrink-0"
-                            >
-                              <span className="material-symbols-outlined text-xs">{copied ? "check" : "content_copy"}</span>
-                              <span>{copied ? "Copied" : "Copy Address to Fund"}</span>
-                            </button>
                           </div>
                         </div>
                       )}
@@ -560,42 +676,78 @@ export default function PayPage() {
                       </ShimmerButton>
                     </div>
                   ) : (
-                    /* Tab 2: Direct QR / Transfer */
+                    /* Tab 2: Real Crypto QR / Transfer */
                     <div className="space-y-6 text-center">
                       <div className="flex justify-center">
-                        <div className="p-3 bg-white rounded-2xl shadow-2xl">
-                          <img
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(linkData.payUrl)}`}
-                            alt="Payment QR"
-                            className="w-44 h-44"
-                          />
+                        <div className="p-3 bg-white rounded-2xl shadow-2xl relative">
+                          {isCreatingDeposit ? (
+                            <div className="w-44 h-44 flex flex-col items-center justify-center gap-2">
+                              <div className="w-8 h-8 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
+                              <span className="text-[10px] text-slate-600 font-mono">Generating Address...</span>
+                            </div>
+                          ) : (
+                            <img
+                              src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
+                                eip681DepositUri || ephemeralDepositAddress || linkData.payUrl
+                              )}`}
+                              alt="Payment Deposit QR"
+                              className="w-44 h-44"
+                            />
+                          )}
                         </div>
                       </div>
 
-                      <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-2 text-xs font-mono text-left">
+                      <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5 text-xs font-mono text-left">
                         <div className="flex justify-between">
-                          <span className="text-[#909097]">Amount</span>
+                          <span className="text-[#909097]">Send Exact</span>
                           <span className="text-[#e5e2e3] font-bold">{linkData.estimatedUsdc}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-[#909097]">Network</span>
-                          <span className="text-[#c0c6de]">Base Mainnet (8453)</span>
+                          <span className="text-[#c0c6de]">Base Mainnet (USDC)</span>
+                        </div>
+                        <div className="flex justify-between text-[11px] pt-1 border-t border-white/5">
+                          <span className="text-[#909097]">Tolerance Buffer</span>
+                          <span className="text-emerald-400">Min $0.95 USDC (No Fine)</span>
+                        </div>
+                        {ephemeralDepositAddress && (
+                          <div className="pt-2 border-t border-white/10">
+                            <span className="text-[10px] text-[#909097] block mb-1">Deposit Address:</span>
+                            <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-black/40 border border-white/10">
+                              <span className="truncate text-[11px] text-[#e5e2e3]">{ephemeralDepositAddress}</span>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(ephemeralDepositAddress)}
+                                className="text-[#c0c6de] hover:text-white shrink-0 text-xs flex items-center gap-1"
+                              >
+                                <span className="material-symbols-outlined text-xs">{copied ? "check" : "content_copy"}</span>
+                                <span>{copied ? "Copied" : "Copy"}</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        <div className="pt-2 border-t border-white/10">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] text-[#909097]">Refund Address (Optional):</span>
+                            <span className="text-[9px] text-[#606067]">Auto-detected from sender if empty</span>
+                          </div>
+                          <input
+                            type="text"
+                            placeholder={activeAddress ? `${activeAddress.slice(0, 10)}...${activeAddress.slice(-6)} (Connected)` : "0x... (Personal Base Wallet)"}
+                            value={customRefundAddress}
+                            onChange={(e) => setCustomRefundAddress(e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-[#e5e2e3] placeholder-[#606067] focus:outline-none focus:border-cyan-400/50"
+                          />
                         </div>
                       </div>
 
-                      <button
-                        onClick={() => copyToClipboard(linkData.payUrl)}
-                        className="w-full py-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-[#e5e2e3] font-bold text-xs tracking-[0.2em] font-label-caps uppercase transition-all flex items-center justify-center gap-2"
-                      >
-                        <span className="material-symbols-outlined text-sm">
-                          {copied ? "check" : "content_copy"}
-                        </span>
-                        <span>{copied ? "COPIED PAYMENT LINK" : "COPY PAYMENT LINK"}</span>
-                      </button>
+                      <div className="flex items-center justify-center gap-2 text-xs text-[#909097] animate-pulse">
+                        <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                        <span>Listening for deposit on Base... Auto-completes when detected.</span>
+                      </div>
                     </div>
                   )}
 
-                  {/* Trust Footer */}
                   <div className="flex items-center justify-center gap-2 mt-8 pt-4 border-t border-white/10">
                     <span className="material-symbols-outlined text-sm text-[#c0c6de]">verified_user</span>
                     <span className="font-label-caps text-[9px] text-[#909097] tracking-[0.25em]">
@@ -605,7 +757,120 @@ export default function PayPage() {
                 </motion.div>
               )}
 
-              {/* ─── 3. Processing State ─── */}
+              {/* ─── 3. Claimable Disbursement Mode (mode === "disburse") ─── */}
+              {step === "claim" && linkData && (
+                <motion.div
+                  key="claim"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="font-label-caps text-emerald-400 text-[10px] tracking-[0.25em] font-bold">
+                      CLAIMABLE ESCROW PAYOUT
+                    </span>
+                    <span className="font-mono text-xs text-[#c6c6cd]/60 px-2 py-0.5 rounded bg-white/5 border border-white/10">
+                      {linkData.linkId}
+                    </span>
+                  </div>
+
+                  <h2 className="text-2xl font-bold text-[#e5e2e3] tracking-tight mb-1">
+                    {linkData.title}
+                  </h2>
+                  <p className="text-xs text-[#c6c6cd]/80 mb-6">
+                    Enter your recipient UPI ID and the 4-digit PIN provided by the sender.
+                  </p>
+
+                  {/* Amount Display */}
+                  <div className="p-6 rounded-2xl bg-white/[0.03] border border-white/15 mb-6 text-center">
+                    <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold block mb-1">
+                      YOU RECEIVE
+                    </span>
+                    <div className="text-4xl md:text-5xl font-extrabold tracking-tighter text-[#e5e2e3] mb-2">
+                      {linkData.amountINR}
+                    </div>
+                    <span className="text-xs text-emerald-400 font-mono font-medium">
+                      ✓ Pre-funded with {linkData.estimatedUsdc} on Base
+                    </span>
+                  </div>
+
+                  <form onSubmit={handleClaim} className="space-y-5">
+                    {/* UPI Input */}
+                    <div>
+                      <label className="block text-xs font-label-caps tracking-[0.15em] text-[#c6c6cd] font-semibold mb-2">
+                        YOUR RECIPIENT UPI ID
+                      </label>
+                      <input
+                        type="text"
+                        value={claimUpi}
+                        onChange={(e) => setClaimUpi(e.target.value.toLowerCase().trim())}
+                        placeholder="e.g. yourname@okaxis / 9876543210@paytm"
+                        required
+                        className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-[#e5e2e3] placeholder-[#909097] text-sm font-mono focus:outline-none focus:border-[#c0c6de] transition-colors"
+                      />
+                    </div>
+
+                    {/* 4-Digit PIN Input */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-xs font-label-caps tracking-[0.15em] text-[#c6c6cd] font-semibold">
+                          4-DIGIT SECURITY PIN
+                        </label>
+                        <span className="text-[10px] text-amber-400 font-mono">
+                          {claimAttemptsRemaining} attempts remaining
+                        </span>
+                      </div>
+
+                      <div className="relative">
+                        <input
+                          type={showPin ? "text" : "password"}
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength={4}
+                          value={claimPin}
+                          onChange={(e) => setClaimPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                          placeholder="••••"
+                          required
+                          className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-center text-2xl font-mono tracking-[0.5em] text-[#e5e2e3] placeholder-[#909097] focus:outline-none focus:border-[#c0c6de] transition-colors"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPin(!showPin)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#909097] hover:text-white text-xs font-mono"
+                        >
+                          <span className="material-symbols-outlined text-sm">
+                            {showPin ? "visibility_off" : "visibility"}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {error && (
+                      <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-500/30 text-xs text-[#ffb4ab] flex items-start gap-2">
+                        <span className="material-symbols-outlined text-sm text-red-400 shrink-0 mt-0.5">error</span>
+                        <span className="leading-relaxed">{error}</span>
+                      </div>
+                    )}
+
+                    <ShimmerButton
+                      type="submit"
+                      disabled={isClaiming || claimPin.length !== 4 || !claimUpi}
+                      className={`w-full py-4 text-xs ${
+                        isClaiming || claimPin.length !== 4 || !claimUpi ? "opacity-60 cursor-not-allowed" : ""
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-base">
+                        {isClaiming ? "hourglass_top" : "lock_open"}
+                      </span>
+                      <span>
+                        {isClaiming ? "VERIFYING & CLAIMING..." : `CLAIM ${linkData.amountINR} NOW`}
+                      </span>
+                    </ShimmerButton>
+                  </form>
+                </motion.div>
+              )}
+
+              {/* ─── 4. Processing State ─── */}
               {step === "processing" && (
                 <motion.div
                   key="processing"
@@ -621,13 +886,13 @@ export default function PayPage() {
                       className="font-label-caps text-xs tracking-[0.25em] font-bold mb-1.5 block"
                     />
                     <p className="text-xs text-[#909097]">
-                      Please confirm the transaction signature in your wallet...
+                      Processing transaction and delivering fiat via UPI...
                     </p>
                   </div>
                 </motion.div>
               )}
 
-              {/* ─── 4. Success Receipt ─── */}
+              {/* ─── 5. Success Receipt ─── */}
               {step === "success" && (
                 <motion.div
                   key="success"
@@ -646,8 +911,33 @@ export default function PayPage() {
                     Payment Successful
                   </h3>
                   <p className="text-xs text-[#909097] mb-6">
-                    {linkData?.amountINR} delivered to {linkData?.recipientUpi} via UPI
+                    {depositResult?.fiatAmount || linkData?.amountINR} delivered to {linkData?.claimantUpi || linkData?.recipientUpi} via UPI
                   </p>
+
+                  {/* Discrepancy Notifications */}
+                  {depositResult?.discrepancyType === "UNDERPAID_ACCEPTED" && (
+                    <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 text-left mb-6">
+                      <div className="flex items-center gap-1.5 font-bold mb-1">
+                        <span className="material-symbols-outlined text-sm text-amber-400">info</span>
+                        <span>Partial Payment Accepted (No Fine)</span>
+                      </div>
+                      <p className="text-[11px] text-amber-200/80 leading-relaxed">
+                        Received ${depositResult.receivedUsdc} USDC (expected {depositResult.expectedAmountUsdc}). Within tolerance margin — pro-rated {depositResult.fiatAmount} was processed directly to UPI!
+                      </p>
+                    </div>
+                  )}
+
+                  {depositResult?.discrepancyType === "OVERPAID_ACCEPTED" && (
+                    <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-200 text-left mb-6">
+                      <div className="flex items-center gap-1.5 font-bold mb-1">
+                        <span className="material-symbols-outlined text-sm text-emerald-400">celebration</span>
+                        <span>Overpayment Processed</span>
+                      </div>
+                      <p className="text-[11px] text-emerald-200/80 leading-relaxed">
+                        Received ${depositResult.receivedUsdc} USDC (expected {depositResult.expectedAmountUsdc}). Full bonus amount of {depositResult.fiatAmount} was delivered to UPI!
+                      </p>
+                    </div>
+                  )}
 
                   {txHash && (
                     <a
@@ -672,23 +962,113 @@ export default function PayPage() {
                 </motion.div>
               )}
 
-              {/* ─── 5. Error State ─── */}
+              {/* ─── 6. Locked State (Failed PIN attempts >= 5) ─── */}
+              {step === "locked" && (
+                <motion.div
+                  key="locked"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="text-center py-12"
+                >
+                  <div className="w-16 h-16 rounded-full bg-red-950/40 border border-red-500/30 flex items-center justify-center mx-auto mb-4 text-red-400">
+                    <span className="material-symbols-outlined text-3xl">lock</span>
+                  </div>
+                  <h3 className="text-xl font-bold text-[#e5e2e3] mb-2">
+                    Link Locked
+                  </h3>
+                  <p className="text-xs text-[#c6c6cd] max-w-xs mx-auto mb-6">
+                    This pay link has exceeded the maximum limit of 5 incorrect PIN attempts. For security, access has been permanently locked. Please contact the sender.
+                  </p>
+                </motion.div>
+              )}
+
+              {/* ─── 7. Error State (Including Sub-Minimum Deposits) ─── */}
               {step === "error" && (
                 <motion.div
                   key="error"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
+                  className="text-center py-8"
+                >
+                  {depositResult?.discrepancyType === "UNDERPAID_REJECTED" ? (
+                    <div className="space-y-4">
+                      <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto text-amber-400">
+                        <span className="material-symbols-outlined text-3xl">warning</span>
+                      </div>
+                      <h3 className="text-2xl font-bold text-[#e5e2e3]">
+                        Deposit Under Minimum
+                      </h3>
+                      <p className="text-xs text-[#c6c6cd] max-w-xs mx-auto">
+                        Deposit of <strong>${depositResult.receivedUsdc} USDC</strong> is below the minimum threshold ($0.95 USDC).
+                      </p>
+
+                      <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 text-xs font-mono text-left space-y-2 max-w-sm mx-auto">
+                        <div className="flex justify-between">
+                          <span className="text-[#909097]">Received:</span>
+                          <span className="text-white">${depositResult.receivedUsdc} USDC</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#909097]">Processing Fine:</span>
+                          <span className="text-red-400">-${depositResult.underpaidPenaltyUsdc} USDC</span>
+                        </div>
+                        <div className="flex justify-between pt-2 border-t border-white/10">
+                          <span className="text-[#909097]">Refund Status:</span>
+                          <span className="text-cyan-400">{depositResult.refundStatus || "REFUNDED"}</span>
+                        </div>
+                        {depositResult.refundAddress && (
+                          <div className="text-[10px] text-[#909097] truncate">
+                            To: {depositResult.refundAddress}
+                          </div>
+                        )}
+                      </div>
+
+                      {depositResult.refundTxHash && (
+                        <a
+                          href={`https://basescan.org/tx/${depositResult.refundTxHash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/5 border border-white/15 text-xs font-mono text-cyan-400 hover:text-white transition-colors"
+                        >
+                          <span>View Refund on Basescan</span>
+                          <span className="material-symbols-outlined text-sm">open_in_new</span>
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="w-16 h-16 rounded-full bg-red-950/40 border border-red-500/30 flex items-center justify-center mx-auto mb-4 text-[#ffb4ab]">
+                        <span className="material-symbols-outlined text-3xl">error</span>
+                      </div>
+                      <h3 className="text-xl font-bold text-[#e5e2e3] mb-2">
+                        Payment Error
+                      </h3>
+                      <p className="text-xs text-[#c6c6cd] max-w-xs mx-auto">
+                        {error || "We could not locate this payment invoice."}
+                      </p>
+                    </>
+                  )}
+                </motion.div>
+              )}
+
+              {/* ─── 8. Expired State ─── */}
+              {step === "expired" && (
+                <motion.div
+                  key="expired"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
                   className="text-center py-12"
                 >
-                  <div className="w-16 h-16 rounded-full bg-red-950/40 border border-red-500/30 flex items-center justify-center mx-auto mb-4 text-[#ffb4ab]">
-                    <span className="material-symbols-outlined text-3xl">error</span>
+                  <div className="w-16 h-16 rounded-full bg-amber-950/40 border border-amber-500/30 flex items-center justify-center mx-auto mb-4 text-amber-400">
+                    <span className="material-symbols-outlined text-3xl">timer_off</span>
                   </div>
                   <h3 className="text-xl font-bold text-[#e5e2e3] mb-2">
-                    Payment Error
+                    Link Expired or Refunded
                   </h3>
                   <p className="text-xs text-[#c6c6cd] max-w-xs mx-auto">
-                    {error || "We could not locate this payment invoice."}
+                    This payment link is no longer active.
                   </p>
                 </motion.div>
               )}
@@ -697,7 +1077,7 @@ export default function PayPage() {
         </motion.div>
       </main>
 
-      {/* Bottom Sticky Legal / Info */}
+      {/* Bottom Legal / Info */}
       <footer className="max-w-[520px] w-full mx-auto text-center py-4 relative z-20">
         <p className="text-[10px] text-[#909097] font-mono">
           Powered by ZkPay Engine • Zero-Knowledge Crypto-to-Fiat Protocol

@@ -1,24 +1,36 @@
 import { corsJson, corsOptions } from "@/lib/server/cors";
-import { createPayLink, findPayLinkByTxHash, getPayLink, updatePayLink } from "@/lib/server/payStore";
-import { dispatchWebhook, isSafeWebhookUrl, isSafeWebhookUrlAsync } from "@/lib/server/webhooks";
+import {
+  createPayLink,
+  findPayLinkByTxHash,
+  getPayLink,
+  updatePayLink,
+  listPayLinks,
+  sanitizePayLink,
+  encryptKey,
+  PayLinkMode,
+} from "@/lib/server/payStore";
+import { dispatchWebhook, isSafeWebhookUrlAsync } from "@/lib/server/webhooks";
 import { resolvePublicApiAuth } from "@/lib/server/publicApiAuth";
 import { enforceRateLimit } from "@/lib/server/rateLimit";
 import {
   decodeEventLog,
   isHex,
+  parseAbi,
   parseAbiItem,
   parseUnits,
+  formatUnits,
 } from "viem";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { CONTRACTS } from "@/lib/constants";
 import { getResilientPublicClientForChain } from "@/lib/server/rpcConfig";
+import { getLiveFiatRate } from "@/lib/server/p2pRates";
 
 export const dynamic = "force-dynamic";
 
 const PLATFORM_FEE_BPS = 100;
 const PUBLIC_APP_BASE_URL = process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || "https://zkpay.top";
 const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
-
-import { getLiveFiatRate } from "@/lib/server/p2pRates";
+const ERC20_BAL_ABI = parseAbi(["function balanceOf(address owner) view returns (uint256)"]);
 
 function getPublicClient() {
   return getResilientPublicClientForChain("base");
@@ -51,16 +63,13 @@ function isSafeRedirectUrl(rawUrl: string): boolean {
 /**
  * POST /api/v1/paylinks
  *
- * Creates a shareable payment link.
- * Supports:
- *   - Authenticated merchant requests with x-api-key or Bearer token (tracks creator)
- *   - Authenticated user requests with Privy Bearer token (tracks creator)
- *   - Open low-friction requests from frontend app/website
+ * Creates a payment link:
+ * - mode: "request" (Default): Creator requests payment to their own UPI.
+ * - mode: "disburse": Creator pre-funds escrow with USDC and protects with 4-digit PIN.
  */
 export async function POST(req: Request) {
   try {
     const auth = await resolvePublicApiAuth(req);
-    // If credentials were provided but are invalid/expired, reject with 401
     if (auth.provided && !auth.ok) {
       return corsJson({ error: auth.error }, { status: auth.status || 401 });
     }
@@ -73,19 +82,15 @@ export async function POST(req: Request) {
     if (rateLimitResp) return rateLimitResp;
 
     const body = await req.json();
-    const title = (body.title || "ZkPay Payment").trim().slice(0, 100);
+    const mode: PayLinkMode = body.mode === "disburse" ? "disburse" : "request";
+    const title = (body.title || (mode === "disburse" ? "ZkPay Payout" : "ZkPay Payment")).trim().slice(0, 100);
     const amountINR = Number(body.amountINR || body.amount);
     const recipientUpi = (body.recipientUpi || body.upi || "").trim();
     const type = body.type === "reusable" ? "reusable" : "one_time";
     const webhookUrl = body.webhookUrl ? String(body.webhookUrl).trim() : undefined;
     const redirectUrl = body.redirectUrl ? String(body.redirectUrl).trim() : undefined;
-
-    if (!recipientUpi || !recipientUpi.includes("@")) {
-      return corsJson(
-        { error: "recipientUpi is required and must be a valid UPI ID (e.g. name@okaxis)." },
-        { status: 400, headers: rateLimit.headers }
-      );
-    }
+    const pin = body.pin ? String(body.pin).trim() : undefined;
+    const creatorRefundAddress = (body.creatorRefundAddress || auth.walletAddress || "").trim();
 
     if (!amountINR || amountINR <= 0) {
       return corsJson(
@@ -99,6 +104,23 @@ export async function POST(req: Request) {
         { error: "amountINR exceeds maximum single transaction limit of ₹8,500 (100 USDC no-KYC tier)." },
         { status: 400, headers: rateLimit.headers }
       );
+    }
+
+    if (mode === "request") {
+      if (!recipientUpi || !recipientUpi.includes("@")) {
+        return corsJson(
+          { error: "recipientUpi is required for request mode and must be a valid UPI ID (e.g. name@okaxis)." },
+          { status: 400, headers: rateLimit.headers }
+        );
+      }
+    } else {
+      // Disburse mode validation
+      if (!pin || !/^\d{4}$/.test(pin)) {
+        return corsJson(
+          { error: "PIN is required for claimable disbursement links and must be exactly 4 digits (e.g. 1234)." },
+          { status: 400, headers: rateLimit.headers }
+        );
+      }
     }
 
     // SSRF validation on webhook URL with DNS rebinding protection
@@ -139,11 +161,23 @@ export async function POST(req: Request) {
     const creatorWalletAddress = auth.walletAddress || auth.apiKeyRecord?.walletAddress;
     const apiKeyId = auth.apiKeyRecord?.id;
 
+    // In disburse mode: generate dedicated escrow address & encrypted key
+    let escrowAddress: string | undefined;
+    let encryptedEscrowKey: string | undefined;
+
+    if (mode === "disburse") {
+      const privKey = generatePrivateKey();
+      const account = privateKeyToAccount(privKey);
+      escrowAddress = account.address;
+      encryptedEscrowKey = encryptKey(privKey);
+    }
+
     const link = createPayLink({
+      mode,
       title,
       amountINR,
-      recipientUpi,
-      type,
+      recipientUpi: mode === "request" ? recipientUpi : undefined,
+      type: mode === "disburse" ? "one_time" : type, // Disburse links are single-claim
       webhookUrl,
       redirectUrl,
       estimatedUsdc: `${totalUsdc.toFixed(2)} USDC`,
@@ -151,6 +185,10 @@ export async function POST(req: Request) {
       creatorUserId,
       creatorWalletAddress,
       apiKeyId,
+      pin,
+      escrowAddress,
+      encryptedEscrowKey,
+      creatorRefundAddress: creatorRefundAddress || undefined,
     });
 
     const payUrl = `${getPublicBaseUrl()}/pay/${link.id}`;
@@ -160,6 +198,7 @@ export async function POST(req: Request) {
       {
         success: true,
         linkId: link.id,
+        mode: link.mode,
         title: link.title,
         payUrl,
         qrCodeUrl,
@@ -172,10 +211,12 @@ export async function POST(req: Request) {
         isSmallOrder,
         gasSponsorship: "Sponsored by ZkPay (Pimlico Paymaster)",
         rate: sellPrice.toFixed(2),
-        recipientUpi,
-        type,
+        recipientUpi: link.recipientUpi,
+        type: link.type,
         status: link.status,
         createdAt: link.createdAt,
+        escrowAddress: link.escrowAddress,
+        creatorSecret: link.creatorSecret, // Keep safe for refunds/unlocks
       },
       { headers: rateLimit.headers }
     );
@@ -186,44 +227,81 @@ export async function POST(req: Request) {
 }
 
 /**
- * GET /api/v1/paylinks?id=pl_abc123
+ * GET /api/v1/paylinks
+ * - If ?id=pl_xxx: Fetches a single link with public sanitized metadata
+ * - If no ?id: Authenticated list of creator's links
  */
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
-    if (!id) {
-      return corsJson({ error: "Missing 'id' parameter." }, { status: 400 });
+    // Case 1: Fetch single paylink by ID
+    if (id) {
+      const link = getPayLink(id);
+      if (!link) {
+        return corsJson({ error: "Pay link not found." }, { status: 404 });
+      }
+
+      // If disburse mode in AWAITING_FUNDING status, check on-chain if funds arrived
+      if (link.mode === "disburse" && link.status === "AWAITING_FUNDING" && link.escrowAddress) {
+        try {
+          const client = getPublicClient();
+          const targetUnits = parseUnits(Number(link.estimatedUsdc.replace(/[^0-9.]/g, "")).toFixed(6), 6);
+          const bal = (await client.readContract({
+            address: CONTRACTS.USDC as `0x${string}`,
+            abi: ERC20_BAL_ABI,
+            functionName: "balanceOf",
+            args: [link.escrowAddress as `0x${string}`],
+          })) as bigint;
+
+          if (bal >= (targetUnits * 98n) / 100n) {
+            updatePayLink(link.id, { status: "ACTIVE" });
+            link.status = "ACTIVE";
+          }
+        } catch (balErr) {
+          console.warn("[PayLinks] Escrow balance check warning:", balErr);
+        }
+      }
+
+      const payUrl = `${getPublicBaseUrl()}/pay/${link.id}`;
+      const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(payUrl)}`;
+      const sanitized = sanitizePayLink(link);
+
+      return corsJson({
+        success: true,
+        ...sanitized,
+        payUrl,
+        qrCodeUrl,
+        amountINR: `₹ ${link.amountINR.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
+        amountINRRaw: link.amountINR,
+      });
     }
 
-    const link = getPayLink(id);
-    if (!link) {
-      return corsJson({ error: "Pay link not found." }, { status: 404 });
+    // Case 2: List merchant links (authenticated)
+    const auth = await resolvePublicApiAuth(req);
+    if (!auth.ok) {
+      return corsJson({ error: "Authentication required to list pay links." }, { status: 401 });
     }
 
-    const payUrl = `${getPublicBaseUrl()}/pay/${link.id}`;
-    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(payUrl)}`;
+    const links = listPayLinks({
+      creatorUserId: auth.userId,
+      creatorWalletAddress: auth.walletAddress,
+      apiKeyId: auth.apiKeyRecord?.id,
+    });
+
+    const sanitizedList = links.map((l) => {
+      const payUrl = `${getPublicBaseUrl()}/pay/${l.id}`;
+      return {
+        ...sanitizePayLink(l),
+        payUrl,
+      };
+    });
 
     return corsJson({
       success: true,
-      linkId: link.id,
-      title: link.title,
-      payUrl,
-      qrCodeUrl,
-      amountINR: `₹ ${link.amountINR.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
-      amountINRRaw: link.amountINR,
-      estimatedUsdc: link.estimatedUsdc,
-      recipientUpi: link.recipientUpi,
-      type: link.type,
-      status: link.status,
-      rate: link.rate,
-      createdAt: link.createdAt,
-      paidAt: link.paidAt,
-      txHash: link.txHash,
-      p2pOrderId: link.p2pOrderId,
-      redirectUrl: link.redirectUrl,
-      creatorWalletAddress: link.creatorWalletAddress,
+      links: sanitizedList,
+      total: sanitizedList.length,
     });
   } catch (err: any) {
     console.error("[PayLinks] GET Error:", err);
@@ -263,7 +341,8 @@ export async function PATCH(req: Request) {
       return corsJson({ error: "Only PAID status transition is allowed on this endpoint." }, { status: 400 });
     }
 
-    if (existing.status === "PAID") {
+    // If one-time link is already PAID with same tx, return success
+    if (existing.type === "one_time" && existing.status === "PAID") {
       if (!txHash || existing.txHash?.toLowerCase() === String(txHash).toLowerCase()) {
         return corsJson({ success: true, link: existing });
       }
@@ -279,7 +358,7 @@ export async function PATCH(req: Request) {
     }
 
     const reused = findPayLinkByTxHash(txHash);
-    if (reused && reused.id !== id) {
+    if (reused && reused.id !== id && existing.type === "one_time") {
       return corsJson({ error: "This transaction hash has already been used for another pay link." }, { status: 409 });
     }
 
@@ -334,10 +413,14 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const updates: any = {
-      txHash,
+    // Reusable vs One-Time Updates
+    const isReusable = existing.type === "reusable";
+    const updates: Partial<typeof existing> = {
       paidAt: Date.now(),
-      status: "PAID",
+      txHash,
+      status: isReusable ? "ACTIVE" : "PAID",
+      totalPaidCount: (existing.totalPaidCount || 0) + 1,
+      totalVolumeINR: (existing.totalVolumeINR || 0) + existing.amountINR,
     };
 
     if (p2pOrderId) {
@@ -347,7 +430,7 @@ export async function PATCH(req: Request) {
     const updated = updatePayLink(id, updates);
 
     // Dispatch webhook if configured
-    if (existing.webhookUrl && updates.status === "PAID") {
+    if (existing.webhookUrl) {
       dispatchWebhook(existing.webhookUrl, {
         event: "paylink.paid",
         linkId: id,
@@ -368,6 +451,45 @@ export async function PATCH(req: Request) {
   } catch (err: any) {
     console.error("[PayLinks] PATCH Error:", err);
     return corsJson({ error: err.message || "Failed to update pay link" }, { status: 500 });
+  }
+}
+
+/**
+ * DELETE /api/v1/paylinks?id=pl_xxx
+ *
+ * Deactivates or cancels a pay link.
+ */
+export async function DELETE(req: Request) {
+  try {
+    const auth = await resolvePublicApiAuth(req);
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return corsJson({ error: "Missing 'id' parameter." }, { status: 400 });
+    }
+
+    const existing = getPayLink(id);
+    if (!existing) {
+      return corsJson({ error: "Pay link not found." }, { status: 404 });
+    }
+
+    // Check creator ownership
+    const isCreator =
+      auth.ok &&
+      ((existing.creatorUserId && existing.creatorUserId === auth.userId) ||
+        (existing.creatorWalletAddress && existing.creatorWalletAddress.toLowerCase() === auth.walletAddress?.toLowerCase()) ||
+        auth.isEnvKey);
+
+    if (!isCreator) {
+      return corsJson({ error: "Unauthorized to deactivate this pay link." }, { status: 403 });
+    }
+
+    const updated = updatePayLink(id, { status: "CANCELLED" });
+    return corsJson({ success: true, message: "Pay link cancelled.", link: updated });
+  } catch (err: any) {
+    console.error("[PayLinks] DELETE Error:", err);
+    return corsJson({ error: err.message || "Failed to delete pay link" }, { status: 500 });
   }
 }
 

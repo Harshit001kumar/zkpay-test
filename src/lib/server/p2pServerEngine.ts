@@ -6,6 +6,7 @@ import {
   http,
   fallback,
   parseAbi,
+  parseAbiItem,
   parseUnits,
   formatUnits,
   hexToSignature,
@@ -20,14 +21,20 @@ import {
   BASE_RPC_URLS,
   SUBGRAPH_URL,
   MIN_PAYMENT_USDC,
+  PAYMENT_TOLERANCE_USDC,
+  MIN_PROCESSABLE_USDC,
   UNDERPAID_PENALTY_USDC,
   RELAY_GAS_FEE_USDC,
   PLATFORM_FEE_BPS,
 } from "@/lib/constants";
 import {
   PayInSession,
+  PayLink,
+  DepositDiscrepancyType,
   updatePayInSession,
+  updatePayLink,
   getDecryptedPayinKey,
+  getDecryptedEscrowKey,
   acquireSessionSweepLock,
   releaseSessionSweepLock,
 } from "./payStore";
@@ -265,9 +272,9 @@ export async function evaluateAndProcessDeposit(session: PayInSession): Promise<
 
     const netAvailableUsdc = Number(formatUnits(remainingWei, 6));
 
-    // ── STEP 2: Underpaid Check (< 1.00 USDC Minimum) ──
-    if (netAvailableUsdc < MIN_PAYMENT_USDC) {
-      console.warn(`[P2PServerEngine] Session ${session.id} under minimum ($${netAvailableUsdc} < $${MIN_PAYMENT_USDC}). Processing rejection & penalty...`);
+    // ── STEP 2: Underpaid Check (< MIN_PROCESSABLE_USDC = 0.95 Minimum) ──
+    if (netAvailableUsdc < MIN_PROCESSABLE_USDC) {
+      console.warn(`[P2PServerEngine] Session ${session.id} under minimum ($${netAvailableUsdc} < $${MIN_PROCESSABLE_USDC}). Processing rejection & penalty...`);
 
       const penaltyUsdc = Math.min(UNDERPAID_PENALTY_USDC, netAvailableUsdc);
       const penaltyWei = parseUnits(penaltyUsdc.toFixed(6), 6);
@@ -286,23 +293,70 @@ export async function evaluateAndProcessDeposit(session: PayInSession): Promise<
         }
       }
 
+      // Resolve refund destination: check session.refundAddress or auto-detect payer from on-chain Transfer logs
+      let targetRefundAddress = session.refundAddress?.trim();
+      let detectedSender: string | undefined = undefined;
+
+      if (!targetRefundAddress || !/^0x[a-fA-F0-9]{40}$/.test(targetRefundAddress)) {
+        try {
+          const logs = await publicClient.getLogs({
+            address: USDC_ADDRESS,
+            event: parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)"),
+            args: { to: payinAddress },
+            fromBlock: "earliest",
+          });
+          if (logs && logs.length > 0) {
+            const lastLog = logs[logs.length - 1];
+            if (
+              lastLog.args.from &&
+              lastLog.args.from !== zeroAddress &&
+              lastLog.args.from.toLowerCase() !== payinAddress.toLowerCase()
+            ) {
+              detectedSender = getAddress(lastLog.args.from);
+              targetRefundAddress = detectedSender;
+              console.log(`[P2PServerEngine] Auto-detected on-chain payer for refund in ${session.id}: ${detectedSender}`);
+            }
+          }
+        } catch (logErr: any) {
+          console.warn(`[P2PServerEngine] Failed to auto-detect sender log for ${session.id}:`, logErr?.message);
+        }
+      }
+
       // Route remaining refund
       if (refundWei > 0n) {
-        if (session.refundAddress && /^0x[a-fA-F0-9]{40}$/.test(session.refundAddress.trim())) {
-          const dest = getAddress(session.refundAddress.trim() as `0x${string}`);
+        if (targetRefundAddress && /^0x[a-fA-F0-9]{40}$/.test(targetRefundAddress)) {
+          const dest = getAddress(targetRefundAddress as `0x${string}`);
           const refundTx = await relayEip3009Transfer({
             fromAccount: ephemeralAccount,
             toAddress: dest,
             amountWei: refundWei,
           });
-          return updatePayInSession(session.id, {
+          const updated = updatePayInSession(session.id, {
             status: "REFUNDED_TO_USER",
             gasFeeUsdc: RELAY_GAS_FEE_USDC.toFixed(2),
             receivedUsdc: totalBalanceUsdc.toFixed(2),
             refundTxHash: refundTx,
             underpaidPenaltyUsdc: penaltyUsdc.toFixed(2),
             refundStatus: "REFUNDED_TO_USER",
+            discrepancyType: "UNDERPAID_REJECTED",
+            detectedSenderAddress: detectedSender,
           })!;
+
+          if (session.webhookUrl) {
+            dispatchWebhook(session.webhookUrl, {
+              event: "payin.rejected_under_minimum",
+              sessionId: session.id,
+              receivedUsdc: totalBalanceUsdc.toFixed(2),
+              underpaidPenaltyUsdc: penaltyUsdc.toFixed(2),
+              refundAmountUsdc: Number(formatUnits(refundWei, 6)).toFixed(2),
+              refundTxHash: refundTx,
+              refundStatus: "REFUNDED_TO_USER",
+              refundAddress: dest,
+              timestamp: Date.now(),
+            });
+          }
+
+          return updated;
         } else {
           // Fallback: sweep to ZkPay Refund Wallet
           const refundTx = await relayEip3009Transfer({
@@ -310,14 +364,32 @@ export async function evaluateAndProcessDeposit(session: PayInSession): Promise<
             toAddress: REFUND_WALLET_ADDRESS,
             amountWei: refundWei,
           });
-          return updatePayInSession(session.id, {
+          const updated = updatePayInSession(session.id, {
             status: "STORED_IN_REFUND_WALLET",
             gasFeeUsdc: RELAY_GAS_FEE_USDC.toFixed(2),
             receivedUsdc: totalBalanceUsdc.toFixed(2),
             refundTxHash: refundTx,
             underpaidPenaltyUsdc: penaltyUsdc.toFixed(2),
             refundStatus: "STORED_IN_REFUND_WALLET",
+            discrepancyType: "UNDERPAID_REJECTED",
+            detectedSenderAddress: detectedSender,
           })!;
+
+          if (session.webhookUrl) {
+            dispatchWebhook(session.webhookUrl, {
+              event: "payin.rejected_under_minimum",
+              sessionId: session.id,
+              receivedUsdc: totalBalanceUsdc.toFixed(2),
+              underpaidPenaltyUsdc: penaltyUsdc.toFixed(2),
+              refundAmountUsdc: Number(formatUnits(refundWei, 6)).toFixed(2),
+              refundTxHash: refundTx,
+              refundStatus: "STORED_IN_REFUND_WALLET",
+              refundAddress: REFUND_WALLET_ADDRESS,
+              timestamp: Date.now(),
+            });
+          }
+
+          return updated;
         }
       } else {
         return updatePayInSession(session.id, {
@@ -325,12 +397,29 @@ export async function evaluateAndProcessDeposit(session: PayInSession): Promise<
           gasFeeUsdc: RELAY_GAS_FEE_USDC.toFixed(2),
           receivedUsdc: totalBalanceUsdc.toFixed(2),
           underpaidPenaltyUsdc: penaltyUsdc.toFixed(2),
+          discrepancyType: "UNDERPAID_REJECTED",
         })!;
       }
     }
 
-    // ── STEP 3: Process Valid Payment (>= 1.00 USDC) ──
-    // Compute 1% platform fee
+    // ── STEP 3: Process Valid Payment (>= 0.95 USDC Tolerance Threshold) ──
+    // Determine discrepancy type (Underpaid Accepted, Overpaid Accepted, or Exact)
+    const expectedUsdcNum = Number(session.expectedUsdc);
+    let discrepancyType: DepositDiscrepancyType = "EXACT";
+    let toleranceAppliedUsdc: string | undefined = undefined;
+
+    if (netAvailableUsdc < expectedUsdcNum - 0.01) {
+      discrepancyType = "UNDERPAID_ACCEPTED";
+      if (netAvailableUsdc < MIN_PAYMENT_USDC) {
+        toleranceAppliedUsdc = PAYMENT_TOLERANCE_USDC.toFixed(2);
+      }
+      console.log(`[P2PServerEngine] Partial deposit accepted for ${session.id}: $${netAvailableUsdc} < $${expectedUsdcNum}. Proceeding without fine!`);
+    } else if (netAvailableUsdc > expectedUsdcNum + 0.01) {
+      discrepancyType = "OVERPAID_ACCEPTED";
+      console.log(`[P2PServerEngine] Overpayment accepted for ${session.id}: $${netAvailableUsdc} > $${expectedUsdcNum}. Pro-rating bonus fiat!`);
+    }
+
+    // Compute standard 1% platform fee
     const feeUsdcNum = netAvailableUsdc * (PLATFORM_FEE_BPS / 10000);
     const feeWei = parseUnits(feeUsdcNum.toFixed(6), 6);
 
@@ -457,7 +546,11 @@ export async function evaluateAndProcessDeposit(session: PayInSession): Promise<
       txHash: placedTxHash,
       receivedUsdc: totalBalanceUsdc.toFixed(2),
       amountINR: proRatedFiat,
+      actualFiatAmount: proRatedFiat,
+      actualUsdcAmount: actualOrderUsdc.toFixed(2),
       feeUsdc: feeUsdcNum.toFixed(2),
+      discrepancyType,
+      toleranceAppliedUsdc,
     })!;
   } finally {
     releaseSessionSweepLock(session.id);
@@ -629,3 +722,171 @@ export async function handleOrderTimeoutOrCancel(session: PayInSession): Promise
     refundStatus: session.refundAddress ? "REFUNDED_TO_USER" : "STORED_IN_REFUND_WALLET",
   })!;
 }
+
+/**
+ * Executes on-chain disbursement for a Claimable PayLink (mode === "disburse"):
+ * 1. Gaslessly sweeps USDC from the ephemeral escrow account to Treasury (fee) and Relayer (principal).
+ * 2. Relayer places Diamond P2P order.
+ * 3. Delivers encrypted UPI handshake in the background.
+ */
+export async function executeClaimDisbursement(params: {
+  link: PayLink;
+  recipientUpi: string;
+}): Promise<{ success: boolean; txHash?: string; p2pOrderId?: string; error?: string }> {
+  const { link, recipientUpi } = params;
+
+  try {
+    const escrowKey = getDecryptedEscrowKey(link);
+    const escrowAccount = privateKeyToAccount(escrowKey);
+    const publicClient = getResilientPublicClient();
+
+    const escrowBal = (await publicClient.readContract({
+      address: USDC_ADDRESS,
+      abi: USDC_ABI,
+      functionName: "balanceOf",
+      args: [getAddress(escrowAccount.address)],
+    })) as bigint;
+
+    const minProcessableWei = parseUnits(MIN_PROCESSABLE_USDC.toString(), 6);
+    if (escrowBal < minProcessableWei) {
+      return {
+        success: false,
+        error: `Escrow balance (${formatUnits(escrowBal, 6)} USDC) is under the minimum processing threshold ($${MIN_PROCESSABLE_USDC} USDC).`,
+      };
+    }
+
+    // 1. Fee: 1% to Treasury
+    const feeWei = (escrowBal * BigInt(PLATFORM_FEE_BPS)) / 10000n;
+    if (feeWei > 0n) {
+      try {
+        await relayEip3009Transfer({
+          fromAccount: escrowAccount,
+          toAddress: TREASURY_ADDRESS,
+          amountWei: feeWei,
+        });
+      } catch (fErr: any) {
+        console.warn("[P2PServerEngine] Escrow fee sweep warning:", fErr?.message);
+      }
+    }
+
+    // 2. Net Principal to Relayer
+    const principalWei = escrowBal - feeWei;
+    const principalUsdc = Number(formatUnits(principalWei, 6));
+    const isSmallOrder = principalUsdc > 0 && principalUsdc <= SMALL_ORDER_THRESHOLD_USDC;
+    const protocolFeeWei = isSmallOrder ? parseUnits(SMALL_ORDER_FEE_USDC.toFixed(6), 6) : 0n;
+    const actualOrderUsdcWei = principalWei > protocolFeeWei ? principalWei - protocolFeeWei : principalWei;
+
+    const relayerAddress = getRelayerAddress();
+    const relayerWallet = getRelayerWalletClient();
+
+    let sweepTx = "";
+    try {
+      sweepTx = await relayEip3009Transfer({
+        fromAccount: escrowAccount,
+        toAddress: relayerAddress,
+        amountWei: principalWei,
+      });
+    } catch (swErr: any) {
+      return { success: false, error: `Failed to sweep escrow USDC to Relayer: ${swErr?.message}` };
+    }
+
+    // 3. Ensure Relayer approved Diamond
+    await ensureRelayerDiamondApproved(principalWei);
+
+    // 4. Place Diamond offramp order
+    const sellPrice = await getLiveFiatRate("INR");
+    const proRatedFiat = Math.floor(Number(formatUnits(actualOrderUsdcWei, 6)) * sellPrice);
+    const fiatAmountLimit = BigInt(proRatedFiat * 1_000_000);
+    const orders = getRelayerP2POrdersClient();
+
+    let placedResult: any;
+    try {
+      placedResult = await orders.placeOrder.execute({
+        walletClient: relayerWallet,
+        waitForReceipt: true,
+        orderType: 1, // 1 = SELL
+        currency: "INR",
+        user: relayerAddress,
+        recipientAddr: zeroAddress,
+        amount: actualOrderUsdcWei,
+        fiatAmount: fiatAmountLimit,
+        fiatAmountLimit,
+      });
+    } catch (err: any) {
+      placedResult = { isErr: () => true, error: err };
+    }
+
+    if (placedResult.isErr()) {
+      console.error("[P2PServerEngine] Escrow placeOrder failed on Diamond:", placedResult.error);
+      const gasFeeWei = parseUnits(RELAY_GAS_FEE_USDC.toFixed(6), 6);
+      const refundWei = principalWei > gasFeeWei ? principalWei - gasFeeWei : 0n;
+      if (refundWei > 0n && link.creatorRefundAddress) {
+        try {
+          await sendUsdcFromRelayer(getAddress(link.creatorRefundAddress as `0x${string}`), refundWei);
+        } catch {}
+      }
+      return { success: false, error: `Diamond order failed: ${placedResult.error?.message || "Execution reverted"}` };
+    }
+
+    const orderMeta = placedResult.value?.meta;
+    let p2pOrderId = orderMeta?.orderId ? String(orderMeta.orderId) : "";
+    const placedTxHash = placedResult.value?.hash || sweepTx;
+
+    if (!p2pOrderId && placedResult.value?.receipt) {
+      try {
+        const parsed = await parseOrderIdFromReceipt(placedResult.value.receipt, relayerAddress);
+        if (parsed) p2pOrderId = String(parsed);
+      } catch {}
+    }
+
+    // Update link
+    updatePayLink(link.id, {
+      status: "PAID",
+      claimantUpi: recipientUpi,
+      claimedAt: Date.now(),
+      txHash: placedTxHash,
+      p2pOrderId: p2pOrderId || undefined,
+    });
+
+    // 5. Asynchronous background delivery of encrypted UPI address to peer
+    if (p2pOrderId) {
+      (async () => {
+        try {
+          const orderIdBigInt = BigInt(p2pOrderId);
+          for (let i = 0; i < 40; i++) {
+            const currentOrderRes = await orders.getOrder({ orderId: orderIdBigInt });
+            if (currentOrderRes.isOk()) {
+              const currentOrder = currentOrderRes.value;
+              if (currentOrder.status === "accepted" && currentOrder.pubkey) {
+                await orders.setSellOrderUpi.execute({
+                  walletClient: relayerWallet,
+                  waitForReceipt: true,
+                  orderId: orderIdBigInt,
+                  paymentAddress: recipientUpi,
+                  merchantPublicKey: currentOrder.pubkey,
+                  updatedAmount: 0n,
+                });
+                console.log(`[P2PServerEngine] Encrypted UPI delivered for claim #${p2pOrderId}!`);
+                break;
+              }
+              if (currentOrder.status === "completed") break;
+            }
+            await new Promise((r) => setTimeout(r, 3000));
+          }
+        } catch (handshakeErr: any) {
+          console.warn("[P2PServerEngine] Background handshake delivery warning:", handshakeErr?.message);
+        }
+      })();
+    }
+
+    return {
+      success: true,
+      txHash: placedTxHash,
+      p2pOrderId,
+    };
+  } catch (err: any) {
+    console.error("[P2PServerEngine] executeClaimDisbursement error:", err);
+    return { success: false, error: err?.message || "Disbursement claim execution failed." };
+  }
+}
+

@@ -86,10 +86,16 @@ export const CURRENCIES = [
 // Platform fee (1% take rate on transactions)
 export const PLATFORM_FEE_BPS = 100; // 100 basis points = 1%
 
-// Minimum payment amount required to process offramp (in USDC)
+// Standard minimum payment amount required to process offramp (in USDC)
 export const MIN_PAYMENT_USDC = 1.00;
 
-// Underpayment penalty fee deducted to ZkPay Treasury if deposit is < $1.00 (in USDC)
+// Tolerance buffer (0.05 USDC) allowing amounts down to $0.95 without penalty
+export const PAYMENT_TOLERANCE_USDC = 0.05;
+
+// Absolute minimum processable threshold (1.00 - 0.05 = 0.95 USDC)
+export const MIN_PROCESSABLE_USDC = MIN_PAYMENT_USDC - PAYMENT_TOLERANCE_USDC;
+
+// Underpayment penalty fee deducted to ZkPay Treasury if deposit is < $0.95 (in USDC)
 export const UNDERPAID_PENALTY_USDC = 0.15;
 
 // Standard gas relay fee in USDC (deducted if transaction fails or is cancelled to reimburse relayer)

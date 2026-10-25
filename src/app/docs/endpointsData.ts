@@ -245,6 +245,22 @@ bot.command('quote', async (ctx) => {
     description: "Generates a hosted payment URL with 1-click wallet connect, EIP-681 QR view, custom branding, and webhook notification triggers. Ideal for e-commerce checkouts and invoices.",
     parameters: [
       {
+        name: "mode",
+        type: "string",
+        location: "body",
+        required: false,
+        description: "Payment link mode: 'request' (default, creator invoices customer to own UPI) or 'disburse' (claimable escrow payout where claimant enters UPI + 4-digit PIN).",
+        example: "request"
+      },
+      {
+        name: "pin",
+        type: "string",
+        location: "body",
+        required: false,
+        description: "4-digit numeric security PIN (Required if mode is 'disburse'). Hashed with unique salt on server to prevent brute-force.",
+        example: "4829"
+      },
+      {
         name: "amountINR",
         type: "number",
         location: "body",
@@ -504,6 +520,80 @@ bot.command('checklink', async (ctx) => {
     }
   },
 
+  // ─── 04B. PAYMENTS: Claim Escrow Payout (PIN Secured) ───
+  {
+    method: "POST",
+    path: "/api/v1/paylinks/claim",
+    title: "Claim Escrow Payout (PIN Secured)",
+    category: "payments",
+    description: "Allows a recipient holding a claimable disbursement link to unlock pre-funded escrowed USDC by providing the 4-digit security PIN and their recipient UPI ID.",
+    parameters: [
+      {
+        name: "linkId",
+        type: "string",
+        location: "body",
+        required: true,
+        description: "The claimable link ID (e.g. 'cl_live_8f7e6d').",
+        example: "cl_live_8f7e6d"
+      },
+      {
+        name: "pin",
+        type: "string",
+        location: "body",
+        required: true,
+        description: "The 4-digit numeric security PIN set by the sender. Verified via timing-safe salted HMAC comparison.",
+        example: "4829"
+      },
+      {
+        name: "recipientUpi",
+        type: "string",
+        location: "body",
+        required: true,
+        description: "Recipient UPI VPA (e.g. 'user@okhdfcbank') where fiat will be deposited via P2P protocol escrow.",
+        example: "user@okhdfcbank"
+      }
+    ],
+    body: {
+      linkId: "cl_live_8f7e6d",
+      pin: "4829",
+      recipientUpi: "user@okhdfcbank"
+    },
+    response: {
+      success: true,
+      message: "Successfully claimed ₹1,000! Payout has been initiated to user@okhdfcbank.",
+      txHash: "0x3a4b...5c6d",
+      p2pOrderId: "10492"
+    },
+    codeExamples: {
+      curl: `curl -X POST "https://zkpay.top/api/v1/paylinks/claim" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "linkId": "cl_live_8f7e6d",
+    "pin": "4829",
+    "recipientUpi": "user@okhdfcbank"
+  }'`,
+      javascript: `const res = await fetch("https://zkpay.top/api/v1/paylinks/claim", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    linkId: "cl_live_8f7e6d",
+    pin: "4829",
+    recipientUpi: "user@okhdfcbank"
+  })
+});
+const data = await res.json();
+console.log(data);`,
+      python: `import requests
+
+res = requests.post("https://zkpay.top/api/v1/paylinks/claim", json={
+    "linkId": "cl_live_8f7e6d",
+    "pin": "4829",
+    "recipientUpi": "user@okhdfcbank"
+})
+print(res.json())`
+    }
+  },
+
   // ─── 05. PAYMENTS: Dynamic Deposit Session (Bots) ───
   {
     method: "POST",
@@ -533,7 +623,7 @@ bot.command('checklink', async (ctx) => {
         type: "string",
         location: "body",
         required: false,
-        description: "User 0x EVM address on Base. If order is under minimum (< $1.00) or cancelled by merchant, refund is automatically sent here.",
+        description: "User 0x EVM address on Base. If deposit is under the minimum threshold (< $0.95 after $0.05 tolerance), the remainder after $0.15 fine is refunded here. If omitted, sender address is auto-detected from the on-chain transfer log.",
         example: "0x4747883abdf84ad96565415514de298e3a3fd3e1"
       },
       {

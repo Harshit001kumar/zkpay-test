@@ -1,23 +1,71 @@
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
+import { getMongoDb } from "./mongodb";
+
+export type PayLinkMode = "request" | "disburse";
+
+export type PayLinkStatus =
+  | "AWAITING_FUNDING" // Disburse mode: waiting for creator USDC deposit
+  | "ACTIVE"           // Ready for payment (request) or claim (disburse)
+  | "CLAIMING"         // Disburse mode: claim transaction currently processing
+  | "PAID"             // Fully settled
+  | "PIN_LOCKED"       // Disburse mode: exceeded 5 failed PIN attempts
+  | "EXPIRED"          // Past validity window
+  | "REFUNDED"         // Disburse mode: funds returned to creator
+  | "CANCELLED";       // Manually deactivated by creator
 
 export interface PayLink {
   id: string;
+  mode: PayLinkMode; // "request" (standard invoice) or "disburse" (claimable escrow)
   title: string;
   amountINR: number;
-  recipientUpi: string;
+  recipientUpi?: string; // Pre-configured in request mode; entered upon claim in disburse mode
   type: "one_time" | "reusable";
-  status: "ACTIVE" | "PAID" | "EXPIRED";
+  status: PayLinkStatus;
   webhookUrl?: string;
   redirectUrl?: string;
   estimatedUsdc: string;
   rate: number;
   createdAt: number;
+  expiresAt?: number;
   paidAt?: number;
   txHash?: string;
   p2pOrderId?: string;
   creatorUserId?: string;
   creatorWalletAddress?: string;
   apiKeyId?: string;
+
+  // Reusable Link Metrics
+  totalPaidCount?: number;
+  totalVolumeINR?: number;
+  parentLinkId?: string;
+
+  // Claimable Escrow Security Fields (mode === "disburse")
+  pinHash?: string; // Salted HMAC-SHA256 (NEVER returned to client)
+  pinSalt?: string; // 32-byte hex salt (NEVER returned to client)
+  failedAttempts: number; // Failed PIN attempts (max 5)
+  escrowAddress?: string; // Ephemeral Base address holding deposited USDC
+  encryptedEscrowKey?: string; // AES-256-GCM encrypted private key
+  creatorSecret?: string; // Secret token allowing creator to refund or unlock
+  creatorRefundAddress?: string; // Base address to return funds to if unclaimed
+  claimantUpi?: string; // The UPI ID submitted during claim
+  claimedAt?: number; // Timestamp of successful claim
+}
+
+export interface SanitizedPayLink
+  extends Omit<PayLink, "pinHash" | "pinSalt" | "encryptedEscrowKey" | "creatorSecret"> {
+  hasPin: boolean;
+  failedAttemptsRemaining: number;
+}
+
+export function sanitizePayLink(link: PayLink): SanitizedPayLink {
+  const { pinHash, pinSalt, encryptedEscrowKey, creatorSecret, ...safe } = link;
+  return {
+    ...safe,
+    hasPin: Boolean(pinHash),
+    failedAttemptsRemaining: Math.max(0, 5 - (link.failedAttempts || 0)),
+  };
 }
 
 export type PayInStatus =
@@ -34,6 +82,12 @@ export type PayInStatus =
   | "CANCELLED_AND_REFUNDED"
   | "FAILED_AND_REFUNDED"
   | "EXPIRED";
+
+export type DepositDiscrepancyType =
+  | "EXACT"
+  | "UNDERPAID_ACCEPTED"    // Sent less than expected, but >= $0.95 (No fine, pro-rated fiat)
+  | "UNDERPAID_REJECTED"    // Sent < $0.95 (Fined $0.15, remainder refunded)
+  | "OVERPAID_ACCEPTED";    // Sent more than expected (No fine, higher pro-rated fiat)
 
 export interface PayInSession {
   id: string;
@@ -63,9 +117,14 @@ export interface PayInSession {
   tipUsdc?: string; // Explicit tip for provider (swept to treasury)
   tipTxHash?: string; // Tx hash of the tip sweep
   refundAddress?: string; // User-provided refund destination address
-  underpaidPenaltyUsdc?: string; // Deducted penalty fee if < $1.00
+  underpaidPenaltyUsdc?: string; // Deducted penalty fee if < $0.95
   refundTxHash?: string; // Tx hash of refund transfer
   refundStatus?: "PENDING" | "REFUNDED_TO_USER" | "STORED_IN_REFUND_WALLET" | "MANUALLY_REFUNDED";
+
+  // Discrepancy & Tolerance Metadata
+  discrepancyType?: DepositDiscrepancyType;
+  toleranceAppliedUsdc?: string; // e.g. "0.05"
+  detectedSenderAddress?: string; // Auto-detected from on-chain ERC20 Transfer event
 
   // Payment proof metadata
   actualFiatAmount?: number; // Exact INR amount delivered
@@ -74,14 +133,132 @@ export interface PayInSession {
   settledAt?: number; // Timestamp of completion
 }
 
-// In-memory stores — MVP, with TTL and secure key isolation
+// In-memory stores — backed by fast cache + persistent file/MongoDB hydration
 const payLinks = new Map<string, PayLink>();
 const payInSessions = new Map<string, PayInSession>();
+const claimLocks = new Set<string>();
 
-// In-memory runtime fallback generated if no env secret is supplied (never a static public string)
-let _runtimeFallbackSecret: string | null = null;
+// ────────────────── File & MongoDB Persistence ──────────────────
+const DATA_DIR = path.join(process.cwd(), "data");
+const PAYLINKS_FILE = path.join(DATA_DIR, "pay_links.json");
+const PAYIN_SESSIONS_FILE = path.join(DATA_DIR, "payin_sessions.json");
 
-// Generates master 256-bit encryption key from environment secret
+function ensureDataDir() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch {}
+}
+
+let isHydrated = false;
+
+async function hydratePayStore() {
+  if (isHydrated) return;
+  isHydrated = true;
+
+  // 1. Read local JSON fallback files if present
+  try {
+    if (fs.existsSync(PAYLINKS_FILE)) {
+      const raw = fs.readFileSync(PAYLINKS_FILE, "utf-8");
+      const list: PayLink[] = JSON.parse(raw);
+      for (const item of list) {
+        payLinks.set(item.id, item);
+      }
+    }
+  } catch (err) {
+    console.warn("[PayStore] Local payLinks hydrate warning:", err);
+  }
+
+  try {
+    if (fs.existsSync(PAYIN_SESSIONS_FILE)) {
+      const raw = fs.readFileSync(PAYIN_SESSIONS_FILE, "utf-8");
+      const list: PayInSession[] = JSON.parse(raw);
+      for (const item of list) {
+        payInSessions.set(item.id, item);
+      }
+    }
+  } catch (err) {
+    console.warn("[PayStore] Local payInSessions hydrate warning:", err);
+  }
+
+  // 2. Read from MongoDB and merge if configured
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const linksCol = db.collection<PayLink>("pay_links");
+      const dbLinks = await linksCol.find({}).sort({ createdAt: -1 }).limit(1000).toArray();
+      for (const l of dbLinks) {
+        payLinks.set(l.id, l);
+      }
+
+      const sessionsCol = db.collection<PayInSession>("payin_sessions");
+      const dbSessions = await sessionsCol.find({}).sort({ createdAt: -1 }).limit(1000).toArray();
+      for (const s of dbSessions) {
+        payInSessions.set(s.id, s);
+      }
+    }
+  } catch (err) {
+    console.warn("[PayStore] MongoDB hydrate warning:", err);
+  }
+}
+
+// Auto-hydrate on module load
+hydratePayStore().catch(() => {});
+
+// Debounced file write
+let savePayLinksTimer: NodeJS.Timeout | null = null;
+function triggerSavePayLinks() {
+  if (savePayLinksTimer) return;
+  savePayLinksTimer = setTimeout(() => {
+    savePayLinksTimer = null;
+    try {
+      ensureDataDir();
+      const all = Array.from(payLinks.values());
+      fs.writeFileSync(PAYLINKS_FILE, JSON.stringify(all, null, 2), "utf-8");
+    } catch {}
+  }, 1000);
+}
+
+let saveSessionsTimer: NodeJS.Timeout | null = null;
+function triggerSavePayInSessions() {
+  if (saveSessionsTimer) return;
+  saveSessionsTimer = setTimeout(() => {
+    saveSessionsTimer = null;
+    try {
+      ensureDataDir();
+      const all = Array.from(payInSessions.values());
+      fs.writeFileSync(PAYIN_SESSIONS_FILE, JSON.stringify(all, null, 2), "utf-8");
+    } catch {}
+  }, 1000);
+}
+
+function syncPayLinkToMongo(link: PayLink) {
+  getMongoDb()
+    .then((db) => {
+      if (db) {
+        db.collection<PayLink>("pay_links")
+          .updateOne({ id: link.id }, { $set: link }, { upsert: true })
+          .catch(() => {});
+      }
+    })
+    .catch(() => {});
+}
+
+function syncPayInSessionToMongo(session: PayInSession) {
+  getMongoDb()
+    .then((db) => {
+      if (db) {
+        db.collection<PayInSession>("payin_sessions")
+          .updateOne({ id: session.id }, { $set: session }, { upsert: true })
+          .catch(() => {});
+      }
+    })
+    .catch(() => {});
+}
+
+// ────────────────── Encryption & PIN Security ──────────────────
+
 function getMasterEncryptionKey(): Buffer {
   const secret =
     process.env.PAYIN_MASTER_SECRET ||
@@ -145,7 +322,65 @@ export function getDecryptedPayinKey(session: PayInSession): `0x${string}` {
 }
 
 /**
- * Atomically acquires a sweep mutex lock for this session.
+ * Retrieves and temporarily decrypts escrow private key for gasless EIP-3009 sweep.
+ */
+export function getDecryptedEscrowKey(link: PayLink): `0x${string}` {
+  if (!link.encryptedEscrowKey) {
+    throw new Error(`No encrypted escrow key found for paylink ${link.id}`);
+  }
+  let key = decryptKey(link.encryptedEscrowKey).trim();
+  if (!key.startsWith("0x")) key = `0x${key}`;
+  return key as `0x${string}`;
+}
+
+/**
+ * Generates a cryptographically random 32-byte hex salt for PIN hashing.
+ */
+export function generatePinSalt(): string {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+/**
+ * Creates a salted HMAC-SHA256 hash of a 4-digit PIN combined with linkId and salt.
+ */
+export function hashPayLinkPin(pin: string, salt: string, linkId: string): string {
+  const normalizedPin = pin.trim();
+  return crypto
+    .createHmac("sha256", Buffer.from(salt, "hex"))
+    .update(`${linkId}:${normalizedPin}`)
+    .digest("hex");
+}
+
+/**
+ * Constant-time PIN verification to eliminate timing side-channel attacks.
+ */
+export function verifyPayLinkPin(link: PayLink, candidatePin: string): boolean {
+  if (!link.pinHash || !link.pinSalt) return false;
+  const candidateHash = hashPayLinkPin(candidatePin, link.pinSalt, link.id);
+  const bufA = Buffer.from(link.pinHash, "hex");
+  const bufB = Buffer.from(candidateHash, "hex");
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+/**
+ * Atomically acquires claim mutex lock for a paylink.
+ */
+export function acquirePayLinkClaimLock(id: string): boolean {
+  if (claimLocks.has(id)) return false;
+  claimLocks.add(id);
+  return true;
+}
+
+/**
+ * Releases claim mutex lock for a paylink.
+ */
+export function releasePayLinkClaimLock(id: string): void {
+  claimLocks.delete(id);
+}
+
+/**
+ * Atomically acquires a sweep mutex lock for this payin session.
  */
 export function acquireSessionSweepLock(id: string): boolean {
   const session = payInSessions.get(id);
@@ -155,7 +390,7 @@ export function acquireSessionSweepLock(id: string): boolean {
 }
 
 /**
- * Releases the sweep mutex lock for this session.
+ * Releases the sweep mutex lock for this payin session.
  */
 export function releaseSessionSweepLock(id: string): void {
   const session = payInSessions.get(id);
@@ -172,14 +407,44 @@ function generateId(prefix: string): string {
 
 // ────────────────── Pay Links ──────────────────
 
-export function createPayLink(data: Omit<PayLink, "id" | "status" | "createdAt">): PayLink {
+export function createPayLink(
+  data: Omit<PayLink, "id" | "status" | "createdAt" | "failedAttempts"> & {
+    status?: PayLinkStatus;
+    failedAttempts?: number;
+    pin?: string;
+  }
+): PayLink {
+  const mode = data.mode || "request";
+  const prefix = mode === "disburse" ? "cl" : "pl";
+  const initialStatus: PayLinkStatus =
+    data.status || (mode === "disburse" ? "AWAITING_FUNDING" : "ACTIVE");
+
+  const id = generateId(prefix);
+  let pinHash = data.pinHash;
+  let pinSalt = data.pinSalt;
+  if (data.pin) {
+    pinSalt = generatePinSalt();
+    pinHash = hashPayLinkPin(data.pin, pinSalt, id);
+  }
+
+  const creatorSecret = data.creatorSecret || (mode === "disburse" ? generateId("sec") : undefined);
+  const { pin: _rawPin, ...safeData } = data;
+
   const link: PayLink = {
-    ...data,
-    id: generateId("pl"),
-    status: "ACTIVE",
+    ...safeData,
+    id,
+    mode,
+    status: initialStatus,
+    pinHash,
+    pinSalt,
+    creatorSecret,
+    failedAttempts: data.failedAttempts || 0,
     createdAt: Date.now(),
   };
+
   payLinks.set(link.id, link);
+  triggerSavePayLinks();
+  syncPayLinkToMongo(link);
   return link;
 }
 
@@ -192,6 +457,8 @@ export function updatePayLink(id: string, updates: Partial<PayLink>): PayLink | 
   if (!link) return undefined;
   const updated = { ...link, ...updates };
   payLinks.set(id, updated);
+  triggerSavePayLinks();
+  syncPayLinkToMongo(updated);
   return updated;
 }
 
@@ -206,8 +473,21 @@ export function findPayLinkByTxHash(rawTxHash: string): PayLink | undefined {
   return undefined;
 }
 
-export function listPayLinks(): PayLink[] {
-  return Array.from(payLinks.values()).sort((a, b) => b.createdAt - a.createdAt);
+export function listPayLinks(filter?: {
+  creatorUserId?: string;
+  creatorWalletAddress?: string;
+  apiKeyId?: string;
+}): PayLink[] {
+  let list = Array.from(payLinks.values());
+  if (filter?.creatorUserId) {
+    list = list.filter((l) => l.creatorUserId === filter.creatorUserId);
+  } else if (filter?.creatorWalletAddress) {
+    const target = filter.creatorWalletAddress.toLowerCase();
+    list = list.filter((l) => l.creatorWalletAddress?.toLowerCase() === target);
+  } else if (filter?.apiKeyId) {
+    list = list.filter((l) => l.apiKeyId === filter.apiKeyId);
+  }
+  return list.sort((a, b) => b.createdAt - a.createdAt);
 }
 
 // ────────────────── Pay-In Sessions ──────────────────
@@ -233,6 +513,8 @@ export function createPayInSession(
     createdAt: Date.now(),
   };
   payInSessions.set(session.id, session);
+  triggerSavePayInSessions();
+  syncPayInSessionToMongo(session);
   return session;
 }
 
@@ -240,11 +522,16 @@ export function getPayInSession(id: string): PayInSession | undefined {
   return payInSessions.get(id);
 }
 
-export function updatePayInSession(id: string, updates: Partial<PayInSession>): PayInSession | undefined {
+export function updatePayInSession(
+  id: string,
+  updates: Partial<PayInSession>
+): PayInSession | undefined {
   const session = payInSessions.get(id);
   if (!session) return undefined;
   const updated = { ...session, ...updates };
   payInSessions.set(id, updated);
+  triggerSavePayInSessions();
+  syncPayInSessionToMongo(updated);
   return updated;
 }
 
@@ -259,9 +546,14 @@ export function expireOldSessions(): number {
   const now = Date.now();
   for (const [id, session] of payInSessions.entries()) {
     if (session.status === "AWAITING_PAYMENT" && session.expiresAt <= now) {
-      payInSessions.set(id, { ...session, status: "EXPIRED" });
+      const updated = { ...session, status: "EXPIRED" as PayInStatus };
+      payInSessions.set(id, updated);
+      syncPayInSessionToMongo(updated);
       expired++;
     }
+  }
+  if (expired > 0) {
+    triggerSavePayInSessions();
   }
   return expired;
 }
