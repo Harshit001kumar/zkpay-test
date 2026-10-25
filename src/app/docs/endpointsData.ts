@@ -1048,7 +1048,7 @@ bot.command('tokens', async (ctx) => {
         type: "string",
         location: "query",
         required: false,
-        description: "Partner's payout address on the ORIGIN CHAIN. For L2s (Base, Arbitrum, Polygon, BSC) and low-fee chains (Solana, Litecoin, Tron), fees are collected upfront in the origin token ($0 threshold, instant payout). On Ethereum Mainnet ('eth') and Bitcoin ('btc'), fees are automatically 0% (direct route) to save user network gas fees. Split 50/50 with ZkPay Treasury.",
+        description: "Partner's payout address on the ORIGIN CHAIN. Supported crypto for 50% fee share is done upfront in the origin token ($0 threshold, instant payout). Some crypto don't have fee share because of high transaction cost. Split 50/50 with ZkPay Treasury.",
         example: "7vN24xV8y...SolanaPayoutAddress"
       },
       {
@@ -1056,7 +1056,7 @@ bot.command('tokens', async (ctx) => {
         type: "number",
         location: "query",
         required: false,
-        description: "Custom partner fee in basis points (range: 20 to 450 bps, e.g. 100 for 1.00%). Split 50/50 with partner feeRecipient on L2s and low-fee chains (automatically 0 on ETH/BTC).",
+        description: "Custom partner fee in basis points (range: 20 to 450 bps, e.g. 100 for 1.00%). Supported crypto for 50% fee share is done upfront with partner feeRecipient. Some crypto don't have fee share because of high transaction cost.",
         example: "100"
       },
       {
@@ -1108,10 +1108,10 @@ bot.command('tokens', async (ctx) => {
           feeAsset: "nep141:sol.omft.near",
           treasuryAddress: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
           partnerFeeRecipient: "7vN24xV8y...SolanaPayoutAddress",
-          depositAddress: "near_solver_deposit_address...",
+          depositAddress: "solver_deposit_address...",
           transfers: [
             { purpose: "PLATFORM_FEE", recipient: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf", amount: "10000000" },
-            { purpose: "SWAP_DEPOSIT", recipient: "near_solver_deposit_address...", amount: "990000000" }
+            { purpose: "SWAP_DEPOSIT", recipient: "solver_deposit_address...", amount: "990000000" }
           ]
         },
         feeBreakdown: {
@@ -1221,7 +1221,7 @@ bot.command('swapquote', async (ctx) => {
     title: "Create Swap Order",
     category: "swap",
     rateLimit: "10 req/min (IP) · 60 req/min (API Key)",
-    description: "Commits a cross-chain crypto-to-crypto swap order and generates a single-use proxy deposit address. Enables a seamless Single-Transfer experience: the user sends 100% of the deposit to this single address. The system automatically detects the incoming deposit, splits the upfront fee to Treasury/Partner, and forwards the net amount to Near Intents solvers. For stablecoins (USDC/USDT), all fees and transfer costs are paid strictly out of the deposited token balance with zero native gas required. On Ethereum Mainnet ('eth') and Bitcoin ('btc'), orders are routed directly with 0% platform fee.",
+    description: "Commits a cross-chain crypto-to-crypto swap order and generates a single-use deposit address. Enables a seamless single-transfer experience: the user sends 100% of the deposit to this address. Supported crypto for 50% fee share is done upfront to Treasury/Partner, and the net amount is forwarded directly to solvers. Some crypto don't have fee share because of high transaction cost. For supported stablecoins (USDC/USDT), all fees and transfer costs are paid strictly out of the deposited token balance with zero native gas required.",
     parameters: [
       {
         name: "fromAsset",
@@ -1284,7 +1284,7 @@ bot.command('swapquote', async (ctx) => {
         type: "string",
         location: "body",
         required: false,
-        description: "Partner's payout address on the ORIGIN CHAIN. On L2s and low-fee chains (Solana, Litecoin, Tron), fees are transferred upfront directly to this address ($0 threshold, instant payout). On Ethereum Mainnet ('eth') and Bitcoin ('btc'), fees are automatically 0% (direct route).",
+        description: "Partner's payout address on the ORIGIN CHAIN. Supported crypto for 50% fee share is done upfront directly to this address ($0 threshold, instant payout). Some crypto don't have fee share because of high transaction cost.",
         example: "7vN24xV8y...SolanaPartnerAddress"
       },
       {
@@ -1292,7 +1292,7 @@ bot.command('swapquote', async (ctx) => {
         type: "number",
         location: "body",
         required: false,
-        description: "Custom partner fee in basis points (range: 20 to 450 bps, e.g. 100 for 1.00%). Split 50/50 with partner feeRecipient on L2s and low-fee chains (automatically 0 on ETH/BTC).",
+        description: "Custom partner fee in basis points (range: 20 to 450 bps, e.g. 100 for 1.00%). Supported crypto for 50% fee share is done upfront with partner feeRecipient. Some crypto don't have fee share because of high transaction cost.",
         example: "100"
       },
       {
@@ -1330,7 +1330,7 @@ bot.command('swapquote', async (ctx) => {
         swapId: "swp_1727382000000",
         status: "PENDING_DEPOSIT",
         deposit: {
-          address: "near_solver_deposit_address...",
+          address: "solver_deposit_address...",
           memo: null,
           amount: "0.99",
           deadline: "2026-10-01T15:15:00.000Z"
@@ -1351,10 +1351,10 @@ bot.command('swapquote', async (ctx) => {
           feeAsset: "nep141:sol.omft.near",
           treasuryAddress: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
           partnerFeeRecipient: "7vN24xV8y...SolanaPartnerAddress",
-          depositAddress: "near_solver_deposit_address...",
+          depositAddress: "solver_deposit_address...",
           transfers: [
             { purpose: "PLATFORM_FEE", recipient: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf", amount: "10000000" },
-            { purpose: "SWAP_DEPOSIT", recipient: "near_solver_deposit_address...", amount: "990000000" }
+            { purpose: "SWAP_DEPOSIT", recipient: "solver_deposit_address...", amount: "990000000" }
           ]
         },
         feeSplit: {

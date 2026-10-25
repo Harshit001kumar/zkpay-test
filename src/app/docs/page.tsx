@@ -27,19 +27,17 @@ Supported Chains: btc, eth, base, sol, arb, bsc, tron, ltc
 - POST endpoints: Pass API key via \`X-API-Key: zkpay_live_...\` header or \`Authorization: Bearer zkpay_live_...\`
 - Get your key at zkpay.top → Profile → Merchant & Bot API Keys
 
-## CRITICAL: Fee Settlement Architecture ($0 Threshold, Instant Payout)
-- Direct Routes (0% platform fee, 100% non-custodial solver routing):
-  - Bitcoin ('btc'), Ethereum L1 ('eth'), Litecoin ('ltc'), Tron ('tron'), and Solana SPL tokens (USDC/USDT on Solana).
-  - Users are protected from high network gas fees and token-account initialization requirements; transactions route 100% straight to Near Intents native solvers.
-- Single-Transfer Proxy System:
-  - Base ('base' - ETH, USDC, USDT), Solana ('sol' - Native SOL), and Native Gas tokens on Arbitrum ('arb' - ETH), Polygon ('polygon' - POL), and BSC ('bsc' - BNB).
-  - Single-Transfer Proxy System: Users send 100% of funds to ONE single address (\`order.deposit.address\`).
-  - Automatic Split & Forward: The background sweeper detects the incoming transfer, splits the upfront fee to Treasury/Partner, and forwards the net amount to Near Intents solvers.
-  - Case A (Native Gas Tokens: Base ETH, Arb ETH, Polygon POL, BSC BNB, Solana SOL): Gas is paid directly from the incoming native token.
-  - Case B (Base USDC / USDT): All fees and micro-transfer buffers are paid strictly out of the deposited token balance with zero user gas required.
+## CRITICAL: Fee Settlement & Solver Architecture ($0 Threshold, Instant Payout)
+- Supported crypto for 50% fee share is done upfront:
+  - Base ('base' - ETH, USDC, USDT), Solana ('sol' - Native SOL), and native gas tokens on Arbitrum ('arb' - ETH), Polygon ('polygon' - POL), and BSC ('bsc' - BNB).
+  - Single-Transfer: Users send 100% of funds to ONE single deposit address (\`order.deposit.address\`).
+  - Upfront Fee Settlement: The system automatically detects the incoming deposit, settles the 50% fee share upfront to the partner's \`feeRecipient\` and ZkPay Treasury, and forwards the net amount directly to solvers.
+  - Stablecoins (Base USDC / USDT): All fees and transfers are settled strictly out of the deposited token balance with zero native gas required from the user.
   - 100% instant settlement, $0 minimum payout threshold.
-- PARTNERS MUST provide a \`feeRecipient\` address that matches the ORIGIN CHAIN.
-- An \`executionPlan\` is returned by both /quote and /create, detailing the exact transfers (fee split + solver deposit).
+- Some crypto don't have fee share because of high transaction cost:
+  - High transaction cost routes like Ethereum Mainnet ('eth') and Bitcoin ('btc') (as well as Litecoin, Tron, and Solana SPL tokens) route directly to solvers with 0% platform fee to protect users from high network transaction costs.
+- PARTNERS MUST provide a \`feeRecipient\` address that matches the ORIGIN CHAIN for supported crypto.
+- An \`executionPlan\` is returned by both /quote and /create, detailing the exact transfers (upfront fee share + solver deposit).
 
 ## Endpoints
 
@@ -68,7 +66,7 @@ Query params:
 - amount (required): Integer string in ATOMIC UNITS (see conversion table below)
 - chain (optional): Source chain e.g. "sol", "base", "eth", "btc"
 - destinationChain (optional): Target chain e.g. "base", "sol". Defaults to Base if omitted.
-- feeRecipient (optional): Partner's origin-chain address for 50% revenue share (automatically 0 on ETH/BTC L1).
+- feeRecipient (optional): Partner's origin-chain address for 50% upfront fee share on supported crypto (0 on assets without fee share due to high transaction costs).
 - totalFeeBps (optional): Total fee in bps (range: 20–450 bps, default 100 = 1.00%).
 
 Response:
@@ -96,10 +94,10 @@ Response:
       "feeAsset": "nep141:sol.omft.near",
       "treasuryAddress": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
       "partnerFeeRecipient": "7vN24xV8y...SolanaPayoutAddress",
-      "depositAddress": "near_solver_deposit_address...",
+      "depositAddress": "solver_deposit_address...",
       "transfers": [
         { "purpose": "PLATFORM_FEE", "recipient": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf", "amount": "10000000" },
-        { "purpose": "SWAP_DEPOSIT", "recipient": "near_solver_deposit_address...", "amount": "990000000" }
+        { "purpose": "SWAP_DEPOSIT", "recipient": "solver_deposit_address...", "amount": "990000000" }
       ]
     },
     "feeBreakdown": {
@@ -166,7 +164,7 @@ Response:
       "feeAmount": "10000000",
       "transfers": [
         { "purpose": "PLATFORM_FEE", "recipient": "7vN24xV8y...SolanaPartnerAddress", "amount": "10000000" },
-        { "purpose": "SWAP_DEPOSIT", "recipient": "near_solver_deposit_address...", "amount": "990000000" }
+        { "purpose": "SWAP_DEPOSIT", "recipient": "solver_deposit_address...", "amount": "990000000" }
       ]
     },
     "feeSplit": {
@@ -206,15 +204,17 @@ Response:
 6. Poll /swap/status until status is "settled", "failed", or "refunded"
 
 ## Fee Structure ($0 Threshold, Upfront Origin Settlement)
-- High-Fee L1s (ETH Mainnet & BTC): 0% platform fee direct route to protect users from gas costs.
-- L2s (Base, Arbitrum, Polygon, BSC) & Low-Fee L1s (Solana, Litecoin, Tron):
-  - Network Protocol Fee: 25 bps (0.25%) — deducted by solver network
+- Supported crypto for 50% fee share is done upfront:
+  - Base, Arbitrum, Polygon, BSC, Solana (SOL): 50% fee share is done upfront directly to your feeRecipient in the origin asset.
+  - Network Protocol Fee: 25 bps (0.25%) — deducted by solvers
   - Your Partner Share: 50% of totalFeeBps → settled UPFRONT in ORIGIN ASSET to feeRecipient
   - ZkPay Treasury Share: 50% of totalFeeBps → settled UPFRONT in ORIGIN ASSET to ZkPay treasury
   - Minimum totalFeeBps: 20 (0.20%)
   - Maximum totalFeeBps: 450 (4.50%)
   - If no feeRecipient provided: 100% of custom fee goes to ZkPay treasury
   - Settlement: Instant on origin chain, $0 minimum payout threshold, no portal delays.
+- Some crypto don't have fee share because of high transaction cost:
+  - Routes on high transaction cost networks like Ethereum Mainnet ('eth') and Bitcoin ('btc') route directly to solvers with 0% platform fee to protect users from high network gas fees.
 
 ## CRITICAL: Atomic Units Conversion Table
 ALL amounts MUST be integer strings in atomic/base units. NEVER pass decimals like "0.01".
@@ -760,8 +760,7 @@ Verify with:
             </h2>
             <p className="text-sm text-[#c6c6cd] max-w-3xl mb-8 leading-relaxed">
               Embed multi-chain crypto-to-crypto token swaps (BTC, ETH, SOL, USDT, USDC across 8+ blockchains) into your app or bot.
-              To protect users from heavy gas overhead, swaps on <strong className="text-[#e5e2e3]">Ethereum Mainnet</strong> and <strong className="text-[#e5e2e3]">Bitcoin</strong> are routed directly with <strong className="text-emerald-400">0% platform fee</strong>.
-              For L2s (Base, Arbitrum, Polygon, BSC) and low-fee chains (Solana, Litecoin, Tron), fees are collected <strong className="text-[#e5e2e3]">upfront in the origin asset</strong> directly to your wallet (<code className="text-[#c0c6de] bg-white/5 px-1.5 py-0.5 rounded">feeRecipient</code>) with <strong className="text-[#c0c6de]">$0 minimum payout threshold</strong> and 100% instant settlement — no third-party aggregator lockups or $1,000 portal limits.
+              Supported crypto for 50% fee share is done upfront directly to your wallet (<code className="text-[#c0c6de] bg-white/5 px-1.5 py-0.5 rounded">feeRecipient</code>) with <strong className="text-[#c0c6de]">$0 minimum payout threshold</strong> and instant settlement, with net funds routed directly to solvers. Some crypto don&apos;t have fee share because of high transaction cost, routing directly to solvers with <strong className="text-emerald-400">0% platform fee</strong> to protect users from punitive network fees.
             </p>
 
             {/* Fee Breakdown Table */}
@@ -777,10 +776,10 @@ Verify with:
                   </tr>
                 </thead>
                 <tbody className="text-[#e5e2e3]">
-                  {/* Tier 1 Header */}
+                  {/* High Transaction Cost Routes Header */}
                   <tr className="bg-white/[0.03]">
                     <td colSpan={5} className="py-2.5 px-3 text-[10px] font-mono font-bold text-amber-300 uppercase tracking-wider">
-                      Tier 1: High-Fee L1s (Ethereum Mainnet &amp; Bitcoin) — 0% Platform Fee Direct Route
+                      Routes Without Fee Share (High Transaction Cost: Ethereum Mainnet &amp; Bitcoin)
                     </td>
                   </tr>
                   <tr className="border-b border-white/5">
@@ -788,20 +787,20 @@ Verify with:
                     <td className="py-3 pr-4 font-mono text-emerald-400">0</td>
                     <td className="py-3 pr-4 text-emerald-400">0.00%</td>
                     <td className="py-3 pr-4 font-mono text-emerald-400">$0.00</td>
-                    <td className="py-3 text-emerald-400">0% fee — Direct route saves user high L1 gas fees</td>
+                    <td className="py-3 text-emerald-400">0% fee — No fee share due to high transaction cost; routes directly to solvers</td>
                   </tr>
                   <tr className="border-b border-white/5">
                     <td className="py-3 pr-4 text-[#909097] pl-3">Network Protocol Fee</td>
                     <td className="py-3 pr-4 font-mono">25</td>
                     <td className="py-3 pr-4">0.25%</td>
                     <td className="py-3 pr-4 font-mono">$2.50</td>
-                    <td className="py-3 text-[#909097]">Network Solvers</td>
+                    <td className="py-3 text-[#909097]">Solvers</td>
                   </tr>
 
-                  {/* Tier 2 & 3 Header */}
+                  {/* Supported Crypto Header */}
                   <tr className="bg-white/[0.03]">
                     <td colSpan={5} className="py-2.5 px-3 text-[10px] font-mono font-bold text-sky-300 uppercase tracking-wider">
-                      Tier 2 &amp; 3: L2s (Base, Arb, Polygon, BSC) &amp; Low-Fee L1s (Solana, Litecoin, Tron)
+                      Supported Crypto (50% Fee Share Done Upfront: Base, Arb, Polygon, BSC, Solana SOL)
                     </td>
                   </tr>
                   <tr className="border-b border-white/5">
@@ -823,7 +822,7 @@ Verify with:
                     <td className="py-3 pr-4 font-mono">25</td>
                     <td className="py-3 pr-4">0.25%</td>
                     <td className="py-3 pr-4 font-mono">$2.50</td>
-                    <td className="py-3 text-[#909097]">Network Solvers</td>
+                    <td className="py-3 text-[#909097]">Solvers</td>
                   </tr>
                   <tr className="bg-white/5 font-medium">
                     <td className="py-3 pr-4 pl-3">Net User Receives</td>
@@ -838,13 +837,13 @@ Verify with:
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
-                <span className="font-label-caps text-[9px] text-amber-300 tracking-[0.2em] font-bold">TIER 1 (ETH &amp; BTC)</span>
+                <span className="font-label-caps text-[9px] text-amber-300 tracking-[0.2em] font-bold">HIGH TRANSACTION COST</span>
                 <p className="text-sm font-medium text-emerald-400">0% Platform Fee</p>
-                <p className="text-xs text-[#909097]">Direct route to protect users from high L1 gas fees</p>
+                <p className="text-xs text-[#909097]">Some crypto don&apos;t have fee share because of high transaction cost</p>
               </div>
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
-                <span className="font-label-caps text-[9px] text-sky-300 tracking-[0.2em] font-bold">TIER 2 &amp; 3 (L2s, SOL, LTC)</span>
-                <p className="text-sm font-medium text-[#e5e2e3]">Upfront Origin Settlement</p>
+                <span className="font-label-caps text-[9px] text-sky-300 tracking-[0.2em] font-bold">SUPPORTED CRYPTO</span>
+                <p className="text-sm font-medium text-[#e5e2e3]">50% Fee Share Done Upfront</p>
                 <p className="text-xs text-[#909097]">$0 minimum threshold, instant payout in origin token</p>
               </div>
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
@@ -867,20 +866,20 @@ Verify with:
                 <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-3">
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-emerald-400 text-base">payments</span>
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">1. Single-Transfer Auto-Split ($0 Min)</h4>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">1. 50% Fee Share Done Upfront ($0 Min)</h4>
                   </div>
                   <p className="text-xs text-[#c6c6cd] leading-relaxed">
-                    Users send 100% of their deposit in a single transfer to the proxy address. The system automatically detects the deposit, splits the upfront fee to <code className="text-[#c0c6de] font-mono">feeRecipient</code>, and forwards the net amount to solvers. For stablecoins (USDT/USDC), all gas and fees are paid strictly out of the token balance with zero native ETH required.
+                    Users send 100% of their deposit in a single transfer to the deposit address. Supported crypto for 50% fee share is done upfront to <code className="text-[#c0c6de] font-mono">feeRecipient</code>, and the net amount is forwarded directly to solvers. Some crypto don&apos;t have fee share because of high transaction cost. For supported stablecoins (USDT/USDC), all gas and fees are paid strictly out of the token balance with zero native gas required.
                   </p>
                 </div>
 
                 <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-3">
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-amber-400 text-base">local_gas_station</span>
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">2. Gas Protection on ETH &amp; BTC</h4>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">2. High Transaction Cost Routes</h4>
                   </div>
                   <p className="text-xs text-[#c6c6cd] leading-relaxed">
-                    Ethereum Mainnet and Bitcoin transactions carry punitive gas fees. ZkPay automatically bypasses platform fees on these L1 routes (<code className="text-emerald-400 font-mono">isDirectRoute: true</code>, 0% fee) to protect users from paying double transaction fees.
+                    Some crypto don&apos;t have fee share because of high transaction cost (such as Ethereum Mainnet and Bitcoin). Swaps on these assets route directly to solvers with 0% platform fee (<code className="text-emerald-400 font-mono">isDirectRoute: true</code>) to protect users from paying double transaction fees.
                   </p>
                 </div>
               </div>

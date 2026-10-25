@@ -37,9 +37,9 @@ export async function GET() {
       },
     },
     feeSettlement: {
-      mechanism: "NEAR_INTENTS_LEDGER",
-      note: "Fees are credited instantly to your feeRecipient account balance on the NEAR Intents ledger with $0 minimum threshold.",
-      partnerGuidance: "feeRecipient MUST be an EVM address (0x...) or a NEAR account (*.near). Connect your wallet to https://app.near-intents.org to view accumulated multi-token fees, bridge out, or swap directly to USDC.",
+      mechanism: "UPFRONT_FEE_SPLIT",
+      note: "Supported crypto for 50% fee share is done upfront. Some crypto don't have fee share because of high transaction cost.",
+      partnerGuidance: "feeRecipient must match the origin blockchain format. Fees are settled upfront on the origin chain directly to the partner feeRecipient wallet with $0 minimum threshold.",
       defaultFeeBps: 100,
       feeSplitModel: "50/50 between ZkPay Treasury and Partner",
     },
