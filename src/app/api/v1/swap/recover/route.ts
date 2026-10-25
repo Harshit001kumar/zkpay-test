@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { corsJson, corsOptions } from "@/lib/server/cors";
+import { verifyAdminRequest } from "@/lib/server/adminAuth";
+import { sanitizeProxyOrder } from "@/lib/server/proxySwapStore";
 import {
   recoverProxyDeposit,
   inspectProxyDepositBalances,
@@ -16,6 +18,7 @@ export async function OPTIONS() {
  * 
  * Permanent emergency recovery for any stuck cross-chain proxy deposit.
  * Sweeps stuck funds directly to Near Intents solver address or refunds 100% to user.
+ * Protected by administrator authentication.
  * 
  * Body:
  * - depositAddress (required): The proxy deposit address or swap ID
@@ -26,6 +29,17 @@ export async function OPTIONS() {
  * - amount (optional): Specific amount to sweep
  */
 export async function POST(req: Request) {
+  const auth = await verifyAdminRequest(req);
+  if (!auth.authorized) {
+    return corsJson(
+      {
+        success: false,
+        error: auth.error || "Unauthorized",
+      },
+      { status: auth.status }
+    );
+  }
+
   try {
     const body = await req.json();
     const depositAddress = body.depositAddress || body.address || body.swapId;
@@ -60,7 +74,7 @@ export async function POST(req: Request) {
         {
           success: false,
           error: result.message,
-          order: result.order || null,
+          order: sanitizeProxyOrder(result.order),
         },
         { status: 400 }
       );
@@ -73,7 +87,7 @@ export async function POST(req: Request) {
       explorerUrl: result.explorerUrl,
       recoveredAmount: result.recoveredAmount,
       destination: result.destination,
-      order: result.order,
+      order: sanitizeProxyOrder(result.order),
     });
   } catch (err: any) {
     console.error("[SwapRecover] Recovery execution error:", err);
@@ -92,8 +106,20 @@ export async function POST(req: Request) {
  * 
  * Inspect on-chain balances across native gas and ERC-20 tokens,
  * or trigger an automatic forward if ?trigger=true.
+ * Protected by administrator authentication.
  */
 export async function GET(req: Request) {
+  const auth = await verifyAdminRequest(req);
+  if (!auth.authorized) {
+    return corsJson(
+      {
+        success: false,
+        error: auth.error || "Unauthorized",
+      },
+      { status: auth.status }
+    );
+  }
+
   try {
     const { searchParams } = new URL(req.url);
     const depositAddress = searchParams.get("depositAddress") || searchParams.get("address") || searchParams.get("swapId");
@@ -116,7 +142,7 @@ export async function GET(req: Request) {
         explorerUrl: result.explorerUrl || null,
         recoveredAmount: result.recoveredAmount || null,
         destination: result.destination || null,
-        order: result.order || null,
+        order: sanitizeProxyOrder(result.order),
       });
     }
 

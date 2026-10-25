@@ -178,6 +178,7 @@ export async function dispatchWebhook(
 
     const res = await fetch(url, {
       method: "POST",
+      redirect: "error",
       headers: {
         "Content-Type": "application/json",
         "User-Agent": "ZkPay-Webhook-Dispatcher/1.0",

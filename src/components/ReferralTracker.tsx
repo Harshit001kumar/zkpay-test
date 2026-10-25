@@ -7,6 +7,8 @@ import { usePrivy } from "@privy-io/react-auth";
 const REFERRAL_STORAGE_KEY = "zkpay_pending_ref";
 const REFERRAL_COOKIE_NAME = "zkpay_ref";
 
+const REFERRAL_CODE_REGEX = /^[a-zA-Z0-9_-]{3,42}$/;
+
 /**
  * Retrieve any pending referral code from URL, localStorage, sessionStorage, or cookies.
  */
@@ -15,27 +17,30 @@ export function getPendingReferral(): string | null {
   try {
     // 1. Check URL query params
     const params = new URLSearchParams(window.location.search);
-    const refFromUrl = params.get("ref");
-    if (refFromUrl && refFromUrl.trim()) {
-      return refFromUrl.trim();
+    const refFromUrl = params.get("ref")?.trim();
+    if (refFromUrl && REFERRAL_CODE_REGEX.test(refFromUrl)) {
+      return refFromUrl;
     }
 
     // 2. Check localStorage
-    const refFromLocal = localStorage.getItem(REFERRAL_STORAGE_KEY);
-    if (refFromLocal && refFromLocal.trim()) {
-      return refFromLocal.trim();
+    const refFromLocal = localStorage.getItem(REFERRAL_STORAGE_KEY)?.trim();
+    if (refFromLocal && REFERRAL_CODE_REGEX.test(refFromLocal)) {
+      return refFromLocal;
     }
 
     // 3. Check sessionStorage
-    const refFromSession = sessionStorage.getItem(REFERRAL_STORAGE_KEY);
-    if (refFromSession && refFromSession.trim()) {
-      return refFromSession.trim();
+    const refFromSession = sessionStorage.getItem(REFERRAL_STORAGE_KEY)?.trim();
+    if (refFromSession && REFERRAL_CODE_REGEX.test(refFromSession)) {
+      return refFromSession;
     }
 
     // 4. Check cookie
     const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${REFERRAL_COOKIE_NAME}=([^;]*)`));
     if (match && match[1]) {
-      return decodeURIComponent(match[1]).trim();
+      const decoded = decodeURIComponent(match[1]).trim();
+      if (REFERRAL_CODE_REGEX.test(decoded)) {
+        return decoded;
+      }
     }
   } catch {}
   return null;
@@ -47,6 +52,7 @@ export function getPendingReferral(): string | null {
 export function savePendingReferral(code: string) {
   if (typeof window === "undefined" || !code) return;
   const trimmed = code.trim();
+  if (!REFERRAL_CODE_REGEX.test(trimmed)) return;
   try {
     localStorage.setItem(REFERRAL_STORAGE_KEY, trimmed);
     sessionStorage.setItem(REFERRAL_STORAGE_KEY, trimmed);

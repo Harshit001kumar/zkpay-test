@@ -3,9 +3,11 @@ import {
   createPayInSession,
   getPayInSession,
   updatePayInSession,
+  getPayLink,
 } from "@/lib/server/payStore";
 import { isSafeWebhookUrlAsync } from "@/lib/server/webhooks";
 import { requirePublicApiKey, resolvePublicApiAuth } from "@/lib/server/publicApiAuth";
+import { enforceRateLimit } from "@/lib/server/rateLimit";
 import { parseAbi, parseUnits, formatUnits } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import {
@@ -53,15 +55,43 @@ function maskUpi(upi: string): string {
  */
 export async function POST(req: Request) {
   try {
-    const auth = await requirePublicApiKey(req);
-    if (!auth.ok) {
-      return corsJson({ error: auth.error }, { status: auth.status || 401 });
+    const body = await req.json();
+    const linkId = body.linkId ? String(body.linkId).trim() : undefined;
+    const linkedPayLink = linkId ? getPayLink(linkId) : undefined;
+    const isValidCheckoutLink = Boolean(
+      linkedPayLink && linkedPayLink.status === "ACTIVE" && linkedPayLink.mode === "request"
+    );
+
+    const auth = await resolvePublicApiAuth(req);
+    if (!auth.ok && !isValidCheckoutLink) {
+      return corsJson(
+        { error: auth.error || "Missing or invalid API key / authorization token." },
+        { status: auth.status || 401 }
+      );
     }
 
-    const body = await req.json();
-    const recipientUpi = (body.recipientUpi || body.upi || "").trim();
-    const amountINR = Number(body.amountINR || body.amount);
-    const webhookUrl = body.webhookUrl ? String(body.webhookUrl).trim() : undefined;
+    const validatedKeyId = auth.ok
+      ? (auth.apiKeyRecord?.id || (auth.isEnvKey ? "admin_env" : auth.userId || "auth_user"))
+      : undefined;
+
+    const { response: rateLimitResp, rateLimit } = enforceRateLimit(req, "create", validatedKeyId);
+    if (rateLimitResp) return rateLimitResp;
+
+    const recipientUpi = (
+      !auth.ok && linkedPayLink
+        ? linkedPayLink.recipientUpi || ""
+        : body.recipientUpi || body.upi || linkedPayLink?.recipientUpi || ""
+    ).trim();
+    const amountINR =
+      !auth.ok && linkedPayLink
+        ? Number(linkedPayLink.amountINR)
+        : Number(body.amountINR || body.amount || linkedPayLink?.amountINR);
+    const webhookUrl =
+      !auth.ok && linkedPayLink
+        ? linkedPayLink.webhookUrl
+        : body.webhookUrl
+          ? String(body.webhookUrl).trim()
+          : linkedPayLink?.webhookUrl;
     const refundAddress = body.refundAddress ? String(body.refundAddress).trim() : undefined;
     const tipUsdcNum = body.tipUsdc ? Math.max(0, Number(body.tipUsdc)) : (body.tip ? Math.max(0, Number(body.tip)) : 0);
 
@@ -196,6 +226,9 @@ export async function POST(req: Request) {
  */
 export async function GET(req: Request) {
   try {
+    const { response: rateLimitResp } = enforceRateLimit(req, "status");
+    if (rateLimitResp) return rateLimitResp;
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     const token = searchParams.get("token");

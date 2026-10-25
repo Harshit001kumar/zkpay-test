@@ -96,7 +96,11 @@ export async function POST(request: Request) {
       targetWalletId = await resolveEmbeddedWalletId(userId);
     }
 
-    if (!targetWalletId || targetWalletId.startsWith("0x")) {
+    if (
+      !targetWalletId ||
+      targetWalletId.startsWith("0x") ||
+      !/^[a-zA-Z0-9_-]{8,64}$/.test(targetWalletId)
+    ) {
       return NextResponse.json(
         {
           error:
@@ -106,9 +110,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // ── 5. Calculate upfront platform fee (L2 USDC fee in USDC) ──
-    const rawFeeBps = typeof body.feeBps === "number" ? body.feeBps : 50; // default 50 bps (0.5%)
-    const feeBps = Math.max(0, Math.min(500, rawFeeBps));
+    const safeWalletId = encodeURIComponent(targetWalletId);
+
+    // ── 5. Calculate upfront platform fee (L2 USDC fee in USDC, enforced server-side) ──
+    const feeBps = 50; // 50 bps (0.5%) enforced server-side
     const feeAmount = (parsedAmount * feeBps) / 10000;
     const netVaultAmount = Number((parsedAmount - feeAmount).toFixed(6));
 
@@ -142,7 +147,7 @@ export async function POST(request: Request) {
           args: [CONTRACTS.TREASURY, feeUnits],
         });
 
-        const rpcEndpoint = `https://api.privy.io/api/v1/wallets/${targetWalletId}/rpc`;
+        const rpcEndpoint = `https://api.privy.io/api/v1/wallets/${safeWalletId}/rpc`;
         const rpcBody = {
           method: "eth_sendTransaction",
           caip2: "eip155:8453",
@@ -222,7 +227,7 @@ export async function POST(request: Request) {
     }
 
     // Fallback: REST API with computed privy-authorization-signature
-    const endpointUrl = `https://api.privy.io/api/v1/wallets/${targetWalletId}/earn/ethereum/deposit`;
+    const endpointUrl = `https://api.privy.io/api/v1/wallets/${safeWalletId}/earn/ethereum/deposit`;
     const requestBody = {
       vault_id: VAULT_ID,
       amount: String(netVaultAmount),

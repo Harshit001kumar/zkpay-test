@@ -40,6 +40,16 @@ export interface ProxySwapOrder {
   expiresAt: number;
 }
 
+export type SanitizedProxySwapOrder = Omit<ProxySwapOrder, "encryptedPrivateKey">;
+
+export function sanitizeProxyOrder(
+  order: ProxySwapOrder | null | undefined
+): SanitizedProxySwapOrder | null {
+  if (!order) return null;
+  const { encryptedPrivateKey: _secret, ...safe } = order;
+  return safe;
+}
+
 // In-memory cache indexed by proxyDepositAddress and swapId
 const ordersByAddress = new Map<string, ProxySwapOrder>();
 const ordersBySwapId = new Map<string, ProxySwapOrder>();
@@ -324,8 +334,14 @@ export function getDecryptedProxyPrivateKey(order: ProxySwapOrder): `0x${string}
     process.env.PAYIN_MASTER_SECRET,
     process.env.AUTH_SECRET,
     process.env.NEXTAUTH_SECRET,
-    "zkpay_default_secure_proxy_secret_v1",
+    process.env.NODE_ENV !== "production" ? "zkpay_default_secure_proxy_secret_v1" : undefined,
   ].filter(Boolean) as string[];
+
+  if (candidateSecrets.length === 0) {
+    throw new Error(
+      "Missing PAYIN_MASTER_SECRET (or AUTH_SECRET) in production environment."
+    );
+  }
 
   let decrypted: string | null = null;
   let lastErr: any = null;

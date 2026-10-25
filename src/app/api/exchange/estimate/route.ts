@@ -18,8 +18,12 @@ import {
   calculateFeeSplit,
   computeUpfrontFees,
 } from "@/lib/server/swapRouter";
+import { enforceRateLimit } from "@/lib/server/rateLimit";
 
 export async function GET(req: Request) {
+  const { response: rateLimitResp } = enforceRateLimit(req, "quote");
+  if (rateLimitResp) return rateLimitResp;
+
   try {
     const { searchParams } = new URL(req.url);
     const originAssetId = searchParams.get("originAssetId");

@@ -378,7 +378,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
                 <div className="relative bg-white p-6 rounded-[32px] shadow-2xl">
                   <img 
                     className="w-64 h-64 mix-blend-multiply" 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${depositAddress}&margin=0`}
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(depositAddress)}&margin=0`}
                     alt="Deposit QR Code" 
                   />
                 </div>

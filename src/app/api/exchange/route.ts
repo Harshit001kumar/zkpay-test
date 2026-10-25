@@ -21,8 +21,12 @@ import {
   calculateFeeSplit,
   computeUpfrontFees,
 } from "@/lib/server/swapRouter";
+import { enforceRateLimit } from "@/lib/server/rateLimit";
 
 export async function POST(req: Request) {
+  const { response: rateLimitResp } = enforceRateLimit(req, "create");
+  if (rateLimitResp) return rateLimitResp;
+
   try {
     const body = await req.json();
     const { originAssetId, amount, settleAddress, refundTo: userRefundTo } = body;

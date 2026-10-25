@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceRateLimit } from "@/lib/server/rateLimit";
 
 /**
  * ERC-20 Paymaster Proxy
@@ -30,10 +31,37 @@ const PAYMASTER_METHODS = new Set([
   "pm_sponsorUserOperation",
 ]);
 
+const ALLOWED_RPC_METHODS = new Set([
+  "pm_getPaymasterStubData",
+  "pm_getPaymasterData",
+  "pm_sponsorUserOperation",
+  "eth_sendUserOperation",
+  "eth_estimateUserOperationGas",
+  "eth_getUserOperationReceipt",
+  "eth_getUserOperationByHash",
+  "eth_supportedEntryPoints",
+  "pimlico_getUserOperationGasPrice",
+  "pimlico_getTokenQuotes",
+]);
+
 export async function POST(req: NextRequest) {
+  const { response: rateLimitResp } = enforceRateLimit(req, "quote");
+  if (rateLimitResp) return rateLimitResp;
+
   try {
     const body = await req.json();
     const { method, params, id, jsonrpc } = body;
+
+    if (!method || typeof method !== "string" || !ALLOWED_RPC_METHODS.has(method)) {
+      return NextResponse.json(
+        {
+          jsonrpc: "2.0",
+          id: id || 1,
+          error: { code: -32601, message: "RPC method not permitted on paymaster proxy" },
+        },
+        { status: 403 }
+      );
+    }
 
     let modifiedParams = params;
 

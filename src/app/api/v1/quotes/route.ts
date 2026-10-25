@@ -1,5 +1,6 @@
 import { corsJson, corsOptions } from "@/lib/server/cors";
 import { getLiveFiatRate } from "@/lib/server/p2pRates";
+import { enforceRateLimit } from "@/lib/server/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,9 @@ const PLATFORM_FEE_BPS = 100; // 1%
  * fiat payout amount, and on-chain rate directly from the P2P Diamond contract.
  */
 export async function POST(req: Request) {
+  const { response: rateLimitResp } = enforceRateLimit(req, "quote");
+  if (rateLimitResp) return rateLimitResp;
+
   try {
     const body = await req.json();
     const amount = Number(body.amount);

@@ -32,11 +32,20 @@ function makeId(): string {
 }
 
 function getKeySalt(): string {
-  return process.env.ZKPAY_API_KEY_HASH_SALT || "";
+  return (
+    process.env.ZKPAY_API_KEY_HASH_SALT ||
+    process.env.PAYIN_MASTER_SECRET ||
+    process.env.AUTH_SECRET ||
+    ""
+  );
 }
 
 function hashApiKey(key: string): string {
   return crypto.createHash("sha256").update(`${getKeySalt()}::${key}`).digest("hex");
+}
+
+function hashApiKeyUnsalted(key: string): string {
+  return crypto.createHash("sha256").update(`::${key}`).digest("hex");
 }
 
 function ensureDir() {
@@ -171,9 +180,14 @@ export async function revokeApiKeyForUser(userId: string, keyId: string): Promis
 
 export async function findActiveApiKey(rawKey: string): Promise<ApiKeyRecord | null> {
   await hydrate();
-  const keyHash = hashApiKey(rawKey.trim());
+  const clean = rawKey.trim();
+  const keyHash = hashApiKey(clean);
+  const legacyHash = hashApiKeyUnsalted(clean);
   for (const rec of apiKeys.values()) {
-    if (rec.status === "ACTIVE" && rec.keyHash === keyHash) {
+    if (
+      rec.status === "ACTIVE" &&
+      (rec.keyHash === keyHash || rec.keyHash === legacyHash)
+    ) {
       return rec;
     }
   }

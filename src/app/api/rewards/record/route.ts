@@ -60,8 +60,12 @@ export async function POST(req: Request) {
 
     const userAddress = rawUserAddress.toLowerCase();
 
-    // Verify authenticated user's wallet matches requested userAddress if known
-    if (userAuth.walletAddress && userAuth.walletAddress.toLowerCase() !== userAddress) {
+    // Verify authenticated user's wallet matches requested userAddress
+    const authorizedWallets = new Set([
+      ...(userAuth.walletAddresses || []).map((a) => a.toLowerCase()),
+      ...(userAuth.walletAddress ? [userAuth.walletAddress.toLowerCase()] : []),
+    ]);
+    if (!authorizedWallets.has(userAddress)) {
       return NextResponse.json(
         { error: "Forbidden — userAddress does not match authenticated user's wallet" },
         { status: 403 }
@@ -85,6 +89,26 @@ export async function POST(req: Request) {
       if (!receipt || receipt.status !== "success") {
         return NextResponse.json(
           { error: "Transaction verification failed: Transaction not successful on Base" },
+          { status: 400 }
+        );
+      }
+
+      // Verify that txHash actually interacted with P2P Diamond contract (escrowed principal)
+      const diamondLower = CONTRACTS.DIAMOND.toLowerCase();
+      const interactedWithDiamond =
+        receipt.to?.toLowerCase() === diamondLower ||
+        (Array.isArray(receipt.logs) &&
+          receipt.logs.some((log: any) => log.address?.toLowerCase() === diamondLower));
+      const diamondTransferInfo = findFeeTransferToTreasury(receipt, CONTRACTS.DIAMOND);
+      const expectedPrincipalWei = parseUnits(principal.toFixed(6), 6);
+
+      if (
+        !interactedWithDiamond ||
+        !diamondTransferInfo.found ||
+        diamondTransferInfo.valueWei < (expectedPrincipalWei * 95n) / 100n
+      ) {
+        return NextResponse.json(
+          { error: "Transaction rejected: No valid Scan & Pay order escrow on P2P Diamond detected." },
           { status: 400 }
         );
       }

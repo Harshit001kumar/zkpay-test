@@ -181,6 +181,7 @@ export default function PayPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          linkId: linkData.id || id,
           recipientUpi: linkData.recipientUpi,
           amountINR: inrRaw,
           webhookUrl: linkData.webhookUrl,
@@ -197,7 +198,8 @@ export default function PayPage() {
         if (pollTimerRef.current) clearInterval(pollTimerRef.current);
         pollTimerRef.current = setInterval(async () => {
           try {
-            const checkRes = await fetch(`/api/v1/payin-sessions?id=${data.sessionId}`);
+            const tokenParam = data.clientSecret ? `&token=${encodeURIComponent(data.clientSecret)}` : "";
+            const checkRes = await fetch(`/api/v1/payin-sessions?id=${encodeURIComponent(data.sessionId)}${tokenParam}`);
             const checkData = await checkRes.json();
             if (checkData.success) {
               if (
@@ -951,9 +953,10 @@ export default function PayPage() {
                     </a>
                   )}
 
-                  {linkData?.redirectUrl && (
+                  {linkData?.redirectUrl && /^https?:\/\//i.test(linkData.redirectUrl) && (
                     <a
                       href={linkData.redirectUrl}
+                      rel="noopener noreferrer"
                       className="block w-full py-4 rounded-xl bg-[#e5e2e3] hover:bg-white text-[#131315] font-bold text-xs tracking-[0.25em] font-label-caps uppercase transition-all shadow-lg"
                     >
                       RETURN TO MERCHANT

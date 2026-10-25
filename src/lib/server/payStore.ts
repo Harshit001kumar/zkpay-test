@@ -40,6 +40,7 @@ export interface PayLink {
   totalPaidCount?: number;
   totalVolumeINR?: number;
   parentLinkId?: string;
+  paidTxHashes?: string[];
 
   // Claimable Escrow Security Fields (mode === "disburse")
   pinHash?: string; // Salted HMAC-SHA256 (NEVER returned to client)
@@ -264,7 +265,13 @@ function getMasterEncryptionKey(): Buffer {
     process.env.PAYIN_MASTER_SECRET ||
     process.env.AUTH_SECRET ||
     process.env.NEXTAUTH_SECRET ||
-    "zkpay_default_secure_proxy_secret_v1";
+    (process.env.NODE_ENV !== "production" ? "zkpay_default_secure_proxy_secret_v1" : "");
+
+  if (!secret) {
+    throw new Error(
+      "Missing PAYIN_MASTER_SECRET (or AUTH_SECRET) in production environment."
+    );
+  }
 
   return crypto.createHash("sha256").update(secret).digest();
 }
@@ -467,6 +474,12 @@ export function findPayLinkByTxHash(rawTxHash: string): PayLink | undefined {
   if (!txHash) return undefined;
   for (const link of payLinks.values()) {
     if (link.txHash?.toLowerCase() === txHash) {
+      return link;
+    }
+    if (
+      Array.isArray(link.paidTxHashes) &&
+      link.paidTxHashes.some((h) => h.toLowerCase() === txHash)
+    ) {
       return link;
     }
   }

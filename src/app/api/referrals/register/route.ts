@@ -37,7 +37,7 @@ export async function POST(req: Request) {
       ...(userAuth.walletAddress ? [userAuth.walletAddress.toLowerCase()] : []),
     ]);
 
-    if (authorizedWallets.size > 0 && !authorizedWallets.has(userAddress)) {
+    if (!authorizedWallets.has(userAddress)) {
       return NextResponse.json(
         { error: "Forbidden — userAddress does not belong to the authenticated user" },
         { status: 403 }

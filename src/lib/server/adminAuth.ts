@@ -30,26 +30,11 @@ export interface AdminAuthResult {
 }
 
 /**
- * Cryptographically verifies that an incoming request is from an authorized Admin.
- * 1. Checks Authorization: Bearer <privy-access-token> header.
- * 2. Uses PrivyClient cryptographic token verification.
- * 3. Inspects server-verified linked accounts against ADMIN_PRIVY_DIDS and ADMIN_WALLETS.
+ * Cryptographically verifies that a Privy access token belongs to an authorized Admin.
  */
-export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult> {
+export async function verifyAdminToken(rawToken?: string | null): Promise<AdminAuthResult> {
   try {
-    const authHeader = req.headers.get("authorization");
-    let token = "";
-
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      token = authHeader.replace("Bearer ", "").trim();
-    } else {
-      const cookieHeader = req.headers.get("cookie") || "";
-      const match = cookieHeader.match(/privy-token=([^;]+)/);
-      if (match) {
-        token = decodeURIComponent(match[1]);
-      }
-    }
-
+    const token = rawToken?.trim() || "";
     if (!token) {
       return {
         authorized: false,
@@ -176,4 +161,27 @@ export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult>
       status: 401,
     };
   }
+}
+
+/**
+ * Cryptographically verifies that an incoming request is from an authorized Admin.
+ * 1. Checks Authorization: Bearer <privy-access-token> header.
+ * 2. Uses PrivyClient cryptographic token verification.
+ * 3. Inspects server-verified linked accounts against ADMIN_PRIVY_DIDS and ADMIN_WALLETS.
+ */
+export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult> {
+  const authHeader = req.headers.get("authorization");
+  let token = "";
+
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.replace("Bearer ", "").trim();
+  } else {
+    const cookieHeader = req.headers.get("cookie") || "";
+    const match = cookieHeader.match(/privy-token=([^;]+)/);
+    if (match) {
+      token = decodeURIComponent(match[1]);
+    }
+  }
+
+  return verifyAdminToken(token);
 }

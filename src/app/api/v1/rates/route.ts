@@ -1,5 +1,6 @@
 import { corsJson, corsOptions } from "@/lib/server/cors";
 import { CONTRACTS } from "@/lib/constants";
+import { enforceRateLimit } from "@/lib/server/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,9 @@ const SUPPORTED_CURRENCIES = ["INR", "USD", "EUR", "GBP"];
  *   ?currency=INR  (optional, returns only that currency)
  */
 export async function GET(req: Request) {
+  const { response: rateLimitResp } = enforceRateLimit(req, "tokens");
+  if (rateLimitResp) return rateLimitResp;
+
   try {
     const { searchParams } = new URL(req.url);
     const requestedCurrency = searchParams.get("currency")?.toUpperCase();

@@ -17,16 +17,33 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   
   const processScanData = useCallback((text: string) => {
-    const trimmed = text.trim();
+    const trimmed = text.trim().slice(0, 1024);
     if (!trimmed) return;
+
+    const sanitizeUpiId = (val: string | null | undefined) => {
+      if (!val) return undefined;
+      const clean = val.trim().slice(0, 100);
+      return /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+$/.test(clean) ? clean : undefined;
+    };
+
+    const sanitizeName = (val: string | null | undefined) => {
+      if (!val) return undefined;
+      return val.replace(/[<>]/g, "").trim().slice(0, 80) || undefined;
+    };
+
+    const sanitizeAmount = (val: string | null | undefined) => {
+      if (!val) return undefined;
+      const num = Number(val);
+      return Number.isFinite(num) && num > 0 && num <= 100_000 ? String(num) : undefined;
+    };
 
     // 1. Standard UPI intent URI (upi://pay?pa=...&pn=...)
     if (trimmed.toLowerCase().startsWith("upi://pay")) {
       try {
         const url = new URL(trimmed);
-        const upiId = url.searchParams.get("pa") || undefined;
-        const name = url.searchParams.get("pn") || undefined;
-        const defaultAmount = url.searchParams.get("am") || undefined;
+        const upiId = sanitizeUpiId(url.searchParams.get("pa"));
+        const name = sanitizeName(url.searchParams.get("pn"));
+        const defaultAmount = sanitizeAmount(url.searchParams.get("am"));
         
         onScan({
           type: "upi",
@@ -45,10 +62,10 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
     if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
       try {
         const url = new URL(trimmed);
-        const upiId = url.searchParams.get("pa");
+        const upiId = sanitizeUpiId(url.searchParams.get("pa"));
         if (upiId) {
-          const name = url.searchParams.get("pn") || undefined;
-          const defaultAmount = url.searchParams.get("am") || undefined;
+          const name = sanitizeName(url.searchParams.get("pn"));
+          const defaultAmount = sanitizeAmount(url.searchParams.get("am"));
           onScan({
             type: "upi",
             raw: trimmed,
@@ -62,12 +79,13 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
     }
 
     // 3. Raw UPI ID (e.g. merchant@okaxis, 9876543210@paytm)
-    if (trimmed.includes("@") && !trimmed.includes(" ") && !trimmed.startsWith("0x")) {
+    const rawUpi = sanitizeUpiId(trimmed);
+    if (rawUpi && !trimmed.startsWith("0x")) {
       onScan({
         type: "upi",
         raw: trimmed,
-        upiId: trimmed,
-        name: trimmed.split("@")[0],
+        upiId: rawUpi,
+        name: sanitizeName(rawUpi.split("@")[0]),
       });
       return;
     }
@@ -76,7 +94,7 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
     onScan({
       type: "eth",
       raw: trimmed,
-      address: trimmed
+      address: trimmed.slice(0, 128)
     });
   }, [onScan]);
 

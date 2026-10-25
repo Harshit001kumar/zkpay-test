@@ -3,6 +3,7 @@ import {
   getPrivyClient,
   getPrivyAuthPrivateKey,
   resolveEmbeddedWalletId,
+  verifyUserOwnsWalletId,
   parsePrivyEarnError,
 } from "@/lib/server/privyEarn";
 
@@ -42,11 +43,23 @@ export async function POST(request: Request) {
     const { walletId: rawWalletId } = body;
 
     let targetWalletId = rawWalletId;
-    if (!targetWalletId || targetWalletId.startsWith("0x")) {
+    if (targetWalletId && !targetWalletId.startsWith("0x")) {
+      const isOwned = await verifyUserOwnsWalletId(userId, targetWalletId);
+      if (!isOwned) {
+        return NextResponse.json(
+          { error: "Forbidden — specified wallet does not belong to the authenticated user." },
+          { status: 403 }
+        );
+      }
+    } else {
       targetWalletId = await resolveEmbeddedWalletId(userId);
     }
 
-    if (!targetWalletId || targetWalletId.startsWith("0x")) {
+    if (
+      !targetWalletId ||
+      targetWalletId.startsWith("0x") ||
+      !/^[a-zA-Z0-9_-]{8,64}$/.test(targetWalletId)
+    ) {
       return NextResponse.json(
         {
           error:
@@ -55,6 +68,8 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    const safeWalletId = encodeURIComponent(targetWalletId);
 
     // ── 3. Call Privy Earn claim incentive API with Authorization Context ──
     const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID!;
@@ -90,7 +105,7 @@ export async function POST(request: Request) {
     }
 
     // Fallback: REST API with computed privy-authorization-signature
-    const endpointUrl = `https://api.privy.io/api/v1/wallets/${targetWalletId}/earn/ethereum/incentive/claim`;
+    const endpointUrl = `https://api.privy.io/api/v1/wallets/${safeWalletId}/earn/ethereum/incentive/claim`;
     const requestBody = { chain: "base" };
 
     const headers: Record<string, string> = {

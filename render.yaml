@@ -30,3 +30,9 @@ services:
         sync: false
       - key: ADMIN_PRIVY_DIDS
         sync: false
+      - key: PAYIN_MASTER_SECRET
+        generateValue: true
+      - key: ZKPAY_API_KEY_HASH_SALT
+        generateValue: true
+      - key: WEBHOOK_SECRET
+        generateValue: true

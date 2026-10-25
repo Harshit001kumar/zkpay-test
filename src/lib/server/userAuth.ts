@@ -51,8 +51,11 @@ export async function verifyUserRequest(req: Request): Promise<UserAuthResult> {
       walletAddresses = Array.from(new Set(addresses));
       walletAddress = walletAddresses[0];
     } catch {
-      walletAddress = undefined;
-      walletAddresses = [];
+      return {
+        authorized: false,
+        status: 503,
+        error: "Unable to verify linked wallets with authentication provider. Please retry.",
+      };
     }
 
     return { authorized: true, status: 200, userId, walletAddress, walletAddresses };

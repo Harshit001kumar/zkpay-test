@@ -1,6 +1,7 @@
 import { corsJson, corsOptions } from "@/lib/server/cors";
 import { enforceRateLimit } from "@/lib/server/rateLimit";
 import { getSupportedTokens } from "@/lib/server/swapRouter";
+import { resolvePublicApiAuth } from "@/lib/server/publicApiAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -12,8 +13,11 @@ export const dynamic = "force-dynamic";
  * Rate limit: 60 req/min for IP, 300 req/min for authenticated API Key.
  */
 export async function GET(req: Request) {
-  const apiKey = req.headers.get("x-api-key") || req.headers.get("authorization");
-  const { response: rateLimitResp, rateLimit } = enforceRateLimit(req, "tokens", apiKey);
+  const auth = await resolvePublicApiAuth(req);
+  const validatedKeyId = auth.ok
+    ? (auth.apiKeyRecord?.id || (auth.isEnvKey ? "admin_env" : auth.userId || "auth_user"))
+    : undefined;
+  const { response: rateLimitResp, rateLimit } = enforceRateLimit(req, "tokens", validatedKeyId);
   if (rateLimitResp) return rateLimitResp;
 
   try {

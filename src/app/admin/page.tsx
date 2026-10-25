@@ -559,6 +559,7 @@ export default function AdminPage() {
     try {
       const provider = await (activeWallet as any).getEthereumProvider();
       const adminAddress = (activeWallet as any).address;
+      const token = await getAccessToken();
       let lastTxHash = "";
       const disbursedAddresses: string[] = [];
 
@@ -584,10 +585,26 @@ export default function AdminPage() {
 
         lastTxHash = txHash as string;
         disbursedAddresses.push(u.userAddress);
+
+        // Immediately record each completed transfer on backend to prevent double-payout if a subsequent tx fails
+        if (token) {
+          await fetch("/api/admin/rewards", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              action: "mark-paid",
+              cycle: rewardsData.cycle,
+              userAddresses: [u.userAddress],
+              payoutTxHash: lastTxHash,
+            }),
+          }).catch((e) => console.warn("Incremental mark-paid warning:", e));
+        }
       }
 
       setDisburseProgress("Confirming payout records on backend...");
-      const token = await getAccessToken();
       const recordRes = await fetch("/api/admin/rewards", {
         method: "POST",
         headers: {
@@ -613,6 +630,7 @@ export default function AdminPage() {
     } catch (err: any) {
       console.error("[Admin Payout] Failed:", err);
       setDisburseError(err.message || "Payout transaction failed or was rejected.");
+      loadAdminData();
     } finally {
       setIsDisbursing(false);
     }
@@ -625,7 +643,8 @@ export default function AdminPage() {
   const loadPayments = useCallback(async () => {
     setIsLoadingPaymentData(true);
     try {
-      const res = await getAdminPaymentOverview();
+      const token = await getAccessToken();
+      const res = await getAdminPaymentOverview(token);
       if (res.success) {
         setPaymentData(res);
       }
@@ -634,7 +653,7 @@ export default function AdminPage() {
     } finally {
       setIsLoadingPaymentData(false);
     }
-  }, []);
+  }, [getAccessToken]);
 
   useEffect(() => {
     if (isAuthorized) {
@@ -2117,7 +2136,8 @@ export default function AdminPage() {
                                   disabled={isExecutingAdminAction}
                                   onClick={async () => {
                                     setIsExecutingAdminAction(true);
-                                    const res = await retryHandshakeAction(s.id);
+                                    const token = await getAccessToken();
+                                    const res = await retryHandshakeAction(s.id, token);
                                     setAdminActionResult(res);
                                     setIsExecutingAdminAction(false);
                                     loadPayments();
@@ -2134,7 +2154,8 @@ export default function AdminPage() {
                                   onClick={async () => {
                                     if (!confirm(`Cancel order #${s.p2pOrderId} on Diamond and refund?`)) return;
                                     setIsExecutingAdminAction(true);
-                                    const res = await forceCancelOrderAction(s.id);
+                                    const token = await getAccessToken();
+                                    const res = await forceCancelOrderAction(s.id, token);
                                     setAdminActionResult(res);
                                     setIsExecutingAdminAction(false);
                                     loadPayments();
@@ -2228,10 +2249,12 @@ export default function AdminPage() {
                       disabled={isExecutingAdminAction || !manualRefundRecipient.trim() || !manualRefundAmount.trim()}
                       onClick={async () => {
                         setIsExecutingAdminAction(true);
+                        const token = await getAccessToken();
                         const res = await executeManualRefundAction({
                           sessionId: manualRefundSession.id,
                           destinationAddress: manualRefundRecipient.trim(),
                           amountUsdc: manualRefundAmount.trim(),
+                          accessToken: token,
                         });
                         setAdminActionResult(res);
                         setIsExecutingAdminAction(false);
@@ -2415,9 +2438,14 @@ export default function AdminPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-[#909097]">Base TX:</span>
                       <a
-                        href={shiftData.destinationExplorerUrl || `https://basescan.org/tx/${shiftData.destinationTxHash}`}
+                        href={
+                          typeof shiftData.destinationExplorerUrl === "string" &&
+                          shiftData.destinationExplorerUrl.startsWith("https://")
+                            ? shiftData.destinationExplorerUrl
+                            : `https://basescan.org/tx/${encodeURIComponent(shiftData.destinationTxHash)}`
+                        }
                         target="_blank"
-                        rel="noreferrer"
+                        rel="noopener noreferrer"
                         className="text-[#c0c6de] hover:underline flex items-center gap-1"
                       >
                         <span className="truncate max-w-[180px]">{shiftData.destinationTxHash}</span>
@@ -2826,9 +2854,14 @@ export default function AdminPage() {
                           <div className="flex items-center gap-1.5 pt-1">
                             <span className="text-[#909097]">Transaction:</span>
                             <a
-                              href={recoverySuccessResult.explorerUrl || `https://basescan.org/tx/${recoverySuccessResult.txHash}`}
+                              href={
+                                typeof recoverySuccessResult.explorerUrl === "string" &&
+                                recoverySuccessResult.explorerUrl.startsWith("https://")
+                                  ? recoverySuccessResult.explorerUrl
+                                  : `https://basescan.org/tx/${encodeURIComponent(recoverySuccessResult.txHash)}`
+                              }
                               target="_blank"
-                              rel="noreferrer"
+                              rel="noopener noreferrer"
                               className="text-white underline inline-flex items-center gap-1 font-bold"
                             >
                               <span className="truncate max-w-[200px]">{recoverySuccessResult.txHash}</span>

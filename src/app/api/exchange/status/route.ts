@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { enforceRateLimit } from "@/lib/server/rateLimit";
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +27,9 @@ function mapStatus(nearStatus: string): string {
 }
 
 export async function GET(req: Request) {
+  const { response: rateLimitResp } = enforceRateLimit(req, "status");
+  if (rateLimitResp) return rateLimitResp;
+
   try {
     const { searchParams } = new URL(req.url);
     const depositAddress = searchParams.get("depositAddress");
@@ -130,6 +134,11 @@ export async function GET(req: Request) {
     }
 
     const swapDetails = data.swapDetails || {};
+    const rawExplorerUrl = swapDetails.destinationChainTxHashes?.[0]?.explorerUrl;
+    const safeExplorerUrl =
+      typeof rawExplorerUrl === "string" && rawExplorerUrl.startsWith("https://")
+        ? rawExplorerUrl
+        : null;
 
     return NextResponse.json({
       status: mapStatus(data.status),
@@ -137,7 +146,7 @@ export async function GET(req: Request) {
       depositAmount: swapDetails.depositedAmountFormatted || null,
       settleAmount: swapDetails.amountOutFormatted || null,
       txId: swapDetails.destinationChainTxHashes?.[0]?.hash || null,
-      txExplorerUrl: swapDetails.destinationChainTxHashes?.[0]?.explorerUrl || null,
+      txExplorerUrl: safeExplorerUrl,
     });
   } catch (error: any) {
     console.error("[NEAR Intents Status] Error:", error);

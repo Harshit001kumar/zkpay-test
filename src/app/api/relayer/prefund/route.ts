@@ -7,6 +7,8 @@ import {
   checkUsdcActivity,
 } from "@/lib/server/relayer";
 import { verifyUserRequest } from "@/lib/server/userAuth";
+import { verifyAdminRequest } from "@/lib/server/adminAuth";
+import { enforceRateLimit } from "@/lib/server/rateLimit";
 
 // ──────────────────────────────────────────────
 // POST /api/relayer/prefund
@@ -24,6 +26,9 @@ export async function POST(request: Request) {
         { status: userAuth.status || 401 }
       );
     }
+
+    const { response: rateLimitResp } = enforceRateLimit(request, "create", userAuth.userId);
+    if (rateLimitResp) return rateLimitResp;
 
     // ── 2. Security Check: Parse & Validate Target Address ──
     const body = await request.json();
@@ -44,7 +49,7 @@ export async function POST(request: Request) {
       ...(userAuth.walletAddress ? [userAuth.walletAddress.toLowerCase()] : []),
     ]);
 
-    if (authorizedWallets.size > 0 && !authorizedWallets.has(targetAddress)) {
+    if (!authorizedWallets.has(targetAddress)) {
       return NextResponse.json(
         { error: "Forbidden — prefund target address does not belong to authenticated user" },
         { status: 403 }
@@ -92,7 +97,15 @@ export async function POST(request: Request) {
 //
 // Relayer Health & Monitoring endpoint.
 // ──────────────────────────────────────────────
-export async function GET() {
+export async function GET(request: Request) {
+  const adminAuth = await verifyAdminRequest(request);
+  if (!adminAuth.authorized) {
+    return NextResponse.json(
+      { error: adminAuth.error || "Unauthorized — administrator access required" },
+      { status: adminAuth.status || 401 }
+    );
+  }
+
   try {
     const address = getRelayerAddress();
     const balance = await getRelayerBalance();

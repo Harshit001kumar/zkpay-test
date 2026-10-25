@@ -9,6 +9,7 @@ import {
 } from "@/lib/server/payStore";
 import { executeClaimDisbursement } from "@/lib/server/p2pServerEngine";
 import { dispatchWebhook } from "@/lib/server/webhooks";
+import { enforceRateLimit } from "@/lib/server/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,9 @@ export const dynamic = "force-dynamic";
  * - recipientUpi (where INR fiat will be deposited)
  */
 export async function POST(req: Request) {
+  const { response: rateLimitResp } = enforceRateLimit(req, "create");
+  if (rateLimitResp) return rateLimitResp;
+
   let linkId = "";
   try {
     const body = await req.json();

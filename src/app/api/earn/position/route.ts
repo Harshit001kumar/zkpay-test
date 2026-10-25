@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { getPrivyClient, resolveEmbeddedWalletId } from "@/lib/server/privyEarn";
+import {
+  getPrivyClient,
+  resolveEmbeddedWalletId,
+  verifyUserOwnsWalletId,
+} from "@/lib/server/privyEarn";
 import { CONTRACTS, EARN_CONFIG } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
@@ -40,7 +44,18 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     let targetWalletId = searchParams.get("walletId");
 
-    if (!targetWalletId || targetWalletId.startsWith("0x")) {
+    if (targetWalletId && !targetWalletId.startsWith("0x")) {
+      if (!/^[a-zA-Z0-9_-]{8,64}$/.test(targetWalletId)) {
+        return NextResponse.json({ error: "Invalid walletId format." }, { status: 400 });
+      }
+      const isOwned = await verifyUserOwnsWalletId(userId, targetWalletId);
+      if (!isOwned) {
+        return NextResponse.json(
+          { error: "Forbidden — specified wallet does not belong to the authenticated user." },
+          { status: 403 }
+        );
+      }
+    } else {
       targetWalletId = await resolveEmbeddedWalletId(userId);
     }
 
@@ -84,17 +99,20 @@ export async function GET(request: Request) {
       }
     );
 
-    const positionPromise = targetWalletId && !targetWalletId.startsWith("0x")
-      ? fetch(
-          `https://api.privy.io/api/v1/wallets/${targetWalletId}/earn/ethereum/vaults?vault_id=${VAULT_ID}`,
-          {
-            headers: {
-              "privy-app-id": appId,
-              Authorization: `Basic ${basicAuth}`,
-            },
-          }
-        )
-      : Promise.resolve(null);
+    const positionPromise =
+      targetWalletId &&
+      !targetWalletId.startsWith("0x") &&
+      /^[a-zA-Z0-9_-]{8,64}$/.test(targetWalletId)
+        ? fetch(
+            `https://api.privy.io/api/v1/wallets/${encodeURIComponent(targetWalletId)}/earn/ethereum/vaults?vault_id=${encodeURIComponent(VAULT_ID)}`,
+            {
+              headers: {
+                "privy-app-id": appId,
+                Authorization: `Basic ${basicAuth}`,
+              },
+            }
+          )
+        : Promise.resolve(null);
 
     const [vaultRes, positionRes] = await Promise.all([vaultPromise, positionPromise]);
 

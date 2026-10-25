@@ -1172,15 +1172,31 @@ async function fetchNearIntentsStatus(depositAddress: string) {
   });
 
   const swapDetails = data.swapDetails || {};
+  const rawDestHash = swapDetails.destinationChainTxHashes?.[0]?.hash;
+  const rawDestExplorer = swapDetails.destinationChainTxHashes?.[0]?.explorerUrl;
+  const rawOriginHash = swapDetails.originChainTxHashes?.[0]?.hash;
+
+  const safeDestHash =
+    typeof rawDestHash === "string" && /^[a-zA-Z0-9x_-]{8,128}$/.test(rawDestHash)
+      ? rawDestHash
+      : null;
+  const safeExplorerUrl =
+    typeof rawDestExplorer === "string" && rawDestExplorer.startsWith("https://")
+      ? rawDestExplorer
+      : null;
+  const safeOriginHash =
+    typeof rawOriginHash === "string" && /^[a-zA-Z0-9x_-]{8,128}$/.test(rawOriginHash)
+      ? rawOriginHash
+      : null;
 
   return {
     status: mapSolverStatus(data.status),
     rawStatus: data.status,
     depositedAmount: swapDetails.depositedAmountFormatted || null,
     settledAmount: swapDetails.amountOutFormatted || null,
-    destinationTxHash: swapDetails.destinationChainTxHashes?.[0]?.hash || null,
-    destinationExplorerUrl: swapDetails.destinationChainTxHashes?.[0]?.explorerUrl || null,
-    originTxHash: swapDetails.originChainTxHashes?.[0]?.hash || null,
+    destinationTxHash: safeDestHash,
+    destinationExplorerUrl: safeExplorerUrl,
+    originTxHash: safeOriginHash,
     updatedAt: new Date().toISOString(),
   };
 }

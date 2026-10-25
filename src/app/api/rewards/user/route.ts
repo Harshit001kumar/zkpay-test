@@ -40,7 +40,7 @@ export async function GET(req: Request) {
       ...(userAuth.walletAddress ? [userAuth.walletAddress.toLowerCase()] : []),
     ]);
 
-    if (authorizedWallets.size > 0 && !authorizedWallets.has(normalizedAddress)) {
+    if (!authorizedWallets.has(normalizedAddress)) {
       return NextResponse.json(
         { error: "Forbidden — cannot view another user's rewards" },
         { status: 403 }

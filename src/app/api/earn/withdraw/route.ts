@@ -77,7 +77,11 @@ export async function POST(request: Request) {
       targetWalletId = await resolveEmbeddedWalletId(userId);
     }
 
-    if (!targetWalletId || targetWalletId.startsWith("0x")) {
+    if (
+      !targetWalletId ||
+      targetWalletId.startsWith("0x") ||
+      !/^[a-zA-Z0-9_-]{8,64}$/.test(targetWalletId)
+    ) {
       return NextResponse.json(
         {
           error:
@@ -86,6 +90,8 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    const safeWalletId = encodeURIComponent(targetWalletId);
 
     // ── 4. Call Privy Earn withdraw API with Authorization Context ──
     const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID!;
@@ -117,7 +123,7 @@ export async function POST(request: Request) {
     }
 
     // Fallback: REST API with computed privy-authorization-signature
-    const endpointUrl = `https://api.privy.io/api/v1/wallets/${targetWalletId}/earn/ethereum/withdraw`;
+    const endpointUrl = `https://api.privy.io/api/v1/wallets/${safeWalletId}/earn/ethereum/withdraw`;
     const requestBody = {
       vault_id: VAULT_ID,
       amount: String(parsedAmount),

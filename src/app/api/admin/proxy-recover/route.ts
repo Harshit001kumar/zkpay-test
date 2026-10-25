@@ -5,7 +5,7 @@ import {
   recoverProxyDeposit,
   sweepAllProxyDustToRelayer,
 } from "@/lib/server/proxyForwarder";
-import { getRecentProxyOrders } from "@/lib/server/proxySwapStore";
+import { getRecentProxyOrders, sanitizeProxyOrder } from "@/lib/server/proxySwapStore";
 import {
   getInfuraApiKey,
   getNowNodesApiKey,
@@ -151,7 +151,7 @@ export async function POST(req: Request) {
         {
           success: false,
           error: result.message,
-          order: result.order || null,
+          order: sanitizeProxyOrder(result.order),
         },
         { status: 400 }
       );
@@ -164,7 +164,7 @@ export async function POST(req: Request) {
       explorerUrl: result.explorerUrl,
       recoveredAmount: result.recoveredAmount,
       destination: result.destination,
-      order: result.order,
+      order: sanitizeProxyOrder(result.order),
     });
   } catch (err: any) {
     console.error("[AdminProxyRecover] POST execution error:", err);

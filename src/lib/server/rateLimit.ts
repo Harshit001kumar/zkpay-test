@@ -51,8 +51,10 @@ const windowStore = new Map<string, WindowEntry>();
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 let lastCleanup = Date.now();
 
+const MAX_STORE_ENTRIES = 10_000;
+
 function purgeExpiredWindows(now: number) {
-  if (now - lastCleanup < CLEANUP_INTERVAL_MS) return;
+  if (now - lastCleanup < CLEANUP_INTERVAL_MS && windowStore.size < MAX_STORE_ENTRIES) return;
   lastCleanup = now;
 
   for (const [key, entry] of windowStore.entries()) {
@@ -62,28 +64,39 @@ function purgeExpiredWindows(now: number) {
       windowStore.delete(key);
     }
   }
+
+  // Hard cap eviction if still above MAX_STORE_ENTRIES
+  if (windowStore.size >= MAX_STORE_ENTRIES) {
+    const overflow = windowStore.size - MAX_STORE_ENTRIES + 1000;
+    let deleted = 0;
+    for (const key of windowStore.keys()) {
+      windowStore.delete(key);
+      deleted++;
+      if (deleted >= overflow) break;
+    }
+  }
 }
 
 /**
  * Extracts a client identifier from IP headers or fallback.
  */
 export function getClientIp(req: Request): string {
-  // 1. Cloudflare connecting IP (trusted header populated by CF edge)
-  const cfIp = req.headers.get("cf-connecting-ip");
-  if (cfIp && cfIp.trim()) return cfIp.trim();
-
-  // 2. Standard single reverse proxy IP (Render / Nginx)
-  const realIp = req.headers.get("x-real-ip");
-  if (realIp && realIp.trim()) return realIp.trim();
-
-  // 3. Fallback to rightmost IP in X-Forwarded-For (appended by the closest trusted proxy)
+  // 1. Standard X-Forwarded-For appended by reverse proxy (Render / Cloudflare)
   const forwarded = req.headers.get("x-forwarded-for");
   if (forwarded) {
     const ips = forwarded.split(",").map((ip) => ip.trim()).filter(Boolean);
     if (ips.length > 0) {
-      return ips[ips.length - 1];
+      return ips[ips.length - 1].slice(0, 64);
     }
   }
+
+  // 2. Cloudflare connecting IP
+  const cfIp = req.headers.get("cf-connecting-ip");
+  if (cfIp && cfIp.trim()) return cfIp.trim().slice(0, 64);
+
+  // 3. Standard single reverse proxy IP
+  const realIp = req.headers.get("x-real-ip");
+  if (realIp && realIp.trim()) return realIp.trim().slice(0, 64);
 
   return "anonymous";
 }

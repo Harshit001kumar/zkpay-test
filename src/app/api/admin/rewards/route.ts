@@ -58,9 +58,15 @@ export async function POST(req: Request) {
 
     if (action === "mark-paid") {
       const { userAddresses, payoutTxHash } = body;
-      if (!Array.isArray(userAddresses) || userAddresses.length === 0 || !payoutTxHash) {
+      if (
+        !Array.isArray(userAddresses) ||
+        userAddresses.length === 0 ||
+        !payoutTxHash ||
+        typeof payoutTxHash !== "string" ||
+        !/^0x[a-fA-F0-9]{64}$/.test(payoutTxHash.trim())
+      ) {
         return NextResponse.json(
-          { error: "Missing userAddresses array or payoutTxHash" },
+          { error: "Missing userAddresses array or valid 0x payoutTxHash" },
           { status: 400 }
         );
       }

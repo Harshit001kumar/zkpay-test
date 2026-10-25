@@ -25,6 +25,7 @@ export interface ReferralBinding {
 
 export interface ScanRewardEntry {
   txHash: string;
+  feeTxHash?: string;
   orderId: string;
   userAddress: string;
   principalUsdc: number;
@@ -145,8 +146,12 @@ async function initMongoStorage() {
     for (const l of logs) {
       if (l.txHash) {
         dbData.processedTxHashes[l.txHash.toLowerCase()] = true;
+        if (l.feeTxHash) {
+          dbData.processedTxHashes[String(l.feeTxHash).toLowerCase()] = true;
+        }
         dbData.scanRewardLogs.push({
           txHash: l.txHash,
+          feeTxHash: l.feeTxHash,
           orderId: l.orderId,
           userAddress: l.userAddress,
           principalUsdc: l.principalUsdc,
@@ -408,6 +413,7 @@ export function recordScanAndPayReward(params: {
 
   const entry: ScanRewardEntry = {
     txHash: txHash.toLowerCase(),
+    feeTxHash: feeTxHash ? feeTxHash.toLowerCase() : undefined,
     orderId,
     userAddress,
     principalUsdc,

@@ -1,6 +1,8 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { CONTRACTS } from "@/lib/constants";
+import { verifyAdminToken } from "./adminAuth";
 import {
   listAllPayInSessions,
   getPayInSession,
@@ -31,8 +33,35 @@ const ERC20_ABI = parseAbi([
   "function transfer(address to, uint256 amount) returns (bool)",
 ]);
 
+export type SanitizedPayInSession = Omit<
+  PayInSession,
+  "encryptedPrivateKey" | "payinPrivateKey" | "clientSecret"
+>;
+
+function sanitizePayInSession(session: PayInSession): SanitizedPayInSession {
+  const {
+    encryptedPrivateKey: _enc,
+    payinPrivateKey: _raw,
+    clientSecret: _sec,
+    ...safe
+  } = session;
+  return safe;
+}
+
+async function resolveAdminAuth(accessToken?: string | null) {
+  let token = accessToken?.trim() || "";
+  if (!token) {
+    try {
+      const cookieStore = await cookies();
+      token = cookieStore.get("privy-token")?.value || "";
+    } catch {}
+  }
+  return verifyAdminToken(token);
+}
+
 export interface AdminPaymentOverview {
   success: boolean;
+  error?: string;
   relayer: {
     address: string | null;
     balanceEth: string;
@@ -51,14 +80,39 @@ export interface AdminPaymentOverview {
     storedRefundsCount: number;
     underpaidCount: number;
   };
-  sessions: PayInSession[];
+  sessions: SanitizedPayInSession[];
 }
 
 /**
  * Server Action: Fetches all payment sessions and wallet telemetry.
- * Safe & internal — NO REST API endpoint is exposed.
+ * Strictly requires verified administrator authentication.
  */
-export async function getAdminPaymentOverview(): Promise<AdminPaymentOverview> {
+export async function getAdminPaymentOverview(
+  accessToken?: string | null
+): Promise<AdminPaymentOverview> {
+  const auth = await resolveAdminAuth(accessToken);
+  if (!auth.authorized) {
+    return {
+      success: false,
+      error: auth.error || "Unauthorized",
+      relayer: { address: null, balanceEth: "0.0000", healthy: false },
+      wallets: {
+        treasuryAddress: TREASURY_ADDRESS,
+        treasuryBalanceUsdc: "0.00",
+        refundWalletAddress: REFUND_WALLET_ADDRESS,
+        refundWalletBalanceUsdc: "0.00",
+      },
+      stats: {
+        totalSessions: 0,
+        activeSessions: 0,
+        settledSessions: 0,
+        storedRefundsCount: 0,
+        underpaidCount: 0,
+      },
+      sessions: [],
+    };
+  }
+
   const publicClient = getResilientPublicClient();
   let relayerAddress: string | null = null;
   let relayerEth = "0.0000";
@@ -117,7 +171,7 @@ export async function getAdminPaymentOverview(): Promise<AdminPaymentOverview> {
       storedRefundsCount: allSessions.filter((s) => s.status === "STORED_IN_REFUND_WALLET").length,
       underpaidCount: allSessions.filter((s) => s.status === "REJECTED_UNDER_MINIMUM" || s.underpaidPenaltyUsdc).length,
     },
-    sessions: allSessions,
+    sessions: allSessions.map(sanitizePayInSession),
   };
 }
 
@@ -128,7 +182,13 @@ export async function executeManualRefundAction(params: {
   sessionId: string;
   destinationAddress: string;
   amountUsdc?: string;
+  accessToken?: string | null;
 }): Promise<{ success: boolean; message: string; txHash?: string }> {
+  const auth = await resolveAdminAuth(params.accessToken);
+  if (!auth.authorized) {
+    return { success: false, message: auth.error || "Unauthorized administrator action." };
+  }
+
   const { sessionId, destinationAddress, amountUsdc } = params;
 
   if (!destinationAddress || !/^0x[a-fA-F0-9]{40}$/.test(destinationAddress.trim())) {
@@ -138,6 +198,17 @@ export async function executeManualRefundAction(params: {
   const session = getPayInSession(sessionId);
   if (!session) {
     return { success: false, message: `Session #${sessionId} not found.` };
+  }
+
+  if (
+    session.status === "SETTLED" ||
+    session.status === "REFUNDED_TO_USER" ||
+    session.refundStatus === "MANUALLY_REFUNDED"
+  ) {
+    return {
+      success: false,
+      message: `Session #${sessionId} cannot be refunded in status ${session.status}.`,
+    };
   }
 
   const publicClient = getResilientPublicClient();
@@ -178,8 +249,22 @@ export async function executeManualRefundAction(params: {
 
     // Strategy B: If funds were already swept to ZkPay Refund Wallet, transfer from Relayer wallet
     const relayerWallet = getRelayerWalletClient();
-    const refundUsdcStr = amountUsdc || session.receivedUsdc || session.expectedUsdc;
-    const refundWei = parseUnits(Number(refundUsdcStr).toFixed(6), 6);
+    const maxRefundableUsdc = Number(session.receivedUsdc || session.expectedUsdc || "0");
+    const requestedUsdc = amountUsdc ? Number(amountUsdc) : maxRefundableUsdc;
+
+    if (!Number.isFinite(requestedUsdc) || requestedUsdc <= 0) {
+      return { success: false, message: "Invalid refund amount specified." };
+    }
+
+    if (requestedUsdc > maxRefundableUsdc) {
+      return {
+        success: false,
+        message: `Refund amount (${requestedUsdc.toFixed(6)} USDC) cannot exceed session's received/expected amount (${maxRefundableUsdc.toFixed(6)} USDC).`,
+      };
+    }
+
+    const refundUsdcStr = requestedUsdc.toFixed(6);
+    const refundWei = parseUnits(refundUsdcStr, 6);
 
     const relayerUsdcBal = (await publicClient.readContract({
       address: USDC_ADDRESS,
@@ -226,7 +311,15 @@ export async function executeManualRefundAction(params: {
 /**
  * Server Action: Re-triggers encrypted UPI handshake if an order was matched but not delivered.
  */
-export async function retryHandshakeAction(sessionId: string): Promise<{ success: boolean; message: string }> {
+export async function retryHandshakeAction(
+  sessionId: string,
+  accessToken?: string | null
+): Promise<{ success: boolean; message: string }> {
+  const auth = await resolveAdminAuth(accessToken);
+  if (!auth.authorized) {
+    return { success: false, message: auth.error || "Unauthorized administrator action." };
+  }
+
   const session = getPayInSession(sessionId);
   if (!session) {
     return { success: false, message: `Session #${sessionId} not found.` };
@@ -246,7 +339,15 @@ export async function retryHandshakeAction(sessionId: string): Promise<{ success
 /**
  * Server Action: Forces cancellation of a stalled Diamond order and triggers refund.
  */
-export async function forceCancelOrderAction(sessionId: string): Promise<{ success: boolean; message: string }> {
+export async function forceCancelOrderAction(
+  sessionId: string,
+  accessToken?: string | null
+): Promise<{ success: boolean; message: string }> {
+  const auth = await resolveAdminAuth(accessToken);
+  if (!auth.authorized) {
+    return { success: false, message: auth.error || "Unauthorized administrator action." };
+  }
+
   const session = getPayInSession(sessionId);
   if (!session) {
     return { success: false, message: `Session #${sessionId} not found.` };

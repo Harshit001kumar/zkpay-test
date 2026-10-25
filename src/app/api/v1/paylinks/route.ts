@@ -70,8 +70,11 @@ function isSafeRedirectUrl(rawUrl: string): boolean {
 export async function POST(req: Request) {
   try {
     const auth = await resolvePublicApiAuth(req);
-    if (auth.provided && !auth.ok) {
-      return corsJson({ error: auth.error }, { status: auth.status || 401 });
+    if (!auth.ok) {
+      return corsJson(
+        { error: auth.error || "Authentication required (API key or Privy session token) to create pay links." },
+        { status: auth.status || 401 }
+      );
     }
 
     const validatedKeyId = auth.ok
@@ -344,7 +347,7 @@ export async function PATCH(req: Request) {
     // If one-time link is already PAID with same tx, return success
     if (existing.type === "one_time" && existing.status === "PAID") {
       if (!txHash || existing.txHash?.toLowerCase() === String(txHash).toLowerCase()) {
-        return corsJson({ success: true, link: existing });
+        return corsJson({ success: true, link: sanitizePayLink(existing) });
       }
       return corsJson({ error: "Pay link is already marked PAID with a different transaction." }, { status: 409 });
     }
@@ -358,8 +361,8 @@ export async function PATCH(req: Request) {
     }
 
     const reused = findPayLinkByTxHash(txHash);
-    if (reused && reused.id !== id && existing.type === "one_time") {
-      return corsJson({ error: "This transaction hash has already been used for another pay link." }, { status: 409 });
+    if (reused && (reused.id !== id || existing.type === "reusable")) {
+      return corsJson({ error: "This transaction hash has already been used for a pay link." }, { status: 409 });
     }
 
     let receipt: any;
@@ -383,13 +386,20 @@ export async function PATCH(req: Request) {
       return corsJson({ error: "Pay link has invalid expected amount metadata." }, { status: 400 });
     }
 
-    const expectedFeeUnits = parseUnits(totalUsdc.toFixed(6), 6) / 100n;
+    const expectedTotalUnits = parseUnits(totalUsdc.toFixed(6), 6);
+    const expectedFeeUnits = expectedTotalUnits / 100n;
+    const expectedPrincipalUnits = expectedTotalUnits - expectedFeeUnits;
     const treasuryLower = CONTRACTS.TREASURY.toLowerCase();
+    const diamondLower = CONTRACTS.DIAMOND.toLowerCase();
+    const escrowLower = existing.escrowAddress?.toLowerCase();
     const usdcLower = CONTRACTS.USDC.toLowerCase();
 
-    const hasExpectedFeeTransfer = receipt.logs.some((log: any) => {
+    let hasExpectedFeeTransfer = false;
+    let hasExpectedPrincipalTransfer = false;
+
+    for (const log of receipt.logs) {
       if (!log?.address || String(log.address).toLowerCase() !== usdcLower) {
-        return false;
+        continue;
       }
       try {
         const decoded = decodeEventLog({
@@ -397,27 +407,43 @@ export async function PATCH(req: Request) {
           data: log.data,
           topics: log.topics,
         });
-        if (decoded.eventName !== "Transfer") return false;
+        if (decoded.eventName !== "Transfer") continue;
         const to = String((decoded.args as any).to || "").toLowerCase();
         const value = (decoded.args as any).value as bigint;
-        return to === treasuryLower && value >= (expectedFeeUnits * 95n) / 100n;
+        if (to === treasuryLower && value >= (expectedFeeUnits * 95n) / 100n) {
+          hasExpectedFeeTransfer = true;
+        }
+        if (
+          (to === diamondLower || (escrowLower && to === escrowLower)) &&
+          value >= (expectedPrincipalUnits * 95n) / 100n
+        ) {
+          hasExpectedPrincipalTransfer = true;
+        }
       } catch {
-        return false;
+        continue;
       }
-    });
+    }
 
-    if (!hasExpectedFeeTransfer) {
+    if (!hasExpectedFeeTransfer || !hasExpectedPrincipalTransfer) {
       return corsJson(
-        { error: "Transaction does not include the expected USDC fee transfer for this pay link." },
+        {
+          error:
+            "Transaction does not include both the expected USDC principal escrow and fee transfer for this pay link.",
+        },
         { status: 400 }
       );
     }
 
     // Reusable vs One-Time Updates
     const isReusable = existing.type === "reusable";
+    const normalizedTxHash = String(txHash).toLowerCase().trim();
+    const existingPaidHashes = Array.isArray(existing.paidTxHashes) ? existing.paidTxHashes : [];
     const updates: Partial<typeof existing> = {
       paidAt: Date.now(),
       txHash,
+      paidTxHashes: existingPaidHashes.includes(normalizedTxHash)
+        ? existingPaidHashes
+        : [...existingPaidHashes, normalizedTxHash],
       status: isReusable ? "ACTIVE" : "PAID",
       totalPaidCount: (existing.totalPaidCount || 0) + 1,
       totalVolumeINR: (existing.totalVolumeINR || 0) + existing.amountINR,
@@ -446,7 +472,7 @@ export async function PATCH(req: Request) {
 
     return corsJson({
       success: true,
-      link: updated,
+      link: updated ? sanitizePayLink(updated) : null,
     });
   } catch (err: any) {
     console.error("[PayLinks] PATCH Error:", err);
@@ -486,7 +512,11 @@ export async function DELETE(req: Request) {
     }
 
     const updated = updatePayLink(id, { status: "CANCELLED" });
-    return corsJson({ success: true, message: "Pay link cancelled.", link: updated });
+    return corsJson({
+      success: true,
+      message: "Pay link cancelled.",
+      link: updated ? sanitizePayLink(updated) : null,
+    });
   } catch (err: any) {
     console.error("[PayLinks] DELETE Error:", err);
     return corsJson({ error: err.message || "Failed to delete pay link" }, { status: 500 });
