@@ -1,4 +1,5 @@
 import { getPrivyClient } from "./privyEarn";
+import { fetchPrivyUser } from "./privyUsers";
 
 export interface UserAuthResult {
   authorized: boolean;
@@ -6,6 +7,8 @@ export interface UserAuthResult {
   userId?: string;
   walletAddress?: string;
   walletAddresses?: string[];
+  /** True when the token was valid but linked wallets could not be fetched from Privy. */
+  walletLookupFailed?: boolean;
   error?: string;
 }
 
@@ -27,38 +30,22 @@ export async function verifyUserRequest(req: Request): Promise<UserAuthResult> {
       return { authorized: false, status: 401, error: "Unauthorized — invalid token claims" };
     }
 
+    // Linked wallet lookup is best-effort. The access token is already cryptographically verified,
+    // so routes that only need userId keep working. Routes that check wallet ownership will still
+    // fail closed because walletAddresses will be empty.
     let walletAddress: string | undefined;
     let walletAddresses: string[] = [];
+    let walletLookupFailed = false;
     try {
-      let user: any = null;
-      if (typeof privy.users === "function" && typeof privy.users()?.get === "function") {
-        user = await privy.users().get(userId);
-      } else if (typeof privy.getUser === "function") {
-        user = await privy.getUser(userId);
-      }
-
-      const addresses: string[] = [];
-      if (user?.wallet?.address) {
-        addresses.push(user.wallet.address.toLowerCase());
-      }
-      if (Array.isArray(user?.linkedAccounts)) {
-        for (const acc of user.linkedAccounts) {
-          if ((acc.type === "wallet" || acc.type === "smart_wallet") && acc.address) {
-            addresses.push(acc.address.toLowerCase());
-          }
-        }
-      }
-      walletAddresses = Array.from(new Set(addresses));
-      walletAddress = walletAddresses[0];
-    } catch {
-      return {
-        authorized: false,
-        status: 503,
-        error: "Unable to verify linked wallets with authentication provider. Please retry.",
-      };
+      const user = await fetchPrivyUser(privy, userId);
+      walletAddresses = user.walletAddresses;
+      walletAddress = user.primaryWalletAddress || walletAddresses[0];
+    } catch (lookupErr: any) {
+      walletLookupFailed = true;
+      console.warn("[UserAuth] Linked wallet lookup failed:", lookupErr?.message || lookupErr);
     }
 
-    return { authorized: true, status: 200, userId, walletAddress, walletAddresses };
+    return { authorized: true, status: 200, userId, walletAddress, walletAddresses, walletLookupFailed };
   } catch {
     return { authorized: false, status: 401, error: "Unauthorized — invalid or expired token" };
   }

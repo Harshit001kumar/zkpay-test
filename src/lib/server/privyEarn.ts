@@ -1,4 +1,5 @@
 import { PrivyClient } from "@privy-io/node";
+import { fetchPrivyUser } from "./privyUsers";
 
 let _privy: InstanceType<typeof PrivyClient> | null = null;
 
@@ -119,51 +120,15 @@ export function createPrivyAuthorizationSignature({
 export async function resolveEmbeddedWalletId(userId: string): Promise<string | null> {
   try {
     const privy = getPrivyClient() as any;
-    let privyUser: any = null;
+    const user = await fetchPrivyUser(privy, userId);
 
-    if (typeof privy.users === "function" && typeof privy.users()?.get === "function") {
-      privyUser = await privy.users().get(userId);
-    } else if (typeof privy.users?.get === "function") {
-      privyUser = await privy.users.get({ id: userId });
-    } else if (typeof privy.getUser === "function") {
-      privyUser = await privy.getUser(userId);
-    }
-
-    let embeddedWallet = privyUser?.linkedAccounts?.find(
-      (acc: any) =>
+    const embeddedWallet = user.linkedAccounts.find(
+      (acc) =>
         acc.type === "wallet" &&
         (acc.walletClientType === "privy" || acc.connectorType === "embedded")
-    ) as any;
+    );
 
-    if (embeddedWallet?.id) return embeddedWallet.id;
-
-    // Fallback: Fetch user directly via Privy REST API
-    const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
-    const appSecret = process.env.PRIVY_APP_SECRET;
-    if (appId && appSecret) {
-      const basicAuth = Buffer.from(`${appId}:${appSecret}`).toString("base64");
-      const res = await fetch(`https://api.privy.io/api/v1/users/${encodeURIComponent(userId)}`, {
-        headers: {
-          "privy-app-id": appId,
-          Authorization: `Basic ${basicAuth}`,
-        },
-      });
-      if (res.ok) {
-        const userData = await res.json();
-        embeddedWallet = userData?.linked_accounts?.find(
-          (acc: any) =>
-            acc.type === "wallet" &&
-            (acc.wallet_client_type === "privy" || acc.connector_type === "embedded")
-        ) || userData?.linkedAccounts?.find(
-          (acc: any) =>
-            acc.type === "wallet" &&
-            (acc.walletClientType === "privy" || acc.connectorType === "embedded")
-        );
-        if (embeddedWallet?.id) return embeddedWallet.id;
-      }
-    }
-
-    return null;
+    return embeddedWallet?.id || null;
   } catch (err: any) {
     console.error("[PrivyEarn] Error resolving embedded wallet ID:", err?.message || err);
     return null;
@@ -178,47 +143,13 @@ export async function verifyUserOwnsWalletId(userId: string, walletId: string): 
   try {
     const cleanId = walletId.trim();
     const privy = getPrivyClient() as any;
-    let privyUser: any = null;
+    const user = await fetchPrivyUser(privy, userId);
 
-    if (typeof privy.users === "function" && typeof privy.users()?.get === "function") {
-      privyUser = await privy.users().get(userId);
-    } else if (typeof privy.users?.get === "function") {
-      privyUser = await privy.users.get({ id: userId });
-    } else if (typeof privy.getUser === "function") {
-      privyUser = await privy.getUser(userId);
-    }
-
-    const linked = privyUser?.linkedAccounts || [];
-    const isOwned = linked.some(
-      (acc: any) =>
+    return user.linkedAccounts.some(
+      (acc) =>
         acc.id === cleanId ||
         (acc.address && acc.address.toLowerCase() === cleanId.toLowerCase())
     );
-    if (isOwned) return true;
-
-    // Fallback: Check via Privy REST API
-    const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
-    const appSecret = process.env.PRIVY_APP_SECRET;
-    if (appId && appSecret) {
-      const basicAuth = Buffer.from(`${appId}:${appSecret}`).toString("base64");
-      const res = await fetch(`https://api.privy.io/api/v1/users/${encodeURIComponent(userId)}`, {
-        headers: {
-          "privy-app-id": appId,
-          Authorization: `Basic ${basicAuth}`,
-        },
-      });
-      if (res.ok) {
-        const userData = await res.json();
-        const accounts = userData?.linked_accounts || userData?.linkedAccounts || [];
-        return accounts.some(
-          (acc: any) =>
-            acc.id === cleanId ||
-            (acc.address && acc.address.toLowerCase() === cleanId.toLowerCase())
-        );
-      }
-    }
-
-    return false;
   } catch (err: any) {
     console.error("[PrivyEarn] Error verifying wallet ownership:", err?.message || err);
     return false;

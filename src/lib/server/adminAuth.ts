@@ -1,4 +1,5 @@
 import { PrivyClient } from "@privy-io/node";
+import { fetchPrivyUser } from "./privyUsers";
 
 let _privyClient: any = null;
 
@@ -86,28 +87,9 @@ export async function verifyAdminToken(rawToken?: string | null): Promise<AdminA
     let primaryWallet: string | undefined;
 
     try {
-      let user: any = null;
-      if (typeof privy.users === "function" && typeof privy.users()?.get === "function") {
-        user = await privy.users().get(userId);
-      } else if (typeof privy.getUser === "function") {
-        user = await privy.getUser(userId);
-      }
-
-      if (user) {
-        const fetchedLinked =
-          user.linkedAccounts
-            ?.filter((acc: any) => acc.type === "wallet" || acc.type === "smart_wallet")
-            .map((acc: any) => acc.address?.toLowerCase())
-            .filter(Boolean) || [];
-
-        linkedWallets = Array.from(new Set(fetchedLinked));
-
-        const pW = user.wallet?.address?.toLowerCase();
-        if (pW) {
-          primaryWallet = pW;
-          if (!linkedWallets.includes(pW)) linkedWallets.push(pW);
-        }
-      }
+      const user = await fetchPrivyUser(privy, userId);
+      linkedWallets = user.walletAddresses;
+      primaryWallet = user.primaryWalletAddress;
     } catch (fetchErr: any) {
       console.warn("[AdminAuth] User lookup warning:", fetchErr?.message);
     }
