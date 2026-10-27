@@ -20,8 +20,8 @@ export interface DirectSwapOrder {
   totalAmountIn: string; // atomic units
   totalAmountFormatted: string;
   estimatedAmountOut?: string;
-  apiKeyId?: string;
-  partnerUserId?: string;
+  apiKeyId?: string | null;
+  partnerUserId?: string | null;
   source?: "api" | "app";
   lastKnownStatus?: string;
   createdAt: number;

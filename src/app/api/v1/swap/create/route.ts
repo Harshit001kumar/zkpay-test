@@ -66,8 +66,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const apiKeyId = auth.apiKeyRecord?.id || null;
-    const partnerUserId = auth.apiKeyRecord?.userId || auth.userId || null;
+    const apiKeyId = auth.apiKeyRecord?.id || undefined;
+    const partnerUserId = auth.apiKeyRecord?.userId || auth.userId || undefined;
     const source: "api" | "app" = auth.apiKeyRecord ? "api" : "app";
 
     const order = await createSwapOrder({
