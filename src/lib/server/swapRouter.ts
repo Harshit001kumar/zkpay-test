@@ -992,8 +992,8 @@ export async function createSwapOrder(params: CreateSwapParams) {
         status: "PENDING_DEPOSIT",
         createdAt: Date.now(),
         expiresAt: new Date(quote.deadline || deadline).getTime(),
-        apiKeyId: params.apiKeyId || null,
-        partnerUserId: params.partnerUserId || null,
+        apiKeyId: params.apiKeyId || undefined,
+        partnerUserId: params.partnerUserId || undefined,
         source: params.source || (params.apiKeyId ? "api" : "app"),
       };
 

@@ -23,6 +23,7 @@ import {
 
 import PayLinkModal from "@/components/PayLinkModal";
 import { CountUp } from "@/components/ui/CountUp";
+import { useCurrency } from "@/context/CurrencyContext";
 
 const ScanAndPayFlow = dynamic(() => import("@/components/ScanAndPayFlow"), { ssr: false });
 const DepositFlow = dynamic(() => import("@/components/DepositFlow"), { ssr: false });
@@ -31,6 +32,7 @@ type ActiveTab = "pay" | "cashout" | "deposit" | "vault";
 
 export default function Dashboard() {
   const { ready, authenticated, address } = useActiveAccount();
+  const { currencyMeta, setIsSelectorOpen } = useCurrency();
   
   const [activeTab, setActiveTab] = useState<ActiveTab>("vault");
   const [isPayLinkOpen, setIsPayLinkOpen] = useState(false);
@@ -76,10 +78,24 @@ export default function Dashboard() {
             <h1 className="font-display-xl text-[#e5e2e3] text-5xl md:text-[80px] tracking-tighter mb-12 font-medium">
               <CountUp to={Number(balance)} prefix="$" decimals={2} /> <span className="text-[#c6c6cd]/40 font-extralight text-3xl md:text-[80px]">USDC</span>
             </h1>
-            <div className="grid grid-cols-2 md:flex md:items-center gap-4 md:gap-16 pt-8 border-t border-white/10">
+            <div className="grid grid-cols-2 md:flex md:items-center gap-4 md:gap-12 pt-8 border-t border-white/10">
               <div className="flex flex-col gap-1">
                 <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">NETWORK</span>
                 <span className="font-body-md font-medium tracking-tight text-[#e5e2e3]">{CHAIN.name}</span>
+              </div>
+              <div className="hidden md:block w-px h-8 bg-white/10"></div>
+              <div 
+                onClick={() => setIsSelectorOpen(true)}
+                className="flex flex-col gap-1 cursor-pointer group"
+                title="Click to switch default currency"
+              >
+                <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold group-hover:text-[#c0c6de] transition-colors">
+                  PAYOUT RAIL
+                </span>
+                <span className="font-body-md font-medium text-[#c0c6de] tracking-tight flex items-center gap-1.5 group-hover:underline">
+                  <span>{currencyMeta.flag}</span>
+                  <span>{currencyMeta.code} ({currencyMeta.rail})</span>
+                </span>
               </div>
               <div className="hidden md:block w-px h-8 bg-white/10"></div>
               <div className="flex flex-col gap-1 text-right md:text-left">

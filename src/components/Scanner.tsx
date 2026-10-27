@@ -4,6 +4,9 @@ import { useEffect, useCallback, useState, useRef } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { MerchantData } from "@/lib/types";
 import { Loader2, CameraOff, ArrowLeft } from "lucide-react";
+import { parsePixData } from "@/lib/pixParser";
+import { parsePayPalData } from "@/lib/paypalParser";
+import { useCurrency } from "@/context/CurrencyContext";
 
 interface ScannerProps {
   onScan: (data: MerchantData) => void;
@@ -11,6 +14,7 @@ interface ScannerProps {
 }
 
 export default function Scanner({ onScan, onCancel }: ScannerProps) {
+  const { currency, currencyMeta } = useCurrency();
   const [manualId, setManualId] = useState("");
   const [cameraLoading, setCameraLoading] = useState(true);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -19,6 +23,38 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
   const processScanData = useCallback((text: string) => {
     const trimmed = text.trim().slice(0, 1024);
     if (!trimmed) return;
+
+    // 1. Check for Brazilian Pix EMVCo QR code or Pix key
+    const pixData = parsePixData(trimmed);
+    if (pixData.isValid && (pixData.keyType === "emvco" || pixData.pixKey)) {
+      onScan({
+        type: "pix",
+        currency: "BRL",
+        raw: trimmed,
+        pixKey: pixData.pixKey,
+        paymentId: pixData.pixKey,
+        name: pixData.merchantName || (pixData.keyType === "emvco" ? "Pix Merchant" : `Pix (${pixData.keyType?.toUpperCase()})`),
+        defaultAmount: pixData.amount,
+        pixCity: pixData.merchantCity,
+        pixTxId: pixData.txId,
+      });
+      return;
+    }
+
+    // 2. Check for PayPal.me link, username, or PayPal email
+    const payPalData = parsePayPalData(trimmed);
+    if (payPalData.isValid) {
+      onScan({
+        type: "paypal",
+        currency: "USD",
+        raw: trimmed,
+        paypalId: payPalData.paypalId,
+        paymentId: payPalData.paypalId,
+        name: payPalData.name || "PayPal Recipient",
+        defaultAmount: payPalData.defaultAmount,
+      });
+      return;
+    }
 
     const sanitizeUpiId = (val: string | null | undefined) => {
       if (!val) return undefined;
@@ -37,7 +73,7 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
       return Number.isFinite(num) && num > 0 && num <= 100_000 ? String(num) : undefined;
     };
 
-    // 1. Standard UPI intent URI (upi://pay?pa=...&pn=...)
+    // 3. Standard UPI intent URI (upi://pay?pa=...&pn=...)
     if (trimmed.toLowerCase().startsWith("upi://pay")) {
       try {
         const url = new URL(trimmed);
@@ -47,8 +83,10 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
         
         onScan({
           type: "upi",
+          currency: "INR",
           raw: trimmed,
           upiId,
+          paymentId: upiId,
           name,
           defaultAmount
         });
@@ -58,7 +96,7 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
       }
     }
 
-    // 2. Web URLs containing UPI query parameters (e.g. https://.../?pa=...)
+    // 4. Web URLs containing UPI query parameters (e.g. https://.../?pa=...)
     if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
       try {
         const url = new URL(trimmed);
@@ -68,8 +106,10 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
           const defaultAmount = sanitizeAmount(url.searchParams.get("am"));
           onScan({
             type: "upi",
+            currency: "INR",
             raw: trimmed,
             upiId,
+            paymentId: upiId,
             name,
             defaultAmount
           });
@@ -78,19 +118,21 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
       } catch {}
     }
 
-    // 3. Raw UPI ID (e.g. merchant@okaxis, 9876543210@paytm)
+    // 5. Raw UPI ID (e.g. merchant@okaxis, 9876543210@paytm)
     const rawUpi = sanitizeUpiId(trimmed);
     if (rawUpi && !trimmed.startsWith("0x")) {
       onScan({
         type: "upi",
+        currency: "INR",
         raw: trimmed,
         upiId: rawUpi,
+        paymentId: rawUpi,
         name: sanitizeName(rawUpi.split("@")[0]),
       });
       return;
     }
     
-    // 4. Crypto Ethereum Address
+    // 6. Crypto Ethereum Address
     onScan({
       type: "eth",
       raw: trimmed,
@@ -338,7 +380,7 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
           <p className="text-xs text-[#c6c6cd] font-light">
             {cameraError 
               ? "Use the manual input field below to continue."
-              : "Point your camera at any UPI QR code or Ethereum address to scan instantly."
+              : `Point your camera at any ${currencyMeta.rail} QR code (or Pix, UPI, PayPal) to scan instantly.`
             }
           </p>
         </div>
@@ -348,7 +390,7 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
           <form onSubmit={handleManualSubmit} className="bg-white/5 backdrop-blur-[60px] rounded-2xl p-3 flex gap-2 border border-white/10 shadow-xl">
              <input
               type="text"
-              placeholder="Or enter UPI ID / Merchant Address"
+              placeholder={`Enter ${currencyMeta.inputLabel} / Crypto Address`}
               value={manualId}
               onChange={(e) => setManualId(e.target.value)}
               className="flex-1 bg-transparent px-3 py-2 text-sm outline-none text-[#e5e2e3] placeholder:text-[#909097] font-medium"

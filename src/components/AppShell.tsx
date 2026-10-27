@@ -7,6 +7,7 @@ import EarnFlow from "./EarnFlow";
 import WalletConnect from "./WalletConnect";
 import CardsWaitlist from "./CardsWaitlist";
 import Profile from "./Profile";
+import CurrencyModal from "./CurrencyModal";
 import { Shield } from "lucide-react";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { usePrivy } from "@privy-io/react-auth";
@@ -53,6 +54,10 @@ export default function AppShell() {
       </main>
 
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+
+      {/* Global Currency Modals */}
+      <CurrencyModal mode="onboarding" />
+      <CurrencyModal mode="selector" />
     </div>
   );
 }

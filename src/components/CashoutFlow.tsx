@@ -8,6 +8,8 @@ import { CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
 import { saveTransaction } from "@/lib/history";
 import { PAYMENT_ID_FIELDS } from "@p2pdotme/sdk/country";
+import { useCurrency } from "@/context/CurrencyContext";
+import { identifyPixKeyType } from "@/lib/pixParser";
 import { 
   getOfframpLimits, 
   getOfframpPrice, 
@@ -26,6 +28,7 @@ type CashoutStatus = "input" | "processing" | "matching" | "paying" | "completed
 
 export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
   const { ready, authenticated, address, primaryWallet, smartClient } = useActiveAccount();
+  const { currency, currencyMeta } = useCurrency();
 
   const router = useRouter();
   
@@ -59,8 +62,8 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       try {
         const userAddress = address as `0x${string}`;
         const [limits, priceCfg] = await Promise.all([
-          getOfframpLimits(userAddress, "INR"),
-          getOfframpPrice("INR")
+          getOfframpLimits(userAddress, currency),
+          getOfframpPrice(currency)
         ]);
         
         if (isMounted) {
@@ -80,7 +83,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
     
     const interval = setInterval(async () => {
       try {
-        const priceCfg = await getOfframpPrice("INR");
+        const priceCfg = await getOfframpPrice(currency);
         if (isMounted) setSellPrice(priceCfg.sellPrice);
       } catch (err) {}
     }, 60000);
@@ -89,7 +92,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [ready, authenticated, address]);
+  }, [ready, authenticated, address, currency]);
 
   useEffect(() => {
     if (!ready || !authenticated || !address) return;
@@ -227,10 +230,10 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
   const totalUsdc = fees.totalRequiredUsdc;
   
   let estimatedFiat = 0;
-  let rateDisplay = "1 USDC ≈ ₹0.00";
+  let rateDisplay = `1 USDC ≈ ${currencyMeta.symbol}0.00`;
   if (sellPrice) {
     const unitPrice = (1000000n * sellPrice) / 1000000n;
-    rateDisplay = `1 USDC ≈ ₹${formatUnits(unitPrice, 6)}`;
+    rateDisplay = `1 USDC ≈ ${currencyMeta.symbol}${formatUnits(unitPrice, 6)}`;
   }
 
   if (amountUsdc > 0 && sellPrice) {
@@ -252,17 +255,24 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
     return <div className="text-center p-4 text-sm text-[#909097]">Please sign in to cash out.</div>;
   }
   
-  const isValidUpi = () => {
+  const isValidPayoutId = () => {
+    if (!upiId.trim()) return false;
+    if (currency === "BRL") {
+      return Boolean(identifyPixKeyType(upiId) || upiId.length >= 8);
+    }
+    if (currency === "USD") {
+      return upiId.includes("@") || /^[a-zA-Z0-9._-]{3,30}$/.test(upiId.replace(/^@/, ""));
+    }
     try {
       const fields = PAYMENT_ID_FIELDS["INR"];
-      if (!fields || fields.length === 0) return true;
+      if (!fields || fields.length === 0) return upiId.includes("@");
       return fields[0].validate(upiId);
     } catch (e) {
-      return false;
+      return upiId.includes("@");
     }
   };
 
-  const isFormValid = amountUsdc > 0 && isValidUpi() && maxSellable !== null && amountUsdc <= maxSellable;
+  const isFormValid = amountUsdc > 0 && isValidPayoutId() && maxSellable !== null && amountUsdc <= maxSellable;
 
   const handleCashout = async () => {
     if (!isFormValid || !sellPrice) return;
@@ -302,7 +312,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       
       const orderCall = await prepareOfframpOrder({
         userAddress: activeAddr,
-        currency: "INR",
+        currency: currency,
         usdcAmount: principalUsdcBigInt,
         sellPrice: sellPrice,
       });
@@ -511,9 +521,9 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
               <p className="font-label-caps text-[10px] text-[#909097] uppercase mb-8 text-center font-bold tracking-widest">Conversion Estimate</p>
               <div className="flex flex-col items-center mb-8">
                 <span className="font-display-xl text-[48px] font-extrabold silver-typography tracking-tight">
-                  ₹{estimatedFiat > 0 ? estimatedFiat.toFixed(2) : "0.00"}
+                  {currencyMeta.symbol}{estimatedFiat > 0 ? estimatedFiat.toFixed(2) : "0.00"}
                 </span>
-                <span className="font-headline-md text-[#bcc7de] tracking-widest text-lg font-light uppercase">INR</span>
+                <span className="font-headline-md text-[#bcc7de] tracking-widest text-lg font-light uppercase">{currencyMeta.code}</span>
               </div>
               <div className="space-y-3 pt-4 border-t border-white/5">
                 <div className="flex justify-between items-center">
@@ -550,7 +560,9 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
 
             {/* Destination Block */}
             <section className="obsidian-glass monolith-shadow p-8 rounded-xl transition-all group animate-in fade-in slide-in-from-bottom-12 delay-300">
-              <p className="font-label-caps text-[10px] text-[#909097] uppercase mb-6 text-center font-bold tracking-widest">Settlement Account</p>
+              <p className="font-label-caps text-[10px] text-[#909097] uppercase mb-6 text-center font-bold tracking-widest">
+                Settlement Account ({currencyMeta.rail})
+              </p>
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 bg-white/5 rounded-lg flex items-center justify-center border border-white/10 group-focus-within:border-[#c0c6de]/30 transition-colors flex-shrink-0">
                   <span className="material-symbols-outlined text-[#bcc7de] text-3xl">account_balance</span>
@@ -560,10 +572,10 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
                     type="text"
                     value={upiId}
                     onChange={(e) => setUpiId(e.target.value)}
-                    placeholder="name@upi"
+                    placeholder={currencyMeta.placeholder}
                     className="w-full bg-transparent border-b border-[#46464c]/50 px-0 py-2 text-lg font-body-lg text-[#e5e2e3] focus:border-[#c0c6de] focus:ring-0 outline-none transition-colors placeholder:text-[#909097]/40 truncate"
                   />
-                  {upiId && !isValidUpi() && (
+                  {upiId && !isValidPayoutId() && (
                     <p className="text-[10px] text-[#ffb4ab] mt-1 font-bold tracking-widest uppercase truncate">Invalid format</p>
                   )}
                 </div>
@@ -605,7 +617,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
             {status === "paying" && (
               <>
                 <h3 className="font-headline-md text-2xl mb-2 text-[#e5e2e3]">Paying out...</h3>
-                <p className="text-sm text-[#909097]">Merchant is transferring INR to your account.</p>
+                <p className="text-sm text-[#909097]">Merchant is transferring {currencyMeta.code} to your account.</p>
                 {(orderId || pendingOrderData?.orderId) && (
                   <div className="mt-5 px-4 py-2 rounded-full bg-white/[0.05] border border-white/10 text-xs font-mono text-[#c0c6de] inline-flex items-center gap-2">
                     <span className="text-[#909097]">Order ID:</span>

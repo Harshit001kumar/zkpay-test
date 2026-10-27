@@ -8,6 +8,7 @@ import { createConfig, WagmiProvider } from "@privy-io/wagmi";
 import { fallback, http } from "viem";
 import { BASE_RPC_URLS } from "@/lib/constants";
 import ReferralTracker from "@/components/ReferralTracker";
+import { CurrencyProvider } from "@/context/CurrencyContext";
 
 const queryClient = new QueryClient();
 
@@ -63,7 +64,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         <ReferralTracker />
         <QueryClientProvider client={queryClient}>
           <WagmiProvider config={wagmiConfig}>
-            {children}
+            <CurrencyProvider>
+              {children}
+            </CurrencyProvider>
           </WagmiProvider>
         </QueryClientProvider>
       </SmartWalletsProvider>

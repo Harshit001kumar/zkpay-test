@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 import { getPricesClient } from "@/lib/server/p2pRates";
 
-const SUPPORTED_CURRENCIES = ["INR", "USD", "EUR", "GBP"];
+const SUPPORTED_CURRENCIES = ["INR", "BRL", "USD", "EUR", "GBP"];
 
 /**
  * GET /api/v1/rates

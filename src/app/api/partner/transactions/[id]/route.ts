@@ -6,15 +6,14 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   req: Request,
-  context: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: { id: string } }
 ) {
   const auth = await verifyUserRequest(req);
   if (!auth.authorized || !auth.userId) {
     return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: auth.status });
   }
 
-  const resolvedParams = await Promise.resolve(context.params);
-  const txId = resolvedParams?.id;
+  const txId = params?.id;
 
   if (!txId) {
     return NextResponse.json({ error: "Missing transaction id" }, { status: 400 });

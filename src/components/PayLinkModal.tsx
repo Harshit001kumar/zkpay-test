@@ -24,6 +24,7 @@ import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { parseUnits, encodeFunctionData } from "viem";
 import { CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
+import { useCurrency } from "@/context/CurrencyContext";
 
 interface PayLinkModalProps {
   isOpen: boolean;
@@ -35,6 +36,9 @@ const PRESET_AMOUNTS = [500, 1000, 2500, 5000];
 export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
   const { authenticated, getAccessToken } = usePrivy();
   const { address: activeAddress, smartClient, primaryWallet } = useActiveAccount();
+  const { currency, currencyMeta } = useCurrency();
+
+  const PRESET_AMOUNTS = currencyMeta.presets || [100, 250, 500, 1000];
 
   const [mainTab, setMainTab] = useState<"create" | "history">("create");
   const [mode, setMode] = useState<"request" | "disburse">("request");
@@ -73,15 +77,16 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
     if (!isOpen) return;
     const fetchRate = async () => {
       try {
-        const res = await fetch("/api/v1/rates?currency=INR");
+        const res = await fetch(`/api/v1/rates?currency=${currency}`);
         const data = await res.json();
-        if (data.rates?.USDC_INR?.sell) {
-          setRate(data.rates.USDC_INR.sell);
+        const rateKey = `USDC_${currency}`;
+        if (data.rates?.[rateKey]?.sell) {
+          setRate(data.rates[rateKey].sell);
         }
       } catch {}
     };
     fetchRate();
-  }, [isOpen]);
+  }, [isOpen, currency]);
 
   // Load merchant's created links
   const loadMyLinks = useCallback(async () => {
@@ -115,7 +120,7 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!amountINR || Number(amountINR) <= 0) {
-      setError("Please enter a valid amount in INR.");
+      setError(`Please enter a valid amount in ${currencyMeta.code}.`);
       return;
     }
 
@@ -531,7 +536,7 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
                       <div>
                         <div className="flex items-center justify-between mb-1.5">
                           <label className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">
-                            AMOUNT IN INR (₹)
+                            AMOUNT IN {currencyMeta.code} ({currencyMeta.symbol})
                           </label>
                           {estimatedUsdcPreview > 0 && (
                             <span className="font-mono text-xs text-[#c0c6de] font-semibold">
@@ -542,7 +547,7 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
 
                         <div className="relative">
                           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#c0c6de] font-bold text-lg">
-                            ₹
+                            {currencyMeta.symbol}
                           </span>
                           <input
                             type="number"

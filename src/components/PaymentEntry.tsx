@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import CheckoutFlow from "./CheckoutFlow";
-import { MerchantData } from "@/lib/types";
+import { MerchantData, CURRENCY_CONFIGS, SupportedCurrency } from "@/lib/types";
+import { useCurrency } from "@/context/CurrencyContext";
 
 interface PaymentEntryProps {
   merchantData: MerchantData;
@@ -10,14 +11,25 @@ interface PaymentEntryProps {
 }
 
 export default function PaymentEntry({ merchantData, onCancel }: PaymentEntryProps) {
+  const { currency, currencyMeta } = useCurrency();
   const [amountStr, setAmountStr] = useState(merchantData.defaultAmount || "");
   const [showCheckout, setShowCheckout] = useState(false);
   const [mode, setMode] = useState<"fiat" | "crypto">("fiat");
 
+  // Determine active currency for this payment (from merchantData if detected, or default preference)
+  const activeCurrencyCode: SupportedCurrency = (merchantData.currency || currency) as SupportedCurrency;
+  const activeCurrency = CURRENCY_CONFIGS[activeCurrencyCode] || currencyMeta;
+
   const amount = parseFloat(amountStr) || 0;
-  const isUpi = merchantData.type === "upi";
-  const displayName = isUpi ? merchantData.name || "Unknown Merchant" : "Crypto Wallet";
-  const displayId = isUpi ? merchantData.upiId : merchantData.address;
+  const isFiatRail = merchantData.type === "upi" || merchantData.type === "pix" || merchantData.type === "paypal";
+  
+  const displayName = merchantData.name || (
+    merchantData.type === "upi" ? "UPI Merchant" :
+    merchantData.type === "pix" ? "Pix Merchant" :
+    merchantData.type === "paypal" ? "PayPal Recipient" : "Crypto Wallet"
+  );
+
+  const displayId = merchantData.paymentId || merchantData.upiId || merchantData.pixKey || merchantData.paypalId || merchantData.address;
 
   const handleConfirm = () => {
     if (amount > 0) {
@@ -85,14 +97,21 @@ export default function PaymentEntry({ merchantData, onCancel }: PaymentEntryPro
             <div className="glass-pane p-6 rounded-xl flex items-center gap-6 group hover:border-[#c0c6de]/30 transition-all duration-500">
               <div className="relative">
                 <div className="w-16 h-16 rounded-full border-2 border-[#bcc7de]/20 bg-white/5 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-3xl text-[#c0c6de]">{isUpi ? "storefront" : "wallet"}</span>
+                  <span className="material-symbols-outlined text-3xl text-[#c0c6de]">
+                    {merchantData.type === "upi" ? "storefront" : 
+                     merchantData.type === "pix" ? "qr_code_2" : 
+                     merchantData.type === "paypal" ? "account_balance_wallet" : "wallet"}
+                  </span>
                 </div>
                 <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-[#c0c6de] rounded-full border-4 border-[#131315] flex items-center justify-center">
                   <span className="material-symbols-outlined text-[12px] text-[#2a3043] font-bold">check</span>
                 </div>
               </div>
               <div className="space-y-1 truncate">
-                <h2 className="font-headline-md text-2xl md:text-[32px] font-semibold text-[#bcc7de] leading-none truncate">{displayName}</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="font-headline-md text-2xl md:text-[32px] font-semibold text-[#bcc7de] leading-none truncate">{displayName}</h2>
+                  {activeCurrency.flag && <span className="text-sm">{activeCurrency.flag}</span>}
+                </div>
                 <p className="font-body-md text-[#909097] truncate">{displayId}</p>
               </div>
             </div>
@@ -104,7 +123,7 @@ export default function PaymentEntry({ merchantData, onCancel }: PaymentEntryPro
               <p className="font-label-caps text-[12px] tracking-[0.1em] font-bold text-[#909097] uppercase">Enter Amount</p>
               <div className="flex items-baseline gap-2 group w-full">
                 <span className="font-display-xl text-[48px] md:text-[80px] font-extrabold text-[#c0c6de] opacity-50 select-none tracking-tighter">
-                  {mode === "fiat" ? "₹" : "USDC"}
+                  {mode === "fiat" ? activeCurrency.symbol : "USDC"}
                 </span>
                 <input 
                   className="bg-transparent border-none p-0 font-display-xl text-[48px] md:text-[80px] font-extrabold text-[#e5e2e3] focus:ring-0 focus:outline-none w-full caret-[#c0c6de] selection:bg-[#c0c6de]/20 amount-input tracking-tighter" 

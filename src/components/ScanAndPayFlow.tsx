@@ -49,6 +49,9 @@ import { SpotlightCard } from "@/components/ui/SpotlightCard";
 import { NumericKeypad } from "@/components/ui/NumericKeypad";
 import { ShimmerButton } from "@/components/ui/ShimmerButton";
 import DecryptedText from "@/components/ui/DecryptedText";
+import { useCurrency } from "@/context/CurrencyContext";
+import { parsePixData } from "@/lib/pixParser";
+import { parsePayPalData } from "@/lib/paypalParser";
 
 type FlowStep = "amount" | "authorizing" | "scanning_matching" | "delivering" | "settling" | "completed";
 
@@ -58,8 +61,10 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   const router = useRouter();
   const { address, smartClient, primaryWallet: wallet, login, ready, authenticated } = useActiveAccount();
   const { getAccessToken } = usePrivy();
+  const { currency, currencyMeta } = useCurrency();
   const activeAddress = (address || undefined) as `0x${string}` | undefined;
 
+  const PRESET_AMOUNTS = currencyMeta.presets || [100, 250, 500, 1000, 2000];
 
   // Flow State
   const [step, setStep] = useState<FlowStep>("amount");
@@ -142,18 +147,18 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
     const fetchRateAndLimits = async () => {
       try {
         setRateLoading(true);
-        const price = await getSellRate("INR");
+        const price = await getSellRate(currency);
         if (isMounted) setSellPrice(price);
 
         if (activeAddress) {
           try {
-            const limits = await getOfframpLimits(activeAddress, "INR");
+            const limits = await getOfframpLimits(activeAddress, currency);
             if (isMounted && limits?.sellLimit) {
               setMaxSellable(Number(limits.sellLimit));
             }
           } catch (limitErr) {
-            console.warn("[ScanAndPayFlow] Limits fetch warning, using 100 USDC baseline floor:", limitErr);
-            if (isMounted) setMaxSellable(100);
+            console.warn(`[ScanAndPayFlow] Limits fetch warning, using ${currencyMeta.maxOrderFloorUsdc || 100} USDC baseline floor:`, limitErr);
+            if (isMounted) setMaxSellable(currencyMeta.maxOrderFloorUsdc || 100);
           }
         }
       } catch (err: any) {
@@ -166,7 +171,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
     fetchRateAndLimits();
     return () => { isMounted = false; };
-  }, [activeAddress]);
+  }, [activeAddress, currency, currencyMeta.maxOrderFloorUsdc]);
 
   // Rate Math Calculations
   const numericInr = parseFloat(amountInr) || 0;
@@ -188,7 +193,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
       return;
     }
     if (numericInr <= 0) {
-      setError("Please enter a valid INR amount.");
+      setError(`Please enter a valid ${currencyMeta.code} amount.`);
       return;
     }
 
@@ -238,7 +243,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
 
       const orderCall = await prepareOfframpOrder({
         userAddress: senderAddress,
-        currency: "INR",
+        currency: currency,
         usdcAmount: usdcPrincipalBigInt,
         sellPrice: sellPrice,
       });
@@ -381,6 +386,24 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   const parseUpiString = useCallback((rawText: string) => {
     const trimmed = rawText.trim();
     if (!trimmed) return null;
+
+    // Check for Brazilian Pix (EMVCo or raw key)
+    const pix = parsePixData(trimmed);
+    if (pix.isValid && (pix.keyType === "emvco" || pix.pixKey)) {
+      return {
+        upiId: pix.pixKey || trimmed,
+        name: pix.merchantName || (pix.keyType === "emvco" ? "Pix Merchant" : `Pix (${pix.keyType?.toUpperCase()})`),
+      };
+    }
+
+    // Check for PayPal link, email, or handle
+    const pp = parsePayPalData(trimmed);
+    if (pp.isValid && pp.paypalId) {
+      return {
+        upiId: pp.paypalId,
+        name: pp.name || "PayPal Recipient",
+      };
+    }
 
     // 1. Handle standard upi:// URI format safely across all browser environments
     if (trimmed.toLowerCase().startsWith("upi://")) {
@@ -658,7 +681,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
               {/* Amount Display */}
               <div className="flex items-baseline justify-center mt-4 mb-1">
                 <span className="text-3xl sm:text-4xl font-extrabold text-[#c0c6de] font-mono mr-1.5 opacity-80">
-                  ₹
+                  {currencyMeta.symbol}
                 </span>
                 <span className="text-5xl sm:text-6xl font-black font-mono tracking-tight text-white select-none">
                   {amountInr || "0"}
@@ -671,12 +694,12 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                 <span>≈ ${totalUsdcRequired.toFixed(2)} USDC</span>
                 <span className="text-[#46464c]">•</span>
                 <span className="text-[11px] text-[#c0c6de]">
-                  {rateLoading ? "Rate loading..." : `1 USDC = ₹${rateInrPerUsdc.toFixed(2)}`}
+                  {rateLoading ? "Rate loading..." : `1 USDC = ${currencyMeta.symbol}${rateInrPerUsdc.toFixed(2)}`}
                 </span>
               </div>
             </div>
 
-            {/* Quick Action Chips (+100, +500, +1000, Max, Clear) */}
+            {/* Quick Action Chips (Presets, Max, Clear) */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
               <button
                 type="button"
@@ -686,14 +709,14 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
               >
                 MAX
               </button>
-              {[100, 250, 500, 1000].map((amt) => (
+              {PRESET_AMOUNTS.slice(0, 4).map((amt) => (
                 <button
                   key={amt}
                   type="button"
                   onClick={() => handleQuickAdd(amt)}
                   className="py-1.5 px-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.09] border border-white/10 text-xs font-mono text-[#c6c6cd] hover:text-white transition-colors shrink-0"
                 >
-                  +₹{amt}
+                  +{currencyMeta.symbol}{amt}
                 </button>
               ))}
               <button
@@ -799,7 +822,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                 <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping shrink-0" />
                 <div>
                   <p className="text-xs font-bold text-emerald-400 font-mono uppercase">
-                    {orderId ? `Order #${orderId.toString()} Escrowed (₹${numericInr.toFixed(2)})` : `₹${numericInr.toFixed(2)} In Escrow`}
+                    {orderId ? `Order #${orderId.toString()} Escrowed (${currencyMeta.symbol}${numericInr.toFixed(2)})` : `${currencyMeta.symbol}${numericInr.toFixed(2)} In Escrow`}
                   </p>
                   <p className="text-[11px] text-[#c6c6cd] font-mono">
                     {merchantAcceptedOrder ? "✅ P2P Merchant Ready!" : "Matching liquidity in background..."}
@@ -835,7 +858,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                 <div className="text-center">
                   <h2 className="text-lg font-bold text-white">Point Camera at Merchant QR</h2>
                   <p className="text-xs text-[#909097] font-mono mt-0.5">
-                    Works with Google Pay, PhonePe, Paytm, BharatPe, or Any UPI QR
+                    Works with {currencyMeta.railDescription}
                   </p>
                 </div>
 
@@ -892,12 +915,12 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
             </div>
             <div>
               <h2 className="text-xl font-bold text-white">
-                {step === "delivering" ? "Encrypting & Delivering UPI" : "Merchant Settling Fiat"}
+                {step === "delivering" ? `Encrypting & Delivering ${currencyMeta.rail}` : "Merchant Settling Fiat"}
               </h2>
               <p className="text-xs text-[#909097] font-mono mt-1">
                 {step === "delivering" 
                   ? `Delivering ${scannedUpi} encrypted via ECIES to matched merchant`
-                  : `Merchant is transferring ₹${numericInr.toFixed(2)} via UPI instant rails`}
+                  : `Merchant is transferring ${currencyMeta.symbol}${numericInr.toFixed(2)} via ${currencyMeta.rail} rails`}
               </p>
             </div>
             <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 text-xs font-mono text-[#c0c6de]">
@@ -928,7 +951,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                 Payment Settled
               </span>
               <h2 className="text-4xl font-black text-white tracking-tight mt-1">
-                ₹{numericInr.toFixed(2)}
+                {currencyMeta.symbol}{numericInr.toFixed(2)}
               </h2>
               <p className="text-xs text-[#909097] font-mono mt-1">
                 ≈ ${usdcAmountNum.toFixed(2)} USDC
@@ -968,7 +991,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                 </div>
               )}
               <div className="flex justify-between items-center">
-                <span className="text-[#909097]">Recipient UPI</span>
+                <span className="text-[#909097]">Recipient {currencyMeta.rail}</span>
                 <span className="text-white font-bold truncate max-w-[200px]">{scannedUpi}</span>
               </div>
               <div className="flex justify-between items-center">

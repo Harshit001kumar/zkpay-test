@@ -6,10 +6,12 @@ import { useRouter } from "next/navigation";
 import { encodeFunctionData, parseUnits, formatUnits, maxUint256 } from "viem";
 import { CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
-import { MerchantData } from "@/lib/types";
+import { MerchantData, CURRENCY_CONFIGS, SupportedCurrency } from "@/lib/types";
 import { saveTransaction } from "@/lib/history";
 import { PAYMENT_ID_FIELDS } from "@p2pdotme/sdk/country";
 import DecryptedText from "@/components/ui/DecryptedText";
+import { useCurrency } from "@/context/CurrencyContext";
+import { identifyPixKeyType } from "@/lib/pixParser";
 import {
   getOfframpLimits,
   getOfframpPrice,
@@ -24,9 +26,8 @@ import {
 } from "@/lib/p2pkit";
 import { truncateTo2Decimals } from "@/lib/format";
 
-
 interface CheckoutFlowProps {
-  amount: number; // total INR amount
+  amount: number; // total fiat amount
   merchantData: MerchantData;
 }
 
@@ -34,6 +35,10 @@ type TxStatus = "idle" | "approving" | "matching" | "paying" | "completed" | "er
 
 export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps) {
   const { ready, authenticated, address, primaryWallet, smartClient, login } = useActiveAccount();
+  const { currency, currencyMeta } = useCurrency();
+
+  const activeCurrencyCode: SupportedCurrency = (merchantData.currency || currency) as SupportedCurrency;
+  const activeMeta = CURRENCY_CONFIGS[activeCurrencyCode] || currencyMeta;
 
   const router = useRouter();
   
@@ -49,16 +54,23 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
   const fee = amount * 0.01;
   const totalAmount = amount + fee;
-  const targetUpi = merchantData.upiId || merchantData.raw || "Merchant";
+  const targetRecipient = merchantData.paymentId || merchantData.upiId || merchantData.pixKey || merchantData.paypalId || merchantData.raw || "Merchant";
 
-  // Validate UPI using official SDK validator
-  const isTargetUpiValid = () => {
+  // Validate recipient according to rail
+  const isTargetRecipientValid = () => {
+    if (activeCurrencyCode === "BRL" || merchantData.type === "pix") {
+      return Boolean(identifyPixKeyType(targetRecipient) || targetRecipient.startsWith("000201") || targetRecipient.length >= 8);
+    }
+    if (activeCurrencyCode === "USD" || merchantData.type === "paypal") {
+      return targetRecipient.includes("@") || /^[a-zA-Z0-9._-]{3,30}$/.test(targetRecipient.replace(/^@/, ""));
+    }
+    // Default: UPI
     try {
       const fields = PAYMENT_ID_FIELDS["INR"];
-      if (!fields || fields.length === 0) return targetUpi.includes("@");
-      return fields[0].validate(targetUpi);
+      if (!fields || fields.length === 0) return targetRecipient.includes("@");
+      return fields[0].validate(targetRecipient);
     } catch {
-      return targetUpi.includes("@");
+      return targetRecipient.includes("@");
     }
   };
 
@@ -69,8 +81,8 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       const publicClient = getPublicClient();
 
       const [priceCfg, limits, balance] = await Promise.all([
-        getOfframpPrice("INR"),
-        getOfframpLimits(userAddr, "INR").catch(() => ({ sellLimit: 100n })),
+        getOfframpPrice(activeCurrencyCode),
+        getOfframpLimits(userAddr, activeCurrencyCode).catch(() => ({ sellLimit: BigInt(activeMeta.maxOrderFloorUsdc || 100) })),
         publicClient.readContract({
           address: CONTRACTS.USDC,
           abi: ERC20_ABI,
@@ -109,10 +121,11 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
     if (pendingStr) {
       try {
         const pending = JSON.parse(pendingStr);
-        if (pending.orderId && pending.targetUpi) {
+        const recipient = pending.targetRecipient || pending.targetUpi;
+        if (pending.orderId && recipient) {
           setOrderId(BigInt(pending.orderId));
           setStatus("matching");
-          resumeOrder(BigInt(pending.orderId), pending.targetUpi, pending.hash, pending);
+          resumeOrder(BigInt(pending.orderId), recipient, pending.hash, pending);
         }
       } catch {
         localStorage.removeItem("pending_payment_order");
@@ -120,7 +133,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
     }
   }, [ready, authenticated, address]);
 
-  const resumeOrder = async (pOrderId: bigint, upi: string, txHash: string, pending: any) => {
+  const resumeOrder = async (pOrderId: bigint, recipient: string, txHash: string, pending: any) => {
     const orderIdStr = pOrderId.toString();
     if (isResumingCheckoutRef.current === orderIdStr) return;
     isResumingCheckoutRef.current = orderIdStr;
@@ -154,7 +167,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
           if (smartClient) {
             await sendPayoutAddress(smartClient as any, {
               orderId: pOrderId,
-              paymentAddress: upi,
+              paymentAddress: recipient,
               merchantPublicKey: acceptedOrder.pubkey,
             });
           } else if (primaryWallet) {
@@ -169,7 +182,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
             await sendPayoutAddress(walletClient, {
               orderId: pOrderId,
-              paymentAddress: upi,
+              paymentAddress: recipient,
               merchantPublicKey: acceptedOrder.pubkey,
             });
           } else {
@@ -237,8 +250,8 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       return;
     }
 
-    if (!isTargetUpiValid()) {
-      setError(`Invalid UPI ID format: "${targetUpi}". Please check the recipient UPI ID.`);
+    if (!isTargetRecipientValid()) {
+      setError(`Invalid recipient format: "${targetRecipient}". Please check the recipient identifier.`);
       return;
     }
     
@@ -250,7 +263,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       const activeAddr = (smartClient?.account?.address || wallet?.address || address) as `0x${string}`;
       const publicClient = getPublicClient();
 
-      // Convert INR amount to USDC using real price
+      // Convert fiat amount to USDC using real price
       // price is 6 decimals: fiatAmount = (usdcAmount * sellPrice) / 1e6
       const fiatPrincipal1e6 = BigInt(Math.floor(amount * 1_000_000));
       const usdcPrincipalBigInt = (fiatPrincipal1e6 * 1_000_000n) / sellPrice;
@@ -282,9 +295,9 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         );
       }
 
-      // Validate against dynamic runtime limit (or 100 USDC baseline)
+      // Validate against dynamic runtime limit
       const usdcFloat = Number(usdcPrincipalBigInt) / 1_000_000;
-      const effectiveLimit = maxSellable || 100;
+      const effectiveLimit = maxSellable || activeMeta.maxOrderFloorUsdc || 100;
       if (usdcFloat > effectiveLimit) {
         throw new Error(
           `Amount (${usdcFloat.toFixed(2)} USDC) exceeds maximum single transaction limit of ${effectiveLimit} USDC.`
@@ -293,7 +306,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
       const orderCall = await prepareOfframpOrder({
         userAddress: activeAddr,
-        currency: "INR",
+        currency: activeCurrencyCode,
         usdcAmount: usdcPrincipalBigInt,
         sellPrice: sellPrice,
       });
@@ -373,12 +386,12 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       saveTransaction({
         hash: txHash,
         type: "payment",
-        title: `Paid to ${merchantData.name || targetUpi}`,
+        title: `Paid to ${merchantData.name || targetRecipient}`,
         amountINR: amount,
         amountUSDC: usdcFloat,
         fee: (Number(usdcFeeBigInt) / 1e6),
         protocolFee: (Number(protocolFeeBigInt) / 1e6),
-        recipient: targetUpi,
+        recipient: targetRecipient,
         merchantName: merchantData.name,
         orderId: parsedOrderId ? parsedOrderId.toString() : undefined,
         network: "Base",
@@ -396,7 +409,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
       // Persist pending order to localStorage for durability across reloads
       localStorage.setItem("pending_payment_order", JSON.stringify({
         orderId: parsedOrderId.toString(),
-        targetUpi,
+        targetRecipient,
         hash: txHash,
         amountINR: amount,
         amountUSDC: usdcFloat,
@@ -420,7 +433,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         await new Promise(r => setTimeout(r, 3000));
       }
 
-      // Deliver encrypted UPI to the matched merchant
+      // Deliver encrypted payout info to the matched merchant
       if (acceptedOrder && acceptedOrder.pubkey) {
         setStatus("paying");
         const orderIdStr = parsedOrderId.toString();
@@ -429,7 +442,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
           if (smartClient) {
             await sendPayoutAddress(smartClient as any, {
               orderId: parsedOrderId,
-              paymentAddress: targetUpi,
+              paymentAddress: targetRecipient,
               merchantPublicKey: acceptedOrder.pubkey,
             });
           } else {
@@ -444,7 +457,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
             await sendPayoutAddress(walletClient, {
               orderId: parsedOrderId,
-              paymentAddress: targetUpi,
+              paymentAddress: targetRecipient,
               merchantPublicKey: acceptedOrder.pubkey,
             });
           }
@@ -483,18 +496,18 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
         <div className="flex flex-col gap-6 items-center w-full">
           <div className="w-full bg-white/[0.03] border border-white/10 rounded-xl p-5 flex flex-col gap-3 text-sm">
             <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
-              <span>RECIPIENT UPI</span>
+              <span>RECIPIENT {activeMeta.rail.toUpperCase()}</span>
               <span className="text-[#e5e2e3] font-mono font-semibold truncate max-w-[200px]">
-                <DecryptedText text={targetUpi} speed={30} />
+                <DecryptedText text={targetRecipient} speed={30} />
               </span>
             </div>
             <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
               <span>PAYMENT AMOUNT</span>
-              <span className="text-[#e5e2e3] font-semibold">₹ {amount.toFixed(2)}</span>
+              <span className="text-[#e5e2e3] font-semibold">{activeMeta.symbol} {amount.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
               <span>ZKPAY CONVENIENCE FEE (1%)</span>
-              <span className="text-[#e5e2e3]">₹ {fee.toFixed(2)}</span>
+              <span className="text-[#e5e2e3]">{activeMeta.symbol} {fee.toFixed(2)}</span>
             </div>
             {sellPrice && (() => {
               const fiatPrincipal1e6 = BigInt(Math.floor(amount * 1_000_000));
@@ -506,7 +519,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
                 <>
                   <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
                     <span>ON-CHAIN RATE</span>
-                    <span className="text-[#c0c6de]">1 USDC ≈ ₹{(Number(sellPrice) / 1e6).toFixed(2)}</span>
+                    <span className="text-[#c0c6de]">1 USDC ≈ {activeMeta.symbol}{(Number(sellPrice) / 1e6).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
                     <div className="flex items-center gap-1.5">
@@ -529,7 +542,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
             <div className="border-t border-white/10 my-1"></div>
             <div className="flex justify-between font-bold text-lg text-[#e5e2e3]">
               <span className="font-label-caps text-xs tracking-[0.15em] text-[#c0c6de]">TOTAL PAYABLE</span>
-              <span className="tracking-tight">₹ {totalAmount.toFixed(2)}</span>
+              <span className="tracking-tight">{activeMeta.symbol} {totalAmount.toFixed(2)}</span>
             </div>
           </div>
 
@@ -577,7 +590,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
           <div className="w-10 h-10 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
           <div>
             <p className="font-label-caps text-xs text-[#c0c6de] tracking-[0.25em] font-bold mb-1">
-              DELIVERING ENCRYPTED UPI
+              DELIVERING ENCRYPTED {activeMeta.rail.toUpperCase()}
             </p>
             <p className="text-xs text-[#909097]">Merchant accepted. Delivering payout info via ECIES encryption...</p>
           </div>

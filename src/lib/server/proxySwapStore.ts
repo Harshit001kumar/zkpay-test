@@ -37,8 +37,8 @@ export interface ProxySwapOrder {
   feeNote?: string; // Why a fee output was skipped / rolled into the solver transfer (audit trail)
   lastAttemptAt?: number; // Timestamp of last forward sweep attempt (used for cooldown backoff)
   // Partner attribution (used by the /partner dashboard)
-  apiKeyId?: string; // API key that created this order
-  partnerUserId?: string; // Privy user ID owning that API key
+  apiKeyId?: string | null; // API key that created this order
+  partnerUserId?: string | null; // Privy user ID owning that API key
   source?: "api" | "app" | "checkout";
   createdAt: number;
   expiresAt: number;

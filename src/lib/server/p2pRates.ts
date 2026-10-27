@@ -50,6 +50,7 @@ const RATE_CACHE_TTL_MS = 15 * 1000; // 15 seconds
 // Baseline safe fallback if contract is temporarily unreachable and no cache exists
 const DEFAULT_FALLBACK_RATES: Record<string, number> = {
   INR: 91.50,
+  BRL: 5.60,
   USD: 1.00,
   EUR: 0.92,
   GBP: 0.79,

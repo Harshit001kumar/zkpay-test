@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { usePrivy } from "@privy-io/react-auth";
+import { useCurrency } from "@/context/CurrencyContext";
 import {
   Copy,
   Check,
@@ -49,6 +50,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
   const router = useRouter();
   const { logout, address, isSmartWallet } = useActiveAccount();
   const { getAccessToken } = usePrivy();
+  const { currencyMeta, setIsSelectorOpen } = useCurrency();
 
   const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Not connected";
   const [copied, setCopied] = useState(false);
@@ -989,14 +991,21 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
             <h3 className="font-label-caps text-[11px] font-bold text-[#c6c6cd] tracking-[0.2em] uppercase">Preferences</h3>
           </div>
           <div className="space-y-3">
-            <div className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group cursor-pointer border border-white/5 hover:border-white/20 transition-all">
+            <div 
+              onClick={() => setIsSelectorOpen(true)}
+              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group cursor-pointer border border-white/5 hover:border-white/20 hover:bg-white/[0.04] transition-all"
+            >
               <div className="flex items-center gap-4">
                 <DollarSign className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />
-                <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px]">Default Currency</span>
+                <div>
+                  <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px] block">Default Currency</span>
+                  <span className="text-xs text-[#909097]">{currencyMeta.name} • {currencyMeta.rail}</span>
+                </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-body-md text-[#c0c6de] font-bold text-sm">USD</span>
-                <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
+                <span className="text-base mr-1">{currencyMeta.flag}</span>
+                <span className="font-body-md text-[#c0c6de] font-bold text-sm">{currencyMeta.code} ({currencyMeta.symbol})</span>
+                <ChevronRight className="w-5 h-5 text-[#c6c6cd] group-hover:translate-x-0.5 transition-transform" />
               </div>
             </div>
             <div className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group cursor-pointer border border-white/5 hover:border-white/20 transition-all">
