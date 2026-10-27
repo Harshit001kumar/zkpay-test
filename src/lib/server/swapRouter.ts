@@ -35,6 +35,7 @@ import {
   updateProxySwapOrder,
   ProxySwapOrder,
 } from "./proxySwapStore";
+import { saveDirectSwapOrder } from "./directSwapStore";
 import { checkAndForwardProxyDeposit } from "./proxyForwarder";
 
 const ONECLICK_API = "https://1click.chaindefuser.com/v0";
@@ -862,6 +863,10 @@ export interface CreateSwapParams {
   feeRecipient?: string | null;
   totalFeeBps?: number | null;
   slippageBps?: number | null;
+  /** Partner attribution: API key that created this swap (for the /partner dashboard). */
+  apiKeyId?: string | null;
+  partnerUserId?: string | null;
+  source?: "api" | "app";
 }
 
 /**
@@ -951,6 +956,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
   let finalDepositAddress = quote.depositAddress;
   let finalDepositAmount = quote.amountInFormatted || netSwapAmount;
 
+  let proxySaved = false;
   if (!feeSplit.isDirectRoute && isProxySupportedChain(resolvedOriginChain, originSymbol)) {
     try {
       const proxyWallet = generateProxyDepositWallet(resolvedOriginChain);
@@ -986,13 +992,46 @@ export async function createSwapOrder(params: CreateSwapParams) {
         status: "PENDING_DEPOSIT",
         createdAt: Date.now(),
         expiresAt: new Date(quote.deadline || deadline).getTime(),
+        apiKeyId: params.apiKeyId || null,
+        partnerUserId: params.partnerUserId || null,
+        source: params.source || (params.apiKeyId ? "api" : "app"),
       };
 
       await saveProxySwapOrder(proxyOrder);
+      proxySaved = true;
       console.log(`[SwapRouter] Proxy single-transfer order initialized: ${proxyOrder.swapId} -> ${proxyOrder.proxyDepositAddress}`);
     } catch (proxyErr) {
       console.warn("[SwapRouter] Proxy wallet generation warning, fallback to direct solver:", proxyErr);
       finalDepositAddress = quote.depositAddress;
+    }
+  }
+
+  // If proxy wasn't used or failed, persist as direct swap for partner tracking & audit ledger
+  if (!proxySaved) {
+    try {
+      await saveDirectSwapOrder({
+        swapId: data.correlationId || `swp_${Date.now()}`,
+        depositAddress: quote.depositAddress,
+        originAssetId,
+        fromAsset: getOriginTokenMeta(originAssetId)?.symbol || fromAsset,
+        toAsset: params.toAsset || "USDC",
+        originChain: normalizeChain(resolvedOriginChain) || resolvedOriginChain,
+        destinationChain: resolvedDestChain,
+        recipient: recipient.trim(),
+        refundTo: effectiveRefundTo,
+        totalAmountIn: amount.trim(),
+        totalAmountFormatted: formatHumanAmount(amount.trim(), originAssetId),
+        estimatedAmountOut: quote.amountOutFormatted || quote.amountOut,
+        lastKnownStatus: "PENDING_DEPOSIT",
+        createdAt: Date.now(),
+        expiresAt: new Date(quote.deadline || deadline).getTime(),
+        apiKeyId: params.apiKeyId || undefined,
+        partnerUserId: params.partnerUserId || undefined,
+        source: params.source || (params.apiKeyId ? "api" : "app"),
+      });
+      console.log(`[SwapRouter] Direct swap order recorded: ${data.correlationId || "direct"}`);
+    } catch (directErr) {
+      console.warn("[SwapRouter] Failed to record direct swap order:", directErr);
     }
   }
 

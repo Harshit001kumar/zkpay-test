@@ -112,6 +112,8 @@ export interface PayInSession {
   creatorUserId?: string;
   creatorWalletAddress?: string;
   apiKeyId?: string;
+  source?: "api" | "app" | "checkout"; // How the session was created (partner dashboard attribution)
+  parentLinkId?: string; // Pay link this session was opened from (checkout)
 
   // Gas, Tip & Refund Fields
   gasFeeUsdc?: string; // Gas fee paid in USDC by user (if operation failed or was cancelled)

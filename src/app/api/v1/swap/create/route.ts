@@ -66,6 +66,10 @@ export async function POST(req: Request) {
       );
     }
 
+    const apiKeyId = auth.apiKeyRecord?.id || null;
+    const partnerUserId = auth.apiKeyRecord?.userId || auth.userId || null;
+    const source: "api" | "app" = auth.apiKeyRecord ? "api" : "app";
+
     const order = await createSwapOrder({
       fromAsset: sourceAsset,
       toAsset: targetAsset,
@@ -75,9 +79,12 @@ export async function POST(req: Request) {
       amount: String(amount),
       recipient,
       refundTo,
-      feeRecipient: resolvedFeeRecipient,
+      feeRecipient: resolvedFeeRecipient || (auth.apiKeyRecord?.walletAddress || undefined),
       totalFeeBps: resolvedFeeBps,
       slippageBps: typeof slippageBps === "number" ? slippageBps : undefined,
+      apiKeyId,
+      partnerUserId,
+      source,
     });
 
     return corsJson(

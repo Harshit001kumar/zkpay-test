@@ -32,6 +32,7 @@ import {
   Terminal,
   AlertCircle,
   RefreshCw,
+  LayoutDashboard,
 } from "lucide-react";
 
 interface ApiKeyItem {
@@ -559,6 +560,30 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
             </p>
           </div>
 
+          {/* Partner Dashboard Quick Link */}
+          <Link
+            href="/partner"
+            className="monolith-card rounded-[24px] p-4 bg-gradient-to-r from-emerald-500/10 via-transparent to-transparent border border-emerald-500/25 flex items-center justify-between gap-3 group hover:border-emerald-500/50 transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                <LayoutDashboard className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-white">Partner Dashboard & Ledger</span>
+                  <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    ANALYTICS
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#909097] font-mono">
+                  Track swap volumes, transactions & partner earnings
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
+          </Link>
+
           {/* New Key Generated Alert Banner */}
           {newKeyResult && (
             <section className="monolith-card rounded-[24px] p-6 space-y-4 bg-gradient-to-b from-amber-500/20 via-amber-500/5 to-transparent border border-amber-500/40 shadow-2xl animate-in zoom-in-95 duration-300">
@@ -1057,6 +1082,23 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
               </div>
               <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
             </button>
+
+            <Link 
+              href="/partner" 
+              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-emerald-500/20 hover:border-emerald-500/40 transition-all block"
+            >
+              <div className="flex items-center gap-4">
+                <LayoutDashboard className="w-5 h-5 text-emerald-400 group-hover:text-emerald-300 transition-colors" />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px] block">Partner Dashboard</span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold">ANALYTICS</span>
+                  </div>
+                  <span className="text-xs text-[#909097]">Track swaps, payments & live partner revenue</span>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
+            </Link>
 
             <Link 
               href="/docs" 

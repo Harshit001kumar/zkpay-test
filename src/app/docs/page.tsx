@@ -574,6 +574,16 @@ Verify with:
   -H "Content-Type: application/json" \\
   -d '{"amountINR": 500, "recipientUpi": "merchant@okaxis"}'`}</pre>
             </div>
+
+            <div className="mt-4 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-emerald-300">Track All API Transactions Live</p>
+                <p className="text-[11px] text-[#909097]">Monitor swaps, pay-ins, and view estimated partner earnings in real-time on your dashboard.</p>
+              </div>
+              <a href="/partner" className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-mono font-bold transition-colors shrink-0">
+                Open /partner →
+              </a>
+            </div>
           </div>
         </section>
 

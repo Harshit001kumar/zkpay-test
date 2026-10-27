@@ -172,9 +172,14 @@ export async function POST(req: Request) {
       tipUsdc: tipUsdcNum > 0 ? tipUsdcNum.toFixed(2) : undefined,
       webhookUrl,
       expiresAt,
-      creatorUserId: auth.apiKeyRecord?.userId,
-      creatorWalletAddress: auth.apiKeyRecord?.walletAddress,
-      apiKeyId: auth.apiKeyRecord?.id,
+      // Partner attribution: API-key callers own the session directly; public checkout sessions
+      // opened from a pay link inherit the link creator's API key so they appear in /partner.
+      creatorUserId: auth.apiKeyRecord?.userId || (isValidCheckoutLink ? linkedPayLink?.creatorUserId : undefined),
+      creatorWalletAddress:
+        auth.apiKeyRecord?.walletAddress || (isValidCheckoutLink ? linkedPayLink?.creatorWalletAddress : undefined),
+      apiKeyId: auth.apiKeyRecord?.id || (isValidCheckoutLink ? linkedPayLink?.apiKeyId : undefined),
+      source: auth.apiKeyRecord ? "api" : isValidCheckoutLink ? "checkout" : "app",
+      parentLinkId: isValidCheckoutLink ? linkedPayLink?.id : undefined,
     });
 
     // 6. Build Direct USDC Transfer QR code on Base (EIP-681)
