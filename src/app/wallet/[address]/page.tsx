@@ -189,26 +189,26 @@ export default function WalletAddressPage() {
     : "";
 
   return (
-    <div className="min-h-screen bg-[#131315] text-[#e5e2e3] font-sans selection:bg-[#c0c6de]/20 selection:text-white">
+    <div className="min-h-screen bg-surface text-on-surface font-sans selection:bg-primary/20 selection:text-white">
       {/* Background Ambient Glow */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
-        <div className="absolute -top-40 -left-40 w-96 h-96 bg-[#c0c6de]/5 rounded-full blur-[140px]" />
-        <div className="absolute bottom-10 -right-40 w-96 h-96 bg-[#8a92a6]/5 rounded-full blur-[140px]" />
+        <div className="absolute -top-40 -left-40 w-96 h-96 bg-primary/5 rounded-full blur-xl" />
+        <div className="absolute bottom-10 -right-40 w-96 h-96 bg-secondary/5 rounded-full blur-xl" />
       </div>
 
       {/* Sticky Navigation Header */}
-      <header className="sticky top-0 z-50 bg-[#131315]/90 backdrop-blur-2xl border-b border-white/10 px-6 py-4">
+      <header className="sticky top-0 z-50 bg-surface/90  border-b border-white/10 px-6 py-4">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-xs font-mono font-bold tracking-wider text-[#909097] hover:text-[#e5e2e3] transition-colors"
+            className="inline-flex items-center gap-2 text-xs font-sans tabular-nums font-bold tracking-normal text-outline hover:text-on-surface transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>BACK TO DASHBOARD</span>
           </Link>
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs font-mono text-[#909097] uppercase tracking-widest">
+            <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
+            <span className="text-xs font-sans tabular-nums text-outline  tracking-normal">
               BASE MAINNET (8453)
             </span>
           </div>
@@ -219,17 +219,17 @@ export default function WalletAddressPage() {
       <main className="max-w-2xl mx-auto px-5 py-8 md:py-12 space-y-6">
         
         {/* Profile / Account Monolith Header */}
-        <SpotlightCard className="p-6 md:p-8 bg-[#1b1b1d] border border-white/15 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
+        <SpotlightCard className="p-6 md:p-8 bg-surface-container-low border border-white/15 rounded-3xl shadow-elevated">
           <div className="flex items-center justify-between pb-5 border-b border-white/10 mb-6">
             <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-2xl bg-[#c0c6de]/10 border border-[#c0c6de]/30 flex items-center justify-center text-[#c0c6de]">
+              <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/30 flex items-center justify-center text-primary">
                 <Wallet className="w-6 h-6" />
               </div>
               <div>
                 <h1 className="text-xl md:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
                   <span>Base USDC Account</span>
                 </h1>
-                <p className="text-xs text-[#909097] font-mono">
+                <p className="text-xs text-outline font-sans tabular-nums">
                   Native Ethereum Layer-2 Settlement
                 </p>
               </div>
@@ -239,7 +239,7 @@ export default function WalletAddressPage() {
               href={`https://basescan.org/address/${targetAddress}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3.5 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-[#c0c6de] hover:text-white flex items-center gap-1.5 transition-colors"
+              className="px-3.5 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-sans tabular-nums text-primary hover:text-white flex items-center gap-1.5 transition-colors"
             >
               <span>Basescan</span>
               <ExternalLink className="w-3.5 h-3.5" />
@@ -249,26 +249,26 @@ export default function WalletAddressPage() {
           {/* Balance Cards */}
           <div className="grid grid-cols-2 gap-4 mb-6">
             <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
-              <p className="text-[10px] font-label-caps text-[#909097] tracking-widest uppercase font-bold mb-1">
+              <p className="text-[10px] font-label-caps text-outline tracking-normal  font-bold mb-1">
                 USDC BALANCE
               </p>
               <div className="flex items-baseline gap-1.5">
                 <span className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
                   ${usdcBalance.toFixed(2)}
                 </span>
-                <span className="text-xs font-mono font-bold text-[#c0c6de]">USDC</span>
+                <span className="text-xs font-sans tabular-nums font-bold text-primary">USDC</span>
               </div>
             </div>
 
             <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
-              <p className="text-[10px] font-label-caps text-[#909097] tracking-widest uppercase font-bold mb-1">
+              <p className="text-[10px] font-label-caps text-outline tracking-normal  font-bold mb-1">
                 GAS RESERVE
               </p>
               <div className="flex items-baseline gap-1.5">
                 <span className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
                   {ethBalance}
                 </span>
-                <span className="text-xs font-mono font-bold text-[#909097]">ETH</span>
+                <span className="text-xs font-sans tabular-nums font-bold text-outline">ETH</span>
               </div>
             </div>
           </div>
@@ -277,10 +277,10 @@ export default function WalletAddressPage() {
           <div className="grid grid-cols-2 gap-2 p-1.5 rounded-2xl bg-black/40 border border-white/10 mb-6">
             <button
               onClick={() => { setActiveTab("receive"); setSendError(null); }}
-              className={`py-3 px-4 rounded-xl text-xs font-bold font-label-caps tracking-wider uppercase transition-all flex items-center justify-center gap-2 ${
+              className={`py-3 px-4 rounded-xl text-xs font-bold font-label-caps tracking-normal  transition-colors flex items-center justify-center gap-2 ${
                 activeTab === "receive"
-                  ? "bg-[#c0c6de] text-[#131315] shadow-lg font-extrabold"
-                  : "text-[#909097] hover:text-white"
+                  ? "bg-primary text-surface shadow-lg font-extrabold"
+                  : "text-outline hover:text-white"
               }`}
             >
               <ArrowDownLeft className="w-4 h-4" />
@@ -289,10 +289,10 @@ export default function WalletAddressPage() {
 
             <button
               onClick={() => { setActiveTab("send"); setSendError(null); }}
-              className={`py-3 px-4 rounded-xl text-xs font-bold font-label-caps tracking-wider uppercase transition-all flex items-center justify-center gap-2 ${
+              className={`py-3 px-4 rounded-xl text-xs font-bold font-label-caps tracking-normal  transition-colors flex items-center justify-center gap-2 ${
                 activeTab === "send"
-                  ? "bg-[#c0c6de] text-[#131315] shadow-lg font-extrabold"
-                  : "text-[#909097] hover:text-white"
+                  ? "bg-primary text-surface shadow-lg font-extrabold"
+                  : "text-outline hover:text-white"
               }`}
             >
               <Send className="w-4 h-4" />
@@ -315,12 +315,12 @@ export default function WalletAddressPage() {
                     />
                   </div>
                 ) : (
-                  <div className="w-56 h-56 rounded-3xl bg-white/5 animate-pulse flex items-center justify-center text-[#909097] text-xs font-mono">
-                    Generating QR...
+                  <div className="w-56 h-56 rounded-3xl bg-white/5 animate-pulse flex items-center justify-center text-outline text-xs font-sans tabular-nums">
+                    Generating QR…
                   </div>
                 )}
 
-                <p className="text-xs font-mono text-[#c0c6de] mt-4 text-center">
+                <p className="text-xs font-sans tabular-nums text-primary mt-4 text-center">
                   Scan using Binance, Coinbase, Bybit, or any Web3 Wallet
                 </p>
               </div>
@@ -328,26 +328,26 @@ export default function WalletAddressPage() {
               {/* Full Address Block with 1-Click Copy */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-label-caps text-[#909097] tracking-widest uppercase font-bold">
+                  <span className="text-[10px] font-label-caps text-outline tracking-normal  font-bold">
                     YOUR BASE ADDRESS
                   </span>
                   <button
                     onClick={handleCopy}
-                    className="text-[11px] font-mono text-[#c0c6de] hover:underline"
+                    className="text-[11px] font-sans tabular-nums text-primary hover:underline"
                   >
                     {copied ? "COPIED TO CLIPBOARD" : "CLICK TO COPY"}
                   </button>
                 </div>
 
                 <div className="flex items-center gap-2 p-3.5 rounded-2xl bg-black/40 border border-white/10">
-                  <p className="font-mono text-xs md:text-sm text-[#e5e2e3] truncate select-all flex-1">
+                  <p className="font-sans tabular-nums text-xs md:text-sm text-on-surface truncate select-all flex-1">
                     {targetAddress || "Not connected"}
                   </p>
                   <button
                     onClick={handleCopy}
-                    className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                    className={`px-4 py-2 rounded-xl text-xs font-sans tabular-nums font-bold transition-colors flex items-center gap-1.5 shrink-0 ${
                       copied
-                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                        ? "bg-success/20 text-success border border-success/30"
                         : "bg-white/10 hover:bg-white/20 text-white border border-white/10"
                     }`}
                   >
@@ -367,20 +367,20 @@ export default function WalletAddressPage() {
               </div>
 
               {/* Security Network Banner */}
-              <div className="p-4 rounded-2xl bg-[#c0c6de]/5 border border-[#c0c6de]/20 flex items-start gap-3.5 text-xs md:text-sm text-[#c6c6cd]">
-                <AlertTriangle className="w-5 h-5 text-[#c0c6de] shrink-0 mt-0.5" />
+              <div className="p-4 rounded-2xl bg-primary/5 border border-primary/20 flex items-start gap-3.5 text-xs md:text-sm text-on-surface-variant">
+                <AlertTriangle className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                 <p className="leading-relaxed">
-                  <strong className="text-white">Base Network only:</strong> Send native USDC (<code className="font-mono text-[#c0c6de]">0x8335...2913</code>) or ETH on Base. Transfers from other networks will not settle automatically.
+                  <strong className="text-white">Base Network only:</strong> Send native USDC (<code className="font-sans tabular-nums text-primary">0x8335...2913</code>) or ETH on Base. Transfers from other networks will not settle automatically.
                 </p>
               </div>
 
               {/* Cross Chain Bridge Link */}
               <button
                 onClick={() => router.push("/#deposit")}
-                className="w-full py-4 px-5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-label-caps tracking-wider text-white uppercase font-bold flex items-center justify-center gap-2.5 transition-all group"
+                className="w-full py-4 px-5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-label-caps tracking-normal text-white font-bold flex items-center justify-center gap-2.5 transition-colors group"
               >
-                <ArrowRightLeft className="w-4 h-4 text-[#c0c6de] group-hover:rotate-180 transition-transform duration-500" />
-                <span>Deposit from BTC, ETH, SOL, or LTC (Cross-Chain)</span>
+                <ArrowRightLeft className="w-4 h-4 text-primary group-hover:rotate-180 transition-transform duration-500" />
+                <span>Cross-Chain Deposit</span>
               </button>
             </div>
           )}
@@ -389,7 +389,7 @@ export default function WalletAddressPage() {
           {activeTab === "send" && (
             <form onSubmit={handleSendUsdc} className="space-y-5 animate-in fade-in duration-300">
               <div>
-                <label className="block text-[10px] font-label-caps text-[#909097] tracking-widest uppercase font-bold mb-2">
+                <label className="block text-[10px] font-label-caps text-outline tracking-normal  font-bold mb-2">
                   RECIPIENT BASE ADDRESS
                 </label>
                 <input
@@ -397,19 +397,19 @@ export default function WalletAddressPage() {
                   placeholder="0x..."
                   value={sendRecipient}
                   onChange={(e) => setSendRecipient(e.target.value)}
-                  className="w-full p-4 rounded-2xl bg-black/40 border border-white/10 text-white placeholder:text-[#909097]/40 text-xs md:text-sm font-mono focus:border-[#c0c6de] focus:outline-none transition-colors"
+                  className="w-full p-4 rounded-2xl bg-black/40 border border-white/10 text-white placeholder:text-outline/40 text-xs md:text-sm font-sans tabular-nums focus:border-primary focus:outline-none transition-colors"
                 />
               </div>
 
               <div>
                 <div className="flex justify-between items-center mb-2">
-                  <label className="text-[10px] font-label-caps text-[#909097] tracking-widest uppercase font-bold">
+                  <label className="text-[10px] font-label-caps text-outline tracking-normal  font-bold">
                     AMOUNT (USDC)
                   </label>
                   <button
                     type="button"
                     onClick={() => setSendAmount(usdcBalance.toFixed(2))}
-                    className="text-[11px] font-mono text-[#c0c6de] hover:underline"
+                    className="text-[11px] font-sans tabular-nums text-primary hover:underline"
                   >
                     MAX (${usdcBalance.toFixed(2)})
                   </button>
@@ -421,9 +421,9 @@ export default function WalletAddressPage() {
                     placeholder="0.00"
                     value={sendAmount}
                     onChange={handleSendAmountChange}
-                    className="w-full p-4 pr-16 rounded-2xl bg-black/40 border border-white/10 text-white placeholder:text-[#909097]/40 text-base font-mono focus:border-[#c0c6de] focus:outline-none transition-colors"
+                    className="w-full p-4 pr-16 rounded-2xl bg-black/40 border border-white/10 text-white placeholder:text-outline/40 text-base font-sans tabular-nums focus:border-primary focus:outline-none transition-colors"
                   />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-[#909097]">
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-sans tabular-nums font-bold text-outline">
                     USDC
                   </span>
                 </div>
@@ -436,7 +436,7 @@ export default function WalletAddressPage() {
                     key={amt}
                     type="button"
                     onClick={() => setSendAmount(amt.toFixed(2))}
-                    className="flex-1 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-[#c6c6cd] transition-colors"
+                    className="flex-1 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-sans tabular-nums text-on-surface-variant transition-colors"
                   >
                     ${amt}
                   </button>
@@ -445,15 +445,15 @@ export default function WalletAddressPage() {
 
               {/* Error Message */}
               {sendError && (
-                <div className="p-4 rounded-2xl bg-red-950/30 border border-red-500/30 text-xs text-[#ffb4ab]">
+                <div className="p-4 rounded-2xl bg-error-container/30 border border-error/30 text-xs text-error">
                   {sendError}
                 </div>
               )}
 
               {/* Transaction Confirmed Receipt */}
               {sendTxHash && (
-                <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 space-y-2">
-                  <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold font-mono">
+                <div className="p-4 rounded-2xl bg-success/15/30 border border-success/30 space-y-2">
+                  <div className="flex items-center gap-2 text-success text-xs font-bold font-sans tabular-nums">
                     <CheckCircle2 className="w-4 h-4" />
                     <span>TRANSFER CONFIRMED ON BASE</span>
                   </div>
@@ -461,7 +461,7 @@ export default function WalletAddressPage() {
                     href={`https://basescan.org/tx/${sendTxHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs font-mono text-[#c0c6de] hover:underline flex items-center gap-1.5"
+                    className="text-xs font-sans tabular-nums text-primary hover:underline flex items-center gap-1.5"
                   >
                     <span>View Transaction on Basescan</span>
                     <ExternalLink className="w-3.5 h-3.5" />
@@ -473,19 +473,10 @@ export default function WalletAddressPage() {
               <button
                 type="submit"
                 disabled={isSending || !sendAmount || !sendRecipient}
-                className="w-full py-4 rounded-2xl bg-[#e5e2e3] hover:bg-white text-[#131315] font-bold text-xs tracking-[0.2em] font-label-caps uppercase transition-all shadow-lg hover:shadow-white/10 disabled:opacity-40 flex items-center justify-center gap-2"
+                className="w-full py-4 rounded-2xl bg-on-surface hover:bg-white text-surface font-bold text-xs tracking-normal font-label-caps transition-colors shadow-lg hover:shadow-white/10 disabled:opacity-40 flex items-center justify-center gap-2"
               >
-                {isSending ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>AUTHORIZING TRANSFER...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4" />
-                    <span>TRANSFER USDC ON BASE</span>
-                  </>
-                )}
+                {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                <span>{isSending ? "Authorizing…" : "Transfer USDC"}</span>
               </button>
             </form>
           )}

@@ -85,7 +85,7 @@ export function isValidEvp(evp: string): boolean {
 export function isValidPixPhone(phone: string): boolean {
   const clean = phone.replace(/[^\d+]/g, "");
   // Pix phones are format +55DD9XXXXXXXX or 10-11 digits with country code
-  return /^\+55\d{10,11}$/.test(clean) || (/^55\d{10,11}$/.test(clean) && clean.length === 12 || clean.length === 13);
+  return /^\+55\d{10,11}$/.test(clean) || (/^55\d{10,11}$/.test(clean) && (clean.length === 12 || clean.length === 13));
 }
 
 /**

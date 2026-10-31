@@ -24,6 +24,23 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
     const trimmed = text.trim().slice(0, 1024);
     if (!trimmed) return;
 
+    // If USD is selected (or input is explicitly PayPal), check PayPal before generic email Pix keys
+    if (currency === "USD") {
+      const payPalData = parsePayPalData(trimmed);
+      if (payPalData.isValid) {
+        onScan({
+          type: "paypal",
+          currency: "USD",
+          raw: trimmed,
+          paypalId: payPalData.paypalId,
+          paymentId: payPalData.paypalId,
+          name: payPalData.name || "PayPal Recipient",
+          defaultAmount: payPalData.defaultAmount,
+        });
+        return;
+      }
+    }
+
     // 1. Check for Brazilian Pix EMVCo QR code or Pix key
     const pixData = parsePixData(trimmed);
     if (pixData.isValid && (pixData.keyType === "emvco" || pixData.pixKey)) {
@@ -138,7 +155,7 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
       raw: trimmed,
       address: trimmed.slice(0, 128)
     });
-  }, [onScan]);
+  }, [onScan, currency]);
 
   const stableOnScan = useCallback(processScanData, [processScanData]);
 
@@ -253,7 +270,7 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
   }, [stableOnScan]);
 
   return (
-    <div className="fixed inset-0 z-[100] bg-[#0e0e0f] text-[#e5e2e3] font-body-md overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-[100] bg-surface-container-lowest text-on-surface font-body-md overflow-hidden flex flex-col">
       <style dangerouslySetInnerHTML={{__html: `
         .scan-line {
             width: 100%;
@@ -310,17 +327,17 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
 
       {/* Top Navigation */}
       <header className="w-full flex justify-between items-center px-6 py-6 absolute top-0 z-50">
-        <button onClick={onCancel} className="text-[#e5e2e3] hover:opacity-80 transition-opacity flex items-center gap-2 active:scale-95">
+        <button onClick={onCancel} className="text-on-surface hover:opacity-80 transition-opacity flex items-center gap-2 active:scale-95">
           <ArrowLeft className="w-5 h-5" />
-          <span className="font-label-caps tracking-[0.15em] font-bold">BACK</span>
+          <span className="font-label-caps tracking-normal font-bold">BACK</span>
         </button>
       </header>
 
       {/* Floating HUD Balance Hint */}
       <div className="absolute top-8 left-1/2 -translate-x-1/2 z-50">
-        <div className="bg-white/[0.08] backdrop-blur-[60px] rounded-full px-6 py-2 flex items-center gap-3 border border-white/20 shadow-lg">
-          <div className="w-1.5 h-1.5 rounded-full bg-[#c0c6de] animate-pulse"></div>
-          <span className="font-label-caps text-[10px] text-[#c6c6cd] uppercase tracking-tighter mr-1 font-bold">
+        <div className="bg-white/[0.08]  rounded-full px-6 py-2 flex items-center gap-3 border border-white/20 shadow-lg">
+          <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></div>
+          <span className="font-label-caps text-[10px] text-on-surface-variant  tracking-tighter mr-1 font-bold">
             {cameraLoading ? "INITIALIZING CAMERA" : cameraError ? "CAMERA OFF" : "SCANNING"}
           </span>
         </div>
@@ -328,12 +345,12 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
 
       <main className="flex-1 w-full flex flex-col items-center justify-center relative px-6">
         {/* Background Atmospheric Element */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] h-[80vw] bg-[#c0c6de]/10 blur-[150px] rounded-full pointer-events-none"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] h-[80vw] bg-primary/10 blur-xl rounded-full pointer-events-none"></div>
         
         {/* Centered Circular Viewfinder */}
         <div className="relative w-full max-w-[320px] aspect-square group">
           {/* Thick Frosted Border */}
-          <div className="absolute inset-0 rounded-full border-[12px] border-white/5 bg-white/[0.03] backdrop-blur-[40px] shadow-2xl z-0 pointer-events-none"></div>
+          <div className="absolute inset-0 rounded-full border-[12px] border-white/5 bg-white/[0.03] z-0 pointer-events-none"></div>
           
           {/* Inner Viewfinder Container */}
           <div className="absolute inset-[12px] rounded-full overflow-hidden bg-black flex items-center justify-center z-10">
@@ -346,38 +363,38 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
 
             {/* Camera Loading Overlay */}
             {cameraLoading && (
-              <div className="absolute inset-0 bg-[#0e0e0f]/80 flex flex-col items-center justify-center gap-3 z-20">
-                <Loader2 className="w-8 h-8 text-[#c0c6de] animate-spin" />
-                <span className="text-xs text-[#909097] font-mono">Opening camera...</span>
+              <div className="absolute inset-0 bg-surface-container-lowest/80 flex flex-col items-center justify-center gap-3 z-20">
+                <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                <span className="text-xs text-outline font-sans tabular-nums">Opening camera…</span>
               </div>
             )}
 
             {/* Camera Error Overlay */}
             {cameraError && (
-              <div className="absolute inset-0 bg-[#0e0e0f]/90 flex flex-col items-center justify-center p-6 text-center z-20">
-                <CameraOff className="w-10 h-10 text-[#ffb4ab] mb-2" />
-                <p className="text-xs text-[#ffb4ab] leading-relaxed">{cameraError}</p>
+              <div className="absolute inset-0 bg-surface-container-lowest/90 flex flex-col items-center justify-center p-6 text-center z-20">
+                <CameraOff className="w-10 h-10 text-error mb-2" />
+                <p className="text-xs text-error leading-relaxed">{cameraError}</p>
               </div>
             )}
             
             <div className="absolute bottom-6 w-full text-center pointer-events-none z-20">
-              <p className="font-label-caps text-[9px] text-white/70 tracking-[0.2em] font-bold">PRECISION SCAN</p>
+              <p className="font-label-caps text-[9px] text-white/70 tracking-normal font-bold">PRECISION SCAN</p>
             </div>
           </div>
           
           {/* Corner Accents */}
-          <div className="absolute -top-1 -left-1 w-6 h-6 border-t-2 border-l-2 border-[#c0c6de]/40 rounded-tl-xl pointer-events-none z-20"></div>
-          <div className="absolute -top-1 -right-1 w-6 h-6 border-t-2 border-r-2 border-[#c0c6de]/40 rounded-tr-xl pointer-events-none z-20"></div>
-          <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-2 border-l-2 border-[#c0c6de]/40 rounded-bl-xl pointer-events-none z-20"></div>
-          <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-2 border-r-2 border-[#c0c6de]/40 rounded-br-xl pointer-events-none z-20"></div>
+          <div className="absolute -top-1 -left-1 w-6 h-6 border-t-2 border-l-2 border-primary/40 rounded-tl-xl pointer-events-none z-20"></div>
+          <div className="absolute -top-1 -right-1 w-6 h-6 border-t-2 border-r-2 border-primary/40 rounded-tr-xl pointer-events-none z-20"></div>
+          <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-2 border-l-2 border-primary/40 rounded-bl-xl pointer-events-none z-20"></div>
+          <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-2 border-r-2 border-primary/40 rounded-br-xl pointer-events-none z-20"></div>
         </div>
 
         {/* Status Message */}
         <div className="mt-8 text-center max-w-[280px] relative z-20">
-          <h3 className="font-headline-md text-lg font-bold tracking-tight text-[#e5e2e3] mb-1">
+          <h3 className="font-headline-md text-lg font-bold tracking-tight text-on-surface mb-1">
             {cameraError ? "Scan Unavailable" : "Awaiting Scan"}
           </h3>
-          <p className="text-xs text-[#c6c6cd] font-light">
+          <p className="text-xs text-on-surface-variant font-light">
             {cameraError 
               ? "Use the manual input field below to continue."
               : `Point your camera at any ${currencyMeta.rail} QR code (or Pix, UPI, PayPal) to scan instantly.`
@@ -387,18 +404,18 @@ export default function Scanner({ onScan, onCancel }: ScannerProps) {
 
         {/* Manual Input Fallback */}
         <div className="w-full max-w-sm mt-6 relative z-20">
-          <form onSubmit={handleManualSubmit} className="bg-white/5 backdrop-blur-[60px] rounded-2xl p-3 flex gap-2 border border-white/10 shadow-xl">
+          <form onSubmit={handleManualSubmit} className="bg-white/5 rounded-2xl p-3 flex gap-2 border border-white/10">
              <input
               type="text"
               placeholder={`Enter ${currencyMeta.inputLabel} / Crypto Address`}
               value={manualId}
               onChange={(e) => setManualId(e.target.value)}
-              className="flex-1 bg-transparent px-3 py-2 text-sm outline-none text-[#e5e2e3] placeholder:text-[#909097] font-medium"
+              className="flex-1 bg-transparent px-3 py-2 text-sm outline-none text-on-surface placeholder:text-outline font-medium"
             />
             <button 
               type="submit"
               disabled={!manualId.trim()}
-              className="bg-white/10 hover:bg-white/20 text-[#c0c6de] rounded-xl px-4 font-bold text-[10px] tracking-widest disabled:opacity-40 transition-colors active:scale-95"
+              className="bg-white/10 hover:bg-white/20 text-primary rounded-xl px-4 font-bold text-[10px] tracking-normal disabled:opacity-40 transition-colors active:scale-95"
             >
               PAY
             </button>

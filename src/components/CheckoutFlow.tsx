@@ -217,8 +217,8 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
   if (!ready || (authenticated && !address)) {
     return (
       <div className="text-center p-6 bg-white/5 rounded-xl border border-white/10 space-y-4">
-        <div className="w-6 h-6 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin mx-auto"></div>
-        <p className="text-sm text-[#909097]">Initializing wallet account...</p>
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
+        <p className="text-sm text-outline">Initializing wallet account…</p>
       </div>
     );
   }
@@ -226,17 +226,17 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
   if (!authenticated || !address) {
     return (
       <div className="text-center p-6 bg-white/5 rounded-xl border border-white/10 space-y-4">
-        <p className="text-sm text-[#909097]">Please sign in to confirm payment.</p>
+        <p className="text-sm text-outline">Please sign in to confirm payment.</p>
         <button onClick={() => login()} className="btn-primary w-full">
           Sign In
         </button>
-        <p className="text-[11px] text-[#909097] leading-relaxed">
+        <p className="text-[11px] text-outline leading-relaxed">
           By signing in, you agree to ZkPay&apos;s{" "}
-          <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-[#c0c6de] hover:underline">
+          <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
             Terms of Service
           </a>{" "}
           and{" "}
-          <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[#c0c6de] hover:underline">
+          <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
             Privacy Policy
           </a>.
         </p>
@@ -491,23 +491,23 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
   };
 
   return (
-    <div className="w-full bg-white/5 backdrop-blur-[40px] border border-white/15 rounded-xl p-6 shadow-[0_20px_50px_rgba(0,0,0,0.8)] text-[#e5e2e3]">
+    <div className="w-full bg-white/5  border border-white/15 rounded-xl p-6 shadow-elevated text-on-surface">
       {status === "idle" && (
         <div className="flex flex-col gap-6 items-center w-full">
           <div className="w-full bg-white/[0.03] border border-white/10 rounded-xl p-5 flex flex-col gap-3 text-sm">
-            <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
+            <div className="flex justify-between text-outline text-xs font-label-caps tracking-normal">
               <span>RECIPIENT {activeMeta.rail.toUpperCase()}</span>
-              <span className="text-[#e5e2e3] font-mono font-semibold truncate max-w-[200px]">
+              <span className="text-on-surface font-sans tabular-nums font-semibold truncate max-w-[200px]">
                 <DecryptedText text={targetRecipient} speed={30} />
               </span>
             </div>
-            <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
+            <div className="flex justify-between text-outline text-xs font-label-caps tracking-normal">
               <span>PAYMENT AMOUNT</span>
-              <span className="text-[#e5e2e3] font-semibold">{activeMeta.symbol} {amount.toFixed(2)}</span>
+              <span className="text-on-surface font-semibold">{activeMeta.symbol} {amount.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
+            <div className="flex justify-between text-outline text-xs font-label-caps tracking-normal">
               <span>ZKPAY CONVENIENCE FEE (1%)</span>
-              <span className="text-[#e5e2e3]">{activeMeta.symbol} {fee.toFixed(2)}</span>
+              <span className="text-on-surface">{activeMeta.symbol} {fee.toFixed(2)}</span>
             </div>
             {sellPrice && (() => {
               const fiatPrincipal1e6 = BigInt(Math.floor(amount * 1_000_000));
@@ -517,31 +517,31 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
               const estTotalUsdc = estUsdc + (estUsdc * 0.01) + protocolFee;
               return (
                 <>
-                  <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
+                  <div className="flex justify-between text-outline text-xs font-label-caps tracking-normal">
                     <span>ON-CHAIN RATE</span>
-                    <span className="text-[#c0c6de]">1 USDC ≈ {activeMeta.symbol}{(Number(sellPrice) / 1e6).toFixed(2)}</span>
+                    <span className="text-primary">1 USDC ≈ {activeMeta.symbol}{(Number(sellPrice) / 1e6).toFixed(2)}</span>
                   </div>
-                  <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
+                  <div className="flex justify-between text-outline text-xs font-label-caps tracking-normal">
                     <div className="flex items-center gap-1.5">
                       <span>PROTOCOL FEE</span>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-[#909097]">
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-outline">
                         {isSmall ? "≤ $10 orders" : "Free > $10"}
                       </span>
                     </div>
-                    <span className={isSmall ? "text-[#e5e2e3]" : "text-[#77d9a8]"}>
+                    <span className={isSmall ? "text-on-surface" : "text-success"}>
                       {isSmall ? "$0.10 USDC" : "Free"}
                     </span>
                   </div>
-                  <div className="flex justify-between text-[#909097] text-xs font-label-caps tracking-[0.1em]">
+                  <div className="flex justify-between text-outline text-xs font-label-caps tracking-normal">
                     <span>ESTIMATED USDC DEBIT</span>
-                    <span className="text-[#c0c6de] font-mono font-semibold">${estTotalUsdc.toFixed(2)} USDC</span>
+                    <span className="text-primary font-sans tabular-nums font-semibold">${estTotalUsdc.toFixed(2)} USDC</span>
                   </div>
                 </>
               );
             })()}
             <div className="border-t border-white/10 my-1"></div>
-            <div className="flex justify-between font-bold text-lg text-[#e5e2e3]">
-              <span className="font-label-caps text-xs tracking-[0.15em] text-[#c0c6de]">TOTAL PAYABLE</span>
+            <div className="flex justify-between font-bold text-lg text-on-surface">
+              <span className="font-label-caps text-xs tracking-normal text-primary">TOTAL PAYABLE</span>
               <span className="tracking-tight">{activeMeta.symbol} {totalAmount.toFixed(2)}</span>
             </div>
           </div>
@@ -549,7 +549,7 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
           <button 
             onClick={handlePay} 
             disabled={!sellPrice}
-            className="w-full py-4 rounded-xl bg-[#e5e2e3] hover:bg-white text-[#131315] font-bold text-xs tracking-[0.25em] font-label-caps uppercase transition-all shadow-lg hover:shadow-white/10 disabled:opacity-40"
+            className="w-full py-4 rounded-xl bg-on-surface hover:bg-white text-surface font-bold text-xs tracking-normal font-label-caps  transition-colors shadow-lg hover:shadow-white/10 disabled:opacity-40"
           >
             {sellPrice ? "CONFIRM & PAY NOW" : "FETCHING LIVE PRICE..."}
           </button>
@@ -558,13 +558,13 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
       {status === "approving" && (
         <div className="flex flex-col gap-4 items-center text-center py-8">
-          <div className="w-10 h-10 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
           <div>
-            <p className="font-label-caps text-xs text-[#e5e2e3] tracking-[0.25em] font-bold mb-1">
+            <p className="font-label-caps text-xs text-on-surface tracking-normal font-bold mb-1">
               AUTHORIZING ON BASE
             </p>
-            <p className="text-xs text-[#909097]">Executing transaction on Base...</p>
-            <div className="flex items-center justify-center gap-2 mt-3 text-[10px] text-[#c0c6de] font-mono">
+            <p className="text-xs text-outline">Executing transaction on Base…</p>
+            <div className="flex items-center justify-center gap-2 mt-3 text-[10px] text-primary font-sans tabular-nums">
               <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded">1. Protocol Fee (1%)</span>
               <span>→</span>
               <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded">2. Escrow Order</span>
@@ -575,42 +575,42 @@ export default function CheckoutFlow({ amount, merchantData }: CheckoutFlowProps
 
       {status === "matching" && (
         <div className="flex flex-col gap-4 items-center text-center py-8">
-          <div className="w-10 h-10 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
           <div>
-            <p className="font-label-caps text-xs text-[#c0c6de] tracking-[0.25em] font-bold mb-1">
+            <p className="font-label-caps text-xs text-primary tracking-normal font-bold mb-1">
               MATCHING P2P LIQUIDITY
             </p>
-            <p className="text-xs text-[#909097]">Matching order with verified merchant on Base...</p>
+            <p className="text-xs text-outline">Matching order with verified merchant on Base…</p>
           </div>
         </div>
       )}
 
       {status === "paying" && (
         <div className="flex flex-col gap-4 items-center text-center py-8">
-          <div className="w-10 h-10 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
           <div>
-            <p className="font-label-caps text-xs text-[#c0c6de] tracking-[0.25em] font-bold mb-1">
+            <p className="font-label-caps text-xs text-primary tracking-normal font-bold mb-1">
               DELIVERING ENCRYPTED {activeMeta.rail.toUpperCase()}
             </p>
-            <p className="text-xs text-[#909097]">Merchant accepted. Delivering payout info via ECIES encryption...</p>
+            <p className="text-xs text-outline">Merchant accepted. Delivering payout info via ECIES encryption…</p>
           </div>
         </div>
       )}
 
       {status === "error" && (
         <div className="flex flex-col gap-4 items-center text-center py-6">
-          <div className="w-12 h-12 rounded-full bg-red-950/40 border border-red-500/30 flex items-center justify-center">
-            <span className="material-symbols-outlined text-2xl text-[#ffb4ab]">error</span>
+          <div className="w-12 h-12 rounded-full bg-error-container/40 border border-error/30 flex items-center justify-center">
+            <span className="material-symbols-outlined text-2xl text-error">error</span>
           </div>
           <div>
-            <p className="font-label-caps text-xs text-[#ffb4ab] tracking-[0.2em] font-bold mb-1">
+            <p className="font-label-caps text-xs text-error tracking-normal font-bold mb-1">
               PAYMENT COULD NOT BE COMPLETED
             </p>
-            <p className="text-xs text-[#909097] max-w-xs">{error}</p>
+            <p className="text-xs text-outline max-w-xs">{error}</p>
           </div>
           <button 
             onClick={() => setStatus("idle")} 
-            className="px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-xs font-label-caps tracking-[0.2em] text-[#e5e2e3] uppercase transition-colors mt-2"
+            className="px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-xs font-label-caps tracking-normal text-on-surface  transition-colors mt-2"
           >
             TRY AGAIN
           </button>

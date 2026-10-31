@@ -8,7 +8,7 @@ export default function CardsWaitlist() {
   const [submitted, setSubmitted] = useState(false);
 
   return (
-    <div className="bg-[#131315] font-body-md text-[#e5e2e3] selection:bg-[#c0c6de]/30 min-h-screen relative flex flex-col pt-6 pb-32 overflow-hidden w-full max-w-7xl mx-auto">
+    <div className="bg-surface font-body-md text-on-surface selection:bg-primary/30 min-h-screen relative flex flex-col pt-6 pb-32 overflow-hidden w-full max-w-7xl mx-auto">
       <style dangerouslySetInnerHTML={{__html: `
         .glass-pane {
             background: rgba(255, 255, 255, 0.03);
@@ -30,16 +30,16 @@ export default function CardsWaitlist() {
       `}} />
 
       {/* Background Ambient Glow */}
-      <div className="absolute top-1/4 -right-1/4 w-[600px] h-[600px] bg-[#c0c6de]/5 rounded-full blur-[120px] pointer-events-none"></div>
-      <div className="absolute bottom-1/4 -left-1/4 w-[600px] h-[600px] bg-[#b9c7e0]/5 rounded-full blur-[120px] pointer-events-none"></div>
+      <div className="absolute top-1/4 -right-1/4 w-[600px] h-[600px] bg-primary/5 rounded-full blur-xl pointer-events-none"></div>
+      <div className="absolute bottom-1/4 -left-1/4 w-[600px] h-[600px] bg-tertiary/5 rounded-full blur-xl pointer-events-none"></div>
       
       <div className="px-6 md:px-16 flex flex-col md:flex-row md:items-center gap-12">
         {/* Headline Column */}
         <div className="flex-1 flex flex-col items-start z-10 text-left animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <h2 className="font-display-xl text-[48px] md:text-[80px] font-extrabold text-[#e5e2e3] mb-6 md:mb-8 max-w-xl leading-tight tracking-tighter">
+          <h2 className="font-display-xl text-[48px] md:text-[80px] font-extrabold text-on-surface mb-6 md:mb-8 max-w-xl leading-tight tracking-tighter">
             The <span className="silver-text">Obsidian</span> Card is Coming
           </h2>
-          <p className="font-body-lg text-lg text-[#c6c6cd] max-w-md mb-12 opacity-80 leading-relaxed">
+          <p className="font-body-lg text-lg text-on-surface-variant max-w-md mb-12 opacity-80 leading-relaxed">
             Experience the new standard of crypto-to-fiat fluidity. A masterclass in privacy and structural elegance.
           </p>
 
@@ -50,17 +50,17 @@ export default function CardsWaitlist() {
                 className="flex flex-col gap-6"
               >
                 <div>
-                  <label className="font-label-caps text-[12px] text-[#909097] uppercase tracking-[0.1em] font-bold">Priority Access</label>
+                  <label className="font-label-caps text-[12px] text-outline  tracking-normal font-bold">Priority Access</label>
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Enter your email address"
-                    className="w-full bg-transparent border-b border-white/20 py-4 text-[#e5e2e3] placeholder-[#909097] focus:outline-none focus:border-[#c0c6de] text-xl transition-colors font-body-md"
+                    className="w-full bg-transparent border-b border-white/20 py-4 text-on-surface placeholder-outline focus:outline-none focus:border-primary text-xl transition-colors font-body-md"
                   />
                 </div>
-                <button type="submit" className="w-full bg-[#E2E8F0] text-[#131315] hover:bg-white font-label-caps text-[12px] font-bold uppercase tracking-[0.1em] py-5 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 group mt-2">
+                <button type="submit" className="w-full bg-on-surface text-surface hover:bg-white font-label-caps text-[12px] font-bold  tracking-normal py-5 rounded-xl transition-colors active:scale-95 flex items-center justify-center gap-2 group mt-2">
                   Join Waitlist
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </button>
@@ -69,12 +69,12 @@ export default function CardsWaitlist() {
           ) : (
             <div className="w-full max-w-md glass-pane p-8 md:p-10 rounded-2xl flex flex-col items-center justify-center gap-6 text-center animate-in fade-in slide-in-from-bottom-8 duration-700">
               <div className="flex flex-col items-center">
-                <span className="font-label-caps text-[12px] text-[#909097] uppercase tracking-[0.1em] font-bold mb-2">Your Position in Line</span>
+                <span className="font-label-caps text-[12px] text-outline  tracking-normal font-bold mb-2">Your Position in Line</span>
                 <span className="font-display-xl text-[48px] md:text-[64px] font-extrabold silver-text tracking-tighter">#4,092</span>
               </div>
               <div className="w-full border-t border-white/10 pt-6 mt-2">
-                <p className="font-body-md text-[#c6c6cd] mb-6">Invite friends to skip the line</p>
-                <button className="w-full bg-[#E2E8F0] text-[#131315] font-label-caps text-[12px] font-bold px-6 py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-white transition-all active:scale-95 group uppercase tracking-[0.1em]">
+                <p className="font-body-md text-on-surface-variant mb-6">Invite friends to skip the line</p>
+                <button className="w-full bg-on-surface text-surface font-label-caps text-[12px] font-bold px-6 py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-white transition-colors active:scale-95 group  tracking-normal">
                   Share Invite Link
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </button>
@@ -88,12 +88,12 @@ export default function CardsWaitlist() {
           <div className="floating-anim relative z-20 w-full max-w-[400px] md:max-w-[480px]">
             <img 
               alt="ZKPay Obsidian Card" 
-              className="w-full h-auto object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.8)] rounded-2xl" 
+              className="w-full h-auto object-contain drop-shadow-elevated rounded-2xl" 
               src="https://lh3.googleusercontent.com/aida-public/AB6AXuAxTZrzrs78luuvHrIfqWx2-PmTP8fTW4GllDauq9lpjAdvcN29k7azsA0uLPuRQqlcir4D_RATiYex0Z6D_ZUb19VVi3grf5ZdNPsF11WR870hFl9pogIe9B0U0xviH6yLXDNnkALSgVN29pojPxRrdEaHNJd0c3Cy4LcgYUjAYUNi35HbZOrYuEqd0VYla-OXsELfn9sABZItBs2j9XCz8RK39PIUzcsnirDXap05H_QYRMReprtnA_ELE5KIkDjfXC8K4IhSy_9L"
             />
           </div>
           {/* Card Glow Aura */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100%] h-[100%] bg-white/5 blur-[100px] rounded-full pointer-events-none"></div>
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100%] h-[100%] bg-white/5 blur-xl rounded-full pointer-events-none"></div>
         </div>
       </div>
     </div>

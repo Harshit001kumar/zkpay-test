@@ -19,7 +19,7 @@ export function DecryptedText({
   maxIterations = 8,
   characters = DEFAULT_CHARS,
   className = "",
-  encryptedClassName = "text-[#c0c6de] opacity-80",
+  encryptedClassName = "text-primary opacity-80",
 }: DecryptedTextProps) {
   const [displayText, setDisplayText] = useState(text);
   const [isScrambling, setIsScrambling] = useState(true);
@@ -55,7 +55,7 @@ export function DecryptedText({
   }, [text, speed, maxIterations, characters]);
 
   return (
-    <span className={`font-mono tracking-tight ${className} ${isScrambling ? encryptedClassName : ""}`}>
+    <span className={`font-sans tabular-nums tracking-tight ${className} ${isScrambling ? encryptedClassName : ""}`}>
       {displayText}
     </span>
   );

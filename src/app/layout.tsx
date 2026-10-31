@@ -62,7 +62,7 @@ export default function RootLayout({
 
   return (
     <html lang="en" className={`${outfit.variable} ${jetbrainsMono.variable}`}>
-      <body className="antialiased bg-[#131315] text-[#e5e2e3] font-sans selection:bg-[#c0c6de]/25 selection:text-white">
+      <body className="antialiased bg-surface text-on-surface font-sans selection:bg-primary/25 selection:text-on-surface">
         <link
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"

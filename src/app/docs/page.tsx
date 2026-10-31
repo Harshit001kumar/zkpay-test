@@ -467,23 +467,23 @@ Verify with:
   };
 
   return (
-    <div className="min-h-screen bg-[#131315] text-[#e5e2e3] font-sans selection:bg-[#c0c6de] selection:text-[#131315]">
+    <div className="min-h-screen bg-surface text-on-surface font-sans selection:bg-primary selection:text-surface">
       <div className="max-w-[1440px] mx-auto px-5 md:px-8 py-10 md:py-16">
         {/* Global Nav Bar */}
         <div className="flex items-center justify-between pb-8 mb-12 border-b border-white/10">
           <div className="flex items-center gap-3">
-            <a href="/" className="text-xl font-bold tracking-tight text-[#e5e2e3] hover:opacity-90">
-              <span className="text-[#c0c6de]">Zk</span>Pay
+            <a href="/" className="text-xl font-bold tracking-tight text-on-surface hover:opacity-90">
+              <span className="text-primary">Zk</span>Pay
             </a>
             <div className="h-4 w-px bg-white/15" />
-            <span className="font-label-caps text-[10px] text-[#c0c6de] tracking-[0.25em] font-bold">
+            <span className="font-label-caps text-[10px] text-primary tracking-normal font-bold">
               DEVELOPER PLATFORM
             </span>
           </div>
 
           <a
             href="/"
-            className="flex items-center gap-2 text-xs font-label-caps text-[#c6c6cd] hover:text-[#e5e2e3] tracking-[0.2em] transition-colors"
+            className="flex items-center gap-2 text-xs font-label-caps text-on-surface-variant hover:text-on-surface tracking-normal transition-colors"
           >
             <span>DASHBOARD</span>
             <span className="material-symbols-outlined text-sm">arrow_forward</span>
@@ -492,42 +492,42 @@ Verify with:
 
         {/* Hero Section */}
         <section className="mb-12">
-          <div className="bg-white/5 backdrop-blur-[40px] border border-white/15 rounded-xl p-8 md:p-12 relative overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
+          <div className="bg-white/5  border border-white/15 rounded-xl p-8 md:p-12 relative overflow-hidden shadow-elevated">
             <div className="relative z-10">
               <div className="flex items-center gap-3 mb-6">
-                <span className="font-label-caps text-[#c0c6de] text-[10px] tracking-[0.25em] font-bold">
+                <span className="font-label-caps text-primary text-[10px] tracking-normal font-bold">
                   API SPECIFICATION V1.0
                 </span>
                 <div className="h-px w-8 bg-white/20" />
               </div>
 
-              <h1 className="text-4xl md:text-6xl font-medium tracking-tight text-[#e5e2e3] mb-4">
-                Crypto Payments <span className="text-[#c6c6cd]/50 font-extralight">&amp; Swap API</span>
+              <h1 className="text-4xl md:text-6xl font-medium tracking-tight text-on-surface mb-4">
+                Crypto Payments <span className="text-on-surface-variant/50 font-extralight">&amp; Swap API</span>
               </h1>
-              <p className="text-sm md:text-base text-[#c6c6cd] max-w-2xl font-body-lg mb-8">
-                Accept crypto payments with instant fiat settlement, or embed our multi-chain Swap API to earn revenue on every trade. Route swaps across BTC, ETH, SOL, and 8+ blockchains with a built-in 50/50 fee split: you set the fee, we handle settlement.
+              <p className="text-sm md:text-base text-on-surface-variant max-w-2xl font-body-lg mb-8">
+                Accept crypto payments with instant fiat settlement and 50/50 partner revenue.
               </p>
 
               {/* Status Chips */}
               <div className="grid grid-cols-2 sm:flex sm:items-center gap-4 sm:gap-12 pt-6 border-t border-white/10">
                 <div className="flex flex-col gap-1">
-                  <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">NETWORK</span>
-                  <span className="font-body-md font-medium text-[#e5e2e3]">{CHAIN.name} (8453)</span>
+                  <span className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold">NETWORK</span>
+                  <span className="font-body-md font-medium text-on-surface">{CHAIN.name} (8453)</span>
                 </div>
                 <div className="hidden sm:block w-px h-8 bg-white/10" />
                 <div className="flex flex-col gap-1">
-                  <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">SETTLEMENT ASSET</span>
-                  <span className="font-body-md font-medium text-[#e5e2e3]">Native Base USDC</span>
+                  <span className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold">SETTLEMENT ASSET</span>
+                  <span className="font-body-md font-medium text-on-surface">Native Base USDC</span>
                 </div>
                 <div className="hidden sm:block w-px h-8 bg-white/10" />
                 <div className="flex flex-col gap-1">
-                  <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">SWAP CHAINS</span>
-                  <span className="font-body-md font-medium text-[#c0c6de]">BTC · ETH · SOL · Tron · BSC · Arb · Base</span>
+                  <span className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold">SWAP CHAINS</span>
+                  <span className="font-body-md font-medium text-primary">BTC, ETH, SOL, Tron, BSC, Arb, Base</span>
                 </div>
                 <div className="hidden sm:block w-px h-8 bg-white/10" />
                 <div className="flex flex-col gap-1">
-                  <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">FEE SPLIT</span>
-                  <span className="font-body-md font-medium text-[#c0c6de]">50/50 Partner + ZkPay Treasury</span>
+                  <span className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold">FEE SPLIT</span>
+                  <span className="font-body-md font-medium text-primary">50/50 Partner + ZkPay Treasury</span>
                 </div>
               </div>
             </div>
@@ -535,53 +535,53 @@ Verify with:
         </section>
         {/* Authentication Section */}
         <section className="mb-12">
-          <div className="bg-white/5 backdrop-blur-[40px] border border-white/15 rounded-xl p-8 md:p-10 shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
+          <div className="bg-white/5  border border-white/15 rounded-xl p-8 md:p-10 shadow-elevated">
             <div className="flex items-center gap-3 mb-6">
-              <span className="font-label-caps text-[#c0c6de] text-[10px] tracking-[0.25em] font-bold">
+              <span className="font-label-caps text-primary text-[10px] tracking-normal font-bold">
                 AUTHENTICATION
               </span>
               <div className="h-px w-8 bg-white/20" />
             </div>
 
-            <h2 className="text-2xl md:text-3xl font-medium tracking-tight text-[#e5e2e3] mb-4">
+            <h2 className="text-2xl md:text-3xl font-medium tracking-tight text-on-surface mb-4">
               Getting Your API Key
             </h2>
-            <p className="text-sm text-[#c6c6cd] max-w-2xl mb-6">
-              All write endpoints (<code className="text-[#c0c6de] bg-white/5 px-1.5 py-0.5 rounded">POST</code>, <code className="text-[#c0c6de] bg-white/5 px-1.5 py-0.5 rounded">PATCH</code>) require an API key. Pass it via the <code className="text-[#c0c6de] bg-white/5 px-1.5 py-0.5 rounded">x-api-key</code> header or <code className="text-[#c0c6de] bg-white/5 px-1.5 py-0.5 rounded">Authorization: Bearer</code> header.
+            <p className="text-sm text-on-surface-variant max-w-2xl mb-6">
+              All write endpoints (<code className="text-primary bg-white/5 px-1.5 py-0.5 rounded">POST</code>, <code className="text-primary bg-white/5 px-1.5 py-0.5 rounded">PATCH</code>) require an API key. Pass it via the <code className="text-primary bg-white/5 px-1.5 py-0.5 rounded">x-api-key</code> header or <code className="text-primary bg-white/5 px-1.5 py-0.5 rounded">Authorization: Bearer</code> header.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
-                <div className="w-8 h-8 rounded-lg bg-[#c0c6de]/10 border border-[#c0c6de]/30 flex items-center justify-center text-[#c0c6de] text-sm font-bold">1</div>
-                <p className="font-medium text-sm text-[#e5e2e3]">Connect Wallet</p>
-                <p className="text-xs text-[#909097]">Log in to ZkPay with your wallet at <a href="/" className="text-[#c0c6de] hover:underline">zkpay.top</a></p>
+                <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center text-primary text-sm font-bold">1</div>
+                <p className="font-medium text-sm text-on-surface">Connect Wallet</p>
+                <p className="text-xs text-outline">Log in to ZkPay with your wallet at <a href="/" className="text-primary hover:underline">zkpay.top</a></p>
               </div>
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
-                <div className="w-8 h-8 rounded-lg bg-[#c0c6de]/10 border border-[#c0c6de]/30 flex items-center justify-center text-[#c0c6de] text-sm font-bold">2</div>
-                <p className="font-medium text-sm text-[#e5e2e3]">Open API Keys</p>
-                <p className="text-xs text-[#909097]">Go to <strong className="text-white">Profile → Merchant & Bot API Keys</strong></p>
+                <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center text-primary text-sm font-bold">2</div>
+                <p className="font-medium text-sm text-on-surface">Open API Keys</p>
+                <p className="text-xs text-outline">Go to <strong className="text-white">Profile → Merchant & Bot API Keys</strong></p>
               </div>
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
-                <div className="w-8 h-8 rounded-lg bg-[#c0c6de]/10 border border-[#c0c6de]/30 flex items-center justify-center text-[#c0c6de] text-sm font-bold">3</div>
-                <p className="font-medium text-sm text-[#e5e2e3]">Generate & Copy</p>
-                <p className="text-xs text-[#909097]">Create a key with a label and copy the secret (shown only once).</p>
+                <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center text-primary text-sm font-bold">3</div>
+                <p className="font-medium text-sm text-on-surface">Generate & Copy</p>
+                <p className="text-xs text-outline">Create a key with a label and copy the secret (shown only once).</p>
               </div>
             </div>
 
-            <div className="bg-black/40 rounded-xl p-4 border border-white/5 font-mono text-xs text-[#c0c6de] overflow-x-auto">
+            <div className="bg-black/40 rounded-xl p-4 border border-white/5 font-sans tabular-nums text-xs text-primary overflow-x-auto">
               <pre>{`curl -X POST "https://zkpay.top/api/v1/paylinks" \\
   -H "x-api-key: zkpay_live_your_secret_key" \\
   -H "Content-Type: application/json" \\
   -d '{"amountINR": 500, "recipientUpi": "merchant@okaxis"}'`}</pre>
             </div>
 
-            <div className="mt-4 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="mt-4 p-4 rounded-xl bg-success/10 border border-success/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold text-emerald-300">Track All API Transactions Live</p>
-                <p className="text-[11px] text-[#909097]">Monitor swaps, pay-ins, and view estimated partner earnings in real-time on your dashboard.</p>
+                <p className="text-xs font-semibold text-success">Track All API Transactions Live</p>
+                <p className="text-[11px] text-outline">Monitor swaps, pay-ins, and view estimated partner earnings in real-time on your dashboard.</p>
               </div>
-              <a href="/partner" className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-mono font-bold transition-colors shrink-0">
-                Open /partner →
+              <a href="/partner" className="px-3 py-1.5 rounded-lg bg-success/20 hover:bg-success/30 text-success text-xs font-sans tabular-nums font-bold transition-colors shrink-0">
+                Open Partner Console
               </a>
             </div>
           </div>
@@ -589,25 +589,25 @@ Verify with:
 
         {/* AI Agent Prompts Section */}
         <section className="mb-12">
-          <div className="bg-white/5 backdrop-blur-[40px] border border-white/15 rounded-xl p-8 md:p-10 shadow-[0_20px_50px_rgba(0,0,0,0.8)] relative overflow-hidden">
+          <div className="bg-white/5  border border-white/15 rounded-xl p-8 md:p-10 shadow-elevated relative overflow-hidden">
             {/* Subtle gradient accent */}
-            <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#c0c6de]/40 to-transparent" />
+            <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
 
             <div className="flex items-center gap-3 mb-6">
-              <span className="font-label-caps text-[#c0c6de] text-[10px] tracking-[0.25em] font-bold">
+              <span className="font-label-caps text-primary text-[10px] tracking-normal font-bold">
                 AI AGENT CONTEXT
               </span>
               <div className="h-px w-8 bg-white/20" />
-              <span className="text-[9px] font-label-caps text-[#909097] tracking-[0.2em] bg-white/5 px-2.5 py-1 rounded-md border border-white/10">
+              <span className="text-[9px] font-label-caps text-outline tracking-normal bg-white/5 px-2.5 py-1 rounded-md border border-white/10">
                 NEW
               </span>
             </div>
 
-            <h2 className="text-2xl md:text-3xl font-medium tracking-tight text-[#e5e2e3] mb-3">
+            <h2 className="text-2xl md:text-3xl font-medium tracking-tight text-on-surface mb-3">
               Master Prompts for AI Agents
             </h2>
-            <p className="text-sm text-[#c6c6cd] max-w-3xl mb-8 leading-relaxed">
-              Copy a context prompt and paste it into any AI coding assistant (ChatGPT, Claude, Cursor, Copilot, etc.) to give it instant understanding of the ZkPay API — endpoints, auth, request/response schemas, fees, webhooks, and integration gotchas.
+            <p className="text-sm text-on-surface-variant max-w-3xl mb-8 leading-relaxed">
+              Copy a context prompt and paste it into any AI coding assistant (ChatGPT, Claude, Cursor, Copilot, etc.) to give it instant understanding of the ZkPay API: endpoints, auth, request/response schemas, fees, webhooks, and integration gotchas.
             </p>
 
             {/* Two Prompt Cards */}
@@ -615,12 +615,12 @@ Verify with:
               {/* Swap API Prompt Card */}
               <div className="bg-black/30 rounded-xl border border-white/10 p-6 space-y-5 hover:border-white/20 transition-colors">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/25 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-cyan-400 text-lg">swap_horiz</span>
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/25 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-primary text-lg">swap_horiz</span>
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-[#e5e2e3]">Swap API Prompt</h3>
-                    <p className="text-[10px] text-[#909097] font-mono">Cross-chain swaps · 8+ chains · 50/50 revenue</p>
+                    <h3 className="text-sm font-medium text-on-surface">Swap API Prompt</h3>
+                    <p className="text-[10px] text-outline font-sans tabular-nums">Cross-chain swaps, 8+ chains, 50/50 revenue</p>
                   </div>
                 </div>
 
@@ -632,8 +632,8 @@ Verify with:
                     { icon: "payments", text: "Fee split details" },
                     { icon: "webhook", text: "Webhook events" },
                   ].map((item) => (
-                    <div key={item.text} className="flex items-center gap-2 text-[11px] text-[#c6c6cd]">
-                      <span className="material-symbols-outlined text-[#c0c6de]/60 text-xs">{item.icon}</span>
+                    <div key={item.text} className="flex items-center gap-2 text-[11px] text-on-surface-variant">
+                      <span className="material-symbols-outlined text-primary/60 text-xs">{item.icon}</span>
                       <span>{item.text}</span>
                     </div>
                   ))}
@@ -642,10 +642,10 @@ Verify with:
                 {/* Copy Button */}
                 <button
                   onClick={() => copyPrompt("swap")}
-                  className={`w-full flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl font-label-caps text-[10px] tracking-[0.2em] font-bold transition-all duration-300 ${
+                  className={`w-full flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl font-label-caps text-[10px] tracking-normal font-bold transition-colors duration-300 ${
                     promptCopied === "swap"
-                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                      : "bg-[#c0c6de] text-[#131315] hover:bg-[#d0d6ee] active:scale-[0.98]"
+                      ? "bg-success/20 text-success border border-success/30"
+                      : "bg-primary text-surface hover:bg-accent-hi active:scale-[0.98]"
                   }`}
                 >
                   <span className="material-symbols-outlined text-base">
@@ -657,7 +657,7 @@ Verify with:
                 {/* Preview Toggle */}
                 <button
                   onClick={() => setPromptExpanded(promptExpanded === "swap" ? null : "swap")}
-                  className="flex items-center gap-2 text-[10px] font-label-caps text-[#909097] hover:text-[#c6c6cd] tracking-[0.15em] transition-colors"
+                  className="flex items-center gap-2 text-[10px] font-label-caps text-outline hover:text-on-surface-variant tracking-normal transition-colors"
                 >
                   <span className="material-symbols-outlined text-xs" style={{ transform: promptExpanded === "swap" ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s ease" }}>
                     chevron_right
@@ -666,11 +666,11 @@ Verify with:
                 </button>
 
                 {promptExpanded === "swap" && (
-                  <div className="rounded-xl bg-[#0e0e0f] border border-white/10 p-4 font-mono text-[10px] text-[#c0c6de] max-h-[360px] overflow-y-auto relative">
+                  <div className="rounded-xl bg-surface-container-lowest border border-white/10 p-4 font-sans tabular-nums text-[10px] text-primary max-h-[360px] overflow-y-auto relative">
                     <div className="absolute top-2 right-2">
                       <button
                         onClick={() => copyPrompt("swap")}
-                        className="flex items-center gap-1 text-[9px] font-label-caps text-[#909097] hover:text-[#e5e2e3] tracking-[0.15em] transition-colors bg-white/5 px-2 py-1 rounded-lg border border-white/10"
+                        className="flex items-center gap-1 text-[9px] font-label-caps text-outline hover:text-on-surface tracking-normal transition-colors bg-white/5 px-2 py-1 rounded-lg border border-white/10"
                       >
                         <span className="material-symbols-outlined text-[10px]">
                           {promptCopied === "swap" ? "check" : "content_copy"}
@@ -685,12 +685,12 @@ Verify with:
               {/* Payments API Prompt Card */}
               <div className="bg-black/30 rounded-xl border border-white/10 p-6 space-y-5 hover:border-white/20 transition-colors">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-emerald-400 text-lg">account_balance</span>
+                  <div className="w-10 h-10 rounded-xl bg-success/10 border border-success/25 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-success text-lg">account_balance</span>
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-[#e5e2e3]">Payments API Prompt</h3>
-                    <p className="text-[10px] text-[#909097] font-mono">USDC → Fiat · Pay links · Bot sessions</p>
+                    <h3 className="text-sm font-medium text-on-surface">Payments API Prompt</h3>
+                    <p className="text-[10px] text-outline font-sans tabular-nums">USDC to Fiat, Pay links, Bot sessions</p>
                   </div>
                 </div>
 
@@ -702,8 +702,8 @@ Verify with:
                     { icon: "smart_toy", text: "Telegram bot example" },
                     { icon: "webhook", text: "Webhook + HMAC" },
                   ].map((item) => (
-                    <div key={item.text} className="flex items-center gap-2 text-[11px] text-[#c6c6cd]">
-                      <span className="material-symbols-outlined text-[#c0c6de]/60 text-xs">{item.icon}</span>
+                    <div key={item.text} className="flex items-center gap-2 text-[11px] text-on-surface-variant">
+                      <span className="material-symbols-outlined text-primary/60 text-xs">{item.icon}</span>
                       <span>{item.text}</span>
                     </div>
                   ))}
@@ -712,10 +712,10 @@ Verify with:
                 {/* Copy Button */}
                 <button
                   onClick={() => copyPrompt("payments")}
-                  className={`w-full flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl font-label-caps text-[10px] tracking-[0.2em] font-bold transition-all duration-300 ${
+                  className={`w-full flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl font-label-caps text-[10px] tracking-normal font-bold transition-colors duration-300 ${
                     promptCopied === "payments"
-                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                      : "bg-[#c0c6de] text-[#131315] hover:bg-[#d0d6ee] active:scale-[0.98]"
+                      ? "bg-success/20 text-success border border-success/30"
+                      : "bg-primary text-surface hover:bg-accent-hi active:scale-[0.98]"
                   }`}
                 >
                   <span className="material-symbols-outlined text-base">
@@ -727,7 +727,7 @@ Verify with:
                 {/* Preview Toggle */}
                 <button
                   onClick={() => setPromptExpanded(promptExpanded === "payments" ? null : "payments")}
-                  className="flex items-center gap-2 text-[10px] font-label-caps text-[#909097] hover:text-[#c6c6cd] tracking-[0.15em] transition-colors"
+                  className="flex items-center gap-2 text-[10px] font-label-caps text-outline hover:text-on-surface-variant tracking-normal transition-colors"
                 >
                   <span className="material-symbols-outlined text-xs" style={{ transform: promptExpanded === "payments" ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s ease" }}>
                     chevron_right
@@ -736,11 +736,11 @@ Verify with:
                 </button>
 
                 {promptExpanded === "payments" && (
-                  <div className="rounded-xl bg-[#0e0e0f] border border-white/10 p-4 font-mono text-[10px] text-[#c0c6de] max-h-[360px] overflow-y-auto relative">
+                  <div className="rounded-xl bg-surface-container-lowest border border-white/10 p-4 font-sans tabular-nums text-[10px] text-primary max-h-[360px] overflow-y-auto relative">
                     <div className="absolute top-2 right-2">
                       <button
                         onClick={() => copyPrompt("payments")}
-                        className="flex items-center gap-1 text-[9px] font-label-caps text-[#909097] hover:text-[#e5e2e3] tracking-[0.15em] transition-colors bg-white/5 px-2 py-1 rounded-lg border border-white/10"
+                        className="flex items-center gap-1 text-[9px] font-label-caps text-outline hover:text-on-surface tracking-normal transition-colors bg-white/5 px-2 py-1 rounded-lg border border-white/10"
                       >
                         <span className="material-symbols-outlined text-[10px]">
                           {promptCopied === "payments" ? "check" : "content_copy"}
@@ -757,20 +757,20 @@ Verify with:
 
         {/* Swap API Fee Split Section */}
         <section className="mb-12">
-          <div className="bg-white/5 backdrop-blur-[40px] border border-white/15 rounded-xl p-8 md:p-10 shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
+          <div className="bg-white/5  border border-white/15 rounded-xl p-8 md:p-10 shadow-elevated">
             <div className="flex items-center gap-3 mb-6">
-              <span className="font-label-caps text-[#c0c6de] text-[10px] tracking-[0.25em] font-bold">
+              <span className="font-label-caps text-primary text-[10px] tracking-normal font-bold">
                 SWAP API - MULTI-CHAIN FEE SETTLEMENT ($0 THRESHOLD)
               </span>
               <div className="h-px w-8 bg-white/20" />
             </div>
 
-            <h2 className="text-2xl md:text-3xl font-medium tracking-tight text-[#e5e2e3] mb-4">
+            <h2 className="text-2xl md:text-3xl font-medium tracking-tight text-on-surface mb-4">
               Instant Upfront Revenue on Every Swap
             </h2>
-            <p className="text-sm text-[#c6c6cd] max-w-3xl mb-8 leading-relaxed">
+            <p className="text-sm text-on-surface-variant max-w-3xl mb-8 leading-relaxed">
               Embed multi-chain crypto-to-crypto token swaps (BTC, ETH, SOL, USDT, USDC across 8+ blockchains) into your app or bot.
-              Supported crypto for 50% fee share is done upfront directly to your wallet (<code className="text-[#c0c6de] bg-white/5 px-1.5 py-0.5 rounded">feeRecipient</code>) with <strong className="text-[#c0c6de]">$0 minimum payout threshold</strong> and instant settlement, with net funds routed directly to solvers. Some crypto don&apos;t have fee share because of high transaction cost, routing directly to solvers with <strong className="text-emerald-400">0% platform fee</strong> to protect users from punitive network fees.
+              Supported crypto for 50% fee share is done upfront directly to your wallet (<code className="text-primary bg-white/5 px-1.5 py-0.5 rounded">feeRecipient</code>) with <strong className="text-primary">$0 minimum payout threshold</strong> and instant settlement, with net funds routed directly to solvers. Some crypto don&apos;t have fee share because of high transaction cost, routing directly to solvers with <strong className="text-success">0% platform fee</strong> to protect users from punitive network fees.
             </p>
 
             {/* Fee Breakdown Table */}
@@ -778,67 +778,67 @@ Verify with:
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-white/15">
-                    <th className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.2em] pb-3 pr-4">ROUTE / COMPONENT</th>
-                    <th className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.2em] pb-3 pr-4">BPS</th>
-                    <th className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.2em] pb-3 pr-4">% RATE</th>
-                    <th className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.2em] pb-3 pr-4">ON $1,000</th>
-                    <th className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.2em] pb-3">SETTLEMENT & RECIPIENT</th>
+                    <th className="font-label-caps text-[9px] text-on-surface-variant tracking-normal pb-3 pr-4">ROUTE / COMPONENT</th>
+                    <th className="font-label-caps text-[9px] text-on-surface-variant tracking-normal pb-3 pr-4">BPS</th>
+                    <th className="font-label-caps text-[9px] text-on-surface-variant tracking-normal pb-3 pr-4">% RATE</th>
+                    <th className="font-label-caps text-[9px] text-on-surface-variant tracking-normal pb-3 pr-4">ON $1,000</th>
+                    <th className="font-label-caps text-[9px] text-on-surface-variant tracking-normal pb-3">SETTLEMENT & RECIPIENT</th>
                   </tr>
                 </thead>
-                <tbody className="text-[#e5e2e3]">
+                <tbody className="text-on-surface">
                   {/* High Transaction Cost Routes Header */}
                   <tr className="bg-white/[0.03]">
-                    <td colSpan={5} className="py-2.5 px-3 text-[10px] font-mono font-bold text-amber-300 uppercase tracking-wider">
+                    <td colSpan={5} className="py-2.5 px-3 text-[10px] font-sans tabular-nums font-bold text-warning  tracking-normal">
                       Routes Without Fee Share (High Transaction Cost: Ethereum Mainnet &amp; Bitcoin)
                     </td>
                   </tr>
                   <tr className="border-b border-white/5">
-                    <td className="py-3 pr-4 text-[#909097] pl-3">Platform Fee (ETH/BTC)</td>
-                    <td className="py-3 pr-4 font-mono text-emerald-400">0</td>
-                    <td className="py-3 pr-4 text-emerald-400">0.00%</td>
-                    <td className="py-3 pr-4 font-mono text-emerald-400">$0.00</td>
-                    <td className="py-3 text-emerald-400">0% fee — No fee share due to high transaction cost; routes directly to solvers</td>
+                    <td className="py-3 pr-4 text-outline pl-3">Platform Fee (ETH/BTC)</td>
+                    <td className="py-3 pr-4 font-sans tabular-nums text-success">0</td>
+                    <td className="py-3 pr-4 text-success">0.00%</td>
+                    <td className="py-3 pr-4 font-sans tabular-nums text-success">$0.00</td>
+                    <td className="py-3 text-success">0% fee — No fee share due to high transaction cost; routes directly to solvers</td>
                   </tr>
                   <tr className="border-b border-white/5">
-                    <td className="py-3 pr-4 text-[#909097] pl-3">Network Protocol Fee</td>
-                    <td className="py-3 pr-4 font-mono">25</td>
+                    <td className="py-3 pr-4 text-outline pl-3">Network Protocol Fee</td>
+                    <td className="py-3 pr-4 font-sans tabular-nums">25</td>
                     <td className="py-3 pr-4">0.25%</td>
-                    <td className="py-3 pr-4 font-mono">$2.50</td>
-                    <td className="py-3 text-[#909097]">Solvers</td>
+                    <td className="py-3 pr-4 font-sans tabular-nums">$2.50</td>
+                    <td className="py-3 text-outline">Solvers</td>
                   </tr>
 
                   {/* Supported Crypto Header */}
                   <tr className="bg-white/[0.03]">
-                    <td colSpan={5} className="py-2.5 px-3 text-[10px] font-mono font-bold text-sky-300 uppercase tracking-wider">
+                    <td colSpan={5} className="py-2.5 px-3 text-[10px] font-sans tabular-nums font-bold text-primary  tracking-normal">
                       Supported Crypto (50% Fee Share Done Upfront: Base, Arb, Polygon, BSC, Solana SOL)
                     </td>
                   </tr>
                   <tr className="border-b border-white/5">
-                    <td className="py-3 pr-4 text-[#c0c6de] font-medium pl-3">Your Partner Share (50%)</td>
-                    <td className="py-3 pr-4 font-mono text-[#c0c6de]">50</td>
-                    <td className="py-3 pr-4 text-[#c0c6de]">0.50%</td>
-                    <td className="py-3 pr-4 font-mono text-[#c0c6de]">$5.00</td>
-                    <td className="py-3 text-[#c0c6de]">Upfront in origin token → Your feeRecipient wallet ($0 min)</td>
+                    <td className="py-3 pr-4 text-primary font-medium pl-3">Your Partner Share (50%)</td>
+                    <td className="py-3 pr-4 font-sans tabular-nums text-primary">50</td>
+                    <td className="py-3 pr-4 text-primary">0.50%</td>
+                    <td className="py-3 pr-4 font-sans tabular-nums text-primary">$5.00</td>
+                    <td className="py-3 text-primary">Upfront in origin token → Your feeRecipient wallet ($0 min)</td>
                   </tr>
                   <tr className="border-b border-white/5">
                     <td className="py-3 pr-4 pl-3">ZkPay Treasury Share (50%)</td>
-                    <td className="py-3 pr-4 font-mono">50</td>
+                    <td className="py-3 pr-4 font-sans tabular-nums">50</td>
                     <td className="py-3 pr-4">0.50%</td>
-                    <td className="py-3 pr-4 font-mono">$5.00</td>
-                    <td className="py-3 text-[#909097]">Upfront in origin token → ZkPay Treasury</td>
+                    <td className="py-3 pr-4 font-sans tabular-nums">$5.00</td>
+                    <td className="py-3 text-outline">Upfront in origin token → ZkPay Treasury</td>
                   </tr>
                   <tr className="border-b border-white/5">
-                    <td className="py-3 pr-4 text-[#909097] pl-3">Network Protocol Fee</td>
-                    <td className="py-3 pr-4 font-mono">25</td>
+                    <td className="py-3 pr-4 text-outline pl-3">Network Protocol Fee</td>
+                    <td className="py-3 pr-4 font-sans tabular-nums">25</td>
                     <td className="py-3 pr-4">0.25%</td>
-                    <td className="py-3 pr-4 font-mono">$2.50</td>
-                    <td className="py-3 text-[#909097]">Solvers</td>
+                    <td className="py-3 pr-4 font-sans tabular-nums">$2.50</td>
+                    <td className="py-3 text-outline">Solvers</td>
                   </tr>
                   <tr className="bg-white/5 font-medium">
                     <td className="py-3 pr-4 pl-3">Net User Receives</td>
-                    <td className="py-3 pr-4 font-mono">N/A</td>
+                    <td className="py-3 pr-4 font-sans tabular-nums">N/A</td>
                     <td className="py-3 pr-4">98.75%</td>
-                    <td className="py-3 pr-4 font-mono">$987.50</td>
+                    <td className="py-3 pr-4 font-sans tabular-nums">$987.50</td>
                     <td className="py-3">User Destination Recipient Wallet</td>
                   </tr>
                 </tbody>
@@ -847,26 +847,26 @@ Verify with:
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
-                <span className="font-label-caps text-[9px] text-amber-300 tracking-[0.2em] font-bold">HIGH TRANSACTION COST</span>
-                <p className="text-sm font-medium text-emerald-400">0% Platform Fee</p>
-                <p className="text-xs text-[#909097]">Some crypto don&apos;t have fee share because of high transaction cost</p>
+                <span className="font-label-caps text-[9px] text-warning tracking-normal font-bold">HIGH TRANSACTION COST</span>
+                <p className="text-sm font-medium text-success">0% Platform Fee</p>
+                <p className="text-xs text-outline">Some crypto don&apos;t have fee share because of high transaction cost</p>
               </div>
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
-                <span className="font-label-caps text-[9px] text-sky-300 tracking-[0.2em] font-bold">SUPPORTED CRYPTO</span>
-                <p className="text-sm font-medium text-[#e5e2e3]">50% Fee Share Done Upfront</p>
-                <p className="text-xs text-[#909097]">$0 minimum threshold, instant payout in origin token</p>
+                <span className="font-label-caps text-[9px] text-primary tracking-normal font-bold">SUPPORTED CRYPTO</span>
+                <p className="text-sm font-medium text-on-surface">50% Fee Share Done Upfront</p>
+                <p className="text-xs text-outline">$0 minimum threshold, instant payout in origin token</p>
               </div>
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
-                <span className="font-label-caps text-[9px] text-[#c0c6de] tracking-[0.2em] font-bold">CUSTOMIZABLE BPS</span>
-                <p className="text-sm font-medium text-[#e5e2e3]">20 to 450 bps (0.20% – 4.50%)</p>
-                <p className="text-xs text-[#909097]">Default 100 bps (1.00%), split 50/50 with partner</p>
+                <span className="font-label-caps text-[9px] text-primary tracking-normal font-bold">CUSTOMIZABLE BPS</span>
+                <p className="text-sm font-medium text-on-surface">20 to 450 bps (0.20% – 4.50%)</p>
+                <p className="text-xs text-outline">Default 100 bps (1.00%), split 50/50 with partner</p>
               </div>
             </div>
 
             {/* Partner Integration & Refund Protection Guide */}
             <div className="border-t border-white/10 pt-8 mt-4 space-y-6">
               <div className="flex items-center gap-3">
-                <span className="font-label-caps text-[#c0c6de] text-[10px] tracking-[0.25em] font-bold">
+                <span className="font-label-caps text-primary text-[10px] tracking-normal font-bold">
                   PARTNER INTEGRATION &amp; SETTLEMENT RULES
                 </span>
                 <div className="h-px w-8 bg-white/20" />
@@ -875,21 +875,21 @@ Verify with:
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-3">
                   <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-emerald-400 text-base">payments</span>
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">1. 50% Fee Share Done Upfront ($0 Min)</h4>
+                    <span className="material-symbols-outlined text-success text-base">payments</span>
+                    <h4 className="text-xs font-bold text-white  tracking-normal font-sans tabular-nums">1. 50% Fee Share Done Upfront ($0 Min)</h4>
                   </div>
-                  <p className="text-xs text-[#c6c6cd] leading-relaxed">
-                    Users send 100% of their deposit in a single transfer to the deposit address. Supported crypto for 50% fee share is done upfront to <code className="text-[#c0c6de] font-mono">feeRecipient</code>, and the net amount is forwarded directly to solvers. Some crypto don&apos;t have fee share because of high transaction cost. For supported stablecoins (USDT/USDC), all gas and fees are paid strictly out of the token balance with zero native gas required.
+                  <p className="text-xs text-on-surface-variant leading-relaxed">
+                    Users send 100% of their deposit in a single transfer to the deposit address. Supported crypto for 50% fee share is done upfront to <code className="text-primary font-sans tabular-nums">feeRecipient</code>, and the net amount is forwarded directly to solvers. Some crypto don&apos;t have fee share because of high transaction cost. For supported stablecoins (USDT/USDC), all gas and fees are paid strictly out of the token balance with zero native gas required.
                   </p>
                 </div>
 
                 <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-3">
                   <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-amber-400 text-base">local_gas_station</span>
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">2. High Transaction Cost Routes</h4>
+                    <span className="material-symbols-outlined text-warning text-base">local_gas_station</span>
+                    <h4 className="text-xs font-bold text-white  tracking-normal font-sans tabular-nums">2. High Transaction Cost Routes</h4>
                   </div>
-                  <p className="text-xs text-[#c6c6cd] leading-relaxed">
-                    Some crypto don&apos;t have fee share because of high transaction cost (such as Ethereum Mainnet and Bitcoin). Swaps on these assets route directly to solvers with 0% platform fee (<code className="text-emerald-400 font-mono">isDirectRoute: true</code>) to protect users from paying double transaction fees.
+                  <p className="text-xs text-on-surface-variant leading-relaxed">
+                    Some crypto don&apos;t have fee share because of high transaction cost (such as Ethereum Mainnet and Bitcoin). Swaps on these assets route directly to solvers with 0% platform fee (<code className="text-success font-sans tabular-nums">isDirectRoute: true</code>) to protect users from paying double transaction fees.
                   </p>
                 </div>
               </div>
@@ -897,22 +897,22 @@ Verify with:
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-3">
                   <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-sky-400 text-base">security</span>
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">3. User Refund Protection</h4>
+                    <span className="material-symbols-outlined text-primary text-base">security</span>
+                    <h4 className="text-xs font-bold text-white  tracking-normal font-sans tabular-nums">3. User Refund Protection</h4>
                   </div>
-                  <p className="text-xs text-[#c6c6cd] leading-relaxed">
-                    Always include <code className="text-[#c0c6de] font-mono">refundTo</code> with the user's origin-chain address (e.g. their Ethereum address when depositing ETH, Solana address for SOL).
-                    If a trade exceeds slippage or the deposit deadline passes, 100% of the user deposit is automatically refunded back to <code className="text-[#c0c6de] font-mono">refundTo</code> on the origin chain.
+                  <p className="text-xs text-on-surface-variant leading-relaxed">
+                    Always include <code className="text-primary font-sans tabular-nums">refundTo</code> with the user's origin-chain address (e.g. their Ethereum address when depositing ETH, Solana address for SOL).
+                    If a trade exceeds slippage or the deposit deadline passes, 100% of the user deposit is automatically refunded back to <code className="text-primary font-sans tabular-nums">refundTo</code> on the origin chain.
                   </p>
                 </div>
 
                 <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-3">
                   <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-purple-400 text-base">sync_alt</span>
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">4. Execution Plan Transparency</h4>
+                    <span className="material-symbols-outlined text-primary text-base">sync_alt</span>
+                    <h4 className="text-xs font-bold text-white  tracking-normal font-sans tabular-nums">4. Execution Plan Transparency</h4>
                   </div>
-                  <p className="text-xs text-[#c6c6cd] leading-relaxed">
-                    Both <code className="text-[#c0c6de] font-mono">/swap/quote</code> and <code className="text-[#c0c6de] font-mono">/swap/create</code> return an <code className="text-[#c0c6de] font-mono">executionPlan</code> specifying exact transfers for platform fees and solver deposits, giving client apps full programmatic visibility into fund flows.
+                  <p className="text-xs text-on-surface-variant leading-relaxed">
+                    Both <code className="text-primary font-sans tabular-nums">/swap/quote</code> and <code className="text-primary font-sans tabular-nums">/swap/create</code> return an <code className="text-primary font-sans tabular-nums">executionPlan</code> specifying exact transfers for platform fees and solver deposits, giving client apps full programmatic visibility into fund flows.
                   </p>
                 </div>
               </div>
@@ -920,25 +920,25 @@ Verify with:
           </div>
 
           {/* Atomic Units & Multi-Chain Disambiguation Guide */}
-          <div className="mt-6 bg-amber-950/20 border border-amber-500/20 rounded-xl p-5 md:p-6 space-y-4">
+          <div className="mt-6 bg-warning/15/20 border border-warning/20 rounded-xl p-5 md:p-6 space-y-4">
             <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-amber-400 text-lg">info</span>
-              <h3 className="text-sm font-bold text-amber-300 font-label-caps tracking-[0.15em]">
+              <span className="material-symbols-outlined text-warning text-lg">info</span>
+              <h3 className="text-sm font-bold text-warning font-label-caps tracking-normal">
                 CRITICAL INTEGRATION RULES: ATOMIC UNITS & MULTI-CHAIN TOKENS
               </h3>
             </div>
-            <p className="text-xs text-[#c6c6cd] leading-relaxed">
-              <strong className="text-white">1. Atomic Units Required:</strong> All swap endpoints (<code className="text-amber-300 font-mono">/swap/quote</code> and <code className="text-amber-300 font-mono">/swap/create</code>) require <code className="text-amber-300 font-mono">amount</code> in raw base/atomic integer units. Never pass human decimals (e.g. <code className="text-red-400">"1.5"</code> or <code className="text-red-400">"0.5"</code>). If an amount is below the solver volume threshold (~$0.05 USD), the API returns <code className="text-amber-300 font-mono">AMOUNT_BELOW_MINIMUM</code> (HTTP 400).
+            <p className="text-xs text-on-surface-variant leading-relaxed">
+              <strong className="text-white">1. Atomic Units Required:</strong> All swap endpoints (<code className="text-warning font-sans tabular-nums">/swap/quote</code> and <code className="text-warning font-sans tabular-nums">/swap/create</code>) require <code className="text-warning font-sans tabular-nums">amount</code> in raw base/atomic integer units. Never pass human decimals (e.g. <code className="text-error">"1.5"</code> or <code className="text-error">"0.5"</code>). If an amount is below the solver volume threshold (~$0.05 USD), the API returns <code className="text-warning font-sans tabular-nums">AMOUNT_BELOW_MINIMUM</code> (HTTP 400).
             </p>
-            <p className="text-xs text-[#c6c6cd] leading-relaxed">
-              <strong className="text-white">2. Multi-Chain Disambiguation:</strong> Tokens like <code className="text-[#c0c6de] font-mono">USDC</code> and <code className="text-[#c0c6de] font-mono">USDT</code> exist across 8+ blockchains. Pass the optional <code className="text-[#c0c6de] font-mono">chain</code> parameter (e.g. <code className="text-white font-mono">chain: "sol"</code>, <code className="text-white font-mono">chain: "arb"</code>, <code className="text-white font-mono">chain: "base"</code>) or specify the full <code className="text-[#c0c6de] font-mono">assetId</code> to prevent chain mismatch.
+            <p className="text-xs text-on-surface-variant leading-relaxed">
+              <strong className="text-white">2. Multi-Chain Disambiguation:</strong> Tokens like <code className="text-primary font-sans tabular-nums">USDC</code> and <code className="text-primary font-sans tabular-nums">USDT</code> exist across 8+ blockchains. Pass the optional <code className="text-primary font-sans tabular-nums">chain</code> parameter (e.g. <code className="text-white font-sans tabular-nums">chain: "sol"</code>, <code className="text-white font-sans tabular-nums">chain: "arb"</code>, <code className="text-white font-sans tabular-nums">chain: "base"</code>) or specify the full <code className="text-primary font-sans tabular-nums">assetId</code> to prevent chain mismatch.
             </p>
 
             {/* Quick Reference Table */}
             <div className="overflow-x-auto pt-2">
-              <table className="w-full text-left font-mono text-[11px] text-[#c6c6cd] border-collapse">
+              <table className="w-full text-left font-sans tabular-nums text-[11px] text-on-surface-variant border-collapse">
                 <thead>
-                  <tr className="border-b border-white/10 text-[#909097] text-[10px] uppercase tracking-wider">
+                  <tr className="border-b border-white/10 text-outline text-[10px]  tracking-normal">
                     <th className="py-2 pr-4 font-bold">Asset</th>
                     <th className="py-2 pr-4 font-bold">Chain</th>
                     <th className="py-2 pr-4 font-bold">Decimals</th>
@@ -949,37 +949,37 @@ Verify with:
                 <tbody className="divide-y divide-white/5">
                   <tr>
                     <td className="py-2 pr-4 text-white font-bold">SOL</td>
-                    <td className="py-2 pr-4 text-[#c0c6de]">sol</td>
+                    <td className="py-2 pr-4 text-primary">sol</td>
                     <td className="py-2 pr-4">9</td>
-                    <td className="py-2 pr-4 text-amber-300">1000000000</td>
+                    <td className="py-2 pr-4 text-warning">1000000000</td>
                     <td className="py-2">250000 (~0.00025 SOL)</td>
                   </tr>
                   <tr>
                     <td className="py-2 pr-4 text-white font-bold">USDC</td>
-                    <td className="py-2 pr-4 text-[#c0c6de]">sol / base / arb</td>
+                    <td className="py-2 pr-4 text-primary">sol / base / arb</td>
                     <td className="py-2 pr-4">6</td>
-                    <td className="py-2 pr-4 text-amber-300">1000000</td>
+                    <td className="py-2 pr-4 text-warning">1000000</td>
                     <td className="py-2">50000 ($0.05 USDC)</td>
                   </tr>
                   <tr>
                     <td className="py-2 pr-4 text-white font-bold">USDT</td>
-                    <td className="py-2 pr-4 text-[#c0c6de]">tron / sol / bsc</td>
+                    <td className="py-2 pr-4 text-primary">tron / sol / bsc</td>
                     <td className="py-2 pr-4">6</td>
-                    <td className="py-2 pr-4 text-amber-300">1000000</td>
+                    <td className="py-2 pr-4 text-warning">1000000</td>
                     <td className="py-2">50000 ($0.05 USDT)</td>
                   </tr>
                   <tr>
                     <td className="py-2 pr-4 text-white font-bold">BTC</td>
-                    <td className="py-2 pr-4 text-[#c0c6de]">btc</td>
+                    <td className="py-2 pr-4 text-primary">btc</td>
                     <td className="py-2 pr-4">8</td>
-                    <td className="py-2 pr-4 text-amber-300">100000000</td>
+                    <td className="py-2 pr-4 text-warning">100000000</td>
                     <td className="py-2">50 (~0.0000005 BTC)</td>
                   </tr>
                   <tr>
                     <td className="py-2 pr-4 text-white font-bold">ETH</td>
-                    <td className="py-2 pr-4 text-[#c0c6de]">eth / base</td>
+                    <td className="py-2 pr-4 text-primary">eth / base</td>
                     <td className="py-2 pr-4">18</td>
-                    <td className="py-2 pr-4 text-amber-300">1000000000000000000</td>
+                    <td className="py-2 pr-4 text-warning">1000000000000000000</td>
                     <td className="py-2">20000000000000 (~0.00002 ETH)</td>
                   </tr>
                 </tbody>
@@ -1002,10 +1002,10 @@ Verify with:
                     const firstIdx = ENDPOINTS.findIndex((e) => e.category === cat);
                     if (firstIdx >= 0) setActiveTab(firstIdx);
                   }}
-                  className={`text-[10px] font-label-caps tracking-[0.2em] px-4 py-2 rounded-lg transition-all border ${
+                  className={`text-[10px] font-label-caps tracking-normal px-4 py-2 rounded-lg transition-colors border ${
                     activeCategory === cat
-                      ? "bg-[#c0c6de] text-[#131315] border-[#c0c6de] font-bold"
-                      : "bg-white/5 text-[#c6c6cd] border-white/10 hover:bg-white/[0.08]"
+                      ? "bg-primary text-surface border-primary font-bold"
+                      : "bg-white/5 text-on-surface-variant border-white/10 hover:bg-white/[0.08]"
                   }`}
                 >
                   {cat === "swap" ? "SWAP API" : "PAYMENTS"}
@@ -1013,7 +1013,7 @@ Verify with:
               ))}
             </div>
 
-            <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold block mb-2 px-1">
+            <span className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold block mb-2 px-1">
               {activeCategory === "swap" ? "SWAP ENDPOINTS" : "PAYMENT ENDPOINTS"}
             </span>
 
@@ -1023,27 +1023,27 @@ Verify with:
                 <button
                   key={idx}
                   onClick={() => setActiveTab(idx)}
-                  className={`w-full text-left p-4 rounded-xl transition-all border ${
+                  className={`w-full text-left p-4 rounded-xl transition-colors border ${
                     activeTab === idx
-                      ? "bg-white/10 border-[#c0c6de]/50 shadow-[0_10px_30px_rgba(0,0,0,0.5)]"
-                      : "bg-white/5 border-white/10 hover:bg-white/[0.08] text-[#c6c6cd]"
+                      ? "bg-white/10 border-primary/50 shadow-card"
+                      : "bg-white/5 border-white/10 hover:bg-white/[0.08] text-on-surface-variant"
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-1.5">
                     <span
                       className={`text-[9px] font-label-caps font-bold px-2 py-0.5 rounded ${
                         ep.method === "GET"
-                          ? "bg-white/10 text-[#c0c6de] border border-[#c0c6de]/30"
-                          : "bg-[#c0c6de] text-[#131315] font-bold"
+                          ? "bg-white/10 text-primary border border-primary/30"
+                          : "bg-primary text-surface font-bold"
                       }`}
                     >
                       {ep.method}
                     </span>
-                    <span className="text-xs font-mono text-[#e5e2e3] truncate">{ep.path.split("?")[0]}</span>
+                    <span className="text-xs font-sans tabular-nums text-on-surface truncate">{ep.path.split("?")[0]}</span>
                   </div>
-                  <p className="text-xs font-medium text-[#e5e2e3] truncate">{ep.title}</p>
+                  <p className="text-xs font-medium text-on-surface truncate">{ep.title}</p>
                   {ep.rateLimit && (
-                    <p className="text-[9px] text-[#909097] mt-1 font-mono">{ep.rateLimit}</p>
+                    <p className="text-[9px] text-outline mt-1 font-sans tabular-nums">{ep.rateLimit}</p>
                   )}
                 </button>
               );
@@ -1052,30 +1052,30 @@ Verify with:
             {/* Contextual Info Cards */}
             {activeCategory === "swap" && (
               <div className="mt-8 p-5 rounded-xl bg-white/5 border border-white/15">
-                <span className="font-label-caps text-[9px] text-[#c0c6de] tracking-[0.25em] font-bold block mb-2">
+                <span className="font-label-caps text-[9px] text-primary tracking-normal font-bold block mb-2">
                   INTEGRATION FLOW
                 </span>
-                <div className="text-xs text-[#c6c6cd] leading-relaxed space-y-2 mb-4">
-                  <p><strong className="text-[#e5e2e3]">1.</strong> Call <code className="text-[#c0c6de] bg-white/5 px-1 rounded">/swap/tokens</code> to list supported assets</p>
-                  <p><strong className="text-[#e5e2e3]">2.</strong> Call <code className="text-[#c0c6de] bg-white/5 px-1 rounded">/swap/quote</code> to preview rate &amp; fees</p>
-                  <p><strong className="text-[#e5e2e3]">3.</strong> Call <code className="text-[#c0c6de] bg-white/5 px-1 rounded">/swap/create</code> to get deposit address</p>
-                  <p><strong className="text-[#e5e2e3]">4.</strong> User deposits on source chain</p>
-                  <p><strong className="text-[#e5e2e3]">5.</strong> Poll <code className="text-[#c0c6de] bg-white/5 px-1 rounded">/swap/status</code> until settled</p>
+                <div className="text-xs text-on-surface-variant leading-relaxed space-y-2 mb-4">
+                  <p><strong className="text-on-surface">1.</strong> Call <code className="text-primary bg-white/5 px-1 rounded">/swap/tokens</code> to list supported assets</p>
+                  <p><strong className="text-on-surface">2.</strong> Call <code className="text-primary bg-white/5 px-1 rounded">/swap/quote</code> to preview rate &amp; fees</p>
+                  <p><strong className="text-on-surface">3.</strong> Call <code className="text-primary bg-white/5 px-1 rounded">/swap/create</code> to get deposit address</p>
+                  <p><strong className="text-on-surface">4.</strong> User deposits on source chain</p>
+                  <p><strong className="text-on-surface">5.</strong> Poll <code className="text-primary bg-white/5 px-1 rounded">/swap/status</code> until settled</p>
                 </div>
               </div>
             )}
 
             {activeCategory === "payments" && (
               <div className="mt-8 p-5 rounded-xl bg-white/5 border border-white/15">
-                <span className="font-label-caps text-[9px] text-[#c0c6de] tracking-[0.25em] font-bold block mb-2">
+                <span className="font-label-caps text-[9px] text-primary tracking-normal font-bold block mb-2">
                   HOSTED PAY LINKS
                 </span>
-                <p className="text-xs text-[#c6c6cd] leading-relaxed mb-4">
+                <p className="text-xs text-on-surface-variant leading-relaxed mb-4">
                   Need a ready-made checkout invoice? Generate a Pay Link from your dashboard and share via WhatsApp.
                 </p>
                 <a
                   href="/"
-                  className="inline-flex items-center gap-2 text-xs font-label-caps text-[#e5e2e3] hover:text-[#c0c6de] tracking-[0.2em] font-bold transition-colors"
+                  className="inline-flex items-center gap-2 text-xs font-label-caps text-on-surface hover:text-primary tracking-normal font-bold transition-colors"
                 >
                   <span>OPEN DASHBOARD</span>
                   <span className="material-symbols-outlined text-sm">arrow_forward</span>
@@ -1086,35 +1086,35 @@ Verify with:
 
           {/* Right Column: Interactive Code & Response Viewer */}
           <div className="lg:col-span-8 space-y-6">
-            <div className="bg-white/5 backdrop-blur-[40px] border border-white/15 rounded-xl p-6 md:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
+            <div className="bg-white/5  border border-white/15 rounded-xl p-6 md:p-8 shadow-elevated">
               {/* Endpoint Header */}
               <div className="flex items-center gap-3 mb-3">
                 <span
                   className={`text-[10px] font-label-caps font-bold px-2.5 py-1 rounded ${
                     endpoint.method === "GET"
-                      ? "bg-white/10 text-[#c0c6de] border border-[#c0c6de]/30"
-                      : "bg-[#c0c6de] text-[#131315] font-bold"
+                      ? "bg-white/10 text-primary border border-primary/30"
+                      : "bg-primary text-surface font-bold"
                   }`}
                 >
                   {endpoint.method}
                 </span>
-                <span className="text-sm md:text-base font-mono text-[#e5e2e3] font-semibold truncate">
+                <span className="text-sm md:text-base font-sans tabular-nums text-on-surface font-semibold truncate">
                   https://zkpay.top{endpoint.path}
                 </span>
               </div>
 
-              <h2 className="text-2xl font-medium tracking-tight text-[#e5e2e3] mb-2">
+              <h2 className="text-2xl font-medium tracking-tight text-on-surface mb-2">
                 {endpoint.title}
               </h2>
               {endpoint.rateLimit && (
                 <div className="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10">
-                  <span className="material-symbols-outlined text-[#c0c6de] text-sm">speed</span>
-                  <span className="text-[10px] font-label-caps text-[#c6c6cd] tracking-[0.15em]">
+                  <span className="material-symbols-outlined text-primary text-sm">speed</span>
+                  <span className="text-[10px] font-label-caps text-on-surface-variant tracking-normal">
                     RATE LIMIT: {endpoint.rateLimit}
                   </span>
                 </div>
               )}
-              <p className="text-xs md:text-sm text-[#c6c6cd] mb-6 leading-relaxed font-body-md">
+              <p className="text-xs md:text-sm text-on-surface-variant mb-6 leading-relaxed font-body-md">
                 {endpoint.description}
               </p>
 
@@ -1122,17 +1122,17 @@ Verify with:
               {endpoint.parameters && endpoint.parameters.length > 0 && (
                 <div className="mb-8">
                   <div className="flex items-center gap-2 mb-3">
-                    <span className="font-label-caps text-[10px] text-[#c0c6de] tracking-[0.2em] font-bold">
+                    <span className="font-label-caps text-[10px] text-primary tracking-normal font-bold">
                       REQUEST PARAMETERS &amp; HEADERS
                     </span>
-                    <span className="text-[9px] font-mono text-[#909097] bg-white/5 px-2 py-0.5 rounded border border-white/10">
+                    <span className="text-[9px] font-sans tabular-nums text-outline bg-white/5 px-2 py-0.5 rounded border border-white/10">
                       {endpoint.parameters.length} parameters
                     </span>
                   </div>
                   <div className="overflow-x-auto rounded-xl border border-white/10 bg-black/40">
-                    <table className="w-full text-left font-mono text-xs border-collapse">
+                    <table className="w-full text-left font-sans tabular-nums text-xs border-collapse">
                       <thead>
-                        <tr className="border-b border-white/10 text-[#909097] text-[10px] uppercase tracking-wider bg-white/[0.02]">
+                        <tr className="border-b border-white/10 text-outline text-[10px]  tracking-normal bg-white/[0.02]">
                           <th className="py-2.5 px-4 font-bold">Parameter</th>
                           <th className="py-2.5 px-3 font-bold">Type</th>
                           <th className="py-2.5 px-3 font-bold">Location</th>
@@ -1140,28 +1140,28 @@ Verify with:
                           <th className="py-2.5 px-4 font-bold">Description</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-white/5 text-[#c6c6cd]">
+                      <tbody className="divide-y divide-white/5 text-on-surface-variant">
                         {endpoint.parameters.map((p) => (
                           <tr key={p.name} className="hover:bg-white/[0.02] transition-colors">
                             <td className="py-2.5 px-4 text-white font-bold">{p.name}</td>
-                            <td className="py-2.5 px-3 text-[#c0c6de] text-[11px]">{p.type}</td>
-                            <td className="py-2.5 px-3 text-[10px] uppercase tracking-wider text-[#909097]">{p.location}</td>
+                            <td className="py-2.5 px-3 text-primary text-[11px]">{p.type}</td>
+                            <td className="py-2.5 px-3 text-[10px]  tracking-normal text-outline">{p.location}</td>
                             <td className="py-2.5 px-3">
                               {p.required ? (
-                                <span className="text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded text-[9px] font-bold">
+                                <span className="text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded text-[9px] font-bold">
                                   REQUIRED
                                 </span>
                               ) : (
-                                <span className="text-[#909097] bg-white/5 border border-white/10 px-1.5 py-0.5 rounded text-[9px]">
+                                <span className="text-outline bg-white/5 border border-white/10 px-1.5 py-0.5 rounded text-[9px]">
                                   OPTIONAL
                                 </span>
                               )}
                             </td>
-                            <td className="py-2.5 px-4 text-xs font-sans text-[#c6c6cd] leading-relaxed">
+                            <td className="py-2.5 px-4 text-xs font-sans text-on-surface-variant leading-relaxed">
                               {p.description}
                               {p.example && (
-                                <span className="block font-mono text-[10px] text-[#909097] mt-0.5">
-                                  Example: <code className="text-[#c0c6de]">{p.example}</code>
+                                <span className="block font-sans tabular-nums text-[10px] text-outline mt-0.5">
+                                  Example: <code className="text-primary">{p.example}</code>
                                 </span>
                               )}
                             </td>
@@ -1180,10 +1180,10 @@ Verify with:
                     <button
                       key={lang}
                       onClick={() => setSelectedLang(lang)}
-                      className={`text-[10px] font-label-caps tracking-[0.15em] px-3 py-1.5 rounded-lg transition-all ${
+                      className={`text-[10px] font-label-caps tracking-normal px-3 py-1.5 rounded-lg transition-colors ${
                         selectedLang === lang
-                          ? "bg-[#e5e2e3] text-[#131315] font-bold"
-                          : "bg-white/5 text-[#c6c6cd] hover:text-white"
+                          ? "bg-on-surface text-surface font-bold"
+                          : "bg-white/5 text-on-surface-variant hover:text-white"
                       }`}
                     >
                       {lang === "curl"
@@ -1201,7 +1201,7 @@ Verify with:
                   onClick={() =>
                     copyCode(getCodeSnippet(endpoint, selectedLang), `code-${activeTab}`)
                   }
-                  className="flex items-center gap-1.5 text-xs font-label-caps text-[#c6c6cd] hover:text-[#e5e2e3] tracking-[0.15em] transition-colors"
+                  className="flex items-center gap-1.5 text-xs font-label-caps text-on-surface-variant hover:text-on-surface tracking-normal transition-colors"
                 >
                   <span className="material-symbols-outlined text-sm">
                     {copied === `code-${activeTab}` ? "check" : "content_copy"}
@@ -1211,21 +1211,21 @@ Verify with:
               </div>
 
               {/* Request Code Box */}
-              <div className="rounded-xl bg-[#0e0e0f] border border-white/10 p-5 font-mono text-xs text-[#c0c6de] overflow-x-auto mb-8">
+              <div className="rounded-xl bg-surface-container-lowest border border-white/10 p-5 font-sans tabular-nums text-xs text-primary overflow-x-auto mb-8">
                 <pre>{getCodeSnippet(endpoint, selectedLang)}</pre>
               </div>
 
               {/* Response Code Box */}
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">
+                  <span className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold">
                     SAMPLE RESPONSE (200 OK)
                   </span>
                   <button
                     onClick={() =>
                       copyCode(JSON.stringify(endpoint.response, null, 2), `res-${activeTab}`)
                     }
-                    className="flex items-center gap-1.5 text-xs font-label-caps text-[#909097] hover:text-[#e5e2e3] tracking-[0.15em] transition-colors"
+                    className="flex items-center gap-1.5 text-xs font-label-caps text-outline hover:text-on-surface tracking-normal transition-colors"
                   >
                     <span className="material-symbols-outlined text-sm">
                       {copied === `res-${activeTab}` ? "check" : "content_copy"}
@@ -1233,25 +1233,25 @@ Verify with:
                     <span>{copied === `res-${activeTab}` ? "COPIED" : "COPY"}</span>
                   </button>
                 </div>
-                <div className="rounded-xl bg-[#0e0e0f] border border-white/10 p-5 font-mono text-xs text-[#e5e2e3] overflow-x-auto">
+                <div className="rounded-xl bg-surface-container-lowest border border-white/10 p-5 font-sans tabular-nums text-xs text-on-surface overflow-x-auto">
                   <pre>{JSON.stringify(endpoint.response, null, 2)}</pre>
                 </div>
               </div>
             </div>
 
             {/* Webhook HMAC Security & Event Schema Section */}
-            <div className="bg-white/5 backdrop-blur-[40px] border border-white/15 rounded-xl p-6 md:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.8)] space-y-6">
+            <div className="bg-white/5  border border-white/15 rounded-xl p-6 md:p-8 shadow-elevated space-y-6">
               <div>
-                <div className="flex items-center gap-2 text-[#e5e2e3] font-semibold text-base mb-2">
-                  <span className="material-symbols-outlined text-[#c0c6de]">security</span>
-                  <span className="font-label-caps text-[10px] text-[#c0c6de] tracking-[0.25em] font-bold">
+                <div className="flex items-center gap-2 text-on-surface font-semibold text-base mb-2">
+                  <span className="material-symbols-outlined text-primary">security</span>
+                  <span className="font-label-caps text-[10px] text-primary tracking-normal font-bold">
                     WEBHOOK SECURITY & HMAC SHA-256 VERIFICATION
                   </span>
                 </div>
-                <p className="text-xs text-[#c6c6cd] leading-relaxed mb-3 font-body-md">
-                  Every webhook event dispatched to your <code className="text-[#c0c6de] font-mono">webhookUrl</code> includes an <code className="text-[#c0c6de] font-mono">X-ZkPay-Signature</code> header formatted as <code className="text-[#c0c6de] font-mono">t=timestamp,v1=signature</code>. Always verify this signature against your webhook secret before fulfilling orders.
+                <p className="text-xs text-on-surface-variant leading-relaxed mb-3 font-body-md">
+                  Every webhook event dispatched to your <code className="text-primary font-sans tabular-nums">webhookUrl</code> includes an <code className="text-primary font-sans tabular-nums">X-ZkPay-Signature</code> header formatted as <code className="text-primary font-sans tabular-nums">t=timestamp,v1=signature</code>. Always verify this signature against your webhook secret before fulfilling orders.
                 </p>
-                <div className="rounded-xl bg-[#0e0e0f] border border-white/10 p-4 font-mono text-xs text-[#c6c6cd] overflow-x-auto">
+                <div className="rounded-xl bg-surface-container-lowest border border-white/10 p-4 font-sans tabular-nums text-xs text-on-surface-variant overflow-x-auto">
                   <pre>{`// Verify X-ZkPay-Signature header in Node.js
 const header = req.headers['x-zkpay-signature']; // "t=1727382000000,v1=abc123..."
 const [tPart, vPart] = header.split(',');
@@ -1269,13 +1269,13 @@ const isValid = crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expec
 
               {/* Webhook Events Reference Table */}
               <div>
-                <span className="font-label-caps text-[9px] text-[#c0c6de] tracking-[0.25em] font-bold block mb-2">
+                <span className="font-label-caps text-[9px] text-primary tracking-normal font-bold block mb-2">
                   SUPPORTED WEBHOOK EVENT TYPES
                 </span>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left font-mono text-[11px] text-[#c6c6cd] border-collapse">
+                  <table className="w-full text-left font-sans tabular-nums text-[11px] text-on-surface-variant border-collapse">
                     <thead>
-                      <tr className="border-b border-white/10 text-[#909097] text-[10px] uppercase tracking-wider">
+                      <tr className="border-b border-white/10 text-outline text-[10px]  tracking-normal">
                         <th className="py-2 pr-4 font-bold">Event Name</th>
                         <th className="py-2 pr-4 font-bold">Category</th>
                         <th className="py-2 font-bold">Description</th>
@@ -1283,38 +1283,38 @@ const isValid = crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expec
                     </thead>
                     <tbody className="divide-y divide-white/5">
                       <tr>
-                        <td className="py-2 pr-4 text-emerald-400 font-bold">payin.detected</td>
-                        <td className="py-2 pr-4 text-[#909097]">Fiat Payin</td>
+                        <td className="py-2 pr-4 text-success font-bold">payin.detected</td>
+                        <td className="py-2 pr-4 text-outline">Fiat Payin</td>
                         <td className="py-2">Incoming USDC transfer detected on Base deposit address.</td>
                       </tr>
                       <tr>
-                        <td className="py-2 pr-4 text-emerald-400 font-bold">payin.settled</td>
-                        <td className="py-2 pr-4 text-[#909097]">Fiat Payin</td>
+                        <td className="py-2 pr-4 text-success font-bold">payin.settled</td>
+                        <td className="py-2 pr-4 text-outline">Fiat Payin</td>
                         <td className="py-2">P2P order matched and fiat successfully disbursed to merchant UPI.</td>
                       </tr>
                       <tr>
-                        <td className="py-2 pr-4 text-red-400 font-bold">payin.failed</td>
-                        <td className="py-2 pr-4 text-[#909097]">Fiat Payin</td>
+                        <td className="py-2 pr-4 text-error font-bold">payin.failed</td>
+                        <td className="py-2 pr-4 text-outline">Fiat Payin</td>
                         <td className="py-2">Deposit session expired or banking transaction failed.</td>
                       </tr>
                       <tr>
-                        <td className="py-2 pr-4 text-cyan-400 font-bold">swap.deposit_detected</td>
-                        <td className="py-2 pr-4 text-[#909097]">Cross-Chain Swap</td>
+                        <td className="py-2 pr-4 text-primary font-bold">swap.deposit_detected</td>
+                        <td className="py-2 pr-4 text-outline">Cross-Chain Swap</td>
                         <td className="py-2">Solver network observed deposit transaction on origin chain.</td>
                       </tr>
                       <tr>
-                        <td className="py-2 pr-4 text-cyan-400 font-bold">swap.settled</td>
-                        <td className="py-2 pr-4 text-[#909097]">Cross-Chain Swap</td>
+                        <td className="py-2 pr-4 text-primary font-bold">swap.settled</td>
+                        <td className="py-2 pr-4 text-outline">Cross-Chain Swap</td>
                         <td className="py-2">Swap fulfilled and destination tokens delivered to recipient.</td>
                       </tr>
                       <tr>
-                        <td className="py-2 pr-4 text-red-400 font-bold">swap.failed</td>
-                        <td className="py-2 pr-4 text-[#909097]">Cross-Chain Swap</td>
+                        <td className="py-2 pr-4 text-error font-bold">swap.failed</td>
+                        <td className="py-2 pr-4 text-outline">Cross-Chain Swap</td>
                         <td className="py-2">Swap order could not be filled by solver network.</td>
                       </tr>
                       <tr>
-                        <td className="py-2 pr-4 text-amber-400 font-bold">swap.refunded</td>
-                        <td className="py-2 pr-4 text-[#909097]">Cross-Chain Swap</td>
+                        <td className="py-2 pr-4 text-warning font-bold">swap.refunded</td>
+                        <td className="py-2 pr-4 text-outline">Cross-Chain Swap</td>
                         <td className="py-2">Incomplete deposit refunded to origin chain refund address.</td>
                       </tr>
                     </tbody>
@@ -1326,8 +1326,8 @@ const isValid = crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expec
         </section>
 
         {/* Footer */}
-        <footer className="mt-16 pt-8 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-4 text-xs font-mono text-[#909097]">
-          <p className="font-label-caps text-[9px] tracking-[0.25em]">
+        <footer className="mt-16 pt-8 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-4 text-xs font-sans tabular-nums text-outline">
+          <p className="font-label-caps text-[9px] tracking-normal">
             ZKPAY DEVELOPER PLATFORM • BASE MAINNET
           </p>
           <div className="flex gap-6">

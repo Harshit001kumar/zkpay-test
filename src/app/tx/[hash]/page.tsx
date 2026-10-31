@@ -356,16 +356,16 @@ export default function TransactionReceipt() {
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#0e0e0f]">
-        <div className="w-8 h-8 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
+      <main className="min-h-screen flex items-center justify-center bg-surface-container-lowest">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
       </main>
     );
   }
 
   if (!tx) {
     return (
-      <main className="min-h-screen flex flex-col items-center justify-center bg-[#0e0e0f] px-6 gap-4">
-        <p className="text-[#909097] text-sm">Transaction record not found.</p>
+      <main className="min-h-screen flex flex-col items-center justify-center bg-surface-container-lowest px-6 gap-4">
+        <p className="text-outline text-sm">Transaction record not found.</p>
         <button onClick={() => router.push("/")} className="btn-primary px-8 py-3 rounded-xl bg-white text-black font-semibold">
           Return to Home
         </button>
@@ -374,19 +374,19 @@ export default function TransactionReceipt() {
   }
 
   return (
-    <div className="bg-[#0e0e0f] text-[#e5e2e3] font-body min-h-[100dvh] relative overflow-x-hidden selection:bg-emerald-500/20">
+    <div className="bg-surface-container-lowest text-on-surface font-body min-h-[100dvh] relative overflow-x-hidden selection:bg-success/20">
       
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-xs font-mono text-white shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
-          <Check className="w-3.5 h-3.5 text-emerald-400" />
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-white/10 border border-white/20 text-xs font-sans tabular-nums text-white flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
+          <Check className="w-3.5 h-3.5 text-success" />
           <span>{toastMessage}</span>
         </div>
       )}
 
       {/* WebGL Ambient Background Layer */}
       <div className="fixed inset-0 w-full h-full pointer-events-none z-0 opacity-60">
-        <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: "100%" }} />
+        <canvas ref={canvasRef} aria-hidden="true" style={{ display: "block", width: "100%", height: "100%" }} />
       </div>
 
       <div className="w-full max-w-md mx-auto min-h-[100dvh] relative flex flex-col justify-between px-5 pt-4 pb-8 z-10">
@@ -395,13 +395,13 @@ export default function TransactionReceipt() {
         <header className="w-full flex items-center justify-between py-2">
           <button 
             onClick={() => router.push("/")} 
-            className="flex items-center gap-2 text-[#909097] hover:text-white transition-colors"
+            className="flex items-center gap-2 text-outline hover:text-white transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span className="font-mono text-xs tracking-wider uppercase font-bold text-[#c0c6de]">ZkPay</span>
+            <span className="font-sans tabular-nums text-xs tracking-normal  font-bold text-primary">ZkPay</span>
           </button>
 
-          <span className="px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-mono text-[#909097] tracking-wider uppercase">
+          <span className="px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-sans tabular-nums text-outline tracking-normal ">
             Receipt
           </span>
         </header>
@@ -421,12 +421,12 @@ export default function TransactionReceipt() {
               />
               
               {/* Floating Beveled Emblem */}
-              <div className="relative w-20 h-20 rounded-full border border-emerald-400/40 bg-gradient-to-b from-[#121c17] to-[#0a100d] shadow-[0_0_40px_rgba(16,185,129,0.35)] flex items-center justify-center">
-                <CheckCircle2 className="w-10 h-10 text-emerald-400" />
+              <div className="relative w-20 h-20 rounded-full border border-success/40 bg-gradient-to-b from-surface-container to-surface-container-lowest shadow-card flex items-center justify-center">
+                <CheckCircle2 className="w-10 h-10 text-success" />
               </div>
             </div>
 
-            <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-emerald-400 font-semibold mt-1">
+            <span className="font-sans tabular-nums text-[11px]  tracking-normal text-success font-semibold mt-1">
               {isCashout ? "Cash Out Settled" : "Payment Settled"}
             </span>
             
@@ -435,18 +435,18 @@ export default function TransactionReceipt() {
             </h1>
             
             <div className="flex items-center gap-2 mt-2">
-              <span className="font-mono text-[13px] text-[#909097] font-medium">≈ {tx.amountUSDC.toFixed(2)} USDC</span>
+              <span className="font-sans tabular-nums text-[13px] text-outline font-medium">≈ {tx.amountUSDC.toFixed(2)} USDC</span>
             </div>
 
             {/* Merchant Name or Zero-Knowledge Status Badge */}
             <div className="mt-3">
               {merchantDisplayName ? (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.05] border border-white/15 text-white text-xs font-medium backdrop-blur-md shadow-sm">
-                  <Store className="w-3.5 h-3.5 text-[#c0c6de]" />
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.05] border border-white/15 text-white text-xs font-medium  shadow-sm">
+                  <Store className="w-3.5 h-3.5 text-primary" />
                   <span>Paid to <strong className="text-white font-semibold">{merchantDisplayName}</strong></span>
                 </div>
               ) : (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono text-[11px]">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-success/10 border border-success/20 text-success font-sans tabular-nums text-[11px]">
                   <ShieldCheck className="w-3.5 h-3.5" />
                   <span>{isCashout ? "Direct UPI Cashout" : "Zero-Knowledge Proof Verified"}</span>
                 </div>
@@ -455,35 +455,35 @@ export default function TransactionReceipt() {
           </section>
 
           {/* Floating Obsidian Glass Receipt Card */}
-          <section className="w-full mt-6 rounded-2xl p-5 border border-white/10 relative overflow-hidden backdrop-blur-[40px] bg-gradient-to-b from-[#1a1a1e]/80 to-[#121215]/80 shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
+          <section className="w-full mt-6 rounded-2xl p-5 border border-white/10 relative overflow-hidden  bg-gradient-to-b from-surface-container-low/80 to-surface/80 shadow-elevated">
             {/* Top Specular Rim */}
             <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent"></div>
             
             {/* Recipient VPA & Live Status */}
             <div className="flex items-center justify-between pb-4 border-b border-white/[0.08]">
               <div className="flex flex-col text-left max-w-[65%]">
-                <span className="font-mono text-[10px] uppercase tracking-wider text-[#909097]">
+                <span className="font-sans tabular-nums text-[10px]  tracking-normal text-outline">
                   {isCashout ? "Settlement UPI" : "Merchant UPI VPA"}
                 </span>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="font-semibold text-white text-[15px] truncate font-mono" title={tx.recipient}>
+                  <span className="font-semibold text-white text-[15px] truncate font-sans tabular-nums" title={tx.recipient}>
                     {tx.recipient}
                   </span>
                   <button 
                     onClick={() => copyToClipboard(tx.recipient, "vpa")}
                     title="Copy UPI ID" 
-                    className="text-[#909097] hover:text-white transition-colors active:scale-90 shrink-0"
+                    className="text-outline hover:text-white transition-colors active:scale-90 shrink-0"
                   >
-                    {copiedKey === "vpa" ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedKey === "vpa" ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               </div>
               
               <div className="flex flex-col items-end text-right">
-                <span className="font-mono text-[10px] uppercase tracking-wider text-[#909097]">Status</span>
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 mt-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <span className="font-mono text-[11px] font-medium text-emerald-400">UPI Rail Settled</span>
+                <span className="font-sans tabular-nums text-[10px]  tracking-normal text-outline">Status</span>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-success/10 border border-success/25 mt-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
+                  <span className="font-sans tabular-nums text-[11px] font-medium text-success">UPI Rail Settled</span>
                 </div>
               </div>
             </div>
@@ -493,18 +493,18 @@ export default function TransactionReceipt() {
               
               {/* Row 1: Order ID (Replaces Order Type as requested) */}
               <div className="flex items-center justify-between text-xs sm:text-sm">
-                <span className="text-[#909097]">Order ID</span>
+                <span className="text-outline">Order ID</span>
                 <div className="flex items-center gap-1.5">
-                  <span className="font-mono font-semibold text-white">
+                  <span className="font-sans tabular-nums font-semibold text-white">
                     {displayOrderId ? `#${displayOrderId}` : "Resolving..."}
                   </span>
                   {displayOrderId && (
                     <button 
                       onClick={() => copyToClipboard(displayOrderId, "orderId")}
-                      className="text-[#909097] hover:text-white transition-colors"
+                      className="text-outline hover:text-white transition-colors"
                       title="Copy Order ID"
                     >
-                      {copiedKey === "orderId" ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedKey === "orderId" ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
                   )}
                 </div>
@@ -512,10 +512,10 @@ export default function TransactionReceipt() {
 
               {/* Row 2: Network */}
               <div className="flex items-center justify-between text-xs sm:text-sm">
-                <span className="text-[#909097]">Network</span>
+                <span className="text-outline">Network</span>
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-white font-mono text-xs">Base L2</span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[#c0c6de]">
+                  <span className="font-medium text-white font-sans tabular-nums text-xs">Base L2</span>
+                  <span className="text-[10px] font-sans tabular-nums px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-primary">
                     Gasless
                   </span>
                 </div>
@@ -523,20 +523,20 @@ export default function TransactionReceipt() {
 
               {/* Row 3: Transaction Hash */}
               <div className="flex items-center justify-between text-xs sm:text-sm">
-                <span className="text-[#909097]">Transaction Hash</span>
+                <span className="text-outline">Transaction Hash</span>
                 <div className="flex items-center gap-2">
                   <button 
                     onClick={() => copyToClipboard(tx.hash, "hash")}
-                    className="text-[#909097] hover:text-white transition-colors"
+                    className="text-outline hover:text-white transition-colors"
                     title="Copy full hash"
                   >
-                    {copiedKey === "hash" ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    {copiedKey === "hash" ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3" />}
                   </button>
                   <a 
                     href={`https://basescan.org/tx/${tx.hash}`} 
                     target="_blank" 
                     rel="noopener noreferrer" 
-                    className="font-mono text-xs text-[#c0c6de] hover:text-white flex items-center gap-1 transition-colors"
+                    className="font-sans tabular-nums text-xs text-primary hover:text-white flex items-center gap-1 transition-colors"
                   >
                     <DecryptedText text={shortHash} speed={30} />
                     <ExternalLink className="w-3 h-3" />
@@ -546,22 +546,22 @@ export default function TransactionReceipt() {
 
               {/* Row 4: Fee Breakdown */}
               <div className="flex items-center justify-between text-xs sm:text-sm">
-                <span className="text-[#909097]">Fees Breakdown</span>
-                <span className="font-mono text-xs text-[#e5e2e3]">
+                <span className="text-outline">Fees Breakdown</span>
+                <span className="font-sans tabular-nums text-xs text-on-surface">
                   ${tx.fee.toFixed(2)} Platform • {tx.protocolFee && tx.protocolFee > 0 ? `$${tx.protocolFee.toFixed(2)} Protocol` : "Free Protocol"}
                 </span>
               </div>
 
               {/* Row 5: Total USDC Debited */}
               <div className="flex items-center justify-between text-xs sm:text-sm pt-2 border-t border-white/[0.06]">
-                <span className="text-[#c0c6de] font-medium">Total USDC Debited</span>
-                <span className="font-mono font-bold text-white text-sm">
+                <span className="text-primary font-medium">Total USDC Debited</span>
+                <span className="font-sans tabular-nums font-bold text-white text-sm">
                   ${(tx.amountUSDC + (tx.protocolFee || 0)).toFixed(2)} USDC
                 </span>
               </div>
 
               {/* Row 6: Timestamp */}
-              <div className="flex items-center justify-between text-[11px] font-mono text-[#909097] pt-1">
+              <div className="flex items-center justify-between text-[11px] font-sans tabular-nums text-outline pt-1">
                 <span>Timestamp</span>
                 <span>{new Date(tx.timestamp).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</span>
               </div>
@@ -569,7 +569,7 @@ export default function TransactionReceipt() {
           </section>
 
           {/* Security Guarantee */}
-          <div className="mt-4 flex items-center justify-center gap-1.5 text-center text-[#909097]/70 text-[11px] font-mono">
+          <div className="mt-4 flex items-center justify-center gap-1.5 text-center text-outline/70 text-[11px] font-sans tabular-nums">
             <Lock className="w-3 h-3" />
             <span>Funds settled via non-custodial P2P escrow</span>
           </div>
@@ -582,7 +582,7 @@ export default function TransactionReceipt() {
           {/* Primary Done Button */}
           <button 
             onClick={() => router.push("/")}
-            className="w-full py-4 rounded-xl bg-gradient-to-r from-[#e5e2e6] to-[#d8d4dc] hover:from-white hover:to-white text-[#0e0e0f] font-bold text-xs uppercase tracking-[0.2em] transition-all shadow-[0_4px_20px_rgba(229,226,230,0.25)] active:scale-[0.98] flex items-center justify-center gap-2"
+            className="w-full py-4 rounded-xl bg-gradient-to-r from-on-surface to-on-surface-variant hover:from-white hover:to-white text-surface-container-lowest font-bold text-xs  tracking-normal transition-colors shadow-card active:scale-[0.98] flex items-center justify-center gap-2"
           >
             <span>Done</span>
           </button>
@@ -591,18 +591,18 @@ export default function TransactionReceipt() {
           <div className="grid grid-cols-2 gap-2.5 w-full">
             <button 
               onClick={handleShare}
-              className="py-3 px-4 rounded-xl bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] text-white/90 text-xs font-semibold font-mono tracking-wider transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+              className="py-3 px-4 rounded-xl bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] text-white/90 text-xs font-semibold font-sans tabular-nums tracking-normal transition-colors active:scale-[0.98] flex items-center justify-center gap-2"
             >
-              <Share2 className="w-4 h-4 text-[#c0c6de]" />
+              <Share2 className="w-4 h-4 text-primary" />
               <span>Share Receipt</span>
             </button>
 
             <button 
               onClick={handleDownload}
               disabled={downloading}
-              className="py-3 px-4 rounded-xl bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] text-white/90 text-xs font-semibold font-mono tracking-wider transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50"
+              className="py-3 px-4 rounded-xl bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] text-white/90 text-xs font-semibold font-sans tabular-nums tracking-normal transition-colors active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              <Download className="w-4 h-4 text-[#c0c6de]" />
+              <Download className="w-4 h-4 text-primary" />
               <span>{downloading ? "Saving..." : "Download PNG"}</span>
             </button>
           </div>

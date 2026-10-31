@@ -1,0 +1,23 @@
+[
+  {
+    "date": "2026-10-31",
+    "prompt": "ZkPay crypto to fiat mobile payment app",
+    "theme": "dusk",
+    "slug": "dusk",
+    "genre": "modern-minimal",
+    "axes": "dark/grotesk-sans/cool",
+    "face": "Wix Madefor Display",
+    "hue": 274,
+    "shape": "Narrative Workflow",
+    "hero": "Stage",
+    "nav": "floating-pill",
+    "footer": "ruled-ledger",
+    "imagery": "the product",
+    "entry": "stage-product",
+    "fingerprint": "dusk:fog/periwinkle-apricot/glass",
+    "sections": ["hero", "simulator", "rails", "architecture", "capabilities", "extension", "audit"],
+    "signature": "Live mobile settlement console with periwinkle-apricot rail telemetry",
+    "redesign": "full",
+    "seed": "zkpay-crypto-fiat-mobile-b26a·c885fb4c·2026-10-31·r0"
+  }
+]

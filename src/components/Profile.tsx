@@ -275,18 +275,18 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
     const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("Pay any UPI QR with crypto on Base and get Monthly Cashback!")}`;
 
     return (
-      <div className="bg-[#020408] text-[#e5e2e3] font-body-md selection:bg-[#c0c6de]/30 min-h-screen relative flex flex-col pb-36 overflow-y-auto w-full">
+      <div className="bg-surface-container-lowest text-on-surface font-body-md selection:bg-primary/30 min-h-screen relative flex flex-col pb-36 overflow-y-auto w-full">
         {/* TopAppBar */}
-        <header className="w-full sticky top-0 z-50 flex justify-between items-center px-6 py-6 max-w-2xl mx-auto backdrop-blur-md bg-[#020408]/60">
+        <header className="w-full sticky top-0 z-50 flex justify-between items-center px-6 py-6 max-w-2xl mx-auto  bg-surface-container-lowest/60">
           <button
             onClick={() => setActiveView("main")}
-            className="flex items-center gap-2 px-4 py-2 monolith-card rounded-full cursor-pointer hover:scale-105 active:scale-95 transition-transform text-xs font-mono font-bold text-[#c0c6de]"
+            className="flex items-center gap-2 px-4 py-2 monolith-card rounded-full cursor-pointer active:scale-95 transition-transform text-xs font-sans tabular-nums font-bold text-primary"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>BACK TO PROFILE</span>
           </button>
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-success/10 border border-success/20 text-success text-[10px] font-sans tabular-nums font-bold">
+            <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
             <span>SCAN & PAY ONLY</span>
           </div>
         </header>
@@ -294,21 +294,21 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
         <main className="w-full max-w-xl mx-auto px-4 pt-4 pb-40 space-y-6">
           {/* Header */}
           <div className="text-center space-y-2">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#c0c6de]/10 border border-[#c0c6de]/30 text-[#c0c6de] mb-2 shadow-lg">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 border border-primary/30 text-primary mb-2 shadow-lg">
               <Gift className="w-7 h-7" />
             </div>
             <h2 className="font-display-xl-mobile text-[28px] font-bold text-white tracking-tight">
               Refer & Earn
             </h2>
-            <p className="text-xs text-[#909097] max-w-md mx-auto leading-relaxed font-mono">
+            <p className="text-xs text-outline max-w-md mx-auto leading-relaxed font-sans tabular-nums">
               Earn 20% commission on friends&apos; Scan & Pay fees + get Monthly Cashback on all your own payments.
             </p>
           </div>
 
           {/* Monthly Pool Card */}
-          <section className="monolith-card rounded-[28px] p-6 md:p-8 space-y-4 bg-gradient-to-b from-[#c0c6de]/15 via-white/5 to-transparent border border-[#c0c6de]/30 shadow-2xl">
-            <div className="flex justify-between items-center text-xs font-mono text-[#c0c6de]">
-              <span className="uppercase tracking-widest font-bold">THIS MONTH&apos;S ACCRUAL</span>
+          <section className="monolith-card rounded-[28px] p-6 md:p-8 space-y-4 bg-gradient-to-b from-primary/15 via-white/5 to-transparent border border-primary/30">
+            <div className="flex justify-between items-center text-xs font-sans tabular-nums text-primary">
+              <span className=" tracking-normal font-bold">THIS MONTH&apos;S ACCRUAL</span>
               <span className="text-[11px] px-2 py-0.5 rounded-md bg-white/10 text-white">
                 Cycle: {rewardsData?.currentCycle || "Current"}
               </span>
@@ -317,33 +317,33 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
             <div className="space-y-1">
               <div className="text-4xl font-bold font-display tracking-tight text-white flex items-baseline gap-2">
                 ${(rewardsData?.thisMonth?.totalDueUsdc || 0).toFixed(2)}
-                <span className="text-base font-normal font-mono text-[#c0c6de]">USDC</span>
+                <span className="text-base font-normal font-sans tabular-nums text-primary">USDC</span>
               </div>
-              <p className="text-[11px] font-mono text-[#909097]">
+              <p className="text-[11px] font-sans tabular-nums text-outline">
                 Status:{" "}
-                <span className="text-emerald-400 font-bold">
+                <span className="text-success font-bold">
                   {rewardsData?.thisMonth?.status === "PAID" ? "Settled / Paid" : "Accruing for Month-End Disbursal"}
                 </span>
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-white/10 text-xs font-mono">
+            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-white/10 text-xs font-sans tabular-nums">
               <div className="bg-black/30 p-3 rounded-xl border border-white/5">
-                <span className="text-[#909097] block text-[10px] mb-1">YOUR CASHBACK</span>
+                <span className="text-outline block text-[10px] mb-1">YOUR CASHBACK</span>
                 <span className="text-white font-bold text-sm">
                   ${(rewardsData?.thisMonth?.cashbackUsdc || 0).toFixed(2)} USDC
                 </span>
               </div>
               <div className="bg-black/30 p-3 rounded-xl border border-white/5">
-                <span className="text-[#909097] block text-[10px] mb-1">REFERRAL COMMISSIONS</span>
+                <span className="text-outline block text-[10px] mb-1">REFERRAL COMMISSIONS</span>
                 <span className="text-white font-bold text-sm">
                   ${(rewardsData?.thisMonth?.referralUsdc || 0).toFixed(2)} USDC
                 </span>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 flex items-start gap-3 text-[11px] font-mono text-[#909097] leading-relaxed">
-              <Calendar className="w-4 h-4 text-[#c0c6de] shrink-0 mt-0.5" />
+            <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 flex items-start gap-3 text-[11px] font-sans tabular-nums text-outline leading-relaxed">
+              <Calendar className="w-4 h-4 text-primary shrink-0 mt-0.5" />
               <span>
                 Rewards are sent automatically by Admin in a single batch directly to your wallet at the end of each month.
               </span>
@@ -352,37 +352,37 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
 
           {/* Referral Sharing Card */}
           <section className="monolith-card rounded-[28px] p-6 md:p-8 space-y-5">
-            <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#c6c6cd] uppercase tracking-wider">
-              <Share2 className="w-4 h-4 text-[#c0c6de]" />
+            <div className="flex items-center gap-2 text-xs font-sans tabular-nums font-bold text-on-surface-variant  tracking-normal">
+              <Share2 className="w-4 h-4 text-primary" />
               <span>Share Your Referral Link</span>
             </div>
 
             {/* Code Row */}
             <div className="space-y-1.5">
-              <label className="text-[11px] font-mono text-[#909097]">Your Referral Code</label>
+              <label className="text-[11px] font-sans tabular-nums text-outline">Your Referral Code</label>
               <div className="flex items-center justify-between p-3.5 rounded-2xl bg-black/30 border border-white/10">
-                <span className="font-mono text-base font-bold text-[#c0c6de] tracking-wider">{code}</span>
+                <span className="font-sans tabular-nums text-base font-bold text-primary tracking-normal">{code}</span>
                 <button
                   onClick={handleCopyReferralCode}
                   className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white transition-colors"
                   title="Copy Code"
                 >
-                  {copiedCode ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  {copiedCode ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
             {/* Link Row */}
             <div className="space-y-1.5">
-              <label className="text-[11px] font-mono text-[#909097]">Your Referral Link</label>
+              <label className="text-[11px] font-sans tabular-nums text-outline">Your Referral Link</label>
               <div className="flex items-center justify-between p-3.5 rounded-2xl bg-black/30 border border-white/10">
-                <span className="font-mono text-xs text-white truncate max-w-[260px]">{link}</span>
+                <span className="font-sans tabular-nums text-xs text-white truncate max-w-[260px]">{link}</span>
                 <button
                   onClick={handleCopyReferralLink}
                   className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white transition-colors"
                   title="Copy Link"
                 >
-                  {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  {copiedLink ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
                 </button>
               </div>
             </div>
@@ -393,7 +393,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
                 href={waUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="py-3.5 px-4 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-all active:scale-95"
+                className="py-3.5 px-4 rounded-xl bg-success/20 hover:bg-success/30 border border-success/30 text-success text-xs font-sans tabular-nums font-bold flex items-center justify-center gap-2 transition-colors active:scale-95"
               >
                 <Share2 className="w-4 h-4" />
                 <span>WhatsApp</span>
@@ -402,7 +402,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
                 href={tgUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="py-3.5 px-4 rounded-xl bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/30 text-sky-300 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-all active:scale-95"
+                className="py-3.5 px-4 rounded-xl bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary text-xs font-sans tabular-nums font-bold flex items-center justify-center gap-2 transition-colors active:scale-95"
               >
                 <Share2 className="w-4 h-4" />
                 <span>Telegram</span>
@@ -412,31 +412,31 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
 
           {/* Referrer Status & Manual Binding Card */}
           <section className="monolith-card rounded-[28px] p-6 md:p-8 space-y-4">
-            <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#c6c6cd] uppercase tracking-wider">
-              <Gift className="w-4 h-4 text-[#c0c6de]" />
+            <div className="flex items-center gap-2 text-xs font-sans tabular-nums font-bold text-on-surface-variant  tracking-normal">
+              <Gift className="w-4 h-4 text-primary" />
               <span>Your Referrer Status</span>
             </div>
 
             {rewardsData?.referredBy ? (
-              <div className="flex items-center justify-between p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20">
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-success/10 border border-success/20">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+                  <div className="w-8 h-8 rounded-full bg-success/20 flex items-center justify-center text-success">
                     <CheckCircle className="w-4 h-4" />
                   </div>
                   <div>
-                    <span className="text-xs font-mono font-bold text-white block">Bound to Referrer</span>
-                    <span className="text-[11px] font-mono text-emerald-400">
-                      {rewardsData.referredBy.slice(0, 6)}...{rewardsData.referredBy.slice(-4)}
+                    <span className="text-xs font-sans tabular-nums font-bold text-white block">Bound to Referrer</span>
+                    <span className="text-[11px] font-sans tabular-nums text-success">
+                      {rewardsData.referredBy.slice(0, 6)}…{rewardsData.referredBy.slice(-4)}
                     </span>
                   </div>
                 </div>
-                <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold">
+                <span className="px-2.5 py-1 rounded-full bg-success/20 text-success text-[10px] font-sans tabular-nums font-bold">
                   ACTIVE
                 </span>
               </div>
             ) : (
               <div className="space-y-3">
-                <p className="text-xs font-mono text-[#909097] leading-relaxed">
+                <p className="text-xs font-sans tabular-nums text-outline leading-relaxed">
                   Have a friend&apos;s referral code or address? Enter it once below to link your account and earn cashback.
                 </p>
                 <div className="flex gap-2">
@@ -445,20 +445,20 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
                     value={manualRefCode}
                     onChange={(e) => setManualRefCode(e.target.value)}
                     placeholder="Enter code (e.g. ZK12AB)"
-                    className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs font-mono text-white placeholder-[#606067] focus:outline-none focus:border-[#c0c6de] uppercase"
+                    className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs font-sans tabular-nums text-white placeholder-outline focus:outline-none focus:border-primary "
                   />
                   <button
                     onClick={handleApplyReferral}
                     disabled={isBindingRef || !manualRefCode.trim()}
-                    className="px-5 py-3 rounded-xl bg-gradient-to-r from-[#c0c6de] to-white text-[#131315] font-mono font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center gap-1.5"
+                    className="px-5 py-3 rounded-xl bg-gradient-to-r from-primary to-white text-surface font-sans tabular-nums font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center gap-1.5"
                   >
                     {isBindingRef ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "Apply"}
                   </button>
                 </div>
                 {refBindingMsg && (
                   <p
-                    className={`text-[11px] font-mono ${
-                      refBindingMsg.type === "success" ? "text-emerald-400" : "text-rose-400"
+                    className={`text-[11px] font-sans tabular-nums ${
+                      refBindingMsg.type === "success" ? "text-success" : "text-error"
                     }`}
                   >
                     {refBindingMsg.text}
@@ -471,24 +471,24 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
           {/* Quick Stats Grid */}
           <section className="grid grid-cols-2 gap-3">
             <div className="monolith-card rounded-2xl p-5 text-center space-y-1">
-              <Users className="w-5 h-5 text-[#c0c6de] mx-auto mb-1" />
+              <Users className="w-5 h-5 text-primary mx-auto mb-1" />
               <div className="text-2xl font-bold text-white font-display">
                 {rewardsData?.friendsInvited || 0}
               </div>
-              <div className="text-[10px] font-mono text-[#909097] uppercase tracking-wider">Friends Invited</div>
+              <div className="text-[10px] font-sans tabular-nums text-outline  tracking-normal">Friends Invited</div>
             </div>
             <div className="monolith-card rounded-2xl p-5 text-center space-y-1">
-              <Sparkles className="w-5 h-5 text-[#c0c6de] mx-auto mb-1" />
+              <Sparkles className="w-5 h-5 text-primary mx-auto mb-1" />
               <div className="text-2xl font-bold text-white font-display">
                 ${(rewardsData?.lifetime?.totalEarnedUsdc || 0).toFixed(2)}
               </div>
-              <div className="text-[10px] font-mono text-[#909097] uppercase tracking-wider">Lifetime Rewards</div>
+              <div className="text-[10px] font-sans tabular-nums text-outline  tracking-normal">Lifetime Rewards</div>
             </div>
           </section>
 
           {/* Past Payouts History */}
           <section className="monolith-card rounded-[28px] p-6 space-y-3">
-            <span className="text-xs font-mono font-bold text-[#c6c6cd] uppercase tracking-wider block">
+            <span className="text-xs font-sans tabular-nums font-bold text-on-surface-variant  tracking-normal block">
               Past Monthly Disbursals
             </span>
             {rewardsData?.pastPayouts && rewardsData.pastPayouts.length > 0 ? (
@@ -496,21 +496,21 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
                 {rewardsData.pastPayouts.map((p: any, idx: number) => (
                   <div
                     key={idx}
-                    className="p-3.5 rounded-xl bg-black/30 border border-white/5 flex items-center justify-between text-xs font-mono"
+                    className="p-3.5 rounded-xl bg-black/30 border border-white/5 flex items-center justify-between text-xs font-sans tabular-nums"
                   >
                     <div>
                       <span className="text-white font-bold block">Cycle {p.cycle}</span>
-                      <span className="text-[10px] text-[#909097]">
+                      <span className="text-[10px] text-outline">
                         {new Date(p.paidAt).toLocaleDateString()}
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-emerald-400 font-bold">+${p.amountUsdc.toFixed(2)} USDC</span>
+                      <span className="text-success font-bold">+${p.amountUsdc.toFixed(2)} USDC</span>
                       <a
                         href={`https://basescan.org/tx/${p.payoutTxHash}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-[#c0c6de] hover:underline"
+                        className="text-primary hover:underline"
                         title="View on Basescan"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
@@ -520,7 +520,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
                 ))}
               </div>
             ) : (
-              <p className="text-xs font-mono text-[#909097] text-center py-4">
+              <p className="text-xs font-sans tabular-nums text-outline text-center py-4">
                 No past payouts yet. Your active rewards will be included in this month&apos;s batch!
               </p>
             )}
@@ -532,18 +532,18 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
 
   if (activeView === "api-keys") {
     return (
-      <div className="bg-[#020408] text-[#e5e2e3] font-body-md selection:bg-[#c0c6de]/30 min-h-screen relative flex flex-col pb-36 overflow-y-auto w-full">
+      <div className="bg-surface-container-lowest text-on-surface font-body-md selection:bg-primary/30 min-h-screen relative flex flex-col pb-36 overflow-y-auto w-full">
         {/* TopAppBar */}
-        <header className="w-full sticky top-0 z-50 flex justify-between items-center px-6 py-6 max-w-2xl mx-auto backdrop-blur-md bg-[#020408]/60">
+        <header className="w-full sticky top-0 z-50 flex justify-between items-center px-6 py-6 max-w-2xl mx-auto  bg-surface-container-lowest/60">
           <button
             onClick={() => setActiveView("main")}
-            className="flex items-center gap-2 px-4 py-2 monolith-card rounded-full cursor-pointer hover:scale-105 active:scale-95 transition-transform text-xs font-mono font-bold text-[#c0c6de]"
+            className="flex items-center gap-2 px-4 py-2 monolith-card rounded-full cursor-pointer active:scale-95 transition-transform text-xs font-sans tabular-nums font-bold text-primary"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>BACK TO PROFILE</span>
           </button>
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[10px] font-mono font-bold">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-[10px] font-sans tabular-nums font-bold">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
             <span>MERCHANT API V1</span>
           </div>
         </header>
@@ -551,13 +551,13 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
         <main className="w-full max-w-xl mx-auto px-4 pt-4 pb-40 space-y-6">
           {/* Header */}
           <div className="text-center space-y-2">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#c0c6de]/10 border border-[#c0c6de]/30 text-[#c0c6de] mb-2 shadow-lg">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 border border-primary/30 text-primary mb-2 shadow-lg">
               <Key className="w-7 h-7" />
             </div>
             <h2 className="font-display-xl-mobile text-[28px] font-bold text-white tracking-tight">
               Merchant & Bot API Keys
             </h2>
-            <p className="text-xs text-[#909097] max-w-md mx-auto leading-relaxed font-mono">
+            <p className="text-xs text-outline max-w-md mx-auto leading-relaxed font-sans tabular-nums">
               Integrate ZkPay into Telegram/Discord bots, payment checkouts, and automated systems with on-chain crypto-to-UPI settlements.
             </p>
           </div>
@@ -565,39 +565,39 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
           {/* Partner Dashboard Quick Link */}
           <Link
             href="/partner"
-            className="monolith-card rounded-[24px] p-4 bg-gradient-to-r from-emerald-500/10 via-transparent to-transparent border border-emerald-500/25 flex items-center justify-between gap-3 group hover:border-emerald-500/50 transition-all"
+            className="monolith-card rounded-[24px] p-4 bg-gradient-to-r from-success/10 via-transparent to-transparent border border-success/25 flex items-center justify-between gap-3 group hover:border-success/50 transition-colors"
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <div className="w-10 h-10 rounded-xl bg-success/10 border border-success/20 flex items-center justify-center text-success">
                 <LayoutDashboard className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-white">Partner Dashboard & Ledger</span>
-                  <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  <span className="px-1.5 py-0.2 rounded text-[9px] font-sans tabular-nums font-bold bg-success/20 text-success border border-success/30">
                     ANALYTICS
                   </span>
                 </div>
-                <p className="text-[11px] text-[#909097] font-mono">
+                <p className="text-[11px] text-outline font-sans tabular-nums">
                   Track swap volumes, transactions & partner earnings
                 </p>
               </div>
             </div>
-            <ChevronRight className="w-4 h-4 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
+            <ChevronRight className="w-4 h-4 text-success group-hover:translate-x-0.5 transition-transform" />
           </Link>
 
           {/* New Key Generated Alert Banner */}
           {newKeyResult && (
-            <section className="monolith-card rounded-[24px] p-6 space-y-4 bg-gradient-to-b from-amber-500/20 via-amber-500/5 to-transparent border border-amber-500/40 shadow-2xl animate-in zoom-in-95 duration-300">
-              <div className="flex items-center gap-2 text-amber-400 text-xs font-mono font-bold uppercase tracking-wider">
+            <section className="monolith-card rounded-[24px] p-6 space-y-4 bg-gradient-to-b from-warning/20 via-warning/5 to-transparent border border-warning/40 animate-in zoom-in-95 duration-300">
+              <div className="flex items-center gap-2 text-warning text-xs font-sans tabular-nums font-bold  tracking-normal">
                 <AlertCircle className="w-4 h-4" />
                 <span>Save Your API Key Now</span>
               </div>
-              <p className="text-xs font-mono text-[#d0d0d8] leading-relaxed">
+              <p className="text-xs font-sans tabular-nums text-on-surface-variant leading-relaxed">
                 This secret API key will <strong className="text-white">never be shown again</strong>. Please copy and store it securely in your environment variables.
               </p>
-              <div className="p-3.5 rounded-xl bg-black/60 border border-amber-500/30 flex items-center justify-between gap-2">
-                <code className="text-xs font-mono text-amber-300 break-all select-all font-semibold">
+              <div className="p-3.5 rounded-xl bg-black/60 border border-warning/30 flex items-center justify-between gap-2">
+                <code className="text-xs font-sans tabular-nums text-warning break-all select-all font-semibold">
                   {newKeyResult.plaintextKey}
                 </code>
                 <button
@@ -606,7 +606,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
                     setCopiedNewKey(true);
                     setTimeout(() => setCopiedNewKey(false), 2000);
                   }}
-                  className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+                  className="px-3 py-1.5 rounded-lg bg-warning/20 hover:bg-warning/30 border border-warning/40 text-warning text-xs font-sans tabular-nums font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
                 >
                   {copiedNewKey ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copiedNewKey ? "COPIED" : "COPY"}</span>
@@ -615,7 +615,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
               <div className="flex justify-end">
                 <button
                   onClick={() => setNewKeyResult(null)}
-                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-mono font-bold transition-all cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-sans tabular-nums font-bold transition-colors cursor-pointer"
                 >
                   I have saved this key
                 </button>
@@ -624,12 +624,12 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
           )}
 
           {/* Create Key Form */}
-          <section className="monolith-card rounded-[28px] p-6 space-y-4 bg-gradient-to-b from-[#c0c6de]/10 to-transparent border border-[#c0c6de]/20">
+          <section className="monolith-card rounded-[28px] p-6 space-y-4 bg-gradient-to-b from-primary/10 to-transparent border border-primary/20">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-mono font-bold text-[#c0c6de] uppercase tracking-wider">
+              <span className="text-xs font-sans tabular-nums font-bold text-primary  tracking-normal">
                 Create New API Key
               </span>
-              <span className="text-[10px] font-mono text-[#909097]">
+              <span className="text-[10px] font-sans tabular-nums text-outline">
                 Base Mainnet • Chain 8453
               </span>
             </div>
@@ -641,13 +641,13 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
                   value={keyLabel}
                   onChange={(e) => setKeyLabel(e.target.value)}
                   placeholder="Key Label (e.g. Telegram Bot, E-commerce Store)"
-                  className="w-full px-4 py-3 rounded-xl bg-black/40 border border-white/10 text-white placeholder-[#707079] text-xs font-mono focus:outline-none focus:border-[#c0c6de]/60 transition-colors"
+                  className="w-full px-4 py-3 rounded-xl bg-black/40 border border-white/10 text-white placeholder-outline text-xs font-sans tabular-nums focus:outline-none focus:border-primary/60 transition-colors"
                   maxLength={40}
                 />
               </div>
 
               {keyError && (
-                <p className="text-xs font-mono text-rose-400 flex items-center gap-1.5">
+                <p className="text-xs font-sans tabular-nums text-error flex items-center gap-1.5">
                   <AlertCircle className="w-3.5 h-3.5" />
                   <span>{keyError}</span>
                 </p>
@@ -656,10 +656,10 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
               <button
                 type="submit"
                 disabled={isCreatingKey}
-                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#c0c6de] to-[#a0a8c2] hover:from-white hover:to-[#c0c6de] text-[#020408] font-bold text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(192,198,222,0.25)] active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                className="w-full py-3.5 rounded-xl bg-primary hover:bg-accent-hi text-on-primary font-bold text-xs tracking-normal transition-colors flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer disabled:opacity-50 whitespace-nowrap"
               >
                 <Plus className="w-4 h-4" />
-                <span>{isCreatingKey ? "Generating Key..." : "Generate API Key"}</span>
+                <span>{isCreatingKey ? "Generating Key…" : "Generate API Key"}</span>
               </button>
             </form>
           </section>
@@ -667,13 +667,13 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
           {/* Active Keys Ledger */}
           <section className="monolith-card rounded-[28px] p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-mono font-bold text-[#c6c6cd] uppercase tracking-wider">
+              <span className="text-xs font-sans tabular-nums font-bold text-on-surface-variant  tracking-normal">
                 Your API Keys ({apiKeys.length})
               </span>
               <button
                 onClick={fetchApiKeys}
                 disabled={isLoadingKeys}
-                className="text-[#909097] hover:text-[#c0c6de] transition-colors p-1 cursor-pointer"
+                className="text-outline hover:text-primary transition-colors p-1 cursor-pointer"
                 title="Refresh keys"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoadingKeys ? "animate-spin" : ""}`} />
@@ -681,13 +681,13 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
             </div>
 
             {isLoadingKeys && apiKeys.length === 0 ? (
-              <div className="text-center py-8 text-xs font-mono text-[#909097]">
-                Loading keys...
+              <div className="text-center py-8 text-xs font-sans tabular-nums text-outline">
+                Loading keys…
               </div>
             ) : apiKeys.length === 0 ? (
               <div className="text-center py-8 space-y-2">
-                <Key className="w-8 h-8 text-[#909097]/40 mx-auto" />
-                <p className="text-xs font-mono text-[#909097]">
+                <Key className="w-8 h-8 text-outline/40 mx-auto" />
+                <p className="text-xs font-sans tabular-nums text-outline">
                   No API keys yet. Generate one above to access the API.
                 </p>
               </div>
@@ -696,7 +696,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
                 {apiKeys.map((k) => (
                   <div
                     key={k.id}
-                    className="p-4 rounded-2xl bg-black/30 border border-white/5 space-y-2 hover:border-white/10 transition-colors font-mono"
+                    className="p-4 rounded-2xl bg-black/30 border border-white/5 space-y-2 hover:border-white/10 transition-colors font-sans tabular-nums"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -704,8 +704,8 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
                         <span
                           className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
                             k.status === "ACTIVE"
-                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                              : "bg-zinc-500/10 text-zinc-400 border border-zinc-500/20"
+                              ? "bg-success/10 text-success border border-success/20"
+                              : "bg-surface-container-high/10 text-on-surface-variant border border-outline-variant/20"
                           }`}
                         >
                           {k.status}
@@ -715,31 +715,31 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
                         <button
                           onClick={() => handleRevokeKey(k.id)}
                           disabled={revokingId === k.id}
-                          className="text-rose-400 hover:text-rose-300 text-[11px] font-mono flex items-center gap-1 hover:underline cursor-pointer disabled:opacity-50"
+                          className="text-error hover:text-error text-[11px] font-sans tabular-nums flex items-center gap-1 hover:underline cursor-pointer disabled:opacity-50"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
-                          <span>{revokingId === k.id ? "Revoking..." : "Revoke"}</span>
+                          <span>{revokingId === k.id ? "Revoking…" : "Revoke"}</span>
                         </button>
                       )}
                     </div>
 
                     <div className="flex items-center justify-between text-xs bg-black/40 p-2.5 rounded-xl border border-white/5">
-                      <span className="text-[#c0c6de] select-all">{k.maskedKey}</span>
+                      <span className="text-primary select-all">{k.maskedKey}</span>
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(k.id);
                           setCopiedKeyId(k.id);
                           setTimeout(() => setCopiedKeyId(null), 2000);
                         }}
-                        className="text-[#909097] hover:text-white transition-colors flex items-center gap-1 text-[10px] cursor-pointer"
+                        className="text-outline hover:text-white transition-colors flex items-center gap-1 text-[10px] cursor-pointer"
                         title="Copy Key ID"
                       >
-                        {copiedKeyId === k.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        {copiedKeyId === k.id ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3" />}
                         <span>ID</span>
                       </button>
                     </div>
 
-                    <div className="flex items-center justify-between text-[10px] text-[#909097] pt-1">
+                    <div className="flex items-center justify-between text-[10px] text-outline pt-1">
                       <span>Created: {new Date(k.createdAt).toLocaleDateString()}</span>
                       <span>
                         {k.lastUsedAt
@@ -754,15 +754,15 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
           </section>
 
           {/* Quickstart Developer Card */}
-          <section className="monolith-card rounded-[28px] p-6 space-y-3 font-mono">
-            <div className="flex items-center gap-2 text-xs font-bold text-[#c0c6de] uppercase tracking-wider">
+          <section className="monolith-card rounded-[28px] p-6 space-y-3 font-sans tabular-nums">
+            <div className="flex items-center gap-2 text-xs font-bold text-primary  tracking-normal">
               <Terminal className="w-4 h-4" />
               <span>cURL Quickstart</span>
             </div>
-            <p className="text-xs text-[#909097]">
-              Pass your API key in the <code className="text-[#c0c6de]">x-api-key</code> header:
+            <p className="text-xs text-outline">
+              Pass your API key in the <code className="text-primary">x-api-key</code> header:
             </p>
-            <div className="p-3.5 rounded-xl bg-black/50 border border-white/5 text-[11px] text-[#c0c6de] overflow-x-auto leading-relaxed">
+            <div className="p-3.5 rounded-xl bg-black/50 border border-white/5 text-[11px] text-primary overflow-x-auto leading-relaxed">
               <pre>{`curl -X POST "https://zkpay.top/api/v1/paylinks" \\
   -H "x-api-key: zkpay_live_your_key_here" \\
   -H "Content-Type: application/json" \\
@@ -771,7 +771,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
             <div className="pt-2">
               <Link
                 href="/docs"
-                className="w-full py-3 rounded-xl monolith-card text-[#c0c6de] hover:text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-white/5 transition-all"
+                className="w-full py-3 rounded-xl monolith-card text-primary hover:text-white text-xs font-bold  tracking-normal flex items-center justify-center gap-2 hover:bg-white/5 transition-colors"
               >
                 <span>View Full Developer Docs</span>
                 <ChevronRight className="w-4 h-4" />
@@ -784,7 +784,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
   }
 
   return (
-    <div className="bg-[#020408] text-[#e5e2e3] font-body-md selection:bg-[#c0c6de]/30 min-h-screen relative flex flex-col pb-36 overflow-y-auto w-full">
+    <div className="bg-surface-container-lowest text-on-surface font-body-md selection:bg-primary/30 min-h-screen relative flex flex-col pb-36 overflow-y-auto w-full">
       <style dangerouslySetInnerHTML={{__html: `
         .monolith-card {
             background: rgba(255, 255, 255, 0.04);
@@ -839,12 +839,12 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
       `}} />
 
       {/* TopAppBar */}
-      <header className="w-full sticky top-0 z-50 flex justify-between items-center px-6 py-6 max-w-2xl mx-auto backdrop-blur-md bg-[#020408]/60">
-        <button onClick={onBack} className="flex items-center justify-center w-12 h-12 monolith-card rounded-full cursor-pointer hover:scale-110 active:scale-95 transition-transform">
-          <span className="material-symbols-outlined text-[#e5e2e3]">arrow_back</span>
+      <header className="w-full sticky top-0 z-50 flex justify-between items-center px-6 py-6 max-w-2xl mx-auto  bg-surface-container-lowest/60">
+        <button onClick={onBack} className="flex items-center justify-center w-12 h-12 monolith-card rounded-full cursor-pointer active:scale-95 transition-transform">
+          <span className="material-symbols-outlined text-on-surface">arrow_back</span>
         </button>
-        <button className="flex items-center justify-center w-12 h-12 monolith-card rounded-full cursor-pointer hover:scale-110 active:scale-95 transition-transform">
-          <span className="material-symbols-outlined text-[#e5e2e3]">settings</span>
+        <button className="flex items-center justify-center w-12 h-12 monolith-card rounded-full cursor-pointer active:scale-95 transition-transform">
+          <span className="material-symbols-outlined text-on-surface">settings</span>
         </button>
       </header>
 
@@ -853,15 +853,15 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
         {/* Profile Monolith */}
         <section className="monolith-card rounded-[32px] p-8 flex flex-col items-center text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="relative mb-6">
-            <div className="w-32 h-32 rounded-2xl overflow-hidden border-2 border-white/20 p-1 bg-black/40 shadow-2xl flex items-center justify-center">
-              <span className="material-symbols-outlined text-[64px] text-[#c0c6de] opacity-50">person</span>
+            <div className="w-32 h-32 rounded-2xl overflow-hidden border-2 border-white/20 p-1 bg-black/40 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[64px] text-primary opacity-50">person</span>
             </div>
-            <button className="absolute -bottom-3 -right-3 bg-[#c0c6de] text-[#020408] p-2.5 rounded-full shadow-lg hover:scale-110 active:scale-95 transition-all border-2 border-[#020408]">
+            <button className="absolute -bottom-3 -right-3 bg-primary text-surface-container-lowest p-2.5 rounded-full active:scale-95 transition-colors border-2 border-surface-container-lowest">
               <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>edit</span>
             </button>
           </div>
           
-          <h2 className="font-display-xl-mobile text-[32px] font-bold text-[#e5e2e3] mb-3 tracking-tight">
+          <h2 className="font-display-xl-mobile text-[32px] font-bold text-on-surface mb-3 tracking-tight">
             {address ? "ZkPay User" : "Guest"}
           </h2>
           
@@ -870,71 +870,71 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
               if (address) router.push(`/wallet/${address}`);
               else router.push("/wallet");
             }}
-            className="flex items-center gap-3 text-[#c6c6cd] bg-black/30 hover:bg-black/50 px-5 py-2.5 rounded-full border border-white/10 hover:border-[#c0c6de]/30 mb-8 cursor-pointer transition-all active:scale-95 group"
+            className="flex items-center gap-3 text-on-surface-variant bg-black/30 hover:bg-black/50 px-5 py-2.5 rounded-full border border-white/10 hover:border-primary/30 mb-8 cursor-pointer transition-colors active:scale-95 group"
             title="Click to open Base USDC deposit & wallet page"
           >
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="font-body-md text-[#bcc7de] font-mono tracking-tight group-hover:text-white transition-colors">{shortAddress}</span>
-            <button onClick={handleCopy} className="hover:text-[#c0c6de] transition-colors flex items-center justify-center p-1 rounded-md hover:bg-white/10" title="Copy Address">
-              {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+            <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
+            <span className="font-body-md text-secondary font-sans tabular-nums tracking-tight group-hover:text-white transition-colors">{shortAddress}</span>
+            <button onClick={handleCopy} className="hover:text-primary transition-colors flex items-center justify-center p-1 rounded-md hover:bg-white/10" title="Copy Address">
+              {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
             </button>
           </div>
           
-          <div className="flex flex-col gap-3 w-full">
-            <div className="monolith-card bg-white/5 py-4 px-6 rounded-2xl text-left flex justify-between items-center">
-              <span className="font-label-caps text-[#d8e3fb] tracking-widest text-[11px] font-bold">PLATINUM TIER</span>
-              <span className="material-symbols-outlined text-[#d8e3fb]/50" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
+          <div className="flex flex-col divide-y divide-outline-variant/40 border-t border-outline-variant/40 w-full">
+            <div className="py-3.5 px-2 text-left flex justify-between items-center">
+              <span className="font-label-caps text-secondary-fixed tracking-normal text-[11px] font-bold">Platinum Tier</span>
+              <span className="material-symbols-outlined text-secondary-fixed/50" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
             </div>
-            <div className="monolith-card bg-white/5 py-4 px-6 rounded-2xl text-left flex justify-between items-center">
-              <span className="font-label-caps text-[#c0c6de] tracking-widest text-[11px] font-bold">ZK-SYNC NATIVE</span>
-              <span className="material-symbols-outlined text-[#c0c6de]/50" style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
+            <div className="py-3.5 px-2 text-left flex justify-between items-center">
+              <span className="font-label-caps text-primary tracking-normal text-[11px] font-bold">ZK-Sync Native</span>
+              <span className="material-symbols-outlined text-primary/50" style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
             </div>
           </div>
         </section>
 
         {/* Refer & Earn & Monthly Cashback Monolith */}
-        <section className="monolith-card rounded-[32px] p-6 md:p-8 animate-in fade-in slide-in-from-bottom-6 duration-600 bg-gradient-to-b from-[#c0c6de]/10 via-white/5 to-transparent border border-[#c0c6de]/30 shadow-[0_20px_50px_rgba(0,0,0,0.6)]">
+        <section className="monolith-card rounded-[32px] p-6 md:p-8 animate-in fade-in slide-in-from-bottom-6 duration-600 bg-gradient-to-b from-primary/10 via-white/5 to-transparent border border-primary/30">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-[#c0c6de]/20 flex items-center justify-center text-[#c0c6de]">
+              <div className="w-8 h-8 rounded-xl bg-primary/20 flex items-center justify-center text-primary">
                 <Gift className="w-4 h-4" />
               </div>
-              <span className="font-label-caps text-[11px] font-bold text-[#c0c6de] tracking-[0.2em] uppercase">
+              <span className="font-label-caps text-[11px] font-bold text-primary tracking-normal ">
                 Refer & Earn • Monthly Cashback
               </span>
             </div>
-            <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold">
+            <span className="px-2.5 py-1 rounded-full bg-success/10 border border-success/20 text-success text-[10px] font-sans tabular-nums font-bold">
               Scan & Pay Exclusive
             </span>
           </div>
 
           <div className="bg-black/30 rounded-2xl p-5 border border-white/5 mb-5 space-y-3">
             <div className="flex justify-between items-baseline">
-              <span className="text-xs text-[#909097] font-mono">This Month&apos;s Accrued</span>
+              <span className="text-xs text-outline font-sans tabular-nums">This Month&apos;s Accrued</span>
               <span className="text-2xl font-bold text-white font-display tracking-tight">
                 ${(rewardsData?.thisMonth?.totalDueUsdc || 0).toFixed(2)}{" "}
-                <span className="text-xs text-[#c0c6de] font-mono font-normal">USDC</span>
+                <span className="text-xs text-primary font-sans tabular-nums font-normal">USDC</span>
               </span>
             </div>
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/10 text-xs font-mono text-[#909097]">
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/10 text-xs font-sans tabular-nums text-outline">
               <div>
                 Cashback:{" "}
-                <span className="text-[#e5e2e3] font-bold">
+                <span className="text-on-surface font-bold">
                   ${(rewardsData?.thisMonth?.cashbackUsdc || 0).toFixed(2)}
                 </span>
               </div>
               <div className="text-right">
                 Referral:{" "}
-                <span className="text-[#e5e2e3] font-bold">
+                <span className="text-on-surface font-bold">
                   ${(rewardsData?.thisMonth?.referralUsdc || 0).toFixed(2)}
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-xs font-mono text-[#909097] mb-5 px-1">
+          <div className="flex items-center justify-between text-xs font-sans tabular-nums text-outline mb-5 px-1">
             <span className="flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-[#c0c6de]" />
+              <Calendar className="w-3.5 h-3.5 text-primary" />
               Disbursed at Month-End
             </span>
             <span>{rewardsData?.friendsInvited || 0} friends invited</span>
@@ -942,7 +942,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
 
           <button
             onClick={() => setActiveView("referral")}
-            className="w-full py-4 rounded-2xl bg-gradient-to-r from-[#c0c6de] to-[#a0a8c2] hover:from-white hover:to-[#c0c6de] text-[#020408] font-bold text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(192,198,222,0.25)] active:scale-[0.98] cursor-pointer"
+            className="w-full py-4 rounded-2xl bg-primary hover:bg-accent-hi text-on-primary font-bold text-xs tracking-normal transition-colors flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer whitespace-nowrap"
           >
             <Share2 className="w-4 h-4" />
             <span>Open Referral Hub & Share</span>
@@ -953,33 +953,33 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
         {/* Security Monolith */}
         <section className="monolith-card rounded-[32px] p-6 md:p-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
           <div className="flex items-center gap-3 mb-6 ml-2">
-            <span className="material-symbols-outlined text-[#c0c6de]">security</span>
-            <h3 className="font-label-caps text-[11px] font-bold text-[#c6c6cd] tracking-[0.2em] uppercase">Security</h3>
+            <span className="material-symbols-outlined text-primary">security</span>
+            <h3 className="font-label-caps text-[11px] font-bold text-on-surface-variant tracking-normal ">Security</h3>
           </div>
           <div className="space-y-3">
-            <div className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group cursor-pointer border border-white/5 hover:border-white/20 transition-all">
+            <div className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group cursor-pointer border border-white/5 hover:border-white/20 transition-colors">
               <div className="flex items-center gap-4">
-                <Key className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />
-                <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px]">Export Private Key</span>
+                <Key className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />
+                <span className="font-body-lg text-on-surface font-semibold text-[15px]">Export Private Key</span>
               </div>
-              <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
+              <ChevronRight className="w-5 h-5 text-on-surface-variant" />
             </div>
             <div 
-              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group cursor-pointer border border-white/5 hover:border-white/20 transition-all"
+              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group cursor-pointer border border-white/5 hover:border-white/20 transition-colors"
               onClick={() => setBiometricEnabled(!biometricEnabled)}
             >
               <div className="flex items-center gap-4">
-                <Fingerprint className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />
-                <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px]">Biometric Auth</span>
+                <Fingerprint className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />
+                <span className="font-body-lg text-on-surface font-semibold text-[15px]">Biometric Auth</span>
               </div>
               <div className={`silver-toggle ${biometricEnabled ? 'active' : ''}`}></div>
             </div>
-            <div className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group cursor-pointer border border-white/5 hover:border-white/20 transition-all">
+            <div className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group cursor-pointer border border-white/5 hover:border-white/20 transition-colors">
               <div className="flex items-center gap-4">
-                <FileText className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />
-                <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px]">Recovery Phrase</span>
+                <FileText className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />
+                <span className="font-body-lg text-on-surface font-semibold text-[15px]">Recovery Phrase</span>
               </div>
-              <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
+              <ChevronRight className="w-5 h-5 text-on-surface-variant" />
             </div>
           </div>
         </section>
@@ -987,35 +987,35 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
         {/* Preferences Monolith */}
         <section className="monolith-card rounded-[32px] p-6 md:p-8 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-150">
           <div className="flex items-center gap-3 mb-6 ml-2">
-            <span className="material-symbols-outlined text-[#c0c6de]">settings_suggest</span>
-            <h3 className="font-label-caps text-[11px] font-bold text-[#c6c6cd] tracking-[0.2em] uppercase">Preferences</h3>
+            <span className="material-symbols-outlined text-primary">settings_suggest</span>
+            <h3 className="font-label-caps text-[11px] font-bold text-on-surface-variant tracking-normal ">Preferences</h3>
           </div>
           <div className="space-y-3">
             <div 
               onClick={() => setIsSelectorOpen(true)}
-              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group cursor-pointer border border-white/5 hover:border-white/20 hover:bg-white/[0.04] transition-all"
+              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group cursor-pointer border border-white/5 hover:border-white/20 hover:bg-white/[0.04] transition-colors"
             >
               <div className="flex items-center gap-4">
-                <DollarSign className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />
+                <DollarSign className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />
                 <div>
-                  <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px] block">Default Currency</span>
-                  <span className="text-xs text-[#909097]">{currencyMeta.name} • {currencyMeta.rail}</span>
+                  <span className="font-body-lg text-on-surface font-semibold text-[15px] block">Default Currency</span>
+                  <span className="text-xs text-outline">{currencyMeta.name} • {currencyMeta.rail}</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-base mr-1">{currencyMeta.flag}</span>
-                <span className="font-body-md text-[#c0c6de] font-bold text-sm">{currencyMeta.code} ({currencyMeta.symbol})</span>
-                <ChevronRight className="w-5 h-5 text-[#c6c6cd] group-hover:translate-x-0.5 transition-transform" />
+                <span className="font-body-md text-primary font-bold text-sm">{currencyMeta.code} ({currencyMeta.symbol})</span>
+                <ChevronRight className="w-5 h-5 text-on-surface-variant group-hover:translate-x-0.5 transition-transform" />
               </div>
             </div>
-            <div className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group cursor-pointer border border-white/5 hover:border-white/20 transition-all">
+            <div className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group cursor-pointer border border-white/5 hover:border-white/20 transition-colors">
               <div className="flex items-center gap-4">
-                <Globe className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />
-                <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px]">Language</span>
+                <Globe className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />
+                <span className="font-body-lg text-on-surface font-semibold text-[15px]">Language</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-body-md text-[#c0c6de] font-bold text-sm">English</span>
-                <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
+                <span className="font-body-md text-primary font-bold text-sm">English</span>
+                <ChevronRight className="w-5 h-5 text-on-surface-variant" />
               </div>
             </div>
           </div>
@@ -1025,17 +1025,17 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
         <section className="monolith-card rounded-[32px] p-6 md:p-8 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-300">
           <div className="flex items-center justify-between group">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 flex items-center justify-center bg-[#c0c6de]/10 rounded-2xl border border-white/5">
-                <Network className="w-6 h-6 text-[#c0c6de]" />
+              <div className="w-12 h-12 flex items-center justify-center bg-primary/10 rounded-2xl border border-white/5">
+                <Network className="w-6 h-6 text-primary" />
               </div>
               <div>
-                <p className="font-label-caps text-[10px] text-[#c6c6cd] font-bold tracking-[0.1em] mb-1">CURRENT NETWORK</p>
-                <span className="font-body-lg text-[#e5e2e3] font-bold tracking-tight">Base Mainnet</span>
+                <p className="font-label-caps text-[10px] text-on-surface-variant font-bold tracking-normal mb-1">CURRENT NETWORK</p>
+                <span className="font-body-lg text-on-surface font-bold tracking-tight">Base Mainnet</span>
               </div>
             </div>
             <div className="flex items-center gap-3 bg-white/5 px-4 py-2.5 rounded-full border border-white/10">
               <span className="status-dot"></span>
-              <span className="font-label-caps text-[#e5e2e3] tracking-widest text-[10px] font-bold">CONNECTED</span>
+              <span className="font-label-caps text-on-surface tracking-normal text-[10px] font-bold">CONNECTED</span>
             </div>
           </div>
         </section>
@@ -1043,100 +1043,100 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
         {/* Legal & Protocol Standards Monolith */}
         <section className="monolith-card rounded-[32px] p-6 md:p-8 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-400">
           <div className="flex items-center gap-3 mb-6 ml-2">
-            <span className="material-symbols-outlined text-[#c0c6de]">policy</span>
-            <h3 className="font-label-caps text-[11px] font-bold text-[#c6c6cd] tracking-[0.2em] uppercase">Protocol & Legal</h3>
+            <span className="material-symbols-outlined text-primary">policy</span>
+            <h3 className="font-label-caps text-[11px] font-bold text-on-surface-variant tracking-normal ">Protocol & Legal</h3>
           </div>
           <div className="space-y-3">
             <Link 
               href="/privacy" 
-              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-white/5 hover:border-white/20 transition-all block"
+              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-white/5 hover:border-white/20 transition-colors block"
             >
               <div className="flex items-center gap-4">
-                <Shield className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />
+                <Shield className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />
                 <div>
-                  <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px] block">Privacy Policy</span>
-                  <span className="text-xs text-[#909097]">Zero-knowledge & ECIES encryption standards</span>
+                  <span className="font-body-lg text-on-surface font-semibold text-[15px] block">Privacy Policy</span>
+                  <span className="text-xs text-outline">Zero-knowledge & ECIES encryption standards</span>
                 </div>
               </div>
-              <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
+              <ChevronRight className="w-5 h-5 text-on-surface-variant" />
             </Link>
 
             <Link 
               href="/terms" 
-              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-white/5 hover:border-white/20 transition-all block"
+              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-white/5 hover:border-white/20 transition-colors block"
             >
               <div className="flex items-center gap-4">
-                <Scale className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />
+                <Scale className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />
                 <div>
-                  <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px] block">Terms of Service</span>
-                  <span className="text-xs text-[#909097]">Protocol rules & non-custodial terms</span>
+                  <span className="font-body-lg text-on-surface font-semibold text-[15px] block">Terms of Service</span>
+                  <span className="text-xs text-outline">Protocol rules & non-custodial terms</span>
                 </div>
               </div>
-              <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
+              <ChevronRight className="w-5 h-5 text-on-surface-variant" />
             </Link>
 
             <button 
               onClick={() => setActiveView("api-keys")}
-              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-white/5 hover:border-white/20 transition-all block w-full text-left cursor-pointer"
+              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-white/5 hover:border-white/20 transition-colors block w-full text-left cursor-pointer whitespace-nowrap"
             >
               <div className="flex items-center gap-4">
-                <Key className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />
+                <Key className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px] block">Merchant & Bot API Keys</span>
-                    <span className="px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[10px] font-mono font-bold">MERCHANT</span>
+                    <span className="font-body-lg text-on-surface font-semibold text-[15px] block">Merchant & Bot API Keys</span>
+                    <span className="px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-[10px] font-sans tabular-nums font-bold">MERCHANT</span>
                   </div>
-                  <span className="text-xs text-[#909097]">Create & manage keys for bots & checkouts</span>
+                  <span className="text-xs text-outline">Create & manage keys for bots & checkouts</span>
                 </div>
               </div>
-              <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
+              <ChevronRight className="w-5 h-5 text-on-surface-variant" />
             </button>
 
             <Link 
               href="/partner" 
-              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-emerald-500/20 hover:border-emerald-500/40 transition-all block"
+              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-success/20 hover:border-success/40 transition-colors block"
             >
               <div className="flex items-center gap-4">
-                <LayoutDashboard className="w-5 h-5 text-emerald-400 group-hover:text-emerald-300 transition-colors" />
+                <LayoutDashboard className="w-5 h-5 text-success group-hover:text-success transition-colors" />
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px] block">Partner Dashboard</span>
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold">ANALYTICS</span>
+                    <span className="font-body-lg text-on-surface font-semibold text-[15px] block">Partner Dashboard</span>
+                    <span className="px-2 py-0.5 rounded-full bg-success/10 border border-success/20 text-success text-[10px] font-sans tabular-nums font-bold">ANALYTICS</span>
                   </div>
-                  <span className="text-xs text-[#909097]">Track swaps, payments & live partner revenue</span>
+                  <span className="text-xs text-outline">Track swaps, payments & live partner revenue</span>
                 </div>
               </div>
-              <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
+              <ChevronRight className="w-5 h-5 text-on-surface-variant" />
             </Link>
 
             <Link 
               href="/docs" 
-              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-white/5 hover:border-white/20 transition-all block"
+              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-white/5 hover:border-white/20 transition-colors block"
             >
               <div className="flex items-center gap-4">
-                <Code2 className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />
+                <Code2 className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />
                 <div>
-                  <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px] block">Developer APIs Documentation</span>
-                  <span className="text-xs text-[#909097]">Pay Links, Quotes & Rates endpoints</span>
+                  <span className="font-body-lg text-on-surface font-semibold text-[15px] block">Developer APIs Documentation</span>
+                  <span className="text-xs text-outline">Pay Links, Quotes & Rates endpoints</span>
                 </div>
               </div>
-              <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
+              <ChevronRight className="w-5 h-5 text-on-surface-variant" />
             </Link>
 
             <a 
               href="https://basescan.org/address/0x4cad6eC90e65baBec9335cAd728DDC610c316368" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-white/5 hover:border-white/20 transition-all block"
+              className="bg-black/20 p-5 rounded-2xl flex items-center justify-between group border border-white/5 hover:border-white/20 transition-colors block"
             >
               <div className="flex items-center gap-4">
-                <ExternalLink className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />
+                <ExternalLink className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />
                 <div>
-                  <span className="font-body-lg text-[#e5e2e3] font-semibold text-[15px] block">P2P Diamond Contract</span>
-                  <span className="text-xs font-mono text-[#909097]">0x4cad...6368 (Base Mainnet)</span>
+                  <span className="font-body-lg text-on-surface font-semibold text-[15px] block">P2P Diamond Contract</span>
+                  <span className="text-xs font-sans tabular-nums text-outline">0x4cad...6368 (Base Mainnet)</span>
                 </div>
               </div>
-              <ChevronRight className="w-5 h-5 text-[#c6c6cd]" />
+              <ChevronRight className="w-5 h-5 text-on-surface-variant" />
             </a>
           </div>
         </section>
@@ -1145,7 +1145,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
         <footer className="pt-4 flex justify-center animate-in fade-in slide-in-from-bottom-8 duration-700 delay-500">
           <button 
             onClick={logout}
-            className="monolith-card w-full flex items-center justify-center gap-3 px-10 py-5 text-[#ffb4ab] font-label-caps font-bold tracking-widest uppercase hover:bg-[#ffb4ab]/10 border-[#ffb4ab]/30 active:scale-95 transition-all rounded-[24px]"
+            className="monolith-card w-full flex items-center justify-center gap-3 px-10 py-5 text-error font-label-caps font-bold tracking-normal  hover:bg-error/10 border-error/30 active:scale-95 transition-colors rounded-[24px]"
           >
             <LogOut className="w-5 h-5" />
             Disconnect Wallet

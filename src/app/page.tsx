@@ -11,10 +11,10 @@ export default function Home() {
 
   if (!ready) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#131315]">
+      <main className="min-h-screen flex items-center justify-center bg-surface">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-sm text-[#909097]">Loading...</p>
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-sm text-outline">Loading…</p>
         </div>
       </main>
     );

@@ -30,18 +30,18 @@ export default function WalletConnect() {
         {/* Clickable Address Pill to Navigate to /wallet/[address] */}
         <button
           onClick={handleNavigateToWallet}
-          className="group px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 hover:border-[#c0c6de] flex items-center gap-2 text-xs font-mono font-medium text-white transition-all active:scale-95 shadow-sm cursor-pointer"
+          className="group px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 hover:border-primary flex items-center gap-2 text-xs font-sans tabular-nums font-medium text-white transition-colors active:scale-95 shadow-sm cursor-pointer"
           title="Click to open Base USDC deposit & wallet page"
         >
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+          <span className="w-2 h-2 rounded-full bg-success animate-pulse shrink-0" />
           <span className="tracking-tight">{shortAddress}</span>
-          <ChevronRight className="w-3.5 h-3.5 text-[#c6c6cd] group-hover:text-white transition-transform group-hover:translate-x-0.5" />
+          <ChevronRight className="w-3.5 h-3.5 text-on-surface-variant group-hover:text-white transition-transform group-hover:translate-x-0.5" />
         </button>
 
         {/* Direct Logout Button */}
         <button
           onClick={logout}
-          className="p-2 rounded-full hover:bg-white/10 border border-transparent hover:border-white/15 transition-colors text-[#c6c6cd] hover:text-[#ffb4ab]"
+          className="p-2 rounded-full hover:bg-white/10 border border-transparent hover:border-white/15 transition-colors text-on-surface-variant hover:text-error"
           aria-label="Disconnect wallet"
           title="Disconnect wallet"
         >
@@ -53,8 +53,8 @@ export default function WalletConnect() {
 
   if (authenticated && !address) {
     return (
-      <div className="h-9 w-28 bg-white/10 rounded-full animate-pulse flex items-center justify-center text-[11px] font-medium text-[#909097]">
-        Syncing...
+      <div className="h-9 w-28 bg-white/10 rounded-full animate-pulse flex items-center justify-center text-[11px] font-medium text-outline">
+        Syncing…
       </div>
     );
   }

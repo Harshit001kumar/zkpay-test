@@ -70,6 +70,7 @@ interface NavIconProps extends SVGProps<SVGSVGElement> {
 function HomeIcon({ isActive, ...props }: NavIconProps) {
   return (
     <svg
+      aria-hidden="true"
       width="1.15em"
       height="1.15em"
       viewBox="0 0 24 24"
@@ -78,7 +79,7 @@ function HomeIcon({ isActive, ...props }: NavIconProps) {
       strokeWidth={isActive ? "2" : "1.8"}
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={`transition-colors duration-200 ${isActive ? "text-[#c0c6de]" : "text-[#909097]"}`}
+      className={`transition-colors duration-200 ${isActive ? "text-primary" : "text-outline"}`}
       {...props}
     >
       <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -90,6 +91,7 @@ function HomeIcon({ isActive, ...props }: NavIconProps) {
 function EarnIcon({ isActive, ...props }: NavIconProps) {
   return (
     <svg
+      aria-hidden="true"
       width="1.15em"
       height="1.15em"
       viewBox="0 0 24 24"
@@ -98,7 +100,7 @@ function EarnIcon({ isActive, ...props }: NavIconProps) {
       strokeWidth={isActive ? "2.2" : "1.8"}
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={`transition-colors duration-200 ${isActive ? "text-[#c0c6de]" : "text-[#909097]"}`}
+      className={`transition-colors duration-200 ${isActive ? "text-primary" : "text-outline"}`}
       {...props}
     >
       <line x1="12" y1="2" x2="12" y2="22" />
@@ -110,6 +112,7 @@ function EarnIcon({ isActive, ...props }: NavIconProps) {
 function CardsIcon({ isActive, ...props }: NavIconProps) {
   return (
     <svg
+      aria-hidden="true"
       width="1.15em"
       height="1.15em"
       viewBox="0 0 24 24"
@@ -118,7 +121,7 @@ function CardsIcon({ isActive, ...props }: NavIconProps) {
       strokeWidth={isActive ? "2" : "1.8"}
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={`transition-colors duration-200 ${isActive ? "text-[#c0c6de]" : "text-[#909097]"}`}
+      className={`transition-colors duration-200 ${isActive ? "text-primary" : "text-outline"}`}
       {...props}
     >
       <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
@@ -130,6 +133,7 @@ function CardsIcon({ isActive, ...props }: NavIconProps) {
 function ProfileIcon({ isActive, ...props }: NavIconProps) {
   return (
     <svg
+      aria-hidden="true"
       width="1.15em"
       height="1.15em"
       viewBox="0 0 24 24"
@@ -138,7 +142,7 @@ function ProfileIcon({ isActive, ...props }: NavIconProps) {
       strokeWidth={isActive ? "2" : "1.8"}
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={`transition-colors duration-200 ${isActive ? "text-[#c0c6de]" : "text-[#909097]"}`}
+      className={`transition-colors duration-200 ${isActive ? "text-primary" : "text-outline"}`}
       {...props}
     >
       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />

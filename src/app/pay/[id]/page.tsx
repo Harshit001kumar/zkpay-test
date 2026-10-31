@@ -490,28 +490,28 @@ export default function PayPage() {
     : "";
 
   return (
-    <div className="min-h-screen bg-[#131315] text-[#e5e2e3] font-body-md flex flex-col justify-between p-4 md:p-8 relative overflow-hidden selection:bg-[#c0c6de]/30">
+    <div className="min-h-screen bg-surface text-on-surface font-body-md flex flex-col justify-between p-4 md:p-8 relative overflow-hidden selection:bg-primary/30">
       {/* Ambient Radial Mesh */}
-      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(192,198,222,0.05),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(185,199,224,0.05),transparent_50%)]" />
+      <div className="fixed inset-0 pointer-events-none bg-surface" />
 
       {/* Top Header */}
       <header className="max-w-[520px] w-full mx-auto flex items-center justify-between py-4 relative z-20">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/15 flex items-center justify-center font-bold text-sm text-[#e5e2e3]">
+          <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/15 flex items-center justify-center font-bold text-sm text-on-surface">
             Zk
           </div>
           <div>
-            <h1 className="text-base font-bold tracking-tight text-[#e5e2e3] leading-none">
-              ZkPay <span className="text-[#c0c6de] font-normal">{linkData?.mode === "disburse" ? "Payout" : "Checkout"}</span>
+            <h1 className="text-base font-bold tracking-tight text-on-surface leading-none">
+              ZkPay <span className="text-primary font-normal">{linkData?.mode === "disburse" ? "Payout" : "Checkout"}</span>
             </h1>
-            <span className="font-label-caps text-[8px] text-[#c6c6cd]/60 tracking-[0.25em] font-bold uppercase">
+            <span className="font-label-caps text-[8px] text-on-surface-variant/60 tracking-normal font-bold ">
               {linkData?.mode === "disburse" ? "PIN-SECURED ESCROW" : "DECENTRALIZED SETTLEMENT"}
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-label-caps text-[#c6c6cd] tracking-[0.15em]">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-label-caps text-on-surface-variant tracking-normal">
+          <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
           <span>{CHAIN.name} Mainnet</span>
         </div>
       </header>
@@ -523,7 +523,7 @@ export default function PayPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, type: "spring", damping: 25 }}
         >
-          <SpotlightCard className="p-6 md:p-8 border border-white/20 shadow-2xl bg-[#141417]/95">
+          <SpotlightCard className="p-6 md:p-8 border border-white/20 bg-surface/95">
             <AnimatePresence mode="wait">
               {/* ─── 1. Loading State ─── */}
               {step === "loading" && (
@@ -534,9 +534,9 @@ export default function PayPage() {
                   exit={{ opacity: 0 }}
                   className="flex flex-col items-center justify-center gap-4 py-20"
                 >
-                  <div className="w-10 h-10 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin" />
-                  <p className="font-label-caps text-[10px] text-[#c6c6cd] tracking-[0.25em]">
-                    VERIFYING BASE ESCROW...
+                  <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  <p className="font-label-caps text-[10px] text-on-surface-variant tracking-normal">
+                    VERIFYING BASE ESCROW…
                   </p>
                 </motion.div>
               )}
@@ -550,39 +550,38 @@ export default function PayPage() {
                   exit={{ opacity: 0, y: -10 }}
                 >
                   <div className="flex items-center justify-between mb-4">
-                    <span className="font-label-caps text-[#c0c6de] text-[10px] tracking-[0.25em] font-bold">
+                    <span className="font-label-caps text-primary text-[10px] tracking-normal font-bold">
                       {linkData.type === "reusable" ? "REUSABLE INVOICE" : "OFFICIAL INVOICE"}
                     </span>
-                    <span className="font-mono text-xs text-[#c6c6cd]/60 px-2 py-0.5 rounded bg-white/5 border border-white/10">
+                    <span className="font-sans tabular-nums text-xs text-on-surface-variant/60 px-2 py-0.5 rounded bg-white/5 border border-white/10">
                       {linkData.linkId}
                     </span>
                   </div>
 
-                  <h2 className="text-2xl font-bold text-[#e5e2e3] tracking-tight mb-1">
+                  <h2 className="text-2xl font-bold text-on-surface tracking-tight mb-1">
                     {linkData.title}
                   </h2>
-                  <p className="text-xs text-[#c6c6cd]/80 mb-6 font-mono">
-                    Recipient: <span className="text-[#e5e2e3] font-semibold">{linkData.recipientUpi}</span>
+                  <p className="text-xs text-on-surface-variant/80 mb-6 font-sans tabular-nums">
+                    Recipient: <span className="text-on-surface font-semibold">{linkData.recipientUpi}</span>
                   </p>
 
                   {/* Dual Mode Switcher Tabs */}
                   <div className="grid grid-cols-2 p-1 rounded-xl bg-white/[0.04] border border-white/10 mb-6">
                     <button
                       onClick={() => setActiveTab("wallet")}
-                      className={`relative py-2.5 rounded-lg text-xs font-label-caps tracking-[0.15em] font-bold transition-all ${
-                        activeTab === "wallet" ? "text-[#131315]" : "text-[#c6c6cd] hover:text-white"
+                      className={`relative py-2.5 rounded-lg text-xs font-label-caps tracking-normal font-bold transition-colors whitespace-nowrap ${
+                        activeTab === "wallet" ? "text-surface" : "text-on-surface-variant hover:text-white"
                       }`}
                     >
                       {activeTab === "wallet" && (
                         <motion.div
                           layoutId="activeCheckoutTab"
-                          className="absolute inset-0 rounded-lg bg-[#e5e2e3] shadow-md"
+                          className="absolute inset-0 rounded-lg bg-on-surface shadow-md"
                           transition={{ type: "spring", stiffness: 400, damping: 30 }}
                         />
                       )}
                       <span className="relative z-10 flex items-center justify-center gap-1.5">
-                        <span className="material-symbols-outlined text-sm">account_balance_wallet</span>
-                        1-CLICK WALLET
+                        1-Click Wallet
                       </span>
                     </button>
 
@@ -591,14 +590,14 @@ export default function PayPage() {
                         setActiveTab("qr");
                         initCryptoDeposit();
                       }}
-                      className={`relative py-2.5 rounded-lg text-xs font-label-caps tracking-[0.15em] font-bold transition-all ${
-                        activeTab === "qr" ? "text-[#131315]" : "text-[#c6c6cd] hover:text-white"
+                      className={`relative py-2.5 rounded-lg text-xs font-label-caps tracking-normal font-bold transition-colors ${
+                        activeTab === "qr" ? "text-surface" : "text-on-surface-variant hover:text-white"
                       }`}
                     >
                       {activeTab === "qr" && (
                         <motion.div
                           layoutId="activeCheckoutTab"
-                          className="absolute inset-0 rounded-lg bg-[#e5e2e3] shadow-md"
+                          className="absolute inset-0 rounded-lg bg-on-surface shadow-md"
                           transition={{ type: "spring", stiffness: 400, damping: 30 }}
                         />
                       )}
@@ -613,17 +612,17 @@ export default function PayPage() {
                     /* Tab 1: 1-Click Connected Wallet */
                     <div className="space-y-6">
                       <div className="p-6 rounded-2xl bg-white/[0.03] border border-white/15">
-                        <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold block mb-2">
+                        <span className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold block mb-2">
                           PAYABLE FIAT TOTAL
                         </span>
-                        <div className="text-4xl md:text-5xl font-extrabold tracking-tighter text-[#e5e2e3] mb-3">
+                        <div className="text-4xl md:text-5xl font-extrabold tracking-tighter text-on-surface mb-3">
                           {linkData.amountINR}
                         </div>
                         <div className="flex items-center justify-between pt-3 border-t border-white/10 text-xs">
-                          <span className="text-[#c0c6de] font-mono font-bold">
+                          <span className="text-primary font-sans tabular-nums font-bold">
                             ≈ {linkData.estimatedUsdc}
                           </span>
-                          <span className="text-[#909097] text-[11px] font-mono">
+                          <span className="text-outline text-[11px] font-sans tabular-nums">
                             Rate: ₹{linkData.rate}/USDC
                           </span>
                         </div>
@@ -632,19 +631,19 @@ export default function PayPage() {
                       {authenticated && (
                         <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-xs">
                           <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${isBalanceSufficient ? "bg-emerald-400" : "bg-amber-400 animate-pulse"}`} />
-                            <span className="text-[#909097]">Wallet:</span>
-                            <span className="font-mono text-white font-medium">
+                            <div className={`w-2 h-2 rounded-full ${isBalanceSufficient ? "bg-success" : "bg-warning animate-pulse"}`} />
+                            <span className="text-outline">Wallet:</span>
+                            <span className="font-sans tabular-nums text-white font-medium">
                               {activeAddress ? `${activeAddress.slice(0, 6)}...${activeAddress.slice(-4)}` : "Connecting..."}
                             </span>
                             {isSmartWallet && (
-                              <span className="text-[9px] font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-1 py-0.5 rounded">
+                              <span className="text-[9px] font-sans tabular-nums bg-primary/10 text-primary border border-primary/20 px-1 py-0.5 rounded">
                                 Smart
                               </span>
                             )}
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className={`font-mono text-xs font-semibold ${isBalanceSufficient ? "text-emerald-400" : "text-amber-400"}`}>
+                            <span className={`font-sans tabular-nums text-xs font-semibold ${isBalanceSufficient ? "text-success" : "text-warning"}`}>
                               ${availableUsdc.toFixed(2)} USDC
                             </span>
                           </div>
@@ -652,8 +651,8 @@ export default function PayPage() {
                       )}
 
                       {error && (
-                        <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-500/30 text-xs text-[#ffb4ab] flex items-start gap-2">
-                          <span className="material-symbols-outlined text-sm text-red-400 shrink-0 mt-0.5">error</span>
+                        <div className="p-3.5 rounded-xl bg-error-container/40 border border-error/30 text-xs text-error flex items-start gap-2">
+                          <span className="material-symbols-outlined text-sm text-error shrink-0 mt-0.5">error</span>
                           <span className="leading-relaxed">{error}</span>
                         </div>
                       )}
@@ -684,8 +683,8 @@ export default function PayPage() {
                         <div className="p-3 bg-white rounded-2xl shadow-2xl relative">
                           {isCreatingDeposit ? (
                             <div className="w-44 h-44 flex flex-col items-center justify-center gap-2">
-                              <div className="w-8 h-8 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
-                              <span className="text-[10px] text-slate-600 font-mono">Generating Address...</span>
+                              <div className="w-8 h-8 border-2 border-outline-variant border-t-transparent rounded-full animate-spin" />
+                              <span className="text-[10px] text-outline font-sans tabular-nums">Generating Address…</span>
                             </div>
                           ) : (
                             <img
@@ -699,28 +698,28 @@ export default function PayPage() {
                         </div>
                       </div>
 
-                      <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5 text-xs font-mono text-left">
+                      <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-2.5 text-xs font-sans tabular-nums text-left">
                         <div className="flex justify-between">
-                          <span className="text-[#909097]">Send Exact</span>
-                          <span className="text-[#e5e2e3] font-bold">{linkData.estimatedUsdc}</span>
+                          <span className="text-outline">Send Exact</span>
+                          <span className="text-on-surface font-bold">{linkData.estimatedUsdc}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[#909097]">Network</span>
-                          <span className="text-[#c0c6de]">Base Mainnet (USDC)</span>
+                          <span className="text-outline">Network</span>
+                          <span className="text-primary">Base Mainnet (USDC)</span>
                         </div>
                         <div className="flex justify-between text-[11px] pt-1 border-t border-white/5">
-                          <span className="text-[#909097]">Tolerance Buffer</span>
-                          <span className="text-emerald-400">Min $0.95 USDC (No Fine)</span>
+                          <span className="text-outline">Tolerance Buffer</span>
+                          <span className="text-success">Min $0.95 USDC (No Fine)</span>
                         </div>
                         {ephemeralDepositAddress && (
                           <div className="pt-2 border-t border-white/10">
-                            <span className="text-[10px] text-[#909097] block mb-1">Deposit Address:</span>
+                            <span className="text-[10px] text-outline block mb-1">Deposit Address:</span>
                             <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-black/40 border border-white/10">
-                              <span className="truncate text-[11px] text-[#e5e2e3]">{ephemeralDepositAddress}</span>
+                              <span className="truncate text-[11px] text-on-surface">{ephemeralDepositAddress}</span>
                               <button
                                 type="button"
                                 onClick={() => copyToClipboard(ephemeralDepositAddress)}
-                                className="text-[#c0c6de] hover:text-white shrink-0 text-xs flex items-center gap-1"
+                                className="text-primary hover:text-white shrink-0 text-xs flex items-center gap-1"
                               >
                                 <span className="material-symbols-outlined text-xs">{copied ? "check" : "content_copy"}</span>
                                 <span>{copied ? "Copied" : "Copy"}</span>
@@ -730,29 +729,29 @@ export default function PayPage() {
                         )}
                         <div className="pt-2 border-t border-white/10">
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] text-[#909097]">Refund Address (Optional):</span>
-                            <span className="text-[9px] text-[#606067]">Auto-detected from sender if empty</span>
+                            <span className="text-[10px] text-outline">Refund Address (Optional):</span>
+                            <span className="text-[9px] text-outline">Auto-detected from sender if empty</span>
                           </div>
                           <input
                             type="text"
                             placeholder={activeAddress ? `${activeAddress.slice(0, 10)}...${activeAddress.slice(-6)} (Connected)` : "0x... (Personal Base Wallet)"}
                             value={customRefundAddress}
                             onChange={(e) => setCustomRefundAddress(e.target.value)}
-                            className="w-full px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-[#e5e2e3] placeholder-[#606067] focus:outline-none focus:border-cyan-400/50"
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/10 text-[11px] font-sans tabular-nums text-on-surface placeholder-outline focus:outline-none focus:border-primary/50"
                           />
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-center gap-2 text-xs text-[#909097] animate-pulse">
-                        <span className="w-2 h-2 rounded-full bg-cyan-400" />
-                        <span>Listening for deposit on Base... Auto-completes when detected.</span>
+                      <div className="flex items-center justify-center gap-2 text-xs text-outline animate-pulse">
+                        <span className="w-2 h-2 rounded-full bg-primary" />
+                        <span>Listening for deposit on Base… Auto-completes when detected.</span>
                       </div>
                     </div>
                   )}
 
                   <div className="flex items-center justify-center gap-2 mt-8 pt-4 border-t border-white/10">
-                    <span className="material-symbols-outlined text-sm text-[#c0c6de]">verified_user</span>
-                    <span className="font-label-caps text-[9px] text-[#909097] tracking-[0.25em]">
+                    <span className="material-symbols-outlined text-sm text-primary">verified_user</span>
+                    <span className="font-label-caps text-[9px] text-outline tracking-normal">
                       SECURED BY ZKPAY • BASE MAINNET ESCROW
                     </span>
                   </div>
@@ -768,30 +767,30 @@ export default function PayPage() {
                   exit={{ opacity: 0, y: -10 }}
                 >
                   <div className="flex items-center justify-between mb-4">
-                    <span className="font-label-caps text-emerald-400 text-[10px] tracking-[0.25em] font-bold">
+                    <span className="font-label-caps text-success text-[10px] tracking-normal font-bold">
                       CLAIMABLE ESCROW PAYOUT
                     </span>
-                    <span className="font-mono text-xs text-[#c6c6cd]/60 px-2 py-0.5 rounded bg-white/5 border border-white/10">
+                    <span className="font-sans tabular-nums text-xs text-on-surface-variant/60 px-2 py-0.5 rounded bg-white/5 border border-white/10">
                       {linkData.linkId}
                     </span>
                   </div>
 
-                  <h2 className="text-2xl font-bold text-[#e5e2e3] tracking-tight mb-1">
+                  <h2 className="text-2xl font-bold text-on-surface tracking-tight mb-1">
                     {linkData.title}
                   </h2>
-                  <p className="text-xs text-[#c6c6cd]/80 mb-6">
+                  <p className="text-xs text-on-surface-variant/80 mb-6">
                     Enter your recipient UPI ID and the 4-digit PIN provided by the sender.
                   </p>
 
                   {/* Amount Display */}
                   <div className="p-6 rounded-2xl bg-white/[0.03] border border-white/15 mb-6 text-center">
-                    <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold block mb-1">
+                    <span className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold block mb-1">
                       YOU RECEIVE
                     </span>
-                    <div className="text-4xl md:text-5xl font-extrabold tracking-tighter text-[#e5e2e3] mb-2">
+                    <div className="text-4xl md:text-5xl font-extrabold tracking-tighter text-on-surface mb-2">
                       {linkData.amountINR}
                     </div>
-                    <span className="text-xs text-emerald-400 font-mono font-medium">
+                    <span className="text-xs text-success font-sans tabular-nums font-medium">
                       ✓ Pre-funded with {linkData.estimatedUsdc} on Base
                     </span>
                   </div>
@@ -799,7 +798,7 @@ export default function PayPage() {
                   <form onSubmit={handleClaim} className="space-y-5">
                     {/* UPI Input */}
                     <div>
-                      <label className="block text-xs font-label-caps tracking-[0.15em] text-[#c6c6cd] font-semibold mb-2">
+                      <label className="block text-xs font-label-caps tracking-normal text-on-surface-variant font-semibold mb-2">
                         YOUR RECIPIENT UPI ID
                       </label>
                       <input
@@ -808,17 +807,17 @@ export default function PayPage() {
                         onChange={(e) => setClaimUpi(e.target.value.toLowerCase().trim())}
                         placeholder="e.g. yourname@okaxis / 9876543210@paytm"
                         required
-                        className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-[#e5e2e3] placeholder-[#909097] text-sm font-mono focus:outline-none focus:border-[#c0c6de] transition-colors"
+                        className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-on-surface placeholder-outline text-sm font-sans tabular-nums focus:outline-none focus:border-primary transition-colors"
                       />
                     </div>
 
                     {/* 4-Digit PIN Input */}
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <label className="text-xs font-label-caps tracking-[0.15em] text-[#c6c6cd] font-semibold">
+                        <label className="text-xs font-label-caps tracking-normal text-on-surface-variant font-semibold">
                           4-DIGIT SECURITY PIN
                         </label>
-                        <span className="text-[10px] text-amber-400 font-mono">
+                        <span className="text-[10px] text-warning font-sans tabular-nums">
                           {claimAttemptsRemaining} attempts remaining
                         </span>
                       </div>
@@ -833,12 +832,12 @@ export default function PayPage() {
                           onChange={(e) => setClaimPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
                           placeholder="••••"
                           required
-                          className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-center text-2xl font-mono tracking-[0.5em] text-[#e5e2e3] placeholder-[#909097] focus:outline-none focus:border-[#c0c6de] transition-colors"
+                          className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-center text-2xl font-sans tabular-nums tracking-normal text-on-surface placeholder-outline focus:outline-none focus:border-primary transition-colors"
                         />
                         <button
                           type="button"
                           onClick={() => setShowPin(!showPin)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#909097] hover:text-white text-xs font-mono"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-white text-xs font-sans tabular-nums"
                         >
                           <span className="material-symbols-outlined text-sm">
                             {showPin ? "visibility_off" : "visibility"}
@@ -848,8 +847,8 @@ export default function PayPage() {
                     </div>
 
                     {error && (
-                      <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-500/30 text-xs text-[#ffb4ab] flex items-start gap-2">
-                        <span className="material-symbols-outlined text-sm text-red-400 shrink-0 mt-0.5">error</span>
+                      <div className="p-3.5 rounded-xl bg-error-container/40 border border-error/30 text-xs text-error flex items-start gap-2">
+                        <span className="material-symbols-outlined text-sm text-error shrink-0 mt-0.5">error</span>
                         <span className="leading-relaxed">{error}</span>
                       </div>
                     )}
@@ -881,14 +880,14 @@ export default function PayPage() {
                   exit={{ opacity: 0 }}
                   className="flex flex-col items-center justify-center gap-5 py-20 text-center"
                 >
-                  <div className="w-12 h-12 border-3 border-[#c0c6de] border-t-transparent rounded-full animate-spin" />
+                  <div className="w-12 h-12 border-3 border-primary border-t-transparent rounded-full animate-spin" />
                   <div>
                     <ShinyText
                       text="CONFIRMING ON BASE MAINNET"
-                      className="font-label-caps text-xs tracking-[0.25em] font-bold mb-1.5 block"
+                      className="font-label-caps text-xs tracking-normal font-bold mb-1.5 block"
                     />
-                    <p className="text-xs text-[#909097]">
-                      Processing transaction and delivering fiat via UPI...
+                    <p className="text-xs text-outline">
+                      Processing transaction and delivering fiat via UPI…
                     </p>
                   </div>
                 </motion.div>
@@ -902,40 +901,37 @@ export default function PayPage() {
                   animate={{ opacity: 1, scale: 1 }}
                   className="text-center py-6"
                 >
-                  <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto mb-4 text-emerald-400">
+                  <div className="w-16 h-16 rounded-full bg-success/10 border border-success/30 flex items-center justify-center mx-auto mb-4 text-success">
                     <span className="material-symbols-outlined text-3xl">check_circle</span>
                   </div>
 
-                  <span className="font-label-caps text-[10px] text-emerald-400 tracking-[0.25em] font-bold block mb-1">
-                    TRANSACTION SETTLED
-                  </span>
-                  <h3 className="text-3xl font-extrabold text-[#e5e2e3] tracking-tight mb-2">
+                  <h3 className="text-3xl font-extrabold text-on-surface tracking-tight mb-2">
                     Payment Successful
                   </h3>
-                  <p className="text-xs text-[#909097] mb-6">
+                  <p className="text-xs text-outline mb-6">
                     {depositResult?.fiatAmount || linkData?.amountINR} delivered to {linkData?.claimantUpi || linkData?.recipientUpi} via UPI
                   </p>
 
                   {/* Discrepancy Notifications */}
                   {depositResult?.discrepancyType === "UNDERPAID_ACCEPTED" && (
-                    <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 text-left mb-6">
+                    <div className="p-3.5 rounded-xl bg-warning/10 border border-warning/30 text-xs text-warning text-left mb-6">
                       <div className="flex items-center gap-1.5 font-bold mb-1">
-                        <span className="material-symbols-outlined text-sm text-amber-400">info</span>
+                        <span className="material-symbols-outlined text-sm text-warning">info</span>
                         <span>Partial Payment Accepted (No Fine)</span>
                       </div>
-                      <p className="text-[11px] text-amber-200/80 leading-relaxed">
+                      <p className="text-[11px] text-warning/80 leading-relaxed">
                         Received ${depositResult.receivedUsdc} USDC (expected {depositResult.expectedAmountUsdc}). Within tolerance margin — pro-rated {depositResult.fiatAmount} was processed directly to UPI!
                       </p>
                     </div>
                   )}
 
                   {depositResult?.discrepancyType === "OVERPAID_ACCEPTED" && (
-                    <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-200 text-left mb-6">
+                    <div className="p-3.5 rounded-xl bg-success/10 border border-success/30 text-xs text-success text-left mb-6">
                       <div className="flex items-center gap-1.5 font-bold mb-1">
-                        <span className="material-symbols-outlined text-sm text-emerald-400">celebration</span>
+                        <span className="material-symbols-outlined text-sm text-success">celebration</span>
                         <span>Overpayment Processed</span>
                       </div>
-                      <p className="text-[11px] text-emerald-200/80 leading-relaxed">
+                      <p className="text-[11px] text-success/80 leading-relaxed">
                         Received ${depositResult.receivedUsdc} USDC (expected {depositResult.expectedAmountUsdc}). Full bonus amount of {depositResult.fiatAmount} was delivered to UPI!
                       </p>
                     </div>
@@ -946,7 +942,7 @@ export default function PayPage() {
                       href={`https://basescan.org/tx/${txHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/5 border border-white/15 text-xs font-mono text-[#c0c6de] hover:text-white transition-colors mb-6"
+                      className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/5 border border-white/15 text-xs font-sans tabular-nums text-primary hover:text-white transition-colors mb-6"
                     >
                       <span>View on Basescan</span>
                       <span className="material-symbols-outlined text-sm">open_in_new</span>
@@ -957,7 +953,7 @@ export default function PayPage() {
                     <a
                       href={linkData.redirectUrl}
                       rel="noopener noreferrer"
-                      className="block w-full py-4 rounded-xl bg-[#e5e2e3] hover:bg-white text-[#131315] font-bold text-xs tracking-[0.25em] font-label-caps uppercase transition-all shadow-lg"
+                      className="block w-full py-4 rounded-xl bg-on-surface hover:bg-white text-surface font-bold text-xs tracking-normal font-label-caps  transition-colors shadow-lg"
                     >
                       RETURN TO MERCHANT
                     </a>
@@ -974,13 +970,13 @@ export default function PayPage() {
                   exit={{ opacity: 0 }}
                   className="text-center py-12"
                 >
-                  <div className="w-16 h-16 rounded-full bg-red-950/40 border border-red-500/30 flex items-center justify-center mx-auto mb-4 text-red-400">
+                  <div className="w-16 h-16 rounded-full bg-error-container/40 border border-error/30 flex items-center justify-center mx-auto mb-4 text-error">
                     <span className="material-symbols-outlined text-3xl">lock</span>
                   </div>
-                  <h3 className="text-xl font-bold text-[#e5e2e3] mb-2">
+                  <h3 className="text-xl font-bold text-on-surface mb-2">
                     Link Locked
                   </h3>
-                  <p className="text-xs text-[#c6c6cd] max-w-xs mx-auto mb-6">
+                  <p className="text-xs text-on-surface-variant max-w-xs mx-auto mb-6">
                     This pay link has exceeded the maximum limit of 5 incorrect PIN attempts. For security, access has been permanently locked. Please contact the sender.
                   </p>
                 </motion.div>
@@ -997,31 +993,31 @@ export default function PayPage() {
                 >
                   {depositResult?.discrepancyType === "UNDERPAID_REJECTED" ? (
                     <div className="space-y-4">
-                      <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto text-amber-400">
+                      <div className="w-16 h-16 rounded-full bg-warning/10 border border-warning/30 flex items-center justify-center mx-auto text-warning">
                         <span className="material-symbols-outlined text-3xl">warning</span>
                       </div>
-                      <h3 className="text-2xl font-bold text-[#e5e2e3]">
+                      <h3 className="text-2xl font-bold text-on-surface">
                         Deposit Under Minimum
                       </h3>
-                      <p className="text-xs text-[#c6c6cd] max-w-xs mx-auto">
+                      <p className="text-xs text-on-surface-variant max-w-xs mx-auto">
                         Deposit of <strong>${depositResult.receivedUsdc} USDC</strong> is below the minimum threshold ($0.95 USDC).
                       </p>
 
-                      <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 text-xs font-mono text-left space-y-2 max-w-sm mx-auto">
+                      <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 text-xs font-sans tabular-nums text-left space-y-2 max-w-sm mx-auto">
                         <div className="flex justify-between">
-                          <span className="text-[#909097]">Received:</span>
+                          <span className="text-outline">Received:</span>
                           <span className="text-white">${depositResult.receivedUsdc} USDC</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[#909097]">Processing Fine:</span>
-                          <span className="text-red-400">-${depositResult.underpaidPenaltyUsdc} USDC</span>
+                          <span className="text-outline">Processing Fine:</span>
+                          <span className="text-error">-${depositResult.underpaidPenaltyUsdc} USDC</span>
                         </div>
                         <div className="flex justify-between pt-2 border-t border-white/10">
-                          <span className="text-[#909097]">Refund Status:</span>
-                          <span className="text-cyan-400">{depositResult.refundStatus || "REFUNDED"}</span>
+                          <span className="text-outline">Refund Status:</span>
+                          <span className="text-primary">{depositResult.refundStatus || "REFUNDED"}</span>
                         </div>
                         {depositResult.refundAddress && (
-                          <div className="text-[10px] text-[#909097] truncate">
+                          <div className="text-[10px] text-outline truncate">
                             To: {depositResult.refundAddress}
                           </div>
                         )}
@@ -1032,7 +1028,7 @@ export default function PayPage() {
                           href={`https://basescan.org/tx/${depositResult.refundTxHash}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/5 border border-white/15 text-xs font-mono text-cyan-400 hover:text-white transition-colors"
+                          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/5 border border-white/15 text-xs font-sans tabular-nums text-primary hover:text-white transition-colors"
                         >
                           <span>View Refund on Basescan</span>
                           <span className="material-symbols-outlined text-sm">open_in_new</span>
@@ -1041,13 +1037,13 @@ export default function PayPage() {
                     </div>
                   ) : (
                     <>
-                      <div className="w-16 h-16 rounded-full bg-red-950/40 border border-red-500/30 flex items-center justify-center mx-auto mb-4 text-[#ffb4ab]">
+                      <div className="w-16 h-16 rounded-full bg-error-container/40 border border-error/30 flex items-center justify-center mx-auto mb-4 text-error">
                         <span className="material-symbols-outlined text-3xl">error</span>
                       </div>
-                      <h3 className="text-xl font-bold text-[#e5e2e3] mb-2">
+                      <h3 className="text-xl font-bold text-on-surface mb-2">
                         Payment Error
                       </h3>
-                      <p className="text-xs text-[#c6c6cd] max-w-xs mx-auto">
+                      <p className="text-xs text-on-surface-variant max-w-xs mx-auto">
                         {error || "We could not locate this payment invoice."}
                       </p>
                     </>
@@ -1064,13 +1060,13 @@ export default function PayPage() {
                   exit={{ opacity: 0 }}
                   className="text-center py-12"
                 >
-                  <div className="w-16 h-16 rounded-full bg-amber-950/40 border border-amber-500/30 flex items-center justify-center mx-auto mb-4 text-amber-400">
+                  <div className="w-16 h-16 rounded-full bg-warning/15/40 border border-warning/30 flex items-center justify-center mx-auto mb-4 text-warning">
                     <span className="material-symbols-outlined text-3xl">timer_off</span>
                   </div>
-                  <h3 className="text-xl font-bold text-[#e5e2e3] mb-2">
+                  <h3 className="text-xl font-bold text-on-surface mb-2">
                     Link Expired or Refunded
                   </h3>
-                  <p className="text-xs text-[#c6c6cd] max-w-xs mx-auto">
+                  <p className="text-xs text-on-surface-variant max-w-xs mx-auto">
                     This payment link is no longer active.
                   </p>
                 </motion.div>
@@ -1082,7 +1078,7 @@ export default function PayPage() {
 
       {/* Bottom Legal / Info */}
       <footer className="max-w-[520px] w-full mx-auto text-center py-4 relative z-20">
-        <p className="text-[10px] text-[#909097] font-mono">
+        <p className="text-[10px] text-outline font-sans tabular-nums">
           Powered by ZkPay Engine • Zero-Knowledge Crypto-to-Fiat Protocol
         </p>
       </footer>

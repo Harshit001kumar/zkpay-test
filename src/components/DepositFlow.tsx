@@ -135,17 +135,17 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
 
   if (!ready || (authenticated && !address)) {
     return (
-      <div className="bg-[#0e0e0f] text-[#e5e2e3] min-h-[100dvh] flex flex-col items-center justify-center p-6 gap-3">
-        <Loader2 className="w-8 h-8 animate-spin text-[#c0c6de]" />
-        <p className="text-sm text-[#909097]">Initializing wallet account...</p>
+      <div className="bg-surface-container-lowest text-on-surface min-h-[100dvh] flex flex-col items-center justify-center p-6 gap-3">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <p className="text-sm text-outline">Initializing wallet account…</p>
       </div>
     );
   }
 
   if (!authenticated) {
     return (
-      <div className="bg-[#0e0e0f] text-[#e5e2e3] min-h-[100dvh] flex flex-col items-center justify-center p-6 gap-4 text-center">
-        <p className="text-sm text-[#909097]">Please sign in to make a deposit.</p>
+      <div className="bg-surface-container-lowest text-on-surface min-h-[100dvh] flex flex-col items-center justify-center p-6 gap-4 text-center">
+        <p className="text-sm text-outline">Please sign in to make a deposit.</p>
         {onBack && (
           <button
             onClick={onBack}
@@ -218,7 +218,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
   };
 
   return (
-    <div className="bg-[#0e0e0f] text-[#e5e2e3] font-body-md selection:bg-[#c0c6de]/30 min-h-[100dvh] relative flex flex-col z-[60] fixed inset-0 overflow-y-auto">
+    <div className="bg-surface-container-lowest text-on-surface font-body-md selection:bg-primary/30 min-h-[100dvh] relative flex flex-col z-[60] fixed inset-0 overflow-y-auto">
       <style dangerouslySetInnerHTML={{__html: `
         .obsidian-glass {
             background: rgba(255, 255, 255, 0.02);
@@ -242,13 +242,13 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
       {/* Top AppBar */}
       <header className="w-full z-50 flex justify-between items-center px-6 py-8">
         <div className="flex items-center gap-4">
-          <button onClick={onBack} className="active:scale-95 transition-transform text-[#e5e2e3]">
+          <button onClick={onBack} className="active:scale-95 transition-transform text-on-surface">
             <span className="material-symbols-outlined text-[32px]">arrow_back</span>
           </button>
-          <h1 className="font-headline-lg text-[24px] text-[#e5e2e3] tracking-tighter font-bold">Deposit Crypto</h1>
+          <h1 className="font-headline-lg text-[24px] text-on-surface tracking-tighter font-bold">Deposit Crypto</h1>
         </div>
         <div className="w-10 h-10 rounded-full obsidian-glass flex items-center justify-center silver-rim">
-          <span className="material-symbols-outlined text-[#c0c6de]">person</span>
+          <span className="material-symbols-outlined text-primary">person</span>
         </div>
       </header>
 
@@ -256,32 +256,32 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
       <section className="px-6 pb-6 relative z-30">
         <button 
           onClick={() => !depositAddress && setIsAssetSelectOpen(!isAssetSelectOpen)}
-          className={`w-full max-w-sm mx-auto obsidian-glass silver-rim p-5 rounded-2xl flex items-center justify-between group transition-all ${depositAddress ? 'opacity-50 cursor-not-allowed' : 'active:scale-[0.98]'}`}
+          className={`w-full max-w-sm mx-auto obsidian-glass silver-rim p-5 rounded-2xl flex items-center justify-between group transition-colors ${depositAddress ? 'opacity-50 cursor-not-allowed' : 'active:scale-[0.98]'}`}
         >
           <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-[#c0c6de]/20 flex items-center justify-center">
-              <span className="material-symbols-outlined text-[#c0c6de]">currency_bitcoin</span>
+            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+              <span className="material-symbols-outlined text-primary">currency_bitcoin</span>
             </div>
             <div className="text-left">
-              <p className="font-bold text-[#e5e2e3]">{sourceAsset.name}</p>
-              <p className="text-[12px] text-[#c6c6cd] uppercase tracking-[0.2em] font-label-caps font-bold">{sourceAsset.blockchain} Network</p>
+              <p className="font-bold text-on-surface">{sourceAsset.name}</p>
+              <p className="text-[12px] text-on-surface-variant  tracking-normal font-label-caps font-bold">{sourceAsset.blockchain} Network</p>
             </div>
           </div>
-          {!depositAddress && <ChevronDown className="w-5 h-5 text-[#c6c6cd] group-hover:text-[#c0c6de] transition-colors" />}
+          {!depositAddress && <ChevronDown className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />}
         </button>
 
         {isAssetSelectOpen && !depositAddress && (
-          <div className="absolute top-full left-6 right-6 max-w-sm mx-auto mt-2 obsidian-glass silver-rim rounded-2xl overflow-hidden z-40 bg-[#0e0e0f]/90">
+          <div className="absolute top-full left-6 right-6 max-w-sm mx-auto mt-2 obsidian-glass silver-rim rounded-2xl overflow-hidden z-40 bg-surface-container-lowest/90">
             {DEPOSIT_ASSETS.map(asset => (
               <button 
                 key={`${asset.symbol}-${asset.blockchain}`}
                 onClick={() => { setSourceAsset(asset); setIsAssetSelectOpen(false); }}
                 className="w-full p-4 flex items-center gap-4 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 text-left"
               >
-                <div className="w-8 h-8 rounded-full bg-[#c0c6de]/10 flex items-center justify-center text-[#c0c6de] text-xs font-bold">{asset.symbol[0]}</div>
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">{asset.symbol[0]}</div>
                 <div>
-                  <p className="font-bold text-[#e5e2e3]">{asset.name}</p>
-                  <p className="text-[10px] text-[#c6c6cd] uppercase tracking-[0.2em] font-bold">{asset.blockchain} Network</p>
+                  <p className="font-bold text-on-surface">{asset.name}</p>
+                  <p className="text-[10px] text-on-surface-variant  tracking-normal font-bold">{asset.blockchain} Network</p>
                 </div>
               </button>
             ))}
@@ -292,7 +292,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
       {/* The Glass Monolith */}
       <main className="flex-grow glass-monolith mx-0 mt-2 relative overflow-y-auto flex flex-col items-center pt-12 px-6 max-w-2xl md:mx-auto md:w-full md:rounded-t-[40px] md:border-x">
         {/* Subtle Gradient Background Glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-[radial-gradient(circle_at_50%_0%,rgba(192,198,222,0.08)_0%,transparent_60%)] pointer-events-none"></div>
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-surface pointer-events-none"></div>
         
         <div className="w-full max-w-sm flex flex-col items-center space-y-12 relative z-10 pb-44">
           
@@ -300,52 +300,52 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
             // STEP 1 CONTENT
             <div className="w-full space-y-8 animate-in fade-in slide-in-from-bottom-4">
               <div className="space-y-4 text-center">
-                <p className="font-label-caps text-[12px] text-[#c6c6cd] uppercase tracking-[0.2em] font-bold">Amount to Send</p>
+                <p className="font-label-caps text-[12px] text-on-surface-variant  tracking-normal font-bold">Amount to Send</p>
                 <div className="relative inline-flex items-baseline group">
                   <input
                     type="number"
                     value={depositAmount}
                     onChange={(e) => setDepositAmount(e.target.value)}
                     placeholder="0.00"
-                    className="bg-transparent border-none text-center font-display-xl text-[64px] font-extrabold text-[#e5e2e3] focus:ring-0 p-0 w-48 tracking-tighter"
+                    className="bg-transparent border-none text-center font-display-xl text-[64px] font-extrabold text-on-surface focus:ring-0 p-0 w-48 tracking-tighter"
                   />
                 </div>
-                <p className="font-headline-md text-[#bcc7de] text-lg font-bold tracking-widest">{sourceAsset.symbol}</p>
+                <p className="font-headline-md text-secondary text-lg font-bold tracking-normal">{sourceAsset.symbol}</p>
               </div>
 
               {/* Optional Refund Address for Non-EVM assets (Solana, BTC, Tron, LTC) */}
               {sourceAsset.blockchain !== "eth" && sourceAsset.blockchain !== "arb" && sourceAsset.blockchain !== "bsc" && sourceAsset.blockchain !== "base" && sourceAsset.blockchain !== "polygon" && (
                 <div className="space-y-1.5 text-left w-full bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
                   <div className="flex items-center justify-between">
-                    <label className="font-label-caps text-[11px] text-[#c6c6cd] uppercase tracking-[0.15em] font-bold">
+                    <label className="font-label-caps text-[11px] text-on-surface-variant  tracking-normal font-bold">
                       {sourceAsset.name} Refund Address
                     </label>
-                    <span className="text-[#909097] text-[10px] lowercase">(optional)</span>
+                    <span className="text-outline text-[10px] lowercase">(optional)</span>
                   </div>
                   <input
                     type="text"
                     value={refundAddress}
                     onChange={(e) => setRefundAddress(e.target.value.trim())}
                     placeholder={`Your ${sourceAsset.symbol} address if swap fails`}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-[#e5e2e3] font-mono placeholder:text-[#909097]/40 focus:outline-none focus:border-[#c0c6de] transition-colors"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-on-surface font-sans tabular-nums placeholder:text-outline/40 focus:outline-none focus:border-primary transition-colors"
                   />
                 </div>
               )}
 
               <div className="bg-black/20 rounded-2xl p-6 border border-white/5 space-y-3 text-center">
-                <p className="font-label-caps text-[10px] text-[#909097] uppercase tracking-[0.2em] font-bold">You will receive approx.</p>
+                <p className="font-label-caps text-[10px] text-outline  tracking-normal font-bold">You will receive approx.</p>
                 <div className="h-10 flex items-center justify-center">
                   {isEstimating ? (
-                    <Loader2 className="w-5 h-5 animate-spin text-[#909097]" />
+                    <Loader2 className="w-5 h-5 animate-spin text-outline" />
                   ) : estimatedReceive?.startsWith("Error:") ? (
-                    <p className="text-[12px] font-bold text-[#ffb4ab]">{estimatedReceive.replace("Error: ", "")}</p>
+                    <p className="text-[12px] font-bold text-error">{estimatedReceive.replace("Error: ", "")}</p>
                   ) : (
-                    <p className="font-headline-md text-3xl font-bold text-[#c0c6de]">{estimatedReceive || "0.00"} <span className="text-sm text-[#909097]">USDC</span></p>
+                    <p className="font-headline-md text-3xl font-bold text-primary">{estimatedReceive || "0.00"} <span className="text-sm text-outline">USDC</span></p>
                   )}
                 </div>
                 {/* Time info (no fee percentage shown to user) */}
                 {timeEstimate && (
-                  <div className="flex items-center justify-center gap-2 text-[10px] text-[#909097]">
+                  <div className="flex items-center justify-center gap-2 text-[10px] text-outline">
                     <Clock className="w-3 h-3" />
                     <span>~{Math.ceil(timeEstimate / 60)} min estimated settlement</span>
                   </div>
@@ -353,7 +353,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
               </div>
 
               {depositError && (
-                <div className="bg-[#93000a]/20 text-[#ffb4ab] p-3 rounded-xl text-xs border border-[#93000a]/40 text-center">
+                <div className="bg-error-container/20 text-error p-3 rounded-xl text-xs border border-error-container/40 text-center">
                   {depositError}
                 </div>
               )}
@@ -361,7 +361,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
               <button
                 onClick={handleCreateDeposit}
                 disabled={isCreating || !estimatedReceive || estimatedReceive.startsWith("Error") || isEstimating}
-                className="w-full bg-[#c0c6de] text-[#131315] hover:bg-white font-headline-md text-[18px] font-bold py-5 rounded-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-95"
+                className="w-full bg-primary text-surface hover:bg-white font-headline-md text-[18px] font-bold py-5 rounded-2xl transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-95"
               >
                 {isCreating ? (
                   <><Loader2 className="w-5 h-5 animate-spin" /> Generating Address</>
@@ -387,8 +387,8 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
               <div className="w-full space-y-6 text-center">
                 {/* Deadline countdown */}
                 {deadlineRemaining && exchangeStatus === "pending" && (
-                  <div className={`flex items-center justify-center gap-2 text-sm font-mono ${
-                    deadlineRemaining === "Expired" ? "text-[#ffb4ab]" : "text-[#c0c6de]"
+                  <div className={`flex items-center justify-center gap-2 text-sm font-sans tabular-nums ${
+                    deadlineRemaining === "Expired" ? "text-error" : "text-primary"
                   }`}>
                     <Clock className="w-4 h-4" />
                     <span>Deposit window: {deadlineRemaining}</span>
@@ -396,19 +396,19 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
                 )}
 
                 <div className="space-y-2">
-                  <p className="font-label-caps text-[12px] text-[#c6c6cd] uppercase tracking-[0.2em] font-bold">Deposit Address</p>
+                  <p className="font-label-caps text-[12px] text-on-surface-variant  tracking-normal font-bold">Deposit Address</p>
                   <div className="flex flex-col items-center gap-4">
-                    <code className="font-mono text-xl text-white tracking-tight break-all max-w-[280px] bg-black/40 p-4 rounded-xl border border-white/10">
+                    <code className="font-sans tabular-nums text-xl text-white tracking-tight break-all max-w-[280px] bg-black/40 p-4 rounded-xl border border-white/10">
                       {depositAddress}
                     </code>
                     <button 
                       onClick={copyAddress}
-                      className="flex items-center gap-2 px-6 py-3 rounded-full obsidian-glass silver-rim hover:bg-white/10 transition-all active:scale-95"
+                      className="flex items-center gap-2 px-6 py-3 rounded-full obsidian-glass silver-rim hover:bg-white/10 transition-colors active:scale-95"
                     >
-                      <span className={`material-symbols-outlined text-[20px] ${copied ? 'text-green-400' : 'text-[#c0c6de]'}`}>
+                      <span className={`material-symbols-outlined text-[20px] ${copied ? 'text-success' : 'text-primary'}`}>
                         {copied ? 'check' : 'content_copy'}
                       </span>
-                      <span className="font-label-caps text-[#e5e2e3] uppercase tracking-widest text-[11px] font-bold">
+                      <span className="font-label-caps text-on-surface  tracking-normal text-[11px] font-bold">
                         {copied ? "Copied!" : "Copy Address"}
                       </span>
                     </button>
@@ -418,16 +418,16 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
                 {/* Deposit memo (required for Stellar/TON) */}
                 {depositMemo && (
                   <div className="space-y-2">
-                    <p className="font-label-caps text-[12px] text-[#ffb4ab] uppercase tracking-[0.2em] font-bold flex items-center justify-center gap-1">
+                    <p className="font-label-caps text-[12px] text-error  tracking-normal font-bold flex items-center justify-center gap-1">
                       <AlertTriangle className="w-3 h-3" /> Required Memo
                     </p>
                     <div className="flex flex-col items-center gap-2">
-                      <code className="font-mono text-lg text-white bg-black/40 p-3 rounded-xl border border-[#ffb4ab]/30">
+                      <code className="font-sans tabular-nums text-lg text-white bg-black/40 p-3 rounded-xl border border-error/30">
                         {depositMemo}
                       </code>
                       <button
                         onClick={copyMemo}
-                        className="text-xs text-[#c0c6de] underline hover:text-white transition-colors"
+                        className="text-xs text-primary underline hover:text-white transition-colors"
                       >
                         {copiedMemo ? "Copied!" : "Copy Memo"}
                       </button>
@@ -437,16 +437,16 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
 
                 <div className="pt-6 border-t border-white/10 w-full flex items-center justify-between text-left">
                   <div>
-                    <p className="font-label-caps text-[10px] text-[#909097] uppercase tracking-[0.2em] font-bold mb-1">Status</p>
-                    <p className="font-headline-md text-lg text-[#e5e2e3] capitalize">{getStatusText(exchangeStatus)}</p>
+                    <p className="font-label-caps text-[10px] text-outline  tracking-normal font-bold mb-1">Status</p>
+                    <p className="font-headline-md text-lg text-on-surface capitalize">{getStatusText(exchangeStatus)}</p>
                   </div>
                   {exchangeStatus === "settled" ? (
-                    <div className="w-10 h-10 rounded-full bg-[#c0c6de] flex items-center justify-center">
-                      <Check className="w-5 h-5 text-[#131315]" />
+                    <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
+                      <Check className="w-5 h-5 text-surface" />
                     </div>
                   ) : (
                     <div className="w-10 h-10 rounded-full border-2 border-white/20 flex items-center justify-center">
-                      <Loader2 className="w-5 h-5 text-[#c0c6de] animate-spin" />
+                      <Loader2 className="w-5 h-5 text-primary animate-spin" />
                     </div>
                   )}
                 </div>
@@ -456,16 +456,16 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
                   setDepositMemo(null);
                   setDeadline(null);
                   setExchangeStatus("waiting");
-                }} className="text-xs text-[#909097] underline mt-4 hover:text-white transition-colors">
+                }} className="text-xs text-outline underline mt-4 hover:text-white transition-colors">
                   Cancel / Start Over
                 </button>
               </div>
 
               {/* Floating Warning Toast */}
               <div className="mt-8 w-full max-w-sm mx-auto">
-                <div className="bg-black/60 backdrop-blur-md border border-white/20 p-5 flex gap-4 items-start shadow-2xl rounded-2xl">
-                  <span className="material-symbols-outlined text-[#c0c6de] flex-shrink-0">info</span>
-                  <p className="text-[13px] text-[#e5e2e3] leading-relaxed">
+                <div className="bg-black/60 border border-white/20 p-5 flex gap-4 items-start rounded-2xl">
+                  <span className="material-symbols-outlined text-primary flex-shrink-0">info</span>
+                  <p className="text-[13px] text-on-surface leading-relaxed">
                     Only send <span className="text-white font-bold">{sourceAsset.symbol} ({sourceAsset.blockchain.toUpperCase()})</span> to this address.{depositMemo ? " Include the memo above." : ""} Other assets will be lost forever.
                   </p>
                 </div>

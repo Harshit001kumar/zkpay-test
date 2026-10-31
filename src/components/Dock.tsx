@@ -146,13 +146,13 @@ const menuPath = (width: number, height: number, side: string | null, at: number
 };
 
 const CheckGlyph = () => (
-  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2">
+  <svg aria-hidden="true" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M3.5 8.5l3 3 6-7" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
 const ChevronGlyph = () => (
-  <svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2">
+  <svg aria-hidden="true" viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M6 3.5L10.5 8 6 12.5" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );

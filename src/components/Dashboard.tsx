@@ -66,22 +66,22 @@ export default function Dashboard() {
     <main className="relative z-10 max-w-[1440px] mx-auto pt-8 pb-24 px-5 md:px-8">
       {/* Hero Section */}
       <section className="mb-8">
-        <div className="bg-[#1a1a1d]/80 backdrop-blur-md border border-white/15 rounded-xl p-8 md:p-12 relative overflow-hidden shadow-2xl transition-all hover:border-white/25 group">
+        <div className="bg-surface-container-low/80 border border-white/15 rounded-xl p-8 md:p-12 relative overflow-hidden transition-colors hover:border-white/25 group">
           <div className="absolute top-4 right-4 md:top-6 md:right-8 opacity-10 pointer-events-none">
             <Shield className="w-32 h-32 md:w-44 md:h-44 text-white stroke-[1]" />
           </div>
           <div className="relative z-10">
             <div className="flex items-center gap-3 mb-8">
-              <span className="font-label-caps text-[#c0c6de] text-[10px] tracking-[0.25em] font-bold">TOTAL PORTFOLIO</span>
+              <span className="font-label-caps text-primary text-[10px] tracking-normal font-bold">TOTAL PORTFOLIO</span>
               <div className="h-px w-8 bg-white/20"></div>
             </div>
-            <h1 className="font-display-xl text-[#e5e2e3] text-5xl md:text-[80px] tracking-tighter mb-12 font-medium">
-              <CountUp to={Number(balance)} prefix="$" decimals={2} /> <span className="text-[#c6c6cd]/40 font-extralight text-3xl md:text-[80px]">USDC</span>
+            <h1 className="font-display-xl text-on-surface text-5xl md:text-[80px] tracking-tighter mb-12 font-medium">
+              <CountUp to={Number(balance)} prefix="$" decimals={2} /> <span className="text-on-surface-variant/40 font-extralight text-3xl md:text-[80px]">USDC</span>
             </h1>
             <div className="grid grid-cols-2 md:flex md:items-center gap-4 md:gap-12 pt-8 border-t border-white/10">
               <div className="flex flex-col gap-1">
-                <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">NETWORK</span>
-                <span className="font-body-md font-medium tracking-tight text-[#e5e2e3]">{CHAIN.name}</span>
+                <span className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold">NETWORK</span>
+                <span className="font-body-md font-medium tracking-tight text-on-surface">{CHAIN.name}</span>
               </div>
               <div className="hidden md:block w-px h-8 bg-white/10"></div>
               <div 
@@ -89,18 +89,18 @@ export default function Dashboard() {
                 className="flex flex-col gap-1 cursor-pointer group"
                 title="Click to switch default currency"
               >
-                <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold group-hover:text-[#c0c6de] transition-colors">
+                <span className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold group-hover:text-primary transition-colors">
                   PAYOUT RAIL
                 </span>
-                <span className="font-body-md font-medium text-[#c0c6de] tracking-tight flex items-center gap-1.5 group-hover:underline">
+                <span className="font-body-md font-medium text-primary tracking-tight flex items-center gap-1.5 group-hover:underline">
                   <span>{currencyMeta.flag}</span>
                   <span>{currencyMeta.code} ({currencyMeta.rail})</span>
                 </span>
               </div>
               <div className="hidden md:block w-px h-8 bg-white/10"></div>
               <div className="flex flex-col gap-1 text-right md:text-left">
-                <span className="font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">LAST SYNC</span>
-                <span className="font-body-md font-medium text-[#c0c6de] tracking-tight">Just now</span>
+                <span className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold">LAST SYNC</span>
+                <span className="font-body-md font-medium text-primary tracking-tight">Just now</span>
               </div>
             </div>
           </div>
@@ -110,32 +110,32 @@ export default function Dashboard() {
       {/* Bento Actions */}
       <section className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-12">
         <div className="md:col-span-8 grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
-          <button onClick={() => switchTab("pay")} className="bg-[#1a1a1d]/75 backdrop-blur-md shadow-lg p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-[#222226] transition-all border border-white/10 hover:border-white/20 text-[#e5e2e3]">
-            <ScanLine className="w-6 h-6 text-[#c0c6de] group-hover:scale-110 transition-transform" />
-            <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">SCAN & PAY</span>
+          <button onClick={() => switchTab("pay")} className="bg-surface-container-low/75 p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-surface-container transition-colors border border-white/10 hover:border-white/20 text-on-surface">
+            <ScanLine className="w-6 h-6 text-primary" />
+            <span className="font-label-caps text-[10px] tracking-normal font-bold">Scan &amp; Pay</span>
           </button>
-          <button onClick={() => switchTab("cashout")} className="bg-[#1a1a1d]/75 backdrop-blur-md shadow-lg p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-[#222226] transition-all border border-white/10 hover:border-white/20 text-[#e5e2e3]">
-            <ArrowUpRight className="w-6 h-6 text-[#c0c6de] group-hover:scale-110 transition-transform" />
-            <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">CASH OUT</span>
+          <button onClick={() => switchTab("cashout")} className="bg-surface-container-low/75 p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-surface-container transition-colors border border-white/10 hover:border-white/20 text-on-surface">
+            <ArrowUpRight className="w-6 h-6 text-primary" />
+            <span className="font-label-caps text-[10px] tracking-normal font-bold">Cash Out</span>
           </button>
-          <button onClick={() => switchTab("deposit")} className="bg-[#1a1a1d]/75 backdrop-blur-md shadow-lg p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-[#222226] transition-all border border-white/10 hover:border-white/20 text-[#e5e2e3]">
-            <ArrowDownLeft className="w-6 h-6 text-[#c0c6de] group-hover:scale-110 transition-transform" />
-            <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">DEPOSIT</span>
+          <button onClick={() => switchTab("deposit")} className="bg-surface-container-low/75 p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-surface-container transition-colors border border-white/10 hover:border-white/20 text-on-surface">
+            <ArrowDownLeft className="w-6 h-6 text-primary" />
+            <span className="font-label-caps text-[10px] tracking-normal font-bold">Deposit</span>
           </button>
-          <button onClick={() => setIsPayLinkOpen(true)} className="bg-[#1a1a1d]/75 backdrop-blur-md shadow-lg p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-[#222226] transition-all border border-white/10 hover:border-white/20 text-[#e5e2e3]">
-            <Link2 className="w-6 h-6 text-[#c0c6de] group-hover:scale-110 transition-transform" />
-            <span className="font-label-caps text-[10px] tracking-[0.25em] font-bold">PAY LINK</span>
+          <button onClick={() => setIsPayLinkOpen(true)} className="bg-surface-container-low/75 p-5 md:p-6 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-3 group hover:bg-surface-container transition-colors border border-white/10 hover:border-white/20 text-on-surface">
+            <Link2 className="w-6 h-6 text-primary" />
+            <span className="font-label-caps text-[10px] tracking-normal font-bold">Pay Link</span>
           </button>
         </div>
-        <div className="md:col-span-4 bg-[#1a1a1d]/75 backdrop-blur-md shadow-lg p-6 rounded-xl flex items-center justify-between border border-white/10 hover:border-white/20 text-[#e5e2e3] group hover:bg-[#222226] transition-all">
+        <div className="md:col-span-4 bg-surface-container-low/75  shadow-lg p-6 rounded-xl flex items-center justify-between border border-white/10 hover:border-white/20 text-on-surface group hover:bg-surface-container transition-colors">
           <div>
-            <p className="font-label-caps text-[9px] text-[#c6c6cd] mb-1 tracking-[0.25em] font-bold">DEVELOPER API</p>
-            <a href="/docs" target="_blank" className="font-headline-md text-base text-[#e5e2e3] hover:text-white font-semibold tracking-tight flex items-center gap-1.5 transition-colors">
-              Docs & Bots <ExternalLink className="w-3.5 h-3.5 text-[#c0c6de]" />
+            <p className="font-label-caps text-[9px] text-on-surface-variant mb-1 tracking-normal font-bold">DEVELOPER API</p>
+            <a href="/docs" target="_blank" className="font-headline-md text-base text-on-surface hover:text-white font-semibold tracking-tight flex items-center gap-1.5 transition-colors">
+              Docs & Bots <ExternalLink className="w-3.5 h-3.5 text-primary" />
             </a>
           </div>
           <a href="/docs" target="_blank" className="w-12 h-12 rounded-xl border border-white/15 flex items-center justify-center bg-white/5 group-hover:bg-white/10 transition-colors">
-            <Terminal className="w-5 h-5 text-[#c0c6de]" />
+            <Terminal className="w-5 h-5 text-primary" />
           </a>
         </div>
       </section>
@@ -145,19 +145,19 @@ export default function Dashboard() {
 
       {/* Transaction Ledger */}
       <section>
-        <div className="flex items-center justify-between mb-6 px-1 text-[#e5e2e3]">
-          <h2 className="font-label-caps text-[10px] text-[#c6c6cd] tracking-[0.25em] font-bold">RECENT ACTIVITY</h2>
+        <div className="flex items-center justify-between mb-6 px-1 text-on-surface">
+          <h2 className="font-label-caps text-[10px] text-on-surface-variant tracking-normal font-bold">RECENT ACTIVITY</h2>
           <div className="flex gap-6">
-            <button className="text-[9px] font-label-caps text-[#c0c6de] border-b border-[#c0c6de] font-bold tracking-[0.25em]">ALL</button>
-            <button className="text-[9px] font-label-caps text-[#c6c6cd]/60 hover:text-[#e5e2e3] transition-colors font-bold tracking-[0.25em]">SENT</button>
-            <button className="text-[9px] font-label-caps text-[#c6c6cd]/60 hover:text-[#e5e2e3] transition-colors font-bold tracking-[0.25em]">RECEIVED</button>
+            <button className="text-[9px] font-label-caps text-primary border-b border-primary font-bold tracking-normal">ALL</button>
+            <button className="text-[9px] font-label-caps text-on-surface-variant/60 hover:text-on-surface transition-colors font-bold tracking-normal">SENT</button>
+            <button className="text-[9px] font-label-caps text-on-surface-variant/60 hover:text-on-surface transition-colors font-bold tracking-normal">RECEIVED</button>
           </div>
         </div>
-        <div className="bg-[#1a1a1d]/75 backdrop-blur-md shadow-xl rounded-xl overflow-hidden border border-white/10">
+        <div className="bg-surface-container-low/75 rounded-xl overflow-hidden border border-white/10">
           <PaymentHistory />
         </div>
         <div className="mt-8 flex justify-center">
-          <button className="font-label-caps text-[9px] font-bold text-[#c6c6cd] hover:text-[#c0c6de] transition-all flex items-center gap-3 tracking-[0.3em]">
+          <button className="font-label-caps text-[9px] font-bold text-on-surface-variant hover:text-primary transition-colors flex items-center gap-3 tracking-normal">
              EXPORT AUDIT LOG <Download className="w-3.5 h-3.5" />
           </button>
         </div>

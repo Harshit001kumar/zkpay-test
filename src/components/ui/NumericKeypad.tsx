@@ -110,25 +110,25 @@ export function NumericKeypad({
                   handleClear();
                 }
               }}
-              className={`relative flex flex-col items-center justify-center h-14 sm:h-16 rounded-2xl border transition-all duration-150 ${
+              className={`relative flex flex-col items-center justify-center h-14 sm:h-16 rounded-2xl border transition-colors duration-150 ${
                 isBackspace
-                  ? "bg-white/[0.03] hover:bg-white/[0.08] border-white/10 text-[#c6c6cd] hover:text-white"
+                  ? "bg-white/[0.03] hover:bg-white/[0.08] border-white/10 text-on-surface-variant hover:text-white"
                   : isDot
-                  ? "bg-white/[0.04] hover:bg-white/[0.09] border-white/10 text-white font-mono text-2xl font-bold"
+                  ? "bg-white/[0.04] hover:bg-white/[0.09] border-white/10 text-white font-sans tabular-nums text-2xl font-bold"
                   : "bg-white/[0.04] hover:bg-white/[0.09] border-white/10 text-white"
               }`}
             >
               {isBackspace ? (
                 <div className="flex flex-col items-center justify-center">
-                  <Delete className="w-5 h-5 sm:w-6 sm:h-6 text-[#c0c6de] transition-transform group-active:scale-90" />
+                  <Delete className="w-5 h-5 sm:w-6 sm:h-6 text-primary transition-transform group-active:scale-90" />
                 </div>
               ) : (
                 <>
-                  <span className="text-xl sm:text-2xl font-mono font-bold tracking-tight text-white">
+                  <span className="text-xl sm:text-2xl font-sans tabular-nums font-bold tracking-tight text-white">
                     {key}
                   </span>
                   {sub && (
-                    <span className="text-[9px] font-mono tracking-widest text-[#909097] -mt-0.5 opacity-70">
+                    <span className="text-[9px] font-sans tabular-nums tracking-normal text-outline -mt-0.5 opacity-70">
                       {sub}
                     </span>
                   )}

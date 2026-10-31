@@ -43,26 +43,26 @@ export default function PaymentHistory() {
   if (!ready || (authenticated && !address)) {
     return (
       <div className="flex justify-center p-8">
-        <div className="w-6 h-6 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   if (!authenticated || !address) {
-    return <div className="text-center p-8 text-sm text-[#909097]">Sign in to view history.</div>;
+    return <div className="text-center p-8 text-sm text-outline">Sign in to view history.</div>;
   }
 
   if (loading) {
     return (
       <div className="flex justify-center p-8">
-        <div className="w-6 h-6 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   if (transactions.length === 0) {
     return (
-      <div className="text-center p-12 text-sm text-[#909097] border border-dashed border-[#46464c] rounded-xl m-4">
+      <div className="text-center p-12 text-sm text-outline border border-dashed border-outline-variant rounded-xl m-4">
         No transactions yet. Make your first payment!
       </div>
     );
@@ -78,9 +78,9 @@ export default function PaymentHistory() {
   };
 
   const getStatusColor = (type: string, status?: string) => {
-    if (status === "pending") return "bg-amber-500";
-    if (status === "failed") return "bg-red-500";
-    return "bg-emerald-500";
+    if (status === "pending") return "bg-warning";
+    if (status === "failed") return "bg-error";
+    return "bg-success";
   };
 
   const formatTime = (ts: number) => {
@@ -92,9 +92,9 @@ export default function PaymentHistory() {
     <>
       {/* Table Header */}
       <div className="hidden md:grid grid-cols-12 px-8 py-3 bg-white/[0.02] border-b border-white/5">
-        <div className="col-span-6 font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">ENTITY</div>
-        <div className="col-span-3 font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">TIMESTAMP</div>
-        <div className="col-span-3 text-right font-label-caps text-[9px] text-[#c6c6cd] tracking-[0.25em] font-bold">VALUATION</div>
+        <div className="col-span-6 font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold">ENTITY</div>
+        <div className="col-span-3 font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold">TIMESTAMP</div>
+        <div className="col-span-3 text-right font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold">VALUATION</div>
       </div>
 
       {transactions.map((tx, idx) => (
@@ -105,24 +105,24 @@ export default function PaymentHistory() {
         >
           <div className="col-span-7 md:col-span-6 flex items-center gap-4">
             <div className={`w-[2px] h-[40px] rounded-sm ${getStatusColor(tx.type, tx.status)}`}></div>
-            <div className={`w-12 h-12 rounded-sm flex items-center justify-center border ${tx.type === "deposit" ? "bg-[#c0c6de]/10 border-[#c0c6de]/20 text-[#c0c6de]" : "bg-white/[0.05] border-white/10 text-[#e5e2e3]"}`}>
+            <div className={`w-12 h-12 rounded-sm flex items-center justify-center border ${tx.type === "deposit" ? "bg-primary/10 border-primary/20 text-primary" : "bg-white/[0.05] border-white/10 text-on-surface"}`}>
               {renderIcon(tx.type)}
             </div>
             <div>
-              <span className={`block font-medium tracking-tight text-lg mb-0.5 ${tx.type === "deposit" ? "text-[#c0c6de]" : "text-[#e5e2e3]"}`}>{tx.title}</span>
-              <span className="md:hidden block font-label-caps text-[8px] text-[#c6c6cd] tracking-[0.1em]">{formatTime(tx.timestamp)}</span>
+              <span className={`block font-medium tracking-tight text-lg mb-0.5 ${tx.type === "deposit" ? "text-primary" : "text-on-surface"}`}>{tx.title}</span>
+              <span className="md:hidden block font-label-caps text-[8px] text-on-surface-variant tracking-normal">{formatTime(tx.timestamp)}</span>
             </div>
           </div>
           
           <div className="hidden md:col-span-3 md:flex items-center">
-            <span className="font-body-md text-[#c6c6cd] text-sm tracking-tight">{formatTime(tx.timestamp)}</span>
+            <span className="font-body-md text-on-surface-variant text-sm tracking-tight">{formatTime(tx.timestamp)}</span>
           </div>
           
           <div className="col-span-5 md:col-span-3 flex flex-col items-end justify-center">
-            <span className={`font-medium tracking-tight text-xl font-bold ${tx.type === "deposit" ? "text-[#c0c6de]" : "text-[#e5e2e3]"}`}>
+            <span className={`font-medium tracking-tight text-xl font-bold ${tx.type === "deposit" ? "text-primary" : "text-on-surface"}`}>
               {tx.type === "deposit" ? "+" : "-"}₹{tx.amountINR.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
-            <span className={`font-label-caps text-[8px] font-bold tracking-[0.25em] uppercase ${tx.status === "pending" ? "text-amber-500" : tx.status === "failed" ? "text-red-500" : "text-emerald-400"}`}>
+            <span className={`font-label-caps text-[8px] font-bold tracking-normal  ${tx.status === "pending" ? "text-warning" : tx.status === "failed" ? "text-error" : "text-success"}`}>
               {tx.status}
             </span>
           </div>

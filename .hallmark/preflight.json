@@ -1,0 +1,7 @@
+{
+  "fonts": "Outfit (--font-sans) & JetBrains Mono (--font-mono) at src/app/layout.tsx:2-17; Google Fonts Hanken Grotesk & JetBrains Mono imported at src/app/globals.css:5; Material Symbols Outlined at src/app/layout.tsx:68",
+  "palette": "Dark obsidian/slate (--surface: #131315, --on-surface: #e5e2e3, --primary: #c0c6de, --error: #ffb4ab) at src/app/globals.css:7-55 and tailwind.config.ts:11-59",
+  "motion": "framer-motion ^11.2.6 at package.json:20; transition-all across src/app/globals.css:128,159 and 155 component nodes",
+  "spacing": "Tailwind v3 default 4px spacing scale (plus off-scale 14px 28px button padding at src/app/globals.css:121,150)",
+  "framework": "Next.js 14.2.3 (App Router) + React 18 + Tailwind CSS 3.4.1 + lucide-react 0.378.0 at package.json:22-40"
+}

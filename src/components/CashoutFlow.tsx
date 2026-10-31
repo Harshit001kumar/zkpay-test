@@ -244,15 +244,15 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
 
   if (!ready || (authenticated && !address)) {
     return (
-      <div className="text-center p-8 text-sm text-[#909097] flex flex-col items-center justify-center gap-2">
-        <div className="w-5 h-5 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin"></div>
-        <span>Loading account...</span>
+      <div className="text-center p-8 text-sm text-outline flex flex-col items-center justify-center gap-2">
+        <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+        <span>Loading account…</span>
       </div>
     );
   }
 
   if (!authenticated || !address) {
-    return <div className="text-center p-4 text-sm text-[#909097]">Please sign in to cash out.</div>;
+    return <div className="text-center p-4 text-sm text-outline">Please sign in to cash out.</div>;
   }
   
   const isValidPayoutId = () => {
@@ -421,7 +421,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-[#0e0e0f] text-[#e5e2e3] font-body-md overflow-y-auto">
+    <div className="fixed inset-0 z-[60] bg-surface-container-lowest text-on-surface font-body-md overflow-y-auto">
       <style dangerouslySetInnerHTML={{__html: `
         .obsidian-glass {
             background: rgba(20, 20, 22, 0.7);
@@ -457,23 +457,23 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
       `}} />
       
       {/* Decorative Ambient Glows */}
-      <div className="fixed -top-1/4 -right-1/4 w-[600px] h-[600px] bg-[#c0c6de]/5 rounded-full blur-[120px] pointer-events-none"></div>
-      <div className="fixed -bottom-1/4 -left-1/4 w-[400px] h-[400px] bg-[#bcc7de]/5 rounded-full blur-[100px] pointer-events-none"></div>
+      <div className="fixed -top-1/4 -right-1/4 w-[600px] h-[600px] bg-primary/5 rounded-full blur-xl pointer-events-none"></div>
+      <div className="fixed -bottom-1/4 -left-1/4 w-[400px] h-[400px] bg-secondary/5 rounded-full blur-xl pointer-events-none"></div>
 
       {/* Top Navigation Bar */}
-      <header className="w-full sticky top-0 bg-[#0e0e0f]/80 backdrop-blur-md z-50 flex items-center justify-between px-6 h-16">
-        <button onClick={onBack} aria-label="Go back" className="flex items-center text-[#c0c6de] hover:opacity-80 transition-opacity active:scale-95">
+      <header className="w-full sticky top-0 bg-surface-container-lowest/80  z-50 flex items-center justify-between px-6 h-16">
+        <button onClick={onBack} aria-label="Go back" className="flex items-center text-primary hover:opacity-80 transition-opacity active:scale-95">
           <span className="material-symbols-outlined text-2xl">arrow_back</span>
         </button>
-        <span className="font-label-caps text-[10px] text-[#c6c6cd] tracking-[0.25em] font-bold">CASHOUT FLOW</span>
+        <span className="font-label-caps text-[10px] text-on-surface-variant tracking-normal font-bold">CASHOUT FLOW</span>
         <div className="w-6"></div>
       </header>
 
       <main className="w-full max-w-lg mx-auto px-6 pt-8 pb-44 flex flex-col gap-2 relative z-10">
         
         {initError && (
-          <div className="bg-[#93000a]/20 text-[#ffb4ab] p-4 rounded-xl text-sm mb-4 border border-[#93000a] obsidian-glass">
-            <span className="font-bold block mb-1 uppercase tracking-widest text-[10px]">Error</span> 
+          <div className="bg-error-container/20 text-error p-4 rounded-xl text-sm mb-4 border border-error-container obsidian-glass">
+            <span className="font-bold block mb-1  tracking-normal text-[10px]">Error</span> 
             {initError}
           </div>
         )}
@@ -483,26 +483,26 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
             {/* Input Block */}
             <section className="obsidian-glass monolith-shadow p-8 rounded-xl flex flex-col items-center text-center animate-in fade-in slide-in-from-bottom-4">
               <div className="flex justify-between w-full mb-6">
-                <p className="font-label-caps text-[10px] text-[#909097] uppercase font-bold tracking-widest">Source Amount</p>
+                <p className="font-label-caps text-[10px] text-outline  font-bold tracking-normal">Source Amount</p>
                 {maxSellable !== null && (
-                  <p className="font-label-caps text-[10px] text-[#c0c6de] uppercase font-bold tracking-widest opacity-80">Max: {maxSellable}</p>
+                  <p className="font-label-caps text-[10px] text-primary  font-bold tracking-normal opacity-80">Max: {maxSellable}</p>
                 )}
               </div>
               <div className="flex flex-col items-center gap-2">
                 <div className="flex items-baseline group relative">
-                  <span className="font-display-xl text-[64px] font-extrabold text-[#c0c6de] opacity-50 select-none mr-1 absolute -left-12">$</span>
+                  <span className="font-display-xl text-[64px] font-extrabold text-primary opacity-50 select-none mr-1 absolute -left-12">$</span>
                   <input 
                     type="number"
                     step="0.01"
                     value={amountStr}
                     onChange={handleAmountChange}
-                    className="bg-transparent border-none focus:ring-0 font-display-xl text-[64px] font-extrabold p-0 text-center silver-typography tracking-tighter w-48 transition-all" 
+                    className="bg-transparent border-none focus:ring-0 font-display-xl text-[64px] font-extrabold p-0 text-center silver-typography tracking-tighter w-48 transition-colors" 
                     placeholder="0.00" 
                   />
                 </div>
-                <span className="font-headline-md text-[#bcc7de] tracking-widest text-lg font-light uppercase">USDC</span>
+                <span className="font-headline-md text-secondary tracking-normal text-lg font-light ">USDC</span>
                 {maxSellable !== null && amountUsdc > maxSellable && (
-                  <p className="text-[10px] text-[#ffb4ab] mt-2 font-bold tracking-widest uppercase">Exceeds limit ({maxSellable} USDC)</p>
+                  <p className="text-[10px] text-error mt-2 font-bold tracking-normal ">Exceeds limit ({maxSellable} USDC)</p>
                 )}
               </div>
             </section>
@@ -518,36 +518,36 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
               <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
                 <span className="material-symbols-outlined text-[80px]">currency_exchange</span>
               </div>
-              <p className="font-label-caps text-[10px] text-[#909097] uppercase mb-8 text-center font-bold tracking-widest">Conversion Estimate</p>
+              <p className="font-label-caps text-[10px] text-outline  mb-8 text-center font-bold tracking-normal">Conversion Estimate</p>
               <div className="flex flex-col items-center mb-8">
                 <span className="font-display-xl text-[48px] font-extrabold silver-typography tracking-tight">
                   {currencyMeta.symbol}{estimatedFiat > 0 ? estimatedFiat.toFixed(2) : "0.00"}
                 </span>
-                <span className="font-headline-md text-[#bcc7de] tracking-widest text-lg font-light uppercase">{currencyMeta.code}</span>
+                <span className="font-headline-md text-secondary tracking-normal text-lg font-light ">{currencyMeta.code}</span>
               </div>
               <div className="space-y-3 pt-4 border-t border-white/5">
                 <div className="flex justify-between items-center">
-                  <span className="font-body-md text-[#909097] text-sm">Exchange Rate</span>
-                  <span className="font-body-md text-[#e5e2e3] text-sm">{rateDisplay}</span>
+                  <span className="font-body-md text-outline text-sm">Exchange Rate</span>
+                  <span className="font-body-md text-on-surface text-sm">{rateDisplay}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="font-body-md text-[#909097] text-sm">Platform Fee (1%)</span>
-                  <span className="font-body-md text-[#e5e2e3] text-sm">${feeUsdc.toFixed(2)}</span>
+                  <span className="font-body-md text-outline text-sm">Platform Fee (1%)</span>
+                  <span className="font-body-md text-on-surface text-sm">${feeUsdc.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-1.5">
-                    <span className="font-body-md text-[#909097] text-sm">Protocol Fee</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-[#909097] font-medium">
+                    <span className="font-body-md text-outline text-sm">Protocol Fee</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-outline font-medium">
                       {fees.isSmallOrder ? "≤ $10 orders" : "Free > $10"}
                     </span>
                   </div>
-                  <span className={`font-body-md text-sm ${fees.isSmallOrder ? "text-[#e5e2e3]" : "text-[#77d9a8]"}`}>
+                  <span className={`font-body-md text-sm ${fees.isSmallOrder ? "text-on-surface" : "text-success"}`}>
                     {fees.isSmallOrder ? `$${protocolFeeUsdc.toFixed(2)}` : "Free"}
                   </span>
                 </div>
                 <div className="flex justify-between items-center pt-2 border-t border-white/5">
-                  <span className="font-body-md text-[#c0c6de] text-sm font-semibold">Total USDC Debited</span>
-                  <span className="font-body-md text-[#c0c6de] text-sm font-semibold">${totalUsdc.toFixed(2)}</span>
+                  <span className="font-body-md text-primary text-sm font-semibold">Total USDC Debited</span>
+                  <span className="font-body-md text-primary text-sm font-semibold">${totalUsdc.toFixed(2)}</span>
                 </div>
               </div>
             </section>
@@ -559,13 +559,13 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
             </div>
 
             {/* Destination Block */}
-            <section className="obsidian-glass monolith-shadow p-8 rounded-xl transition-all group animate-in fade-in slide-in-from-bottom-12 delay-300">
-              <p className="font-label-caps text-[10px] text-[#909097] uppercase mb-6 text-center font-bold tracking-widest">
+            <section className="obsidian-glass monolith-shadow p-8 rounded-xl transition-colors group animate-in fade-in slide-in-from-bottom-12 delay-300">
+              <p className="font-label-caps text-[10px] text-outline  mb-6 text-center font-bold tracking-normal">
                 Settlement Account ({currencyMeta.rail})
               </p>
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-white/5 rounded-lg flex items-center justify-center border border-white/10 group-focus-within:border-[#c0c6de]/30 transition-colors flex-shrink-0">
-                  <span className="material-symbols-outlined text-[#bcc7de] text-3xl">account_balance</span>
+                <div className="w-14 h-14 bg-white/5 rounded-lg flex items-center justify-center border border-white/10 group-focus-within:border-primary/30 transition-colors flex-shrink-0">
+                  <span className="material-symbols-outlined text-secondary text-3xl">account_balance</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <input
@@ -573,10 +573,10 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
                     value={upiId}
                     onChange={(e) => setUpiId(e.target.value)}
                     placeholder={currencyMeta.placeholder}
-                    className="w-full bg-transparent border-b border-[#46464c]/50 px-0 py-2 text-lg font-body-lg text-[#e5e2e3] focus:border-[#c0c6de] focus:ring-0 outline-none transition-colors placeholder:text-[#909097]/40 truncate"
+                    className="w-full bg-transparent border-b border-outline-variant/50 px-0 py-2 text-lg font-body-lg text-on-surface focus:border-primary focus:ring-0 outline-none transition-colors placeholder:text-outline/40 truncate"
                   />
                   {upiId && !isValidPayoutId() && (
-                    <p className="text-[10px] text-[#ffb4ab] mt-1 font-bold tracking-widest uppercase truncate">Invalid format</p>
+                    <p className="text-[10px] text-error mt-1 font-bold tracking-normal  truncate">Invalid format</p>
                   )}
                 </div>
               </div>
@@ -584,31 +584,31 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
 
             {/* Security Badge */}
             <div className="mt-6 px-4 py-3 rounded-lg border border-white/5 flex gap-4 items-start bg-white/[0.02]">
-              <span className="material-symbols-outlined text-[#c0c6de] text-xl" style={{fontVariationSettings: "'FILL' 1"}}>verified_user</span>
-              <p className="font-label-caps text-[10px] leading-relaxed text-[#909097] tracking-normal normal-case font-bold">Secured by Zk-SNARK technology. Your identity and banking data remain private and encrypted.</p>
+              <span className="material-symbols-outlined text-primary text-xl" style={{fontVariationSettings: "'FILL' 1"}}>verified_user</span>
+              <p className="font-label-caps text-[10px] leading-relaxed text-outline tracking-normal normal-case font-bold">Secured by Zk-SNARK technology. Your identity and banking data remain private and encrypted.</p>
             </div>
           </>
         )}
 
         {status !== "input" && (
           <section className="obsidian-glass monolith-shadow p-12 rounded-xl flex flex-col items-center text-center animate-in zoom-in duration-500">
-            <div className="w-16 h-16 rounded-full border-4 border-[#c0c6de]/20 border-t-[#c0c6de] animate-spin mb-8"></div>
+            <div className="w-16 h-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin mb-8"></div>
             
             {status === "processing" && (
               <>
-                <h3 className="font-headline-md text-2xl mb-2 text-[#e5e2e3]">Processing...</h3>
-                <p className="text-sm text-[#909097]">Executing transaction on Base...</p>
+                <h3 className="font-headline-md text-2xl mb-2 text-on-surface">Processing…</h3>
+                <p className="text-sm text-outline">Executing transaction on Base…</p>
               </>
             )}
             
             {status === "matching" && (
               <>
-                <h3 className="font-headline-md text-2xl mb-2 text-[#e5e2e3]">Matching...</h3>
-                <p className="text-sm text-[#909097]">Finding the best merchant for your order. (Usually 20-90s)</p>
+                <h3 className="font-headline-md text-2xl mb-2 text-on-surface">Matching…</h3>
+                <p className="text-sm text-outline">Finding the best merchant for your order. (Usually 20-90s)</p>
                 {(orderId || pendingOrderData?.orderId) && (
-                  <div className="mt-5 px-4 py-2 rounded-full bg-white/[0.05] border border-white/10 text-xs font-mono text-[#c0c6de] inline-flex items-center gap-2">
-                    <span className="text-[#909097]">Order ID:</span>
-                    <strong className="text-white font-bold tracking-wider">#{orderId ? orderId.toString() : pendingOrderData?.orderId}</strong>
+                  <div className="mt-5 px-4 py-2 rounded-full bg-white/[0.05] border border-white/10 text-xs font-sans tabular-nums text-primary inline-flex items-center gap-2">
+                    <span className="text-outline">Order ID:</span>
+                    <strong className="text-white font-bold tracking-normal">#{orderId ? orderId.toString() : pendingOrderData?.orderId}</strong>
                   </div>
                 )}
               </>
@@ -616,12 +616,12 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
             
             {status === "paying" && (
               <>
-                <h3 className="font-headline-md text-2xl mb-2 text-[#e5e2e3]">Paying out...</h3>
-                <p className="text-sm text-[#909097]">Merchant is transferring {currencyMeta.code} to your account.</p>
+                <h3 className="font-headline-md text-2xl mb-2 text-on-surface">Paying out…</h3>
+                <p className="text-sm text-outline">Merchant is transferring {currencyMeta.code} to your account.</p>
                 {(orderId || pendingOrderData?.orderId) && (
-                  <div className="mt-5 px-4 py-2 rounded-full bg-white/[0.05] border border-white/10 text-xs font-mono text-[#c0c6de] inline-flex items-center gap-2">
-                    <span className="text-[#909097]">Order ID:</span>
-                    <strong className="text-white font-bold tracking-wider">#{orderId ? orderId.toString() : pendingOrderData?.orderId}</strong>
+                  <div className="mt-5 px-4 py-2 rounded-full bg-white/[0.05] border border-white/10 text-xs font-sans tabular-nums text-primary inline-flex items-center gap-2">
+                    <span className="text-outline">Order ID:</span>
+                    <strong className="text-white font-bold tracking-normal">#{orderId ? orderId.toString() : pendingOrderData?.orderId}</strong>
                   </div>
                 )}
               </>
@@ -629,9 +629,9 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
             
             {status === "error" && (
               <div className="flex flex-col items-center max-w-sm mx-auto text-center">
-                <span className="material-symbols-outlined text-[#ffb4ab] text-5xl mb-4">error</span>
-                <h3 className="font-headline-md text-2xl mb-2 text-[#ffb4ab]">Cashout Notice</h3>
-                <p className="text-sm text-[#909097] mb-8">{error}</p>
+                <span className="material-symbols-outlined text-error text-5xl mb-4">error</span>
+                <h3 className="font-headline-md text-2xl mb-2 text-error">Cashout Notice</h3>
+                <p className="text-sm text-outline mb-8">{error}</p>
                 <div className="flex flex-col sm:flex-row gap-3 w-full justify-center">
                   {pendingOrderData && (
                     <button 
@@ -645,7 +645,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
                           pendingOrderData
                         );
                       }} 
-                      className="px-6 py-3 rounded-lg bg-[#c0c6de] text-[#0e0e0f] font-bold text-xs uppercase tracking-wider hover:bg-white transition-colors"
+                      className="px-6 py-3 rounded-lg bg-primary text-surface-container-lowest font-bold text-xs  tracking-normal hover:bg-white transition-colors"
                     >
                       Retry Delivering UPI
                     </button>
@@ -656,7 +656,7 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
                       setPendingOrderData(null);
                       setStatus("input");
                     }} 
-                    className="px-6 py-3 rounded-lg border border-white/20 text-[#e5e2e3] font-label-caps tracking-widest text-[10px] uppercase hover:bg-white/5 transition-colors"
+                    className="px-6 py-3 rounded-lg border border-white/20 text-on-surface font-label-caps tracking-normal text-[10px]  hover:bg-white/5 transition-colors"
                   >
                     {pendingOrderData ? "Start New Order" : "Try Again"}
                   </button>
@@ -670,12 +670,12 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
 
       {/* Bottom Action Button */}
       {status === "input" && (
-        <div className="fixed bottom-0 left-0 w-full px-6 py-8 z-[60] bg-gradient-to-t from-[#0e0e0f] via-[#0e0e0f]/95 to-transparent">
+        <div className="fixed bottom-0 left-0 w-full px-6 py-8 z-[60] bg-gradient-to-t from-surface-container-lowest via-surface-container-lowest/95 to-transparent">
           <div className="max-w-lg mx-auto">
             <button 
               onClick={handleCashout}
               disabled={!isFormValid || !sellPrice}
-              className={`w-full h-16 obsidian-glass text-[#e5e2e3] font-label-caps text-sm rounded-lg uppercase tracking-[0.3em] transition-all transform flex items-center justify-center gap-3 border border-white/20 hover:border-[#c0c6de]/50 group font-bold ${!isFormValid ? 'opacity-50 cursor-not-allowed' : 'active:scale-[0.98]'}`}
+              className={`w-full h-16 obsidian-glass text-on-surface font-label-caps text-sm rounded-lg  tracking-normal transition-colors transform flex items-center justify-center gap-3 border border-white/20 hover:border-primary/50 group font-bold ${!isFormValid ? 'opacity-50 cursor-not-allowed' : 'active:scale-[0.98]'}`}
             >
               Confirm Cashout
               <span className="material-symbols-outlined text-lg group-hover:translate-x-1 transition-transform">arrow_forward</span>
