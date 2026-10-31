@@ -338,7 +338,7 @@ function SpatialCanvas3DComponent({ scrollProgress }: SpatialCanvas3DProps) {
 
     renderFrame();
 
-    const unsubscribeScroll = scrollProgress.on("change", () => {
+    const unsubscribeScroll = scrollProgress?.on("change", () => {
       if (shouldReduceMotion) {
         renderFrame();
       }
@@ -348,7 +348,7 @@ function SpatialCanvas3DComponent({ scrollProgress }: SpatialCanvas3DProps) {
       if (animationFrameId !== null) {
         cancelAnimationFrame(animationFrameId);
       }
-      unsubscribeScroll();
+      unsubscribeScroll?.();
       window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", handlePointerMove);
     };
