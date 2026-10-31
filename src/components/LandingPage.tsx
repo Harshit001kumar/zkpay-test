@@ -1,725 +1,685 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import {
   motion,
-  useMotionValue,
-  useTransform,
-  useSpring,
   AnimatePresence,
+  useScroll,
+  useSpring,
+  useTransform,
+  useReducedMotion,
 } from "framer-motion";
 import {
-  QrCode,
-  ShieldCheck,
-  TrendingUp,
-  ArrowRightLeft,
-  CheckCircle2,
-  ArrowRight,
-  Sparkles,
-  ExternalLink,
-  CreditCard,
-  Lock,
-  Zap,
-  ChevronDown,
-  Layers,
-  Coins,
   Globe2,
-  RefreshCw,
-  Sliders,
-  Flame,
-  Check,
-  Copy,
+  ShieldCheck,
+  ArrowUpRight,
+  QrCode,
+  Layers,
+  Lock,
+  Sparkles,
+  CheckCircle2,
+  Wallet,
+  Building2,
 } from "lucide-react";
-import { SpotlightCard } from "@/components/ui/SpotlightCard";
-import { DecryptedText } from "@/components/ui/DecryptedText";
+import { SpatialCanvas3D } from "@/components/ui/SpatialCanvas3D";
+import { Tilt3DMonolith, DepthLayer } from "@/components/ui/Tilt3DMonolith";
+import {
+  HeroSpatialStage3D,
+  GlobalCorridorStream3D,
+  BentoAutoSortingCorridors,
+  BentoYieldCompounding3D,
+} from "@/components/ui/Connected3DScenes";
 import { ScrollReveal } from "@/components/ui/ScrollReveal";
-import { SettlementSimulator } from "@/components/SettlementSimulator";
 
 interface LandingPageProps {
   login: () => void;
 }
 
+const GLOBAL_METRICS = [
+  { value: "180+", label: "Countries Supported", detail: "Global domestic bank & QR rails" },
+  { value: "40+", label: "Local Fiat Currencies", detail: "USD, EUR, GBP, INR, BRL, JPY & more" },
+  { value: "0.4s", label: "Median Settlement", detail: "Direct real-time clearing" },
+  { value: "0.0%", label: "FX Spread Markup", detail: "Flat 1.0% protocol fee only" },
+];
+
+const SPATIAL_STEPS = [
+  {
+    step: "Connect Self-Custody",
+    railTag: "BASE · ETH · SOL · BTC",
+    title: "Authorize from your own wallet",
+    description:
+      "Keep full custody of your USDC, ETH, SOL, or BTC until the moment you pay. Zero centralized exchange deposits or pre-funded lockups.",
+    icon: Wallet,
+    offsetClass: "lg:translate-y-0 lg:-rotate-1",
+  },
+  {
+    step: "Scan Any Global Standard",
+    railTag: "PIX · UPI · SEPA · FEDNOW",
+    title: "Point at any local QR or bank rail",
+    description:
+      "Our optical router automatically detects EPC QR in Europe, Pix in Brazil, UPI in India, PayNow in Singapore, or domestic IBAN and ACH details.",
+    icon: QrCode,
+    offsetClass: "lg:translate-y-8 lg:rotate-1",
+  },
+  {
+    step: "Instant Domestic Clearing",
+    railTag: "VERIFIED ON-CHAIN ESCROW",
+    title: "Recipient gets native fiat in seconds",
+    description:
+      "Decentralized liquidity solvers dispatch local currency straight to the merchant bank account while your smart escrow settles atomically on Base.",
+    icon: Building2,
+    offsetClass: "lg:translate-y-16 lg:-rotate-1",
+  },
+];
+
+const ORIGIN_CHAINS = [
+  { code: "BASE", name: "Base L2", finality: "0.4s" },
+  { code: "ETH", name: "Ethereum", finality: "1.0s" },
+  { code: "SOL", name: "Solana", finality: "0.8s" },
+  { code: "BTC", name: "Bitcoin", finality: "Instant Solver" },
+  { code: "ARB", name: "Arbitrum", finality: "0.6s" },
+  { code: "TRON", name: "Tron TRC20", finality: "1.1s" },
+  { code: "POL", name: "Polygon", finality: "0.7s" },
+  { code: "BSC", name: "BNB Chain", finality: "0.9s" },
+];
+
 export default function LandingPage({ login }: LandingPageProps) {
-  const [waitlistJoined, setWaitlistJoined] = useState<boolean>(false);
-  const [waitlistCount, setWaitlistCount] = useState<number>(1420);
-  const [activeFaq, setActiveFaq] = useState<number | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
 
-  // 3D Scanner Perspective Physics (GPU-accelerated useMotionValue, zero React re-renders)
-  const phoneRef = useRef<HTMLDivElement>(null);
-  const mouseX = useMotionValue(0);
-  const mouseY = useMotionValue(0);
+  // Master page scroll progress connecting the 3D WebGL/Canvas globe and the vertical conduit spine
+  const { scrollYProgress } = useScroll();
+  const smoothScroll = useSpring(scrollYProgress, {
+    stiffness: 90,
+    damping: 24,
+    restDelta: 0.001,
+  });
 
-  const springConfig = { damping: 24, stiffness: 220 };
-  const smoothMouseX = useSpring(mouseX, springConfig);
-  const smoothMouseY = useSpring(mouseY, springConfig);
-
-  const rotateX = useTransform(smoothMouseY, [-0.5, 0.5], [10, -10]);
-  const rotateY = useTransform(smoothMouseX, [-0.5, 0.5], [-12, 12]);
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!phoneRef.current) return;
-    const rect = phoneRef.current.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width - 0.5;
-    const y = (e.clientY - rect.top) / rect.height - 0.5;
-    mouseX.set(x);
-    mouseY.set(y);
-  };
-
-  const handlePointerLeave = () => {
-    mouseX.set(0);
-    mouseY.set(0);
-  };
-
-  // 3D Card Showcase Physics
-  const cardRef = useRef<HTMLDivElement>(null);
-  const cardMouseX = useMotionValue(0);
-  const cardMouseY = useMotionValue(0);
-  const smoothCardX = useSpring(cardMouseX, springConfig);
-  const smoothCardY = useSpring(cardMouseY, springConfig);
-  const cardRotateX = useTransform(smoothCardY, [-0.5, 0.5], [12, -12]);
-  const cardRotateY = useTransform(smoothCardX, [-0.5, 0.5], [-14, 14]);
-
-  const handleCardPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!cardRef.current) return;
-    const rect = cardRef.current.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width - 0.5;
-    const y = (e.clientY - rect.top) / rect.height - 0.5;
-    cardMouseX.set(x);
-    cardMouseY.set(y);
-  };
-
-  const handleCardPointerLeave = () => {
-    cardMouseX.set(0);
-    cardMouseY.set(0);
-  };
-
-  const handleJoinWaitlist = () => {
-    if (!waitlistJoined) {
-      setWaitlistJoined(true);
-      setWaitlistCount((prev) => prev + 1);
-    }
-  };
-
-  const toggleFaq = (index: number) => {
-    setActiveFaq(activeFaq === index ? null : index);
-  };
-
-  const faqs = [
-    {
-      q: "How does ZkPay pay a UPI merchant without KYC?",
-      a: "For transactions under $100 equivalent (~₹8,500), ZkPay utilizes decentralized P2P liquidity rails. You commit USDC on Base into a smart contract escrow, and a network solver transfers the local INR fiat directly to the merchant's UPI handle in seconds.",
-    },
-    {
-      q: "Does the merchant need a crypto wallet or app?",
-      a: "No. The merchant receives standard Indian Rupees (INR) directly into their linked bank account via their regular QR code (Paytm, PhonePe, Google Pay, BHIM). Their store soundbox announces the payment in INR just like any normal customer payment.",
-    },
-    {
-      q: "How does multi-chain deposit work from Solana, Bitcoin, or Tron?",
-      a: "ZkPay integrates with decentralized solver networks (NEAR 1Click protocol). You can deposit SOL, BTC, TRX, LTC, or EVM assets directly into a single-use deposit address. Funds are swapped on-chain into Base USDC with zero custody lockup.",
-    },
-    {
-      q: "What are the protocol fees?",
-      a: "ZkPay charges a flat, transparent 1% protocol fee with no hidden foreign exchange markups. Gas on Base Mainnet is paid from your USDC balance via account abstraction, meaning you never need to hold native ETH for gas.",
-    },
-    {
-      q: "How does the Morpho yield vault work?",
-      a: "Any idle USDC held in your ZkPay smart account automatically earns ~5.51% benchmark APY through the Steakhouse Prime instant USDC vault on Morpho Blue. Your yield continuously compounds until the exact millisecond you scan a QR to pay.",
-    },
-  ];
-
-  const solverChains = [
-    { symbol: "BASE", name: "Base Mainnet", speed: "0.5s", tag: "Native Settlement" },
-    { symbol: "SOL", name: "Solana", speed: "1.2s", tag: "Direct Origin Rail" },
-    { symbol: "BTC", name: "Bitcoin", speed: "Instant", tag: "Solver Escrow" },
-    { symbol: "ETH", name: "Ethereum", speed: "1.0s", tag: "EVM Cross-Chain" },
-    { symbol: "TRON", name: "Tron (TRC20)", speed: "1.5s", tag: "Zero Spread" },
-    { symbol: "ARB", name: "Arbitrum", speed: "0.8s", tag: "L2 Liquidity" },
-    { symbol: "BSC", name: "BNB Chain", speed: "1.0s", tag: "Cross-Chain Swap" },
-  ];
+  const conduitPhotonTop = useTransform(smoothScroll, [0, 1], ["4%", "96%"]);
+  const heroParallaxY = useTransform(smoothScroll, [0, 0.25], [0, -36]);
 
   return (
-    <main className="min-h-[100dvh] w-full max-w-full bg-surface-container-lowest text-on-surface flex flex-col items-center selection:bg-primary/25 selection:text-white relative overflow-x-hidden font-sans">
-      {/* ─── Ambient Cinematic Mesh Gradients ─── */}
-      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[900px] h-[900px] rounded-full bg-gradient-to-b from-primary/12 via-accent-deep/6 to-transparent blur-xl" />
-        <div className="absolute top-[35%] right-[-15%] w-[650px] h-[650px] rounded-full bg-gradient-to-br from-info/8 via-transparent to-transparent blur-xl" />
-        <div className="absolute top-[65%] left-[-15%] w-[600px] h-[600px] rounded-full bg-gradient-to-tr from-success/6 via-transparent to-transparent blur-xl" />
-        {/* Subtle subtle scanline/grain overlay */}
-        <div className="absolute inset-0 bg-transparent [background-size:24px_24px] opacity-40 pointer-events-none" />
+    <main className="min-h-[100dvh] w-full bg-surface-container-lowest text-on-surface relative overflow-x-clip selection:bg-primary/25 selection:text-on-surface">
+      {/* ─── 00. Continuous Full-Page 3D Spatial Globe & Orbital Canvas ─── */}
+      <SpatialCanvas3D scrollProgress={smoothScroll} />
+
+      {/* ─── Fixed Pointer-Events-None Coordinate Hairlines (GPU-Safe) ─── */}
+      <div
+        aria-hidden="true"
+        className="fixed inset-0 pointer-events-none z-0 flex justify-between max-w-7xl mx-auto px-4 sm:px-8 opacity-25"
+      >
+        <div className="w-px h-full bg-white/[0.04]" />
+        <div className="hidden md:block w-px h-full bg-white/[0.03]" />
+        <div className="w-px h-full bg-white/[0.04]" />
       </div>
 
-      {/* ─── 01. Fluid Island Navigation (Floating Glass Pill) ─── */}
+      {/* ─── Interconnected Scroll-Scrubbed 3D Conduit Spine ─── */}
+      <div
+        aria-hidden="true"
+        className="fixed top-0 bottom-0 left-1/2 -translate-x-1/2 w-px pointer-events-none z-0 hidden lg:block"
+      >
+        <div className="w-px h-full bg-white/[0.04]" />
+        <motion.div
+          style={{ scaleY: smoothScroll, transformOrigin: "top" }}
+          className="absolute inset-0 w-px bg-gradient-to-b from-primary/60 via-success/50 to-primary/60"
+        />
+        {!shouldReduceMotion && (
+          <motion.div
+            style={{ top: conduitPhotonTop }}
+            className="absolute -left-[3px] w-[7px] h-10 rounded-full bg-gradient-to-b from-transparent via-success to-transparent opacity-80"
+          />
+        )}
+      </div>
+
+      {/* ─── 01. Fluid Island Navigation (Single-Line 64px Cap) ─── */}
       <header className="fixed top-4 sm:top-6 left-0 right-0 z-50 px-4 pointer-events-none">
-        <div className="max-w-5xl mx-auto flex items-center justify-between bg-surface/80  border border-white/10 ring-1 ring-white/5 shadow-elevated rounded-full px-4 sm:px-6 py-2.5 sm:py-3 pointer-events-auto transition-colors duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]">
-          {/* Brand Logo */}
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-8 h-8 rounded-xl bg-white/[0.06] border border-white/15 flex items-center justify-center text-primary group-hover:border-primary/50 group-hover:bg-white/[0.1] transition-colors shadow-sm">
-              <ShieldCheck className="w-4 h-4 text-primary" strokeWidth={1.5} />
+        <div className="max-w-5xl mx-auto h-14 sm:h-16 flex items-center justify-between bg-surface/85 backdrop-blur-2xl border border-white/10 ring-1 ring-white/5 rounded-full px-4 sm:px-6 pointer-events-auto shadow-elevated transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]">
+          {/* Brand Monogram */}
+          <Link href="/" className="flex items-center gap-2.5 group">
+            <div className="w-8 h-8 rounded-full bg-white/[0.06] border border-white/15 flex items-center justify-center text-primary group-hover:border-primary/50 transition-colors">
+              <Globe2 className="w-4 h-4" strokeWidth={1.5} />
             </div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="font-extrabold text-base sm:text-lg tracking-tight text-white">ZkPay</span>
-              <span className="text-[10px] font-sans tabular-nums font-medium text-success bg-success/10 px-1.5 py-0.2 rounded border border-success/20">v1.0</span>
-            </div>
+            <span className="font-display font-semibold text-base sm:text-lg tracking-tight text-on-surface">
+              ZkPay
+            </span>
           </Link>
 
-          {/* Center Links */}
+          {/* Single-Line Desktop Nav Links */}
           <nav className="hidden md:flex items-center gap-7 text-xs font-medium text-outline">
-            <a href="#features" className="hover:text-white transition-colors">Features</a>
-            <a href="#simulator" className="hover:text-white transition-colors">Simulator</a>
-            <a href="#solvers" className="hover:text-white transition-colors">Solvers</a>
-            <a href="#card" className="hover:text-white transition-colors">Obsidian Card</a>
-            <Link href="/docs" className="hover:text-white transition-colors">Docs</Link>
+            <a href="#corridors" className="hover:text-on-surface transition-colors">
+              Global Rails
+            </a>
+            <a href="#flow" className="hover:text-on-surface transition-colors">
+              How It Works
+            </a>
+            <a href="#architecture" className="hover:text-on-surface transition-colors">
+              Architecture
+            </a>
+            <a href="#obsidian-card" className="hover:text-on-surface transition-colors">
+              Obsidian Card
+            </a>
+            <Link href="/docs" className="hover:text-on-surface transition-colors">
+              Docs
+            </Link>
           </nav>
 
-          {/* Actions */}
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.04] border border-white/10 text-[11px] font-sans tabular-nums text-primary">
-              <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-              <span>Base Mainnet</span>
-            </div>
-
+          {/* Right CTA & Mobile Hamburger Morph */}
+          <div className="flex items-center gap-2.5">
             <button
               onClick={login}
-              className="text-xs sm:text-sm font-semibold text-surface-dim bg-on-surface hover:bg-white active:scale-95 transition-colors rounded-full px-4 sm:px-5 py-2 shadow-card hover:shadow-card flex items-center gap-2 group"
+              className="rounded-full pl-4 pr-1.5 py-1.5 bg-on-surface text-surface-container-lowest font-semibold text-xs hover:bg-white active:scale-[0.98] transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group flex items-center gap-2.5 whitespace-nowrap"
             >
               <span>Launch App</span>
-              <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" strokeWidth={2} />
+              <span className="w-6 h-6 rounded-full bg-surface-container-lowest text-on-surface flex items-center justify-center transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5">
+                <ArrowUpRight className="w-3.5 h-3.5 text-primary" strokeWidth={1.75} />
+              </span>
+            </button>
+
+            <button
+              type="button"
+              aria-label="Toggle navigation menu"
+              onClick={() => setMobileMenuOpen((v) => !v)}
+              className="md:hidden w-9 h-9 rounded-full bg-white/[0.05] border border-white/10 flex flex-col items-center justify-center gap-1.5 relative"
+            >
+              <span
+                className={`w-4 h-px bg-on-surface transition-transform duration-300 ${
+                  mobileMenuOpen ? "rotate-45 translate-y-[3.5px]" : ""
+                }`}
+              />
+              <span
+                className={`w-4 h-px bg-on-surface transition-transform duration-300 ${
+                  mobileMenuOpen ? "-rotate-45 -translate-y-[3.5px]" : ""
+                }`}
+              />
             </button>
           </div>
         </div>
+
+        {/* Mobile Staggered Reveal Overlay */}
+        <AnimatePresence>
+          {mobileMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
+              className="md:hidden mt-2 max-w-md mx-auto rounded-3xl bg-surface/95 backdrop-blur-2xl border border-white/10 p-5 pointer-events-auto shadow-elevated flex flex-col gap-3"
+            >
+              {[
+                { label: "Global Rails", href: "#corridors" },
+                { label: "How It Works", href: "#flow" },
+                { label: "Architecture", href: "#architecture" },
+                { label: "Obsidian Card", href: "#obsidian-card" },
+                { label: "Documentation", href: "/docs" },
+              ].map((item, idx) => (
+                <motion.a
+                  key={item.label}
+                  href={item.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.05 }}
+                  className="text-sm font-medium text-on-surface py-2 border-b border-white/[0.06] last:border-none flex items-center justify-between"
+                >
+                  <span>{item.label}</span>
+                  <ArrowUpRight className="w-4 h-4 text-outline" strokeWidth={1.5} />
+                </motion.a>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </header>
 
-      {/* ─── Macro Container (Spaced Section Spine) ─── */}
-      <div className="w-full max-w-6xl relative z-10 px-4 sm:px-6 lg:px-8 pt-32 sm:pt-44 pb-32 flex flex-col gap-32 sm:gap-44">
-        
-        {/* ─── 02. Attention: Cinematic Center Hero & 3D Interactive HUD ─── */}
-        <section className="min-h-[calc(100dvh-180px)] flex flex-col items-center justify-center text-center gap-10 sm:gap-14 pt-4">
-          {/* Eyebrow Pill */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/[0.04] border border-white/15 text-[11px] font-sans tabular-nums tracking-normal text-primary shadow-sm">
-            <Sparkles className="w-3.5 h-3.5 text-primary" strokeWidth={1.5} />
-            <DecryptedText text="ZERO KYC UNDER $100 • DECENTRALIZED P2P ESCROW" speed={28} />
-          </div>
-
-          {/* 2-Line Iron Rule Headline */}
-          <h1 className="max-w-4xl lg:max-w-5xl text-4xl sm:text-6xl lg:text-7xl font-semibold tracking-tight text-on-surface leading-[1.06]">
-            Pay any merchant with crypto in seconds.
-          </h1>
-
-          {/* Clean Subtext under 12 words */}
-          <p className="text-base sm:text-xl text-outline max-w-2xl leading-relaxed">
-            Scan local QR codes and settle instantly in Base USDC without KYC.
-          </p>
-
-          {/* Nested Button-in-Button CTA Architecture */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full sm:w-auto pt-2">
-            <button
-              onClick={login}
-              className="rounded-full pl-8 pr-2.5 py-2.5 bg-on-surface text-surface-container-lowest font-bold text-xs  tracking-normal hover:bg-white transition-colors duration-300 shadow-card active:scale-[0.98] group flex items-center justify-between gap-5 w-full sm:w-auto"
-            >
-              <span>LAUNCH APP &amp; SCAN QR</span>
-              <div className="w-9 h-9 rounded-full bg-surface text-white flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5 shadow-sm">
-                <QrCode className="w-4 h-4 text-primary" strokeWidth={1.75} />
-              </div>
-            </button>
-
-            <a
-              href="#simulator"
-              className="px-6 py-3.5 rounded-full border border-white/15 bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/30 active:scale-95 transition-colors text-xs font-semibold text-on-surface flex items-center justify-center gap-2.5 w-full sm:w-auto"
-            >
-              <span>Test Live Simulator</span>
-              <Sliders className="w-4 h-4 text-primary" strokeWidth={1.5} />
-            </a>
-          </div>
-
-          {/* Live Micro-Metrics Ribbon */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-10 pt-8 sm:pt-12 border-t border-white/10 w-full max-w-3xl">
-            <div className="flex flex-col items-center sm:items-start text-center sm:text-left">
-              <span className="text-white font-sans tabular-nums text-xl sm:text-2xl font-bold tracking-tight">~0.5s</span>
-              <span className="text-[11px] font-sans tabular-nums text-outline  tracking-normal mt-0.5">Settlement Speed</span>
-            </div>
-            <div className="flex flex-col items-center sm:items-start text-center sm:text-left">
-              <span className="text-success font-sans tabular-nums text-xl sm:text-2xl font-bold tracking-tight">$0.00</span>
-              <span className="text-[11px] font-sans tabular-nums text-outline  tracking-normal mt-0.5">KYC Under $100</span>
-            </div>
-            <div className="flex flex-col items-center sm:items-start text-center sm:text-left">
-              <span className="text-white font-sans tabular-nums text-xl sm:text-2xl font-bold tracking-tight">&lt; $0.01</span>
-              <span className="text-[11px] font-sans tabular-nums text-outline  tracking-normal mt-0.5">Base Gas Fee</span>
-            </div>
-            <div className="flex flex-col items-center sm:items-start text-center sm:text-left">
-              <span className="text-white font-sans tabular-nums text-xl sm:text-2xl font-bold tracking-tight">1.0%</span>
-              <span className="text-[11px] font-sans tabular-nums text-outline  tracking-normal mt-0.5">Flat Protocol Fee</span>
-            </div>
-          </div>
-
-          {/* ─── Hero Showcase: Double-Bezel Interactive Phone Reticle Display ─── */}
-          <div
-            ref={phoneRef}
-            onPointerMove={handlePointerMove}
-            onPointerLeave={handlePointerLeave}
-            style={{ perspective: "1200px" }}
-            className="w-full max-w-md sm:max-w-lg mt-6 cursor-grab active:cursor-grabbing"
-          >
+      {/* ─── Macro Spatial Container ─── */}
+      <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* ─── SECTION 1: Asymmetric 7/5 3D Split Hero (Fits 100dvh, pt-24 cap) ─── */}
+        <section className="min-h-[100dvh] pt-20 lg:pt-24 pb-12 flex items-center">
+          <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-center">
+            {/* Left Column (7 cols): 4-Element Hero Stack */}
             <motion.div
-              style={{
-                rotateX,
-                rotateY,
-                transformStyle: "preserve-3d",
-              }}
-              className="p-3 sm:p-4 rounded-[2.8rem] bg-white/[0.04] border border-white/12 ring-1 ring-white/5 shadow-elevated group"
+              style={shouldReduceMotion ? undefined : { y: heroParallaxY }}
+              className="lg:col-span-7 flex flex-col items-start text-left gap-6"
             >
-              {/* Inner Core: Machined Obsidian Bezel */}
-              <div className="rounded-[calc(2.8rem-0.75rem)] bg-surface-container-lowest p-2 sm:p-2.5 relative overflow-hidden shadow-glass flex flex-col gap-3">
-                {/* Visual Viewport with Generated Photorealistic Asset */}
-                <div className="relative w-full rounded-2xl overflow-hidden aspect-[9/16] bg-black flex items-center justify-center border border-white/10">
-                  <img
-                    src="/zkpay_scanner_phone.jpg"
-                    alt="ZkPay Mobile UPI Scanner HUD"
-                    className="w-full h-full object-cover object-top"
-                  />
-                  {/* Subtle edge sheen overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
-                </div>
+              {/* Element 1: Eyebrow #1 (of 2 on page) */}
+              <div className="inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 bg-white/[0.04] border border-white/10">
+                <span className="w-1.5 h-1.5 rounded-full bg-success" />
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-primary">
+                  GLOBAL CRYPTO-TO-FIAT PROTOCOL
+                </span>
+              </div>
 
-                {/* Interactive Reticle Test Bar */}
+              {/* Element 2: 2-Line Display Headline with Inline Visual Pills */}
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-display font-semibold tracking-tight text-on-surface leading-[1.08] max-w-2xl">
+                Spend crypto in{" "}
+                <span className="inline-flex items-center gap-1.5 align-middle px-3 py-1 rounded-full bg-white/[0.06] border border-white/15 text-base sm:text-xl font-mono text-primary">
+                  <Globe2 className="w-4 h-4 text-success shrink-0" strokeWidth={1.5} />
+                  <span>40+ FIAT</span>
+                </span>{" "}
+                currencies across{" "}
+                <span className="inline-flex items-center gap-1.5 align-middle px-3 py-1 rounded-full bg-white/[0.06] border border-white/15 text-base sm:text-xl font-mono text-on-surface">
+                  <QrCode className="w-4 h-4 text-primary shrink-0" strokeWidth={1.5} />
+                  <span>180+ NATIONS</span>
+                </span>
+              </h1>
+
+              {/* Element 3: Subtext (18 words, <= 3 lines) */}
+              <p className="text-base sm:text-lg text-outline leading-relaxed max-w-[54ch]">
+                Scan any local merchant QR or settle to domestic bank rails in USD, EUR, GBP, INR, and BRL instantly.
+              </p>
+
+              {/* Element 4: Primary Button-in-Button CTA + Secondary Anchor */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5 w-full sm:w-auto pt-1">
                 <button
                   onClick={login}
-                  className="w-full py-3 rounded-xl font-bold tracking-normal text-xs font-sans tabular-nums bg-white/[0.05] hover:bg-white/[0.1] border border-white/15 text-white flex items-center justify-center gap-2 transition-colors active:scale-[0.98] shadow-sm whitespace-nowrap"
+                  className="rounded-full pl-6 pr-2 py-2.5 bg-on-surface text-surface-container-lowest font-semibold text-sm hover:bg-white active:scale-[0.98] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] shadow-elevated group flex items-center justify-between sm:justify-start gap-4 whitespace-nowrap"
                 >
-                  <QrCode className="w-4 h-4 text-primary" strokeWidth={1.5} />
-                  <span>Test Live Scanner Reticle</span>
+                  <span>Launch App</span>
+                  <span className="w-9 h-9 rounded-full bg-surface-container-lowest text-on-surface flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5">
+                    <ArrowUpRight className="w-4 h-4 text-primary" strokeWidth={1.75} />
+                  </span>
                 </button>
+
+                <a
+                  href="#corridors"
+                  className="rounded-full px-6 py-3.5 bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 hover:border-white/20 text-xs sm:text-sm font-medium text-on-surface transition-all duration-300 text-center whitespace-nowrap"
+                >
+                  Explore Global Rails
+                </a>
               </div>
             </motion.div>
+
+            {/* Right Column (5 cols): Interactive 3D Spatial Viewport */}
+            <div className="lg:col-span-5 w-full">
+              <HeroSpatialStage3D />
+            </div>
           </div>
         </section>
 
-        {/* ─── 03. Interest: Multi-Chain Instant Solver Marquee (Cross-Chain Rails) ─── */}
-        <section id="solvers" className="flex flex-col gap-6">
-          <div className="flex flex-col md:flex-row items-start md:items-end justify-between gap-4">
-            <div>
-              <span className="text-xs font-sans tabular-nums  tracking-normal text-outline">Cross-Chain Solver Rails</span>
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white mt-1">
-                Deposit from any chain. Spend on UPI instantly.
+        {/* ─── SECTION 2: Worldwide Multi-Currency Orbital Ledger (No Eyebrow) ─── */}
+        <section id="corridors" className="py-20 sm:py-28 flex flex-col gap-10">
+          <ScrollReveal>
+            <div className="flex flex-col gap-3 max-w-2xl">
+              <h2 className="text-2xl sm:text-4xl font-display font-semibold tracking-tight text-on-surface">
+                One liquidity layer for every domestic rail.
               </h2>
+              <p className="text-sm sm:text-base text-outline leading-relaxed max-w-[60ch]">
+                Your wallet holds crypto on Base, Solana, Ethereum, or Bitcoin. Merchants and recipients receive their own local currency over national instant banking networks.
+              </p>
             </div>
-            <p className="text-xs text-outline max-w-sm">
-              Single-use solver deposit addresses. Fees carve directly on the origin chain with $0 threshold and instant execution.
-            </p>
-          </div>
+          </ScrollReveal>
 
-          {/* Solver Rail Cards Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
-            {solverChains.map((c) => (
-              <div
-                key={c.symbol}
-                className="p-1 rounded-2xl bg-white/[0.03] border border-white/10 ring-1 ring-white/5 hover:border-white/25 transition-colors group"
-              >
-                <div className="p-3.5 rounded-[calc(1rem-0.25rem)] bg-surface-container-lowest flex flex-col justify-between h-full min-h-[105px]">
-                  <div className="flex items-center justify-between">
-                    <span className="font-sans tabular-nums font-bold text-sm text-white">{c.symbol}</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-success" />
-                  </div>
-                  <div>
-                    <span className="text-[11px] text-outline block leading-tight">{c.name}</span>
-                    <span className="text-[10px] font-sans tabular-nums text-primary mt-1 block">{c.speed}</span>
-                  </div>
-                </div>
-              </div>
+          {/* 3D Corridor Stream Marquee */}
+          <GlobalCorridorStream3D />
+
+          {/* 4-Metric Architectural Ledger */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {GLOBAL_METRICS.map((m, idx) => (
+              <ScrollReveal key={m.label} delay={idx * 0.06}>
+                <Tilt3DMonolith maxTilt={6} innerClassName="p-6 flex flex-col justify-between gap-4">
+                  <DepthLayer z={22}>
+                    <span className="font-mono text-3xl sm:text-4xl font-semibold text-on-surface tracking-tight tabular-nums">
+                      {m.value}
+                    </span>
+                  </DepthLayer>
+                  <DepthLayer z={12} className="flex flex-col gap-1 border-t border-white/[0.07] pt-3">
+                    <span className="text-sm font-medium text-on-surface">{m.label}</span>
+                    <span className="text-xs text-outline">{m.detail}</span>
+                  </DepthLayer>
+                </Tilt3DMonolith>
+              </ScrollReveal>
             ))}
           </div>
         </section>
 
-        {/* ─── 04. Interest: 2-Step Precision Timeline ─── */}
-        <section className="flex flex-col gap-10 max-w-4xl mx-auto w-full">
-          <div className="flex flex-col gap-2">
-            <span className="text-xs font-sans tabular-nums  tracking-normal text-outline">Precision Architecture</span>
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">
-              How ZkPay Settles in 2 Steps
-            </h2>
-            <p className="text-sm sm:text-base text-outline max-w-xl">
-              Strictly non-custodial smart escrow on Base Mainnet. No intermediary centralized exchange lockups.
-            </p>
-          </div>
-
-          <div className="divide-y divide-white/10 border-y border-white/10">
-            {/* Step 01 */}
-            <div className="py-8 grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
-              <div className="md:col-span-4 flex items-center gap-4">
-                <span className="font-sans tabular-nums text-4xl font-extralight text-primary/50">01</span>
-                <div className="flex flex-col">
-                  <span className="text-base font-bold text-white">Approve &amp; Escrow</span>
-                  <span className="text-[11px] font-sans tabular-nums text-primary mt-0.5">1% Protocol Fee • Zero Gas</span>
-                </div>
-              </div>
-              <div className="md:col-span-8 flex flex-col gap-2 text-sm text-outline leading-relaxed">
-                <p>
-                  Authorize your USDC on Base with your non-custodial wallet. Funds are held in an immutable Diamond escrow contract until the payment completes.
-                </p>
-                <p className="text-xs text-on-surface-variant">
-                  Gas fees on Base are negligible (~$0.001) and are automatically deducted from your USDC balance — you never need to hold native ETH.
-                </p>
-              </div>
-            </div>
-
-            {/* Step 02 */}
-            <div className="py-8 grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
-              <div className="md:col-span-4 flex items-center gap-4">
-                <span className="font-sans tabular-nums text-4xl font-extralight text-primary/50">02</span>
-                <div className="flex flex-col">
-                  <span className="text-base font-bold text-white">Instant Merchant Credit</span>
-                  <span className="text-[11px] font-sans tabular-nums text-success mt-0.5">Direct UPI Banking Dispatch</span>
-                </div>
-              </div>
-              <div className="md:col-span-8 flex flex-col gap-2 text-sm text-outline leading-relaxed">
-                <p>
-                  Decentralized P2P liquidity solver rails verify and dispatch the precise INR fiat payment directly to the merchant&rsquo;s UPI handle in seconds.
-                </p>
-                <p className="text-xs text-on-surface-variant">
-                  The merchant receives native INR instantly in their regular bank account with soundbox audio confirmation from Paytm, PhonePe, or Google Pay.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ─── 05. Interest: Gapless Bento Grid (Doppelrand Enclosures) ─── */}
-        <section id="features" className="flex flex-col gap-8 w-full">
-          <div className="flex flex-col gap-2">
-            <span className="text-xs font-sans tabular-nums  tracking-normal text-outline">System Capabilities</span>
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">
-              Engineered for Everyday Utility
-            </h2>
-            <p className="text-sm sm:text-base text-outline max-w-xl">
-              Every component is verified against live mainnet contracts, P2P Diamond facets, and national banking rails.
-            </p>
-          </div>
-
-          {/* Gapless Grid with grid-flow-dense */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 grid-flow-dense">
-            {/* Feature 1 (Wide: 7 cols) */}
-            <div className="md:col-span-7">
-              <div className="p-2 rounded-[2.2rem] bg-white/[0.03] border border-white/10 ring-1 ring-white/5 h-full">
-                <SpotlightCard className="p-7 sm:p-8 rounded-[calc(2.2rem-0.5rem)] border-white/10 bg-surface-container-lowest flex flex-col justify-between h-full min-h-[280px] shadow-glass">
-                  <div className="flex items-center justify-between">
-                    <div className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-primary">
-                      <QrCode className="w-6 h-6" strokeWidth={1.5} />
-                    </div>
-                    <span className="text-[11px] font-sans tabular-nums text-primary bg-white/[0.04] px-3 py-1 rounded-full border border-white/10">
-                      50M+ MERCHANTS
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-2 mt-8">
-                    <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Universal UPI Scanner</h3>
-                    <p className="text-sm text-outline leading-relaxed">
-                      Point and scan any QR code across India - Google Pay, PhonePe, Paytm, BHIM, Cred, and merchant soundboxes. Decodes UPI payloads with 100% standard compliance and instant camera reticle focus.
-                    </p>
-                  </div>
-                </SpotlightCard>
-              </div>
-            </div>
-
-            {/* Feature 2 (5 cols) */}
-            <div className="md:col-span-5">
-              <div className="p-2 rounded-[2.2rem] bg-white/[0.03] border border-white/10 ring-1 ring-white/5 h-full">
-                <SpotlightCard className="p-7 sm:p-8 rounded-[calc(2.2rem-0.5rem)] border-white/10 bg-surface-container-lowest flex flex-col justify-between h-full min-h-[280px] shadow-glass">
-                  <div className="flex items-center justify-between">
-                    <div className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-primary">
-                      <ShieldCheck className="w-6 h-6" strokeWidth={1.5} />
-                    </div>
-                    <span className="text-[11px] font-sans tabular-nums text-success bg-success/10 px-3 py-1 rounded-full border border-success/20">
-                      NO PASSPORT
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-2 mt-8">
-                    <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Zero KYC Under $100</h3>
-                    <p className="text-sm text-outline leading-relaxed">
-                      Pay small daily merchant tabs instantly. No document uploads, no facial selfies, no waiting for approval queues. Just connect your wallet and pay.
-                    </p>
-                  </div>
-                </SpotlightCard>
-              </div>
-            </div>
-
-            {/* Feature 3 (5 cols) */}
-            <div className="md:col-span-5">
-              <div className="p-2 rounded-[2.2rem] bg-white/[0.03] border border-white/10 ring-1 ring-white/5 h-full">
-                <SpotlightCard className="p-7 sm:p-8 rounded-[calc(2.2rem-0.5rem)] border-white/10 bg-surface-container-lowest flex flex-col justify-between h-full min-h-[280px] shadow-glass">
-                  <div className="flex items-center justify-between">
-                    <div className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-primary">
-                      <TrendingUp className="w-6 h-6" strokeWidth={1.5} />
-                    </div>
-                    <span className="text-xs font-sans tabular-nums text-success bg-success/10 px-2.5 py-1 rounded-full border border-success/20">
-                      5.51% APY
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-2 mt-8">
-                    <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Morpho Vault Yield</h3>
-                    <p className="text-sm text-outline leading-relaxed">
-                      Idle USDC in your account automatically compounds via Steakhouse Prime Morpho vaults on Base. Earn passive return until the exact moment you tap to pay.
-                    </p>
-                  </div>
-                </SpotlightCard>
-              </div>
-            </div>
-
-            {/* Feature 4 (Wide: 7 cols) */}
-            <div className="md:col-span-7">
-              <div className="p-2 rounded-[2.2rem] bg-white/[0.03] border border-white/10 ring-1 ring-white/5 h-full">
-                <SpotlightCard className="p-7 sm:p-8 rounded-[calc(2.2rem-0.5rem)] border-white/10 bg-surface-container-lowest flex flex-col justify-between h-full min-h-[280px] shadow-glass">
-                  <div className="flex items-center justify-between">
-                    <div className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-primary">
-                      <ArrowRightLeft className="w-6 h-6" strokeWidth={1.5} />
-                    </div>
-                    <span className="text-[11px] font-sans tabular-nums text-primary bg-white/[0.04] px-3 py-1 rounded-full border border-white/10">
-                      &lt; 60 SECONDS
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-2 mt-8">
-                    <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Instant Personal Cashout</h3>
-                    <p className="text-sm text-outline leading-relaxed">
-                      Need funds directly in your personal bank account? Off-ramp USDC straight to your personal UPI VPA with zero platform lock-in. Settlements process natively in under 60 seconds.
-                    </p>
-                  </div>
-                </SpotlightCard>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ─── 06. Desire: Interactive Real-Time Settlement Simulator ─── */}
-        <section id="simulator">
+        {/* ─── SECTION 3: Connected 3-Step Z-Axis Spatial Cascade (No Eyebrow) ─── */}
+        <section id="flow" className="py-24 sm:py-32 flex flex-col gap-14 relative">
           <ScrollReveal>
-            <SettlementSimulator onLaunchApp={login} />
+            <div className="flex flex-col gap-3 max-w-2xl">
+              <h2 className="text-3xl sm:text-5xl font-display font-semibold tracking-tight text-on-surface">
+                Engineered for instant borderless settlement.
+              </h2>
+              <p className="text-sm sm:text-base text-outline leading-relaxed max-w-[60ch]">
+                Every transaction routes through verifiable non-custodial smart escrows and decentralized local liquidity solvers in under a second.
+              </p>
+            </div>
           </ScrollReveal>
-        </section>
 
-        {/* ─── 07. Desire: The Obsidian 3D Titanium Card Showcase ─── */}
-        <section id="card">
-          <ScrollReveal>
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center max-w-5xl mx-auto w-full">
-              {/* Left: 3D Interactive Card (6 cols) */}
-              <div 
-                ref={cardRef}
-                onPointerMove={handleCardPointerMove}
-                onPointerLeave={handleCardPointerLeave}
-                style={{ perspective: "1000px" }}
-                className="lg:col-span-6 flex justify-center py-4 cursor-grab active:cursor-grabbing"
-              >
-                <motion.div 
-                  style={{
-                    rotateX: cardRotateX,
-                    rotateY: cardRotateY,
-                    transformStyle: "preserve-3d",
-                  }}
-                  className="w-full max-w-[420px] aspect-[1.586] rounded-3xl p-2 bg-white/[0.04] border border-white/15 shadow-elevated overflow-hidden group"
-                >
-                  <div className="w-full h-full rounded-[calc(1.5rem-0.25rem)] overflow-hidden relative">
-                    <img
-                      src="/zkpay_obsidian_card.jpg"
-                      alt="ZkPay Obsidian Titanium Physical Card"
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
-                  </div>
-                </motion.div>
-              </div>
+          {/* Horizontal 3D Connecting Beam on Desktop */}
+          <div className="relative grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-7 pb-0 lg:pb-16">
+            <div
+              aria-hidden="true"
+              className="hidden lg:block absolute top-1/2 left-12 right-12 h-px bg-gradient-to-r from-primary/15 via-success/40 to-primary/15 pointer-events-none"
+            />
 
-              {/* Right: Waitlist CTA & Details (6 cols) */}
-              <div className="lg:col-span-6 flex flex-col gap-6 text-left">
-                <div className="flex flex-col gap-2">
-                  <span className="text-xs font-sans tabular-nums  tracking-normal text-outline">Physical Extension</span>
-                  <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">
-                    The Obsidian Card
-                  </h2>
-                  <p className="text-sm sm:text-base text-outline leading-relaxed">
-                    Matte black titanium physical card linked directly to your Base USDC balance. Tap anywhere Visa and RuPay NFC contactless terminals are accepted worldwide.
-                  </p>
-                </div>
-
-                <div className="flex flex-col gap-3 text-xs sm:text-sm text-on-surface-variant">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-4 h-4 text-success shrink-0" strokeWidth={1.5} />
-                    <span>Direct debit from Base USDC with zero FX currency spread</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-4 h-4 text-success shrink-0" strokeWidth={1.5} />
-                    <span>Instant freeze and unfreeze via non-custodial smart contract</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-4 h-4 text-success shrink-0" strokeWidth={1.5} />
-                    <span>Priority tier for monthly cashback pool rewards</span>
-                  </div>
-                </div>
-
-                {/* Waitlist Box */}
-                <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-between gap-4 mt-2">
-                  <div className="flex flex-col">
-                    <span className="text-xs font-bold text-white  tracking-normal">Priority Card Waitlist</span>
-                    <span className="text-xs font-sans tabular-nums text-outline mt-0.5">
-                      {waitlistJoined ? (
-                        <span className="text-success font-semibold">You are queued! #{waitlistCount}</span>
-                      ) : (
-                        <span>{waitlistCount.toLocaleString()}+ members registered</span>
-                      )}
-                    </span>
-                  </div>
-
-                  <button
-                    onClick={handleJoinWaitlist}
-                    disabled={waitlistJoined}
-                    className={`px-5 py-2.5 rounded-full text-xs font-bold font-sans tabular-nums transition-colors shrink-0 ${
-                      waitlistJoined
-                        ? "bg-success/20 text-success border border-success/30"
-                        : "bg-white text-surface-dim hover:bg-on-surface active:scale-95 shadow-sm"
-                    }`}
+            {SPATIAL_STEPS.map((item, idx) => {
+              const IconComp = item.icon;
+              return (
+                <ScrollReveal key={item.step} delay={idx * 0.08} className={item.offsetClass}>
+                  <Tilt3DMonolith
+                    maxTilt={9}
+                    className="h-full"
+                    innerClassName="p-6 sm:p-7 flex flex-col justify-between gap-8 min-h-[290px]"
                   >
-                    {waitlistJoined ? "RESERVED" : "JOIN QUEUE"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </ScrollReveal>
-        </section>
+                    <DepthLayer z={28} className="flex items-center justify-between gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-white/[0.05] border border-white/15 flex items-center justify-center text-primary">
+                        <IconComp className="w-5 h-5" strokeWidth={1.5} />
+                      </div>
+                      <span className="font-mono text-[10px] text-primary px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/10">
+                        {item.railTag}
+                      </span>
+                    </DepthLayer>
 
-        {/* ─── 08. Protocol Architecture & Security Accordion ─── */}
-        <section className="flex flex-col gap-8 max-w-4xl mx-auto w-full">
-          <div className="flex flex-col gap-2">
-            <span className="text-xs font-sans tabular-nums  tracking-normal text-outline">Transparency &amp; Auditability</span>
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">
-              Frequently Asked Questions
-            </h2>
-            <p className="text-sm sm:text-base text-outline">
-              Technical and operational answers for merchants, users, and developers.
-            </p>
-          </div>
-
-          <div className="divide-y divide-white/10 border-y border-white/10">
-            {faqs.map((faq, i) => (
-              <div key={i} className="py-5">
-                <button
-                  onClick={() => toggleFaq(i)}
-                  className="w-full flex items-center justify-between text-left font-semibold text-base sm:text-lg text-white hover:text-primary transition-colors gap-4"
-                >
-                  <span>{faq.q}</span>
-                  <ChevronDown
-                    className={`w-5 h-5 text-outline shrink-0 transition-transform duration-300 ${
-                      activeFaq === i ? "rotate-180 text-white" : ""
-                    }`}
-                    strokeWidth={1.5}
-                  />
-                </button>
-                <AnimatePresence>
-                  {activeFaq === i && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
-                      className="overflow-hidden"
-                    >
-                      <p className="pt-3 text-sm text-outline leading-relaxed">
-                        {faq.a}
+                    <DepthLayer z={18} className="flex flex-col gap-2.5">
+                      <span className="font-mono text-xs text-success">{item.step}</span>
+                      <h3 className="text-xl sm:text-2xl font-display font-semibold text-on-surface tracking-tight">
+                        {item.title}
+                      </h3>
+                      <p className="text-sm text-outline leading-relaxed max-w-[55ch]">
+                        {item.description}
                       </p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            ))}
+                    </DepthLayer>
+                  </Tilt3DMonolith>
+                </ScrollReveal>
+              );
+            })}
           </div>
         </section>
 
-        {/* ─── 09. High-Contrast Final Call To Action ─── */}
-        <section>
+        {/* ─── SECTION 4: Asymmetric 3D Bento 2.0 Monoliths (Eyebrow #2 of 2) ─── */}
+        <section id="architecture" className="py-24 sm:py-32 flex flex-col gap-12">
           <ScrollReveal>
-            <div className="p-2 rounded-[2.5rem] bg-white/[0.04] border border-white/12 ring-1 ring-white/5">
-              <div className="p-8 sm:p-14 rounded-[calc(2.5rem-0.5rem)] bg-gradient-to-b from-surface to-surface-container-lowest border border-white/10 flex flex-col items-center text-center gap-6 shadow-glass">
-                <div className="w-12 h-12 rounded-2xl bg-white/[0.06] border border-white/15 flex items-center justify-center text-primary">
-                  <Flame className="w-6 h-6 text-primary" strokeWidth={1.5} />
-                </div>
-                
-                <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight max-w-xl">
-                  Ready to spend crypto at any merchant?
-                </h2>
-                
-                <p className="text-sm sm:text-base text-outline max-w-md">
-                  No account registration fees. No mandatory passport upload under $100. Start scanning in under 30 seconds.
-                </p>
-
-                <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
-                  <button
-                    onClick={login}
-                    className="rounded-full pl-8 pr-2.5 py-2.5 bg-on-surface text-surface-container-lowest font-bold text-xs  tracking-normal hover:bg-white transition-colors duration-300 shadow-card active:scale-[0.98] group flex items-center justify-between gap-5"
-                  >
-                    <span>LAUNCH APP &amp; SCAN QR</span>
-                    <div className="w-9 h-9 rounded-full bg-surface text-white flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5 shadow-sm">
-                      <QrCode className="w-4 h-4 text-primary" strokeWidth={1.75} />
-                    </div>
-                  </button>
-
-                  <Link
-                    href="/docs"
-                    className="px-6 py-3.5 rounded-full border border-white/15 bg-white/[0.02] hover:bg-white/[0.06] active:scale-95 transition-colors text-xs font-semibold text-on-surface"
-                  >
-                    Read Developer Documentation
-                  </Link>
-                </div>
+            <div className="flex flex-col items-start gap-3 max-w-2xl">
+              {/* Eyebrow #2 (Final allowed eyebrow on page) */}
+              <div className="inline-flex items-center gap-2 rounded-full px-3.5 py-1 bg-white/[0.04] border border-white/10">
+                <Sparkles className="w-3.5 h-3.5 text-primary" strokeWidth={1.5} />
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-primary">
+                  SPATIAL ARCHITECTURE
+                </span>
               </div>
+              <h2 className="text-3xl sm:text-5xl font-display font-semibold tracking-tight text-on-surface">
+                Built like precision hardware.
+              </h2>
+              <p className="text-sm sm:text-base text-outline leading-relaxed max-w-[60ch]">
+                Four interconnected protocol pillars combining universal QR decoding, zero-KYC micro-corridors, continuous Morpho yield, and multi-chain routing.
+              </p>
             </div>
           </ScrollReveal>
+
+          {/* 4-Cell Asymmetric Grid (7/5 + 5/7) with Surface Diversity */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Cell 1 (7 cols): Universal Global QR & Rail Engine with Live Auto-Sorting Stack */}
+            <ScrollReveal className="lg:col-span-7">
+              <Tilt3DMonolith
+                maxTilt={7}
+                className="h-full"
+                innerClassName="p-6 sm:p-8 flex flex-col justify-between gap-8"
+              >
+                <DepthLayer z={26} className="w-full">
+                  <BentoAutoSortingCorridors />
+                </DepthLayer>
+
+                <DepthLayer z={16} className="flex flex-col gap-2 pt-2 border-t border-white/[0.07]">
+                  <h3 className="text-xl sm:text-2xl font-display font-semibold text-on-surface tracking-tight">
+                    Universal QR &amp; Domestic Rail Decoder
+                  </h3>
+                  <p className="text-sm text-outline leading-relaxed max-w-[60ch]">
+                    Point your camera at any merchant code in São Paulo, Tokyo, London, Mumbai, or Lisbon. ZkPay parses local banking payloads and locks the mid-market oracle rate in milliseconds.
+                  </p>
+                </DepthLayer>
+              </Tilt3DMonolith>
+            </ScrollReveal>
+
+            {/* Cell 2 (5 cols): Tinted Periwinkle Steel Surface - Zero KYC Corridor */}
+            <ScrollReveal delay={0.06} className="lg:col-span-5">
+              <Tilt3DMonolith
+                maxTilt={8}
+                className="h-full"
+                innerClassName="p-6 sm:p-8 bg-gradient-to-br from-primary/[0.09] via-surface-container-lowest to-surface-container-lowest flex flex-col justify-between gap-8"
+              >
+                <DepthLayer z={34} className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <div className="w-10 h-10 rounded-xl bg-primary/15 border border-primary/30 flex items-center justify-center text-primary">
+                      <Lock className="w-5 h-5" strokeWidth={1.5} />
+                    </div>
+                    <span className="font-mono text-[11px] text-success px-2.5 py-1 rounded-full bg-success/10 border border-success/25">
+                      INSTANT ACCESS
+                    </span>
+                  </div>
+                  <div className="pt-4">
+                    <span className="font-mono text-5xl sm:text-6xl font-semibold text-on-surface tracking-tighter">
+                      $100
+                    </span>
+                    <span className="block font-mono text-xs text-primary mt-1">
+                      NO-KYC GLOBAL DAILY THRESHOLD
+                    </span>
+                  </div>
+                </DepthLayer>
+
+                <DepthLayer z={16} className="flex flex-col gap-2 pt-2 border-t border-white/10">
+                  <h3 className="text-xl sm:text-2xl font-display font-semibold text-on-surface tracking-tight">
+                    Zero KYC Under $100 Equivalent
+                  </h3>
+                  <p className="text-sm text-outline leading-relaxed">
+                    Pay everyday cafe tabs, transit tickets, and grocery runs across 180+ countries without uploading passports or waiting in verification queues.
+                  </p>
+                </DepthLayer>
+              </Tilt3DMonolith>
+            </ScrollReveal>
+
+            {/* Cell 3 (5 cols): Monospace Telemetry Surface - Morpho Yield */}
+            <ScrollReveal delay={0.08} className="lg:col-span-5">
+              <Tilt3DMonolith
+                maxTilt={8}
+                className="h-full"
+                innerClassName="p-6 sm:p-8 flex flex-col justify-between gap-8"
+              >
+                <DepthLayer z={28} className="w-full">
+                  <BentoYieldCompounding3D />
+                </DepthLayer>
+
+                <DepthLayer z={16} className="flex flex-col gap-2 pt-2 border-t border-white/[0.07]">
+                  <h3 className="text-xl sm:text-2xl font-display font-semibold text-on-surface tracking-tight">
+                    Continuous 5.51% APY Treasury Yield
+                  </h3>
+                  <p className="text-sm text-outline leading-relaxed">
+                    Idle USDC in your account automatically compounds through Steakhouse Prime vaults on Morpho Blue until the exact second you scan to spend.
+                  </p>
+                </DepthLayer>
+              </Tilt3DMonolith>
+            </ScrollReveal>
+
+            {/* Cell 4 (7 cols): Multi-Chain Solver Matrix Surface */}
+            <ScrollReveal delay={0.12} className="lg:col-span-7">
+              <Tilt3DMonolith
+                maxTilt={7}
+                className="h-full"
+                innerClassName="p-6 sm:p-8 flex flex-col justify-between gap-8"
+              >
+                <DepthLayer z={24} className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  {ORIGIN_CHAINS.map((chain) => (
+                    <div
+                      key={chain.code}
+                      className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.08] flex flex-col justify-between gap-1.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-xs font-semibold text-on-surface">
+                          {chain.code}
+                        </span>
+                        <Layers className="w-3.5 h-3.5 text-primary" strokeWidth={1.5} />
+                      </div>
+                      <span className="text-[11px] text-outline">{chain.name}</span>
+                      <span className="font-mono text-[10px] text-success">{chain.finality}</span>
+                    </div>
+                  ))}
+                </DepthLayer>
+
+                <DepthLayer z={16} className="flex flex-col gap-2 pt-2 border-t border-white/[0.07]">
+                  <h3 className="text-xl sm:text-2xl font-display font-semibold text-on-surface tracking-tight">
+                    Cross-Chain Solver Routing
+                  </h3>
+                  <p className="text-sm text-outline leading-relaxed max-w-[60ch]">
+                    Fund your global spending directly from Bitcoin, Solana, Ethereum, Arbitrum, or Tron via decentralized NEAR 1Click solver intents with zero bridge custody risk.
+                  </p>
+                </DepthLayer>
+              </Tilt3DMonolith>
+            </ScrollReveal>
+          </div>
         </section>
 
-        {/* ─── 10. Minimalist 2-Column Footer ─── */}
-        <footer className="pt-12 border-t border-white/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-8 text-xs text-outline">
-          {/* Left Column: Brand & Description */}
-          <div className="flex flex-col gap-2 max-w-sm">
-            <div className="flex items-center gap-2.5 text-white font-bold text-base">
-              <ShieldCheck className="w-4 h-4 text-primary" strokeWidth={1.5} />
-              <span>ZkPay</span>
-            </div>
-            <p className="text-xs text-outline leading-relaxed">
-              Decentralized crypto-to-fiat payment protocol on Base. Non-custodial smart escrow with instant banking rails.
-            </p>
-            <span className="text-[11px] text-outline/80 mt-1">
-              &copy; 2026 ZkPay. All rights reserved.
-            </span>
-          </div>
+        {/* ─── SECTION 5: Interactive 360° 3D Titanium Obsidian Card Showcase (No Eyebrow) ─── */}
+        <section id="obsidian-card" className="py-24 sm:py-32">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
+            {/* Left (6 cols): 3D Perspective Titanium Card */}
+            <ScrollReveal className="lg:col-span-6">
+              <Tilt3DMonolith
+                maxTilt={14}
+                className="w-full max-w-[460px] mx-auto"
+                innerClassName="p-3 sm:p-4 bg-gradient-to-tr from-surface-container-lowest via-surface to-surface-container-low"
+              >
+                <div
+                  style={shouldReduceMotion ? undefined : { transformStyle: "preserve-3d" }}
+                  className="relative aspect-[1.586] w-full rounded-2xl overflow-hidden border border-white/15"
+                >
+                  <img
+                    src="/zkpay_obsidian_card.jpg"
+                    alt="ZkPay CNC Titanium Obsidian Physical Card"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-surface-container-lowest/80 via-transparent to-transparent pointer-events-none" />
 
-          {/* Right Column: Navigation & Legal Links */}
-          <div className="flex flex-wrap items-center gap-6 sm:gap-8 font-medium">
-            <Link href="/docs" className="hover:text-white transition-colors">
-              Documentation
-            </Link>
-            <Link href="/privacy" className="hover:text-white transition-colors">
-              Privacy Policy
-            </Link>
-            <Link href="/terms" className="hover:text-white transition-colors">
-              Terms of Service
-            </Link>
-            <a
-              href="https://basescan.org/address/0x4cad6eC90e65baBec9335cAd728DDC610c316368"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 hover:text-white transition-colors text-primary"
-            >
-              <span>Base Diamond</span>
-              <ExternalLink className="w-3.5 h-3.5" strokeWidth={1.5} />
-            </a>
+                  <DepthLayer
+                    z={36}
+                    className="absolute bottom-4 left-4 right-4 flex items-center justify-between px-3.5 py-2 rounded-xl bg-surface/85 backdrop-blur-md border border-white/15"
+                  >
+                    <span className="font-mono text-[11px] text-on-surface">
+                      GRADE-5 TITANIUM · NFC WORLDWIDE
+                    </span>
+                    <span className="font-mono text-[11px] text-success">0% FX SPREAD</span>
+                  </DepthLayer>
+                </div>
+              </Tilt3DMonolith>
+            </ScrollReveal>
+
+            {/* Right (6 cols): Hardware Narrative */}
+            <ScrollReveal delay={0.08} className="lg:col-span-6 flex flex-col items-start gap-6">
+              <h2 className="text-3xl sm:text-5xl font-display font-semibold tracking-tight text-on-surface">
+                The Titanium Obsidian Card.
+              </h2>
+              <p className="text-sm sm:text-base text-outline leading-relaxed max-w-[58ch]">
+                When a merchant terminal only accepts physical contactless tap, the CNC-machined Obsidian Card debits your non-custodial Base USDC balance in real time across 180+ countries.
+              </p>
+
+              <div className="flex flex-col gap-3.5 w-full pt-1">
+                {[
+                  "Tap at 90M+ contactless Visa and Mastercard NFC terminals worldwide",
+                  "Direct on-chain USDC settlement with zero foreign exchange markups",
+                  "Instant cryptographic freeze and spending caps from your wallet",
+                ].map((point) => (
+                  <div key={point} className="flex items-center gap-3 text-sm text-on-surface-variant">
+                    <CheckCircle2 className="w-4 h-4 text-success shrink-0" strokeWidth={1.5} />
+                    <span>{point}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="pt-2">
+                <button
+                  onClick={login}
+                  className="rounded-full pl-6 pr-2 py-2.5 bg-on-surface text-surface-container-lowest font-semibold text-sm hover:bg-white active:scale-[0.98] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] group flex items-center gap-4 whitespace-nowrap"
+                >
+                  <span>Launch App</span>
+                  <span className="w-9 h-9 rounded-full bg-surface-container-lowest text-on-surface flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5">
+                    <ArrowUpRight className="w-4 h-4 text-primary" strokeWidth={1.75} />
+                  </span>
+                </button>
+              </div>
+            </ScrollReveal>
           </div>
-        </footer>
+        </section>
+
+        {/* ─── SECTION 6: Monumental 3D Horizon Convergence & Footer (No Eyebrow) ─── */}
+        <section className="pt-16 pb-28 sm:pb-24">
+          <ScrollReveal>
+            <Tilt3DMonolith
+              maxTilt={6}
+              innerClassName="p-8 sm:p-14 lg:p-16 bg-gradient-to-b from-surface-container-low/80 via-surface-container-lowest to-surface-container-lowest flex flex-col items-center text-center gap-6"
+            >
+              <DepthLayer
+                z={32}
+                className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/15 flex items-center justify-center text-primary"
+              >
+                <Globe2 className="w-6 h-6" strokeWidth={1.5} />
+              </DepthLayer>
+
+              <DepthLayer z={24} className="flex flex-col items-center gap-3 max-w-2xl">
+                <h2 className="text-3xl sm:text-5xl font-display font-semibold tracking-tight text-on-surface">
+                  The world is now your local currency.
+                </h2>
+                <p className="text-sm sm:text-base text-outline leading-relaxed max-w-[54ch]">
+                  Connect your wallet and settle in 40+ local currencies across 180+ countries in under a second.
+                </p>
+              </DepthLayer>
+
+              <DepthLayer z={36} className="pt-2">
+                <button
+                  onClick={login}
+                  className="rounded-full pl-7 pr-2 py-2.5 bg-on-surface text-surface-container-lowest font-semibold text-sm hover:bg-white active:scale-[0.98] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] shadow-elevated group flex items-center gap-4 whitespace-nowrap"
+                >
+                  <span>Launch App</span>
+                  <span className="w-9 h-9 rounded-full bg-surface-container-lowest text-on-surface flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5">
+                    <ArrowUpRight className="w-4 h-4 text-primary" strokeWidth={1.75} />
+                  </span>
+                </button>
+              </DepthLayer>
+            </Tilt3DMonolith>
+          </ScrollReveal>
+
+          {/* Minimalist Architectural Footer */}
+          <footer className="mt-16 pt-8 border-t border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 text-xs text-outline">
+            <div className="flex items-center gap-3">
+              <div className="w-6 h-6 rounded-full bg-white/[0.05] border border-white/15 flex items-center justify-center text-primary">
+                <ShieldCheck className="w-3.5 h-3.5" strokeWidth={1.5} />
+              </div>
+              <span className="font-display font-semibold text-on-surface">ZkPay</span>
+              <span>Global Non-Custodial Settlement Protocol</span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-6">
+              <Link href="/docs" className="hover:text-on-surface transition-colors">
+                Documentation
+              </Link>
+              <Link href="/privacy" className="hover:text-on-surface transition-colors">
+                Privacy Policy
+              </Link>
+              <Link href="/terms" className="hover:text-on-surface transition-colors">
+                Terms of Service
+              </Link>
+              <a
+                href="https://sepolia.basescan.org/address/0x5610D5f587F9cEEBb11C2920D15aC54175b40b2f#code"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-primary hover:text-on-surface transition-colors flex items-center gap-1"
+              >
+                <span>0x5610...0b2f</span>
+                <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={1.5} />
+              </a>
+            </div>
+          </footer>
+        </section>
       </div>
 
-      {/* ─── Sticky Mobile Action Bar (Thumb-Accessible, Hidden on Desktop) ─── */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-surface/95  border-t border-white/[0.08] p-3 pb-[calc(14px+env(safe-area-inset-bottom))] shadow-card">
+      {/* ─── Sticky Mobile Thumb Bar (< 1024px) ─── */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-surface/90 backdrop-blur-xl border-t border-white/10 px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom))]">
         <div className="max-w-md mx-auto">
           <button
             onClick={login}
-            className="w-full rounded-full pl-6 pr-2 py-2 bg-on-surface text-surface-dim font-bold text-xs  tracking-normal hover:bg-white active:scale-[0.98] transition-colors flex items-center justify-between shadow-md"
+            className="w-full rounded-full pl-6 pr-2 py-2 bg-on-surface text-surface-container-lowest font-semibold text-xs active:scale-[0.98] transition-all flex items-center justify-between"
           >
-            <span>LAUNCH APP &amp; SCAN QR</span>
-            <div className="w-8 h-8 rounded-full bg-surface text-white flex items-center justify-center">
-              <QrCode className="w-4 h-4 text-primary" strokeWidth={1.75} />
-            </div>
+            <span>Launch App</span>
+            <span className="w-8 h-8 rounded-full bg-surface-container-lowest text-on-surface flex items-center justify-center">
+              <ArrowUpRight className="w-4 h-4 text-primary" strokeWidth={1.75} />
+            </span>
           </button>
         </div>
       </div>

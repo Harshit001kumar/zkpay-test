@@ -1,89 +1,66 @@
-# ZkPay Semantic Design System (DESIGN.md)
+# Design System: ZkPay Global 3D Protocol
 
-This semantic design system serves as the definitive source of truth for ZkPay interfaces, Google Stitch screen generation, and frontend engineering workflows.
+## 1. Visual Theme & Atmosphere
+A gallery-airy, interconnected 3D spatial interface engineered with precision-instrument metallurgy and fluid spring-physics choreography. The page operates as a single continuous 3D environment where a scroll-reactive geodesic globe, orbital currency rings, and Z-axis perspective monoliths are linked by a live kinetic conduit.
 
----
-
-## 1. Visual Atmosphere & Philosophy
-
-- **Density:** 3 / 10 — "Art Gallery Airy". Macro-whitespace between sections (`py-32` to `py-44`), double standard padding. Interfaces breathe with generous negative space.
-- **Variance:** 8 / 10 — "Offset Asymmetric". High layout variance. Zero repetitive grids. Asymmetrical split heroes, 7/5 bento columns, alternating visual anchors.
-- **Motion:** 7 / 10 — "Perpetual Kinetic Tension". Smooth spring dynamics (`cubic-bezier(0.32, 0.72, 0, 1)`), GPU-safe transforms, animated laser reticles, magnetic hover tension.
-- **Vibe Archetype:** Ethereal Hardware. Deepest OLED obsidian surfaces, brushed steel-blue metallic accents, hairlines, and machined concentric bezels.
+* **DESIGN_VARIANCE:** `8 / 10` (Asymmetric 7/5 split hero, Z-axis cascading steps, 7/5 + 5/7 Double-Bezel bento monoliths)
+* **MOTION_INTENSITY:** `8 / 10` (Continuous 60fps 3D canvas projection linked to `useScroll()`, `preserve-3d` multi-layer parallax cards via `useMotionValue`, scroll-drawn SVG energy conduit)
+* **VISUAL_DENSITY:** `3 / 10` (Generous macro-whitespace `py-24` to `py-36`, crisp informational storytelling, zero app-form clutter)
 
 ---
 
-## 2. Color Calibration Matrix
-
-| Role | Descriptive Name | Hex Code | Usage |
-|---|---|---|---|
-| **Base Surface** | Obsidian Void | `#0e0e10` | Deepest page canvas, inner hardware cores |
-| **Elevated Surface** | Obsidian Glass | `#131315` | Main containers, floating islands, cards |
-| **Surface Accent** | Machine Charcoal | `#1b1b1d` | Double-bezel inner trays, elevated chips |
-| **Primary Accent** | Brushed Steel Blue | `#c0c6de` | Key brand accents, reticle brackets, laser beam, badges |
-| **On-Primary** | Deep Navy Shadow | `#2a3043` | Text placed on silver or steel-blue surfaces |
-| **High-Contrast Text** | Pure Lunar White | `#e5e2e3` | H1/H2 headlines, primary button text |
-| **Muted Body Text** | Atmospheric Grey | `#c6c6cd` | Body paragraphs, explanations (relaxed leading) |
-| **Technical Label Text** | Slate Muted | `#909097` | Timestamps, currency tags, monospace labels |
-| **Protocol Status** | Emerald Pulse | `#10b981` | Base Mainnet active heartbeat, verified badges |
-
-### Strict Banned Color Patterns
-- NO saturated neon purple/cyan AI gradients.
-- NO raw primary colors (plain red, plain blue, plain green).
-- NO harsh black drop shadows (`rgba(0,0,0,0.5)`). Shadows must be tinted to background obsidian hue.
-- NO white/gray button outer glows.
+## 2. Color Palette & Roles
+- **Obsidian Void** (`#0e0e0f`) - Primary deep canvas and inner Doppelrand hardware cores (never pure `#000000`)
+- **Smoked Graphite** (`#131315`) - Elevated containers, floating navigation island, and structural plates
+- **Machined Charcoal** (`#1b1b1d`) - Secondary surface elevation and recessed badge wells
+- **Lunar Off-White** (`#e5e2e3`) - Primary display headlines and high-contrast values
+- **Atmospheric Silver** (`#c6c6cd`) - Lead subheadings and primary narrative copy
+- **Muted Steel** (`#909097`) - Secondary descriptions (`max-w-[65ch]`) and technical metadata
+- **Whisper Rim** (`rgba(229, 226, 227, 0.10)`) - 1px structural hairline borders and concentric shell outlines
+- **Brushed Periwinkle Steel** (`#c0c6de`) - Single locked primary accent (saturation < 80%) for CTAs, 3D orbital vectors, and focus highlights
+- **Cryptographic Emerald** (`#34d399`) - Semantic settlement finality and live network pulse indicator
 
 ---
 
-## 3. Typographic Architecture
-
-- **Display & Headlines:** `Geist Display` or `Outfit` with tight tracking (`-0.035em`) and controlled leading (`1.08`).
-  - *2-Line Iron Rule:* Major H1 headings must NEVER exceed 2 to 3 lines. Always constrain with wide containers (`max-w-xl` to `max-w-2xl`) and fluid clamp sizing.
-- **Body Copy:** Sans-serif (`14px`–`16px`, relaxed leading `1.6`, maximum 65 characters per line).
-- **Numeric & Code Engine:** `JetBrains Mono` or `Geist Mono` for all currency amounts, gas fees, rates, wallet addresses, and transaction hashes.
-- **Banned Typography:** Standard `Inter`, generic `Roboto`, `Arial`, `Times New Roman`.
+## 3. Typography Rules
+- **Display & Headlines:** `Wix Madefor Display` / `Outfit` - Track-tight (`-0.025em`), controlled leading (`1.06`), sentence-case hierarchy with inline visual pills in the hero.
+- **Body Copy:** `Wix Madefor Text` / `Outfit` - Relaxed leading (`1.6`), strict `65ch` maximum line width.
+- **Monospace Telemetry:** `JetBrains Mono` (`tabular-nums`) - Strictly for settlement latencies, currency codes, APY percentages, and verified contract addresses.
+- **Banned Fonts:** `Inter`, `Roboto`, `Arial`, and default serif fonts (`Fraunces`, `Instrument Serif`).
 
 ---
 
-## 4. Vanguard Component Standards
-
-### A. The Double-Bezel (Doppelrand) Hardware Enclosure
-Every primary card, scanner box, and calculator container uses concentric nested shells:
-- **Outer Shell:** `p-2 rounded-[2.5rem] bg-white/[0.03] border border-white/10 ring-1 ring-white/5`
-- **Inner Core:** `rounded-[calc(2.5rem-0.5rem)] bg-[#0e0e10] p-6 shadow-[inset_0_1px_1px_rgba(255,255,255,0.15)]`
-
-### B. Button-in-Button Nested Trailing Icon CTA
-Primary interactive buttons must be fully rounded pills with a nested circular sub-element:
-- **Outer Pill:** `rounded-full pl-7 pr-2.5 py-3 bg-[#e5e2e3] text-[#131315] font-bold text-xs uppercase tracking-wider hover:bg-white transition-all shadow-[0_10px_30px_rgba(229,226,227,0.18)] active:scale-[0.98] group flex items-center gap-3`
-- **Inner Icon Wrapper:** `w-9 h-9 rounded-full bg-[#131315] text-white flex items-center justify-center transition-transform group-hover:translate-x-1 group-hover:-translate-y-0.5`
-
-### C. Fluid Island Floating Navigation
-Detached floating glass pill centered at `top-6`, `mx-auto`, `w-max max-w-5xl`, `rounded-full`, `bg-[#131315]/80 backdrop-blur-3xl border border-white/10 shadow-[0_16px_36px_rgba(0,0,0,0.6)] px-6 py-3`.
+## 4. Component Stylings & 3D Architecture
+* **Double-Bezel (Doppelrand) Enclosures:** All monoliths use an outer shell (`p-1.5 sm:p-2 rounded-[2rem] bg-white/[0.03] border border-white/10 ring-1 ring-white/5`) housing a recessed inner core (`rounded-[calc(2rem-0.375rem)] bg-[#0e0e0f] shadow-[inset_0_1px_1px_rgba(255,255,255,0.12)]`).
+* **3D Multi-Layer Parallax (`preserve-3d`):** Cards track pointer coordinates via `useMotionValue` and `useSpring` (`stiffness: 120, damping: 20`), elevating foreground badges at `translateZ(30px)` to `translateZ(60px)` with dynamic specular surface sheen.
+* **Button-in-Button CTA Architecture:** Primary action uses a single unified label (`"Launch App"`) in a full pill (`rounded-full`) with a flush circular trailing icon housing that translates diagonally on hover and scales to `0.98` on active press.
 
 ---
 
-## 5. Layout & Spatial Rhythm
-
-- **AIDA Structure:** Attention (Hero) → Interest (2-Step Timeline & Gapless Bento) → Desire (Oracle Calculator & 3D Obsidian Card) → Action (Button-in-Button CTA & Minimal Footer).
-- **Macro-Whitespace:** `py-32` to `py-44` between all major sections.
-- **Gapless Bento Grid:** Must use `grid-flow-dense` with interlocking column spans (e.g., 7/5 and 5/7). Zero dead or empty cells.
-- **Mobile-First Collapse:** All multi-column layouts aggressively collapse to single column below `768px` (`grid-cols-1`, `w-full`, `px-4`). Never use `h-screen` — always use `min-h-[100dvh]`.
-
----
-
-## 6. Motion & Physics Directives
-
-- **Spring Physics Curve:** `transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]`.
-- **GPU-Safe Transforms:** Animate exclusively via `transform` and `opacity`. Never animate `top`, `left`, `width`, or `height`.
-- **Reduced Motion:** Strictly honor `@media (prefers-reduced-motion: reduce)` by disabling infinite loops and instantizing state transitions.
-- **Continuous Pointer Tracking:** Use Framer Motion `useMotionValue` and `useTransform` for 3D card tilt — never use `useState` for mouse tracking.
+## 5. Layout Principles & Responsive Strategy
+- **Hero Discipline:** 7/5 asymmetric split fitting 100% inside `min-h-[100dvh]` with `pt-20 lg:pt-24` top padding cap and 4 stack elements.
+- **Eyebrow Cap:** Maximum 2 eyebrows across all 6 page sections (`<= ceil(6 / 3)`).
+- **Non-Repeating Section Layouts:**
+  1. Asymmetric 7/5 3D Split Hero
+  2. Single-Row Architectural Global Currency Rail
+  3. 3-Node Z-Axis Cascading Spatial Flow
+  4. 4-Cell Asymmetric (7/5 + 5/7) Bento 2.0 Monoliths
+  5. 5/7 Split Interactive 360° 3D Titanium Card Showcase
+  6. Full-Width Horizon Convergence & Minimalist Footer
+- **Mobile-First Collapse (`< 768px`):** All multi-column and 3D offset grids collapse cleanly to `grid-cols-1 w-full px-4` with zero horizontal overflow.
 
 ---
 
-## 7. Absolute Zero Anti-Pattern List
+## 6. Motion & Interconnected Choreography
+- **Global 3D Spatial Canvas:** Fixed `<canvas>` renders a 3D geodesic globe and orbital currency rings whose rotation, camera tilt, and Z-depth interpolate smoothly with `useScroll()`.
+- **Scroll-Scrubbed Conduit Spine:** An SVG vector path draws down the vertical axis of the page as the user scrolls, linking each section into a single continuous narrative.
+- **Reduced Motion Guardrail:** Every continuous loop, 3D tilt transform, and scroll-linked animation checks `useReducedMotion()` and degrades gracefully to a poised static presentation.
 
-- [x] Zero em-dashes (`—`) in copy or code.
-- [x] Zero emojis in UI controls, code, or comments.
-- [x] Zero meta-labels ("SECTION 01", "QUESTION 05").
-- [x] Zero fake-precise metrics (e.g. `42,109`).
-- [x] Zero edge-to-edge sticky headers glued to the top.
+---
+
+## 7. Anti-Patterns (Banned)
+- Zero em-dashes (`—`) or en-dashes (`–`) anywhere in markup, strings, or comments.
+- Zero emojis anywhere.
+- Zero duplicate CTA intents (only `"Launch App"` is used for app entry).
+- Zero in-app form inputs, converter calculators, or fake waitlist counters on the marketing page.
+- Zero AI-purple neon glows or pure `#000000` backgrounds.
