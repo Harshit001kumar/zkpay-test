@@ -4,7 +4,7 @@ import React, { useEffect, useRef, memo } from "react";
 import { MotionValue, useReducedMotion } from "framer-motion";
 
 interface SpatialCanvas3DProps {
-  scrollProgress: MotionValue<number>;
+  scrollProgress?: MotionValue<number>;
 }
 
 interface Vec3 {
@@ -140,7 +140,7 @@ function SpatialCanvas3DComponent({ scrollProgress }: SpatialCanvas3DProps) {
     const renderFrame = () => {
       ctx.clearRect(0, 0, width, height);
 
-      const s = scrollProgress.get(); // 0 to 1 across entire website
+      const s = scrollProgress ? scrollProgress.get() : 0.35; // 0 to 1 across entire website
       pointer.x += (pointer.targetX - pointer.x) * 0.05;
       pointer.y += (pointer.targetY - pointer.y) * 0.05;
 

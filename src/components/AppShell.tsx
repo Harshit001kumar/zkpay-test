@@ -17,7 +17,7 @@ import { SpatialCanvas3D } from "@/components/ui/SpatialCanvas3D";
 export type NavTab = "home" | "earn" | "cards" | "profile";
 
 export default function AppShell() {
-  const { ready, authenticated } = useActiveAccount();
+  const { ready, authenticated, login } = useActiveAccount();
   const { currencyMeta, setIsSelectorOpen } = useCurrency();
   const [activeTab, setActiveTab] = useState<NavTab>("home");
 
@@ -30,14 +30,14 @@ export default function AppShell() {
           </div>
         </div>
         <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#8d90a1]">
-          INITIALIZING ZKPAY spatial ENCLAVE
+          INITIALIZING ZKPAY SPATIAL ENCLAVE
         </span>
       </div>
     );
   }
 
   if (!authenticated) {
-    return <LandingPage />;
+    return <LandingPage login={login} />;
   }
 
   return (

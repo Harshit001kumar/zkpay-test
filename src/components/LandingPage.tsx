@@ -31,9 +31,10 @@ import {
   BentoYieldCompounding3D,
 } from "@/components/ui/Connected3DScenes";
 import { ScrollReveal } from "@/components/ui/ScrollReveal";
+import { useActiveAccount } from "@/hooks/useActiveAccount";
 
 interface LandingPageProps {
-  login: () => void;
+  login?: () => void;
 }
 
 const GLOBAL_METRICS = [
@@ -84,7 +85,9 @@ const ORIGIN_CHAINS = [
   { code: "BSC", name: "BNB Chain", finality: "0.9s" },
 ];
 
-export default function LandingPage({ login }: LandingPageProps) {
+export default function LandingPage({ login: loginProp }: LandingPageProps = {}) {
+  const { login: activeLogin } = useActiveAccount();
+  const login = loginProp ?? activeLogin;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const shouldReduceMotion = useReducedMotion();
 
