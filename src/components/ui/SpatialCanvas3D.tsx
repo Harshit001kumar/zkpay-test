@@ -193,7 +193,7 @@ function SpatialCanvas3DComponent({ scrollProgress }: SpatialCanvas3DProps) {
       const rotX = 0.28 + Math.sin(s * Math.PI * 1.5) * 0.42 + pointer.y * 0.28;
       const rotZ = Math.cos(s * Math.PI) * 0.18;
 
-      // Subtle atmospheric core luminance
+      // Subtle atmospheric core luminance (Electric Blue + Acid Lime)
       const coreGlow = ctx.createRadialGradient(
         centerX,
         centerY,
@@ -202,9 +202,9 @@ function SpatialCanvas3DComponent({ scrollProgress }: SpatialCanvas3DProps) {
         centerY,
         baseRadius * 1.85
       );
-      coreGlow.addColorStop(0, "rgba(192, 198, 222, 0.07)");
-      coreGlow.addColorStop(0.45, "rgba(52, 211, 153, 0.025)");
-      coreGlow.addColorStop(1, "rgba(14, 14, 15, 0)");
+      coreGlow.addColorStop(0, "rgba(41, 112, 255, 0.14)");
+      coreGlow.addColorStop(0.45, "rgba(204, 255, 0, 0.04)");
+      coreGlow.addColorStop(1, "rgba(5, 6, 8, 0)");
       ctx.fillStyle = coreGlow;
       ctx.beginPath();
       ctx.arc(centerX, centerY, baseRadius * 1.85, 0, Math.PI * 2);
@@ -212,9 +212,9 @@ function SpatialCanvas3DComponent({ scrollProgress }: SpatialCanvas3DProps) {
 
       // 1. Render 3 inclined 3D Orbital Rings
       const ringConfigs = [
-        { radius: 1.38, tiltX: 0.52, tiltZ: -0.28, stroke: "rgba(192, 198, 222, 0.13)" },
-        { radius: 1.62, tiltX: -0.48, tiltZ: 0.42, stroke: "rgba(52, 211, 153, 0.11)" },
-        { radius: 1.86, tiltX: 1.05, tiltZ: 0.18, stroke: "rgba(192, 198, 222, 0.07)" },
+        { radius: 1.38, tiltX: 0.52, tiltZ: -0.28, stroke: "rgba(41, 112, 255, 0.24)" },
+        { radius: 1.62, tiltX: -0.48, tiltZ: 0.42, stroke: "rgba(204, 255, 0, 0.20)" },
+        { radius: 1.86, tiltX: 1.05, tiltZ: 0.18, stroke: "rgba(41, 112, 255, 0.14)" },
       ];
 
       ringConfigs.forEach((ring) => {
@@ -268,8 +268,8 @@ function SpatialCanvas3DComponent({ scrollProgress }: SpatialCanvas3DProps) {
           const distSq = dx * dx + dy * dy;
           const maxDist = baseRadius * 0.36;
           if (distSq < maxDist * maxDist) {
-            const alpha = (1 - Math.sqrt(distSq) / maxDist) * 0.16 * ((a.z + 1) * 0.5);
-            ctx.strokeStyle = `rgba(192, 198, 222, ${alpha.toFixed(3)})`;
+            const alpha = (1 - Math.sqrt(distSq) / maxDist) * 0.24 * ((a.z + 1) * 0.5);
+            ctx.strokeStyle = `rgba(41, 112, 255, ${alpha.toFixed(3)})`;
             ctx.beginPath();
             ctx.moveTo(a.sx, a.sy);
             ctx.lineTo(b.sx, b.sy);
@@ -282,18 +282,18 @@ function SpatialCanvas3DComponent({ scrollProgress }: SpatialCanvas3DProps) {
       projected.forEach((p) => {
         const depthAlpha = Math.max(0.08, (p.z + 1.1) * 0.45);
         if (p.isHub && p.z > -0.1) {
-          ctx.fillStyle = `rgba(52, 211, 153, ${Math.min(0.9, depthAlpha + 0.25)})`;
+          ctx.fillStyle = `rgba(204, 255, 0, ${Math.min(0.95, depthAlpha + 0.3)})`;
           ctx.beginPath();
           ctx.arc(p.sx, p.sy, 2.6 * p.scale, 0, Math.PI * 2);
           ctx.fill();
 
           if (p.label && p.z > 0.22 && !isMobile) {
             ctx.font = "500 10px 'JetBrains Mono', monospace";
-            ctx.fillStyle = `rgba(229, 226, 227, ${(depthAlpha * 0.75).toFixed(2)})`;
+            ctx.fillStyle = `rgba(248, 250, 252, ${(depthAlpha * 0.85).toFixed(2)})`;
             ctx.fillText(p.label, p.sx + 7, p.sy + 3);
           }
         } else {
-          ctx.fillStyle = `rgba(192, 198, 222, ${(depthAlpha * 0.55).toFixed(2)})`;
+          ctx.fillStyle = `rgba(41, 112, 255, ${(depthAlpha * 0.65).toFixed(2)})`;
           ctx.beginPath();
           ctx.arc(p.sx, p.sy, 1.35 * p.scale, 0, Math.PI * 2);
           ctx.fill();
@@ -318,15 +318,15 @@ function SpatialCanvas3DComponent({ scrollProgress }: SpatialCanvas3DProps) {
         const alpha = Math.max(0.18, (tilted.z + 1.4) * 0.38);
 
         ctx.fillStyle = pkt.emerald
-          ? `rgba(52, 211, 153, ${Math.min(0.95, alpha + 0.2)})`
-          : `rgba(192, 198, 222, ${Math.min(0.9, alpha + 0.15)})`;
+          ? `rgba(204, 255, 0, ${Math.min(0.95, alpha + 0.25)})`
+          : `rgba(41, 112, 255, ${Math.min(0.95, alpha + 0.2)})`;
         ctx.beginPath();
         ctx.arc(sx, sy, 3.2 * scale, 0, Math.PI * 2);
         ctx.fill();
 
         if (!isMobile && tilted.z > -0.2) {
           ctx.font = "500 9.5px 'JetBrains Mono', monospace";
-          ctx.fillStyle = `rgba(198, 198, 205, ${(alpha * 0.78).toFixed(2)})`;
+          ctx.fillStyle = `rgba(248, 250, 252, ${(alpha * 0.82).toFixed(2)})`;
           ctx.fillText(pkt.code, sx + 8, sy + 3);
         }
       });

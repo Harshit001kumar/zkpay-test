@@ -283,7 +283,8 @@ input[type=number] {
   left: 0;
   right: 0;
   height: 2px;
-  background: var(--color-accent);
+  background: linear-gradient(90deg, transparent, #2970FF, #CCFF00, #2970FF, transparent);
+  box-shadow: 0 0 14px rgba(204, 255, 0, 0.55);
   animation: scanner-sweep 2.4s ease-in-out infinite;
   pointer-events: none;
 }

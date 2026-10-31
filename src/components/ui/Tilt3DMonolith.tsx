@@ -42,7 +42,7 @@ function Tilt3DMonolithComponent({
   const rotateX = useTransform(smoothY, [-0.5, 0.5], [maxTilt, -maxTilt]);
   const rotateY = useTransform(smoothX, [-0.5, 0.5], [-maxTilt, maxTilt]);
 
-  const glareBackground = useMotionTemplate`radial-gradient(420px circle at ${smoothGlareX}% ${smoothGlareY}%, rgba(192, 198, 222, 0.14), rgba(52, 211, 153, 0.04) 38%, transparent 70%)`;
+  const glareBackground = useMotionTemplate`radial-gradient(420px circle at ${smoothGlareX}% ${smoothGlareY}%, rgba(41, 112, 255, 0.18), rgba(204, 255, 0, 0.06) 38%, transparent 70%)`;
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (shouldReduceMotion || !containerRef.current) return;
@@ -80,11 +80,11 @@ function Tilt3DMonolithComponent({
                 transformStyle: "preserve-3d",
               }
         }
-        className="h-full w-full p-1.5 sm:p-2 rounded-[2rem] bg-white/[0.03] border border-white/10 ring-1 ring-white/5 transition-colors duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:border-white/20"
+        className="h-full w-full p-1.5 sm:p-2 rounded-[2rem] bg-[#0B0E14]/90 border border-[#2970FF]/20 ring-1 ring-[#2970FF]/10 transition-colors duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:border-[#2970FF]/40"
       >
         <div
           style={shouldReduceMotion ? undefined : { transformStyle: "preserve-3d" }}
-          className={`relative h-full w-full rounded-[calc(2rem-0.375rem)] bg-surface-container-lowest border border-white/[0.07] shadow-[inset_0_1px_1px_rgba(255,255,255,0.12)] overflow-hidden ${innerClassName}`}
+          className={`relative h-full w-full rounded-[calc(2rem-0.375rem)] bg-[#0B0E14] border border-white/[0.08] shadow-[inset_0_1px_1px_rgba(41,112,255,0.20)] overflow-hidden ${innerClassName}`}
         >
           {/* Specular 3D Surface Glare */}
           <motion.div

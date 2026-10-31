@@ -280,12 +280,12 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
     const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("Pay any UPI QR with crypto on Base and get Monthly Cashback!")}`;
 
     return (
-      <div className="bg-surface-container-lowest text-on-surface font-body-md selection:bg-primary/30 min-h-screen relative flex flex-col pb-36 overflow-y-auto w-full">
+      <div className="fixed inset-0 z-[70] bg-[#050608] text-on-surface font-body-md selection:bg-primary/30 min-h-screen flex flex-col pb-36 overflow-y-auto w-full">
         {/* TopAppBar */}
-        <header className="w-full sticky top-0 z-50 flex justify-between items-center px-6 py-6 max-w-2xl mx-auto  bg-surface-container-lowest/60">
+        <header className="w-full sticky top-3.5 z-50 flex justify-between items-center px-6 py-3 max-w-2xl mx-auto bg-[#050608]/85 backdrop-blur-xl rounded-full border border-[#2970FF]/25 mt-3.5">
           <button
             onClick={() => setActiveView("main")}
-            className="flex items-center gap-2 px-4 py-2 bg-[#131315] border border-white/[0.08] shadow-[0_24px_60px_-15px_rgba(0,0,0,0.85)] rounded-full cursor-pointer active:scale-95 transition-transform text-xs font-sans tabular-nums font-bold text-primary"
+            className="flex items-center gap-2 px-4 py-2 bg-[#0B0E14] border border-[#2970FF]/30 rounded-full cursor-pointer active:scale-95 transition-transform text-xs font-sans tabular-nums font-bold text-[#2970FF] hover:text-[#F8FAFC]"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>BACK TO PROFILE</span>
@@ -537,12 +537,12 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
 
   if (activeView === "api-keys") {
     return (
-      <div className="bg-surface-container-lowest text-on-surface font-body-md selection:bg-primary/30 min-h-screen relative flex flex-col pb-36 overflow-y-auto w-full">
+      <div className="fixed inset-0 z-[70] bg-[#050608] text-on-surface font-body-md selection:bg-primary/30 min-h-screen flex flex-col pb-36 overflow-y-auto w-full">
         {/* TopAppBar */}
-        <header className="w-full sticky top-0 z-50 flex justify-between items-center px-6 py-6 max-w-2xl mx-auto  bg-surface-container-lowest/60">
+        <header className="w-full sticky top-3.5 z-50 flex justify-between items-center px-6 py-3 max-w-2xl mx-auto bg-[#050608]/85 backdrop-blur-xl rounded-full border border-[#2970FF]/25 mt-3.5">
           <button
             onClick={() => setActiveView("main")}
-            className="flex items-center gap-2 px-4 py-2 bg-[#131315] border border-white/[0.08] shadow-[0_24px_60px_-15px_rgba(0,0,0,0.85)] rounded-full cursor-pointer active:scale-95 transition-transform text-xs font-sans tabular-nums font-bold text-primary"
+            className="flex items-center gap-2 px-4 py-2 bg-[#0B0E14] border border-[#2970FF]/30 rounded-full cursor-pointer active:scale-95 transition-transform text-xs font-sans tabular-nums font-bold text-[#2970FF] hover:text-[#F8FAFC]"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>BACK TO PROFILE</span>
@@ -801,25 +801,25 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
   };
 
   return (
-    <div className="text-[#e5e5e8] font-sans selection:bg-[#c0c6de]/30 w-full pb-28">
+    <div className="text-[#F8FAFC] font-sans selection:bg-[#2970FF]/30 w-full pb-28">
       <main className="w-full max-w-2xl mx-auto space-y-6">
         {/* 3D Identity Vault Monolith */}
         <Tilt3DMonolith
           maxTilt={8}
           className="w-full"
-          innerClassName="p-6 sm:p-8 flex flex-col items-center text-center bg-gradient-to-br from-[#171920]/95 via-[#131315]/95 to-[#0e0e0f]/95"
+          innerClassName="p-6 sm:p-8 flex flex-col items-center text-center bg-gradient-to-br from-[#0B0E14] via-[#111622] to-[#050608]"
         >
           <DepthLayer z={24} className="mb-4">
-            <div className="w-20 h-20 rounded-2xl border border-white/[0.12] bg-[#09090b] flex items-center justify-center shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]">
-              <UserCheck className="w-9 h-9 text-[#c0c6de]" />
+            <div className="w-20 h-20 rounded-2xl border border-[#2970FF]/30 bg-[#111622] flex items-center justify-center shadow-[inset_0_1px_1px_rgba(41,112,255,0.2)]">
+              <UserCheck className="w-9 h-9 text-[#CCFF00]" />
             </div>
           </DepthLayer>
 
           <DepthLayer z={28}>
-            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#34d399] block mb-1">
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#CCFF00] block mb-1">
               {isSmartWallet ? "ERC-4337 SMART ACCOUNT" : "NON-CUSTODIAL SIGNER"}
             </span>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-white mb-4 tracking-tight">
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-[#F8FAFC] mb-4 tracking-tight">
               {address ? "ZkPay Vault Signer" : "Guest Session"}
             </h2>
           </DepthLayer>
@@ -830,85 +830,85 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
                 if (address) router.push(`/wallet/${address}`);
                 else router.push("/wallet");
               }}
-              className="inline-flex items-center gap-3 bg-[#09090b] hover:bg-white/[0.05] px-5 py-2.5 rounded-full border border-white/[0.1] hover:border-[#c0c6de]/40 mb-6 cursor-pointer transition-colors active:scale-95 group"
+              className="inline-flex items-center gap-3 bg-[#111622] hover:bg-[#161D2B] px-5 py-2.5 rounded-full border border-[#2970FF]/30 hover:border-[#2970FF]/60 mb-6 cursor-pointer transition-colors active:scale-95 group"
               title="Open Base USDC deposit & wallet telemetry"
             >
-              <span className="w-2 h-2 rounded-full bg-[#34d399] animate-pulse" />
-              <span className="font-mono text-xs text-[#c0c6de] tabular-nums group-hover:text-white transition-colors">
+              <span className="w-2 h-2 rounded-full bg-[#CCFF00] animate-pulse" />
+              <span className="font-mono text-xs text-[#2970FF] tabular-nums group-hover:text-[#F8FAFC] transition-colors">
                 {shortAddress}
               </span>
               <button
                 onClick={handleCopy}
-                className="hover:text-white text-[#8d90a1] transition-colors flex items-center justify-center p-1 rounded-md hover:bg-white/10"
+                className="hover:text-[#F8FAFC] text-[#8A94A6] transition-colors flex items-center justify-center p-1 rounded-md hover:bg-white/10"
                 title="Copy Address"
               >
-                {copied ? <Check className="w-3.5 h-3.5 text-[#34d399]" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? <Check className="w-3.5 h-3.5 text-[#CCFF00]" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 w-full pt-4 border-t border-white/[0.07]">
-              <div className="p-3 rounded-xl bg-[#09090b]/80 border border-white/[0.06] flex items-center justify-between">
-                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#c0c6de] font-bold">
+            <div className="grid grid-cols-2 gap-3 w-full pt-4 border-t border-white/[0.08]">
+              <div className="p-3 rounded-xl bg-[#111622]/90 border border-[#2970FF]/25 flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#2970FF] font-bold">
                   PLATINUM TIER
                 </span>
-                <Shield className="w-4 h-4 text-[#c0c6de]" />
+                <Shield className="w-4 h-4 text-[#2970FF]" />
               </div>
-              <div className="p-3 rounded-xl bg-[#09090b]/80 border border-white/[0.06] flex items-center justify-between">
-                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#34d399] font-bold">
+              <div className="p-3 rounded-xl bg-[#111622]/90 border border-[#CCFF00]/25 flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#CCFF00] font-bold">
                   GASLESS PAYMASTER
                 </span>
-                <Zap className="w-4 h-4 text-[#34d399]" />
+                <Zap className="w-4 h-4 text-[#CCFF00]" />
               </div>
             </div>
           </DepthLayer>
         </Tilt3DMonolith>
 
         {/* Refer & Earn & Monthly Cashback Module */}
-        <div className="p-1.5 rounded-[28px] bg-white/[0.025] border border-white/[0.08] shadow-[0_24px_60px_-15px_rgba(0,0,0,0.85)]">
-          <section className="rounded-[22px] p-6 sm:p-7 bg-[#131315] border border-white/[0.07]">
+        <div className="p-1.5 rounded-[28px] bg-[#0B0E14]/90 border border-[#2970FF]/25 shadow-[0_24px_60px_-15px_rgba(0,0,0,0.9)]">
+          <section className="rounded-[22px] p-6 sm:p-7 bg-[#0B0E14] border border-white/[0.07]">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-[#c0c6de]/15 border border-[#c0c6de]/30 flex items-center justify-center text-[#c0c6de]">
+                <div className="w-9 h-9 rounded-xl bg-[#2970FF]/15 border border-[#2970FF]/35 flex items-center justify-center text-[#2970FF]">
                   <Gift className="w-4 h-4" />
                 </div>
-                <span className="font-mono text-[11px] uppercase tracking-[0.14em] font-bold text-white">
+                <span className="font-mono text-[11px] uppercase tracking-[0.14em] font-bold text-[#F8FAFC]">
                   REFER &amp; EARN // MONTHLY CASHBACK
                 </span>
               </div>
-              <span className="px-2.5 py-1 rounded-full bg-[#34d399]/10 border border-[#34d399]/25 text-[#34d399] font-mono text-[9px] uppercase tracking-[0.12em] font-bold">
+              <span className="px-2.5 py-1 rounded-full bg-[#CCFF00]/10 border border-[#CCFF00]/30 text-[#CCFF00] font-mono text-[9px] uppercase tracking-[0.12em] font-bold">
                 SCAN &amp; PAY
               </span>
             </div>
 
-            <div className="bg-[#09090b] rounded-2xl p-5 border border-white/[0.07] mb-5 space-y-3">
+            <div className="bg-[#111622] rounded-2xl p-5 border border-[#2970FF]/20 mb-5 space-y-3">
               <div className="flex justify-between items-baseline">
-                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#8d90a1]">
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#8A94A6]">
                   THIS MONTH&apos;S ACCRUED
                 </span>
-                <span className="text-2xl font-extrabold text-white tracking-tight tabular-nums">
+                <span className="text-2xl font-extrabold text-[#F8FAFC] tracking-tight tabular-nums">
                   ${(rewardsData?.thisMonth?.totalDueUsdc || 0).toFixed(2)}{" "}
-                  <span className="text-xs text-[#c0c6de] font-mono font-normal">USDC</span>
+                  <span className="text-xs text-[#2970FF] font-mono font-normal">USDC</span>
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-white/[0.07] font-mono text-xs tabular-nums text-[#8d90a1]">
+              <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-white/[0.07] font-mono text-xs tabular-nums text-[#8A94A6]">
                 <div>
                   Cashback:{" "}
-                  <span className="text-white font-bold">
+                  <span className="text-[#F8FAFC] font-bold">
                     ${(rewardsData?.thisMonth?.cashbackUsdc || 0).toFixed(2)}
                   </span>
                 </div>
                 <div className="text-right">
                   Referral:{" "}
-                  <span className="text-white font-bold">
+                  <span className="text-[#F8FAFC] font-bold">
                     ${(rewardsData?.thisMonth?.referralUsdc || 0).toFixed(2)}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center justify-between font-mono text-[11px] tabular-nums text-[#8d90a1] mb-5 px-1">
+            <div className="flex items-center justify-between font-mono text-[11px] tabular-nums text-[#8A94A6] mb-5 px-1">
               <span className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-[#c0c6de]" />
+                <Calendar className="w-3.5 h-3.5 text-[#2970FF]" />
                 <span>Batch Disbursed at Month-End</span>
               </span>
               <span>{rewardsData?.friendsInvited || 0} invited</span>
@@ -916,7 +916,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
 
             <button
               onClick={() => setActiveView("referral")}
-              className="w-full py-4 rounded-xl bg-gradient-to-b from-[#d8def8] to-[#a7add2] hover:from-white hover:to-white text-[#0e0e0f] font-mono uppercase tracking-[0.14em] font-bold text-xs transition-all flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
+              className="w-full py-4 rounded-xl bg-[#CCFF00] hover:brightness-110 text-[#050608] font-mono uppercase tracking-[0.14em] font-bold text-xs transition-all flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer shadow-[0_8px_24px_rgba(204,255,0,0.25)]"
             >
               <Share2 className="w-4 h-4" />
               <span>Open Referral Hub &amp; Share</span>
@@ -926,11 +926,11 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
         </div>
 
         {/* Security Module */}
-        <div className="p-1.5 rounded-[28px] bg-white/[0.025] border border-white/[0.08] shadow-[0_24px_60px_-15px_rgba(0,0,0,0.85)]">
-          <section className="rounded-[22px] p-6 sm:p-7 bg-[#131315] border border-white/[0.07]">
+        <div className="p-1.5 rounded-[28px] bg-[#0B0E14]/90 border border-[#2970FF]/25 shadow-[0_24px_60px_-15px_rgba(0,0,0,0.9)]">
+          <section className="rounded-[22px] p-6 sm:p-7 bg-[#0B0E14] border border-white/[0.07]">
             <div className="flex items-center gap-2.5 mb-5">
-              <Lock className="w-4 h-4 text-[#c0c6de]" />
-              <h3 className="font-mono text-[11px] uppercase tracking-[0.16em] font-bold text-[#8d90a1]">
+              <Lock className="w-4 h-4 text-[#2970FF]" />
+              <h3 className="font-mono text-[11px] uppercase tracking-[0.16em] font-bold text-[#8A94A6]">
                 SECURITY &amp; SIGNING KEYS
               </h3>
             </div>
@@ -938,41 +938,41 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
               <button
                 type="button"
                 onClick={handleExportWallet}
-                className="w-full bg-[#09090b] p-4 rounded-2xl flex items-center justify-between group cursor-pointer border border-white/[0.07] hover:border-white/[0.18] transition-colors text-left"
+                className="w-full bg-[#111622] p-4 rounded-2xl flex items-center justify-between group cursor-pointer border border-[#2970FF]/20 hover:border-[#2970FF]/50 transition-colors text-left"
               >
                 <div className="flex items-center gap-3.5">
-                  <Key className="w-4 h-4 text-[#8d90a1] group-hover:text-[#c0c6de] transition-colors" />
+                  <Key className="w-4 h-4 text-[#8A94A6] group-hover:text-[#2970FF] transition-colors" />
                   <div>
-                    <span className="text-white font-semibold text-sm block">Export Signer Key</span>
-                    <span className="font-mono text-[10px] text-[#8d90a1]">
+                    <span className="text-[#F8FAFC] font-semibold text-sm block">Export Signer Key</span>
+                    <span className="font-mono text-[10px] text-[#8A94A6]">
                       Privy non-custodial enclave export
                     </span>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-[#8d90a1]" />
+                <ChevronRight className="w-4 h-4 text-[#8A94A6]" />
               </button>
 
               <div
-                className="bg-[#09090b] p-4 rounded-2xl flex items-center justify-between group cursor-pointer border border-white/[0.07] hover:border-white/[0.18] transition-colors"
+                className="bg-[#111622] p-4 rounded-2xl flex items-center justify-between group cursor-pointer border border-[#2970FF]/20 hover:border-[#2970FF]/50 transition-colors"
                 onClick={() => setBiometricEnabled(!biometricEnabled)}
               >
                 <div className="flex items-center gap-3.5">
-                  <Fingerprint className="w-4 h-4 text-[#8d90a1] group-hover:text-[#c0c6de] transition-colors" />
+                  <Fingerprint className="w-4 h-4 text-[#8A94A6] group-hover:text-[#2970FF] transition-colors" />
                   <div>
-                    <span className="text-white font-semibold text-sm block">Passkey &amp; Biometric Guard</span>
-                    <span className="font-mono text-[10px] text-[#8d90a1]">
+                    <span className="text-[#F8FAFC] font-semibold text-sm block">Passkey &amp; Biometric Guard</span>
+                    <span className="font-mono text-[10px] text-[#8A94A6]">
                       Hardware enclave verification
                     </span>
                   </div>
                 </div>
                 <div
                   className={`w-11 h-6 rounded-full p-0.5 transition-colors ${
-                    biometricEnabled ? "bg-[#34d399]/30 border border-[#34d399]/50" : "bg-white/10 border border-white/20"
+                    biometricEnabled ? "bg-[#CCFF00]/25 border border-[#CCFF00]/50" : "bg-white/10 border border-white/20"
                   }`}
                 >
                   <div
                     className={`w-4 h-4 rounded-full transition-transform ${
-                      biometricEnabled ? "translate-x-5 bg-[#34d399]" : "translate-x-0 bg-white/70"
+                      biometricEnabled ? "translate-x-5 bg-[#CCFF00]" : "translate-x-0 bg-white/70"
                     }`}
                   />
                 </div>
@@ -984,29 +984,29 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
                   if (address) router.push(`/wallet/${address}`);
                   else router.push("/wallet");
                 }}
-                className="w-full bg-[#09090b] p-4 rounded-2xl flex items-center justify-between group cursor-pointer border border-white/[0.07] hover:border-white/[0.18] transition-colors text-left"
+                className="w-full bg-[#111622] p-4 rounded-2xl flex items-center justify-between group cursor-pointer border border-[#2970FF]/20 hover:border-[#2970FF]/50 transition-colors text-left"
               >
                 <div className="flex items-center gap-3.5">
-                  <FileText className="w-4 h-4 text-[#8d90a1] group-hover:text-[#c0c6de] transition-colors" />
+                  <FileText className="w-4 h-4 text-[#8A94A6] group-hover:text-[#2970FF] transition-colors" />
                   <div>
-                    <span className="text-white font-semibold text-sm block">Wallet Telemetry &amp; Backup</span>
-                    <span className="font-mono text-[10px] text-[#8d90a1]">
+                    <span className="text-[#F8FAFC] font-semibold text-sm block">Wallet Telemetry &amp; Backup</span>
+                    <span className="font-mono text-[10px] text-[#8A94A6]">
                       Inspect smart account &amp; EOA balances
                     </span>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-[#8d90a1]" />
+                <ChevronRight className="w-4 h-4 text-[#8A94A6]" />
               </button>
             </div>
           </section>
         </div>
 
         {/* Preferences Module */}
-        <div className="p-1.5 rounded-[28px] bg-white/[0.025] border border-white/[0.08] shadow-[0_24px_60px_-15px_rgba(0,0,0,0.85)]">
-          <section className="rounded-[22px] p-6 sm:p-7 bg-[#131315] border border-white/[0.07]">
+        <div className="p-1.5 rounded-[28px] bg-[#0B0E14]/90 border border-[#2970FF]/25 shadow-[0_24px_60px_-15px_rgba(0,0,0,0.9)]">
+          <section className="rounded-[22px] p-6 sm:p-7 bg-[#0B0E14] border border-white/[0.07]">
             <div className="flex items-center gap-2.5 mb-5">
-              <Sliders className="w-4 h-4 text-[#c0c6de]" />
-              <h3 className="font-mono text-[11px] uppercase tracking-[0.16em] font-bold text-[#8d90a1]">
+              <Sliders className="w-4 h-4 text-[#2970FF]" />
+              <h3 className="font-mono text-[11px] uppercase tracking-[0.16em] font-bold text-[#8A94A6]">
                 SETTLEMENT PREFERENCES
               </h3>
             </div>
@@ -1014,35 +1014,35 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
               <button
                 type="button"
                 onClick={() => setIsSelectorOpen(true)}
-                className="w-full bg-[#09090b] p-4 rounded-2xl flex items-center justify-between group cursor-pointer border border-white/[0.07] hover:border-white/[0.18] transition-colors text-left"
+                className="w-full bg-[#111622] p-4 rounded-2xl flex items-center justify-between group cursor-pointer border border-[#2970FF]/20 hover:border-[#2970FF]/50 transition-colors text-left"
               >
                 <div className="flex items-center gap-3.5">
-                  <DollarSign className="w-4 h-4 text-[#8d90a1] group-hover:text-[#c0c6de] transition-colors" />
+                  <DollarSign className="w-4 h-4 text-[#8A94A6] group-hover:text-[#2970FF] transition-colors" />
                   <div>
-                    <span className="text-white font-semibold text-sm block">Default Global Rail</span>
-                    <span className="font-mono text-[10px] text-[#8d90a1]">
+                    <span className="text-[#F8FAFC] font-semibold text-sm block">Default Global Rail</span>
+                    <span className="font-mono text-[10px] text-[#8A94A6]">
                       {currencyMeta.name} / {currencyMeta.rail}
                     </span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs text-[#c0c6de] font-bold">
+                  <span className="font-mono text-xs text-[#CCFF00] font-bold">
                     {currencyMeta.code} ({currencyMeta.symbol})
                   </span>
-                  <ChevronRight className="w-4 h-4 text-[#8d90a1] group-hover:translate-x-0.5 transition-transform" />
+                  <ChevronRight className="w-4 h-4 text-[#8A94A6] group-hover:translate-x-0.5 transition-transform" />
                 </div>
               </button>
 
-              <div className="bg-[#09090b] p-4 rounded-2xl flex items-center justify-between border border-white/[0.07]">
+              <div className="bg-[#111622] p-4 rounded-2xl flex items-center justify-between border border-[#2970FF]/20">
                 <div className="flex items-center gap-3.5">
-                  <Network className="w-4 h-4 text-[#34d399]" />
+                  <Network className="w-4 h-4 text-[#CCFF00]" />
                   <div>
-                    <span className="text-white font-semibold text-sm block">Settlement L2 Network</span>
-                    <span className="font-mono text-[10px] text-[#8d90a1]">Base Mainnet (Chain 8453)</span>
+                    <span className="text-[#F8FAFC] font-semibold text-sm block">Settlement L2 Network</span>
+                    <span className="font-mono text-[10px] text-[#8A94A6]">Base Mainnet (Chain 8453)</span>
                   </div>
                 </div>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#34d399]/10 border border-[#34d399]/25 font-mono text-[10px] text-[#34d399] font-bold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-pulse" />
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#CCFF00]/10 border border-[#CCFF00]/30 font-mono text-[10px] text-[#CCFF00] font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#CCFF00] animate-pulse" />
                   CONNECTED
                 </span>
               </div>
@@ -1051,11 +1051,11 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
         </div>
 
         {/* Protocol & Developer Tools Module */}
-        <div className="p-1.5 rounded-[28px] bg-white/[0.025] border border-white/[0.08] shadow-[0_24px_60px_-15px_rgba(0,0,0,0.85)]">
-          <section className="rounded-[22px] p-6 sm:p-7 bg-[#131315] border border-white/[0.07]">
+        <div className="p-1.5 rounded-[28px] bg-[#0B0E14]/90 border border-[#2970FF]/25 shadow-[0_24px_60px_-15px_rgba(0,0,0,0.9)]">
+          <section className="rounded-[22px] p-6 sm:p-7 bg-[#0B0E14] border border-white/[0.07]">
             <div className="flex items-center gap-2.5 mb-5">
-              <Terminal className="w-4 h-4 text-[#c0c6de]" />
-              <h3 className="font-mono text-[11px] uppercase tracking-[0.16em] font-bold text-[#8d90a1]">
+              <Terminal className="w-4 h-4 text-[#2970FF]" />
+              <h3 className="font-mono text-[11px] uppercase tracking-[0.16em] font-bold text-[#8A94A6]">
                 DEVELOPER &amp; PROTOCOL STANDARDS
               </h3>
             </div>
@@ -1063,110 +1063,110 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
               <button
                 type="button"
                 onClick={() => setActiveView("api-keys")}
-                className="bg-[#09090b] p-4 rounded-2xl flex items-center justify-between group border border-white/[0.07] hover:border-white/[0.18] transition-colors w-full text-left cursor-pointer"
+                className="bg-[#111622] p-4 rounded-2xl flex items-center justify-between group border border-[#2970FF]/20 hover:border-[#2970FF]/50 transition-colors w-full text-left cursor-pointer"
               >
                 <div className="flex items-center gap-3.5">
-                  <Key className="w-4 h-4 text-[#8d90a1] group-hover:text-[#c0c6de] transition-colors" />
+                  <Key className="w-4 h-4 text-[#8A94A6] group-hover:text-[#2970FF] transition-colors" />
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-white font-semibold text-sm">Merchant &amp; Bot API Keys</span>
-                      <span className="px-2 py-0.5 rounded-full bg-[#c0c6de]/10 border border-[#c0c6de]/25 text-[#c0c6de] font-mono text-[9px] font-bold">
+                      <span className="text-[#F8FAFC] font-semibold text-sm">Merchant &amp; Bot API Keys</span>
+                      <span className="px-2 py-0.5 rounded-full bg-[#2970FF]/15 border border-[#2970FF]/35 text-[#2970FF] font-mono text-[9px] font-bold">
                         REST V1
                       </span>
                     </div>
-                    <span className="font-mono text-[10px] text-[#8d90a1]">
+                    <span className="font-mono text-[10px] text-[#8A94A6]">
                       Create &amp; manage keys for bots &amp; checkouts
                     </span>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-[#8d90a1]" />
+                <ChevronRight className="w-4 h-4 text-[#8A94A6]" />
               </button>
 
               <Link
                 href="/partner"
-                className="bg-[#09090b] p-4 rounded-2xl flex items-center justify-between group border border-[#34d399]/20 hover:border-[#34d399]/40 transition-colors block"
+                className="bg-[#111622] p-4 rounded-2xl flex items-center justify-between group border border-[#CCFF00]/25 hover:border-[#CCFF00]/50 transition-colors block"
               >
                 <div className="flex items-center gap-3.5">
-                  <LayoutDashboard className="w-4 h-4 text-[#34d399]" />
+                  <LayoutDashboard className="w-4 h-4 text-[#CCFF00]" />
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-white font-semibold text-sm">Partner Dashboard</span>
-                      <span className="px-2 py-0.5 rounded-full bg-[#34d399]/10 border border-[#34d399]/25 text-[#34d399] font-mono text-[9px] font-bold">
+                      <span className="text-[#F8FAFC] font-semibold text-sm">Partner Dashboard</span>
+                      <span className="px-2 py-0.5 rounded-full bg-[#CCFF00]/10 border border-[#CCFF00]/30 text-[#CCFF00] font-mono text-[9px] font-bold">
                         ANALYTICS
                       </span>
                     </div>
-                    <span className="font-mono text-[10px] text-[#8d90a1]">
+                    <span className="font-mono text-[10px] text-[#8A94A6]">
                       Track swaps, payments &amp; live partner revenue
                     </span>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-[#8d90a1]" />
+                <ChevronRight className="w-4 h-4 text-[#8A94A6]" />
               </Link>
 
               <Link
                 href="/docs"
-                className="bg-[#09090b] p-4 rounded-2xl flex items-center justify-between group border border-white/[0.07] hover:border-white/[0.18] transition-colors block"
+                className="bg-[#111622] p-4 rounded-2xl flex items-center justify-between group border border-[#2970FF]/20 hover:border-[#2970FF]/50 transition-colors block"
               >
                 <div className="flex items-center gap-3.5">
-                  <Code2 className="w-4 h-4 text-[#8d90a1] group-hover:text-[#c0c6de] transition-colors" />
+                  <Code2 className="w-4 h-4 text-[#8A94A6] group-hover:text-[#2970FF] transition-colors" />
                   <div>
-                    <span className="text-white font-semibold text-sm block">Developer APIs Documentation</span>
-                    <span className="font-mono text-[10px] text-[#8d90a1]">
+                    <span className="text-[#F8FAFC] font-semibold text-sm block">Developer APIs Documentation</span>
+                    <span className="font-mono text-[10px] text-[#8A94A6]">
                       Pay Links, Quotes &amp; Rates endpoints
                     </span>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-[#8d90a1]" />
+                <ChevronRight className="w-4 h-4 text-[#8A94A6]" />
               </Link>
 
               <Link
                 href="/privacy"
-                className="bg-[#09090b] p-4 rounded-2xl flex items-center justify-between group border border-white/[0.07] hover:border-white/[0.18] transition-colors block"
+                className="bg-[#111622] p-4 rounded-2xl flex items-center justify-between group border border-[#2970FF]/20 hover:border-[#2970FF]/50 transition-colors block"
               >
                 <div className="flex items-center gap-3.5">
-                  <Shield className="w-4 h-4 text-[#8d90a1] group-hover:text-[#c0c6de] transition-colors" />
+                  <Shield className="w-4 h-4 text-[#8A94A6] group-hover:text-[#2970FF] transition-colors" />
                   <div>
-                    <span className="text-white font-semibold text-sm block">Privacy Policy</span>
-                    <span className="font-mono text-[10px] text-[#8d90a1]">
+                    <span className="text-[#F8FAFC] font-semibold text-sm block">Privacy Policy</span>
+                    <span className="font-mono text-[10px] text-[#8A94A6]">
                       Zero-knowledge &amp; ECIES encryption standards
                     </span>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-[#8d90a1]" />
+                <ChevronRight className="w-4 h-4 text-[#8A94A6]" />
               </Link>
 
               <Link
                 href="/terms"
-                className="bg-[#09090b] p-4 rounded-2xl flex items-center justify-between group border border-white/[0.07] hover:border-white/[0.18] transition-colors block"
+                className="bg-[#111622] p-4 rounded-2xl flex items-center justify-between group border border-[#2970FF]/20 hover:border-[#2970FF]/50 transition-colors block"
               >
                 <div className="flex items-center gap-3.5">
-                  <Scale className="w-4 h-4 text-[#8d90a1] group-hover:text-[#c0c6de] transition-colors" />
+                  <Scale className="w-4 h-4 text-[#8A94A6] group-hover:text-[#2970FF] transition-colors" />
                   <div>
-                    <span className="text-white font-semibold text-sm block">Terms of Service</span>
-                    <span className="font-mono text-[10px] text-[#8d90a1]">
+                    <span className="text-[#F8FAFC] font-semibold text-sm block">Terms of Service</span>
+                    <span className="font-mono text-[10px] text-[#8A94A6]">
                       Protocol rules &amp; non-custodial terms
                     </span>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-[#8d90a1]" />
+                <ChevronRight className="w-4 h-4 text-[#8A94A6]" />
               </Link>
 
               <a
                 href="https://basescan.org/address/0x4cad6eC90e65baBec9335cAd728DDC610c316368"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="bg-[#09090b] p-4 rounded-2xl flex items-center justify-between group border border-white/[0.07] hover:border-white/[0.18] transition-colors block"
+                className="bg-[#111622] p-4 rounded-2xl flex items-center justify-between group border border-[#2970FF]/20 hover:border-[#2970FF]/50 transition-colors block"
               >
                 <div className="flex items-center gap-3.5">
-                  <ExternalLink className="w-4 h-4 text-[#8d90a1] group-hover:text-[#c0c6de] transition-colors" />
+                  <ExternalLink className="w-4 h-4 text-[#8A94A6] group-hover:text-[#2970FF] transition-colors" />
                   <div>
-                    <span className="text-white font-semibold text-sm block">P2P Diamond Contract</span>
-                    <span className="font-mono text-[10px] tabular-nums text-[#8d90a1]">
+                    <span className="text-[#F8FAFC] font-semibold text-sm block">P2P Diamond Contract</span>
+                    <span className="font-mono text-[10px] tabular-nums text-[#8A94A6]">
                       0x4cad...6368 (Base Mainnet)
                     </span>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-[#8d90a1]" />
+                <ChevronRight className="w-4 h-4 text-[#8A94A6]" />
               </a>
             </div>
           </section>
@@ -1177,7 +1177,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
           <button
             type="button"
             onClick={logout}
-            className="w-full flex items-center justify-center gap-2.5 px-8 py-4 rounded-2xl bg-[#f87171]/10 hover:bg-[#f87171]/20 border border-[#f87171]/30 text-[#f87171] font-mono text-xs uppercase tracking-[0.16em] font-bold active:scale-[0.98] transition-colors cursor-pointer"
+            className="w-full flex items-center justify-center gap-2.5 px-8 py-4 rounded-2xl bg-[#FF4D4D]/10 hover:bg-[#FF4D4D]/20 border border-[#FF4D4D]/30 text-[#FF4D4D] font-mono text-xs uppercase tracking-[0.16em] font-bold active:scale-[0.98] transition-colors cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
             <span>Disconnect Session</span>

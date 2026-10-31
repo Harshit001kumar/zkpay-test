@@ -171,11 +171,11 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
           <div className="flex items-center gap-2.5">
             <button
               onClick={login}
-              className="rounded-full pl-4 pr-1.5 py-1.5 bg-on-surface text-surface-container-lowest font-semibold text-xs hover:bg-white active:scale-[0.98] transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group flex items-center gap-2.5 whitespace-nowrap"
+              className="rounded-full pl-4 pr-1.5 py-1.5 bg-[#CCFF00] text-[#050608] font-semibold text-xs hover:brightness-110 active:scale-[0.98] transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] shadow-[0_0_24px_rgba(204,255,0,0.28)] group flex items-center gap-2.5 whitespace-nowrap"
             >
               <span>Launch App</span>
-              <span className="w-6 h-6 rounded-full bg-surface-container-lowest text-on-surface flex items-center justify-center transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5">
-                <ArrowUpRight className="w-3.5 h-3.5 text-primary" strokeWidth={1.75} />
+              <span className="w-6 h-6 rounded-full bg-[#050608] text-[#CCFF00] flex items-center justify-center transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5">
+                <ArrowUpRight className="w-3.5 h-3.5 text-[#CCFF00]" strokeWidth={1.75} />
               </span>
             </button>
 
@@ -275,17 +275,17 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5 w-full sm:w-auto pt-1">
                 <button
                   onClick={login}
-                  className="rounded-full pl-6 pr-2 py-2.5 bg-on-surface text-surface-container-lowest font-semibold text-sm hover:bg-white active:scale-[0.98] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] shadow-elevated group flex items-center justify-between sm:justify-start gap-4 whitespace-nowrap"
+                  className="rounded-full pl-6 pr-2 py-2.5 bg-[#CCFF00] text-[#050608] font-semibold text-sm hover:brightness-110 active:scale-[0.98] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] shadow-[0_0_30px_rgba(204,255,0,0.3)] group flex items-center justify-between sm:justify-start gap-4 whitespace-nowrap"
                 >
                   <span>Launch App</span>
-                  <span className="w-9 h-9 rounded-full bg-surface-container-lowest text-on-surface flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5">
-                    <ArrowUpRight className="w-4 h-4 text-primary" strokeWidth={1.75} />
+                  <span className="w-9 h-9 rounded-full bg-[#050608] text-[#CCFF00] flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5">
+                    <ArrowUpRight className="w-4 h-4 text-[#CCFF00]" strokeWidth={1.75} />
                   </span>
                 </button>
 
                 <a
                   href="#corridors"
-                  className="rounded-full px-6 py-3.5 bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 hover:border-white/20 text-xs sm:text-sm font-medium text-on-surface transition-all duration-300 text-center whitespace-nowrap"
+                  className="rounded-full px-6 py-3.5 bg-[#2970FF]/10 hover:bg-[#2970FF]/20 border border-[#2970FF]/30 hover:border-[#2970FF]/50 text-xs sm:text-sm font-medium text-[#F8FAFC] transition-all duration-300 text-center whitespace-nowrap"
                 >
                   Explore Global Rails
                 </a>
@@ -589,11 +589,11 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
               <div className="pt-2">
                 <button
                   onClick={login}
-                  className="rounded-full pl-6 pr-2 py-2.5 bg-on-surface text-surface-container-lowest font-semibold text-sm hover:bg-white active:scale-[0.98] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] group flex items-center gap-4 whitespace-nowrap"
+                  className="rounded-full pl-6 pr-2 py-2.5 bg-[#CCFF00] text-[#050608] font-semibold text-sm hover:brightness-110 active:scale-[0.98] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] shadow-[0_0_28px_rgba(204,255,0,0.26)] group flex items-center gap-4 whitespace-nowrap"
                 >
                   <span>Launch App</span>
-                  <span className="w-9 h-9 rounded-full bg-surface-container-lowest text-on-surface flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5">
-                    <ArrowUpRight className="w-4 h-4 text-primary" strokeWidth={1.75} />
+                  <span className="w-9 h-9 rounded-full bg-[#050608] text-[#CCFF00] flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5">
+                    <ArrowUpRight className="w-4 h-4 text-[#CCFF00]" strokeWidth={1.75} />
                   </span>
                 </button>
               </div>
@@ -627,11 +627,11 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
               <DepthLayer z={36} className="pt-2">
                 <button
                   onClick={login}
-                  className="rounded-full pl-7 pr-2 py-2.5 bg-on-surface text-surface-container-lowest font-semibold text-sm hover:bg-white active:scale-[0.98] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] shadow-elevated group flex items-center gap-4 whitespace-nowrap"
+                  className="rounded-full pl-7 pr-2 py-2.5 bg-[#CCFF00] text-[#050608] font-semibold text-sm hover:brightness-110 active:scale-[0.98] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] shadow-[0_0_32px_rgba(204,255,0,0.3)] group flex items-center gap-4 whitespace-nowrap"
                 >
                   <span>Launch App</span>
-                  <span className="w-9 h-9 rounded-full bg-surface-container-lowest text-on-surface flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5">
-                    <ArrowUpRight className="w-4 h-4 text-primary" strokeWidth={1.75} />
+                  <span className="w-9 h-9 rounded-full bg-[#050608] text-[#CCFF00] flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5">
+                    <ArrowUpRight className="w-4 h-4 text-[#CCFF00]" strokeWidth={1.75} />
                   </span>
                 </button>
               </DepthLayer>
@@ -673,15 +673,15 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
       </div>
 
       {/* ─── Sticky Mobile Thumb Bar (< 1024px) ─── */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-surface/90 backdrop-blur-xl border-t border-white/10 px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom))]">
+      <div className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-[#050608]/90 backdrop-blur-xl border-t border-[#2970FF]/20 px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom))]">
         <div className="max-w-md mx-auto">
           <button
             onClick={login}
-            className="w-full rounded-full pl-6 pr-2 py-2 bg-on-surface text-surface-container-lowest font-semibold text-xs active:scale-[0.98] transition-all flex items-center justify-between"
+            className="w-full rounded-full pl-6 pr-2 py-2 bg-[#CCFF00] text-[#050608] font-semibold text-xs active:scale-[0.98] transition-all flex items-center justify-between shadow-[0_0_24px_rgba(204,255,0,0.25)]"
           >
             <span>Launch App</span>
-            <span className="w-8 h-8 rounded-full bg-surface-container-lowest text-on-surface flex items-center justify-center">
-              <ArrowUpRight className="w-4 h-4 text-primary" strokeWidth={1.75} />
+            <span className="w-8 h-8 rounded-full bg-[#050608] text-[#CCFF00] flex items-center justify-center">
+              <ArrowUpRight className="w-4 h-4 text-[#CCFF00]" strokeWidth={1.75} />
             </span>
           </button>
         </div>

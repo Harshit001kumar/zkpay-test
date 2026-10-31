@@ -620,22 +620,22 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   // ────────────── RENDER ──────────────
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0e0e0f] text-[#e5e5e8] font-sans flex flex-col overflow-y-auto min-h-[100dvh]">
+    <div className="fixed inset-0 z-[70] bg-[#050608] text-[#e5e5e8] font-sans flex flex-col overflow-y-auto min-h-[100dvh]">
       {/* Floating Double-Bezel Header */}
-      <header className="sticky top-3.5 z-40 px-4 sm:px-6 pointer-events-none">
+      <header className="sticky top-3.5 z-50 px-4 sm:px-6 pointer-events-none">
         <div className="max-w-xl mx-auto">
           <div className="pointer-events-auto p-1 rounded-full bg-white/[0.03] border border-white/[0.08] backdrop-blur-2xl shadow-[0_20px_50px_rgba(0,0,0,0.85)]">
-            <div className="px-4 py-2 rounded-full bg-[#131315]/95 border border-white/[0.06] flex items-center justify-between">
+            <div className="px-4 py-2 rounded-full bg-[#0B0E14]/95 border border-white/[0.06] flex items-center justify-between">
               <button
                 onClick={onBack}
                 disabled={step === "authorizing" || step === "delivering"}
-                className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] font-bold text-[#c0c6de] hover:text-white transition-colors disabled:opacity-30 cursor-pointer"
+                className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] font-bold text-[#2970FF] hover:text-white transition-colors disabled:opacity-30 cursor-pointer"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span>VAULT</span>
               </button>
-              <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[#34d399]">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-pulse" />
+              <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[#CCFF00]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#CCFF00] animate-pulse" />
                 <span>{currencyMeta.code} / {currencyMeta.rail}</span>
               </div>
             </div>
@@ -648,11 +648,11 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
         {/* STEP 1: ENTER AMOUNT FIRST (WITH IN-APP NUMERIC KEYPAD) */}
         {step === "amount" && (
           <div className="p-1.5 rounded-[32px] bg-white/[0.025] border border-white/[0.08] shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)]">
-            <SpotlightCard className="p-5 sm:p-7 bg-[#131315] border border-white/[0.07] rounded-[26px] space-y-5">
+            <SpotlightCard className="p-5 sm:p-7 bg-[#0B0E14] border border-white/[0.07] rounded-[26px] space-y-5">
               {/* Header / Subheader */}
               <div className="flex items-center justify-between pb-4 border-b border-white/[0.07]">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-[#c0c6de]/10 border border-[#c0c6de]/30 flex items-center justify-center text-[#c0c6de] shrink-0">
+                  <div className="w-10 h-10 rounded-2xl bg-[#2970FF]/10 border border-[#2970FF]/30 flex items-center justify-center text-[#2970FF] shrink-0">
                     <QrCode className="w-5 h-5" />
                   </div>
                   <div>
@@ -668,39 +668,39 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                   <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8d90a1] block">
                     VAULT LIQUIDITY
                   </span>
-                  <span className="text-xs font-mono tabular-nums font-bold text-[#c0c6de]">
+                  <span className="text-xs font-mono tabular-nums font-bold text-[#2970FF]">
                     ${availableUsdc.toFixed(2)} USDC
                   </span>
                 </div>
               </div>
 
               {/* Recessed Numeric Input Well */}
-              <div className="flex flex-col items-center justify-center py-4 px-4 rounded-2xl bg-[#09090b] border border-white/[0.08] shadow-[inset_0_2px_10px_rgba(0,0,0,0.8)] relative overflow-hidden">
+              <div className="flex flex-col items-center justify-center py-4 px-4 rounded-2xl bg-[#111622] border border-white/[0.08] shadow-[inset_0_2px_10px_rgba(0,0,0,0.8)] relative overflow-hidden">
                 <div className="w-full flex items-center justify-between mb-1 px-1">
                   <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#8d90a1]">
                     SETTLEMENT AMOUNT ({currencyMeta.code})
                   </span>
-                  <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-[#34d399]">
+                  <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-[#CCFF00]">
                     {currencyMeta.rail}
                   </span>
                 </div>
 
                 {/* Amount Display */}
                 <div className="flex items-baseline justify-center my-2">
-                  <span className="text-3xl sm:text-4xl font-extrabold text-[#c0c6de] tabular-nums mr-1.5">
+                  <span className="text-3xl sm:text-4xl font-extrabold text-[#2970FF] tabular-nums mr-1.5">
                     {currencyMeta.symbol}
                   </span>
                   <span className="text-5xl sm:text-6xl font-black tabular-nums tracking-tight text-white select-none">
                     {amountInr || "0"}
                   </span>
-                  <span className="w-0.5 h-9 sm:h-11 bg-[#c0c6de] inline-block animate-pulse ml-1 rounded-full" />
+                  <span className="w-0.5 h-9 sm:h-11 bg-[#2970FF] inline-block animate-pulse ml-1 rounded-full" />
                 </div>
 
                 {/* Live USD/USDC Conversion Subtext */}
                 <div className="flex items-center gap-2 font-mono text-[11px] tabular-nums text-[#8d90a1] mt-1">
                   <span className="text-white font-semibold">≈ ${totalUsdcRequired.toFixed(2)} USDC</span>
                   <span className="text-white/20">/</span>
-                  <span className="text-[#c0c6de]">
+                  <span className="text-[#2970FF]">
                     {rateLoading ? "SYNCING ORACLE..." : `1 USDC = ${currencyMeta.symbol}${rateInrPerUsdc.toFixed(2)}`}
                   </span>
                 </div>
@@ -712,7 +712,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                   type="button"
                   onClick={handleSetMax}
                   disabled={availableUsdc <= 0}
-                  className="py-1.5 px-3 rounded-xl bg-[#c0c6de]/15 hover:bg-[#c0c6de]/25 border border-[#c0c6de]/30 font-mono text-[10px] tabular-nums font-bold text-[#c0c6de] transition-colors shrink-0 disabled:opacity-40 cursor-pointer"
+                  className="py-1.5 px-3 rounded-xl bg-[#2970FF]/15 hover:bg-[#2970FF]/25 border border-[#2970FF]/30 font-mono text-[10px] tabular-nums font-bold text-[#2970FF] transition-colors shrink-0 disabled:opacity-40 cursor-pointer"
                 >
                   MAX
                 </button>
@@ -721,7 +721,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                     key={amt}
                     type="button"
                     onClick={() => handleQuickAdd(amt)}
-                    className="py-1.5 px-3 rounded-xl bg-[#09090b] hover:bg-white/[0.08] border border-white/[0.08] font-mono text-[11px] tabular-nums text-[#8d90a1] hover:text-white transition-colors shrink-0 cursor-pointer"
+                    className="py-1.5 px-3 rounded-xl bg-[#111622] hover:bg-white/[0.08] border border-white/[0.08] font-mono text-[11px] tabular-nums text-[#8d90a1] hover:text-white transition-colors shrink-0 cursor-pointer"
                   >
                     +{currencyMeta.symbol}{amt}
                   </button>
@@ -746,10 +746,10 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
               />
 
               {/* Fee & Escrow Info Pill */}
-              <div className="p-3.5 rounded-2xl bg-[#09090b]/90 border border-white/[0.07] flex flex-col gap-2 text-xs tabular-nums text-[#8d90a1]">
+              <div className="p-3.5 rounded-2xl bg-[#111622]/90 border border-white/[0.07] flex flex-col gap-2 text-xs tabular-nums text-[#8d90a1]">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Info className="w-3.5 h-3.5 text-[#c0c6de]" />
+                    <Info className="w-3.5 h-3.5 text-[#2970FF]" />
                     <span>Platform Fee (1%)</span>
                   </div>
                   <span className="text-white font-mono font-bold">
@@ -763,16 +763,16 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                       {fees.isSmallOrder ? "<= $10 ORDERS" : "FREE > $10"}
                     </span>
                   </div>
-                  <span className={fees.isSmallOrder ? "text-white font-mono font-bold" : "text-[#34d399] font-mono font-bold"}>
+                  <span className={fees.isSmallOrder ? "text-white font-mono font-bold" : "text-[#CCFF00] font-mono font-bold"}>
                     {fees.isSmallOrder ? `$${protocolFeeUsdc.toFixed(2)} USDC` : "FREE"}
                   </span>
                 </div>
               </div>
 
               {/* Monthly Cashback Promo Pill */}
-              <div className="p-3 rounded-2xl bg-[#34d399]/[0.07] border border-[#34d399]/25 flex items-center justify-between text-xs tabular-nums text-[#34d399]">
+              <div className="p-3 rounded-2xl bg-[#CCFF00]/[0.07] border border-[#CCFF00]/25 flex items-center justify-between text-xs tabular-nums text-[#CCFF00]">
                 <div className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-pulse" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#CCFF00] animate-pulse" />
                   <span className="font-semibold">Accrues Monthly Cashback</span>
                 </div>
                 <span className="font-mono text-[10px] text-[#8d90a1]">BATCH DISBURSED</span>
@@ -790,7 +790,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                 onClick={handlePlaceOrder}
                 disabled={numericInr <= 0 || rateLoading}
                 shimmerColor="#ffffff"
-                className="w-full py-4 rounded-2xl text-[#0e0e0f] font-bold text-xs tracking-normal font-mono uppercase"
+                className="w-full py-4 rounded-2xl text-[#050608] font-bold text-xs tracking-normal font-mono uppercase"
               >
                 <span>
                   Authorize &amp; Place Order ({currencyMeta.symbol}
@@ -804,8 +804,8 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
         {/* STEP 2: AUTHORIZING & ESCROWING USDC */}
         {step === "authorizing" && (
           <div className="p-1.5 rounded-[32px] bg-white/[0.025] border border-white/[0.08]">
-            <SpotlightCard className="p-8 bg-[#131315] border border-white/[0.07] rounded-[26px] text-center space-y-6">
-              <div className="w-16 h-16 rounded-2xl bg-[#c0c6de]/10 border border-[#c0c6de]/30 flex items-center justify-center text-[#c0c6de] mx-auto animate-pulse">
+            <SpotlightCard className="p-8 bg-[#0B0E14] border border-white/[0.07] rounded-[26px] text-center space-y-6">
+              <div className="w-16 h-16 rounded-2xl bg-[#2970FF]/10 border border-[#2970FF]/30 flex items-center justify-center text-[#2970FF] mx-auto animate-pulse">
                 <Loader2 className="w-8 h-8 animate-spin" />
               </div>
               <div>
@@ -814,7 +814,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                   Escrowing ${totalUsdcRequired.toFixed(2)} USDC in P2P Diamond on Base L2
                 </p>
               </div>
-              <div className="p-4 rounded-2xl bg-[#09090b] border border-white/[0.08] text-xs font-mono tabular-nums text-[#c0c6de] space-y-2">
+              <div className="p-4 rounded-2xl bg-[#111622] border border-white/[0.08] text-xs font-mono tabular-nums text-[#2970FF] space-y-2">
                 <p>Broadcasting gasless UserOperation on Base...</p>
                 <div className="flex items-center justify-center gap-2 text-[10px] text-[#8d90a1]">
                   <span className="bg-white/[0.04] border border-white/[0.08] px-2 py-0.5 rounded text-white">
@@ -834,11 +834,11 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
         {step === "scanning_matching" && (
           <div className="space-y-5 animate-in fade-in duration-300">
             {/* Real-Time Status Header */}
-            <div className="p-4 rounded-2xl bg-[#34d399]/10 border border-[#34d399]/30 flex items-center justify-between">
+            <div className="p-4 rounded-2xl bg-[#CCFF00]/10 border border-[#CCFF00]/30 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#34d399] animate-ping shrink-0" />
+                <span className="w-2.5 h-2.5 rounded-full bg-[#CCFF00] animate-ping shrink-0" />
                 <div>
-                  <p className="text-xs font-bold text-[#34d399] font-mono tabular-nums">
+                  <p className="text-xs font-bold text-[#CCFF00] font-mono tabular-nums">
                     {orderId
                       ? `ORDER #${orderId.toString()} ESCROWED (${currencyMeta.symbol}${numericInr.toFixed(2)})`
                       : `${currencyMeta.symbol}${numericInr.toFixed(2)} IN ESCROW`}
@@ -848,7 +848,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                   </p>
                 </div>
               </div>
-              <div className="text-xs font-mono tabular-nums text-[#c0c6de] font-bold">
+              <div className="text-xs font-mono tabular-nums text-[#2970FF] font-bold">
                 ${totalUsdcRequired.toFixed(2)} USDC
               </div>
             </div>
@@ -856,16 +856,16 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
             {/* Recipient Scanned Confirmation OR Camera Viewfinder */}
             {scannedUpi ? (
               <div className="p-1.5 rounded-[32px] bg-white/[0.025] border border-white/[0.08]">
-                <SpotlightCard className="p-6 md:p-8 bg-[#131315] border border-white/[0.07] rounded-[26px] space-y-4 text-center">
-                  <div className="w-14 h-14 rounded-2xl bg-[#34d399]/15 border border-[#34d399]/40 text-[#34d399] flex items-center justify-center mx-auto">
+                <SpotlightCard className="p-6 md:p-8 bg-[#0B0E14] border border-white/[0.07] rounded-[26px] space-y-4 text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-[#CCFF00]/15 border border-[#CCFF00]/40 text-[#CCFF00] flex items-center justify-center mx-auto">
                     <CheckCircle2 className="w-7 h-7" />
                   </div>
                   <div>
                     <h3 className="text-lg font-bold text-white">Merchant Target Locked</h3>
-                    <p className="text-sm font-mono tabular-nums text-[#c0c6de] mt-1">{scannedUpi}</p>
+                    <p className="text-sm font-mono tabular-nums text-[#2970FF] mt-1">{scannedUpi}</p>
                   </div>
-                  <div className="p-3.5 rounded-2xl bg-[#09090b] border border-white/[0.08] text-xs font-mono tabular-nums text-[#8d90a1] flex items-center justify-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin text-[#c0c6de]" />
+                  <div className="p-3.5 rounded-2xl bg-[#111622] border border-white/[0.08] text-xs font-mono tabular-nums text-[#8d90a1] flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-[#2970FF]" />
                     <span>
                       {merchantAcceptedOrder
                         ? "Encrypting & delivering payload via ECIES..."
@@ -876,9 +876,9 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
               </div>
             ) : (
               <div className="p-1.5 rounded-[32px] bg-white/[0.025] border border-white/[0.08]">
-                <SpotlightCard className="p-6 bg-[#131315] border border-white/[0.07] rounded-[26px] space-y-5">
+                <SpotlightCard className="p-6 bg-[#0B0E14] border border-white/[0.07] rounded-[26px] space-y-5">
                   <div className="text-center">
-                    <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#34d399] block mb-1">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#CCFF00] block mb-1">
                       OPTICAL QR TELEMETRY
                     </span>
                     <h2 className="text-lg font-bold text-white">Scan Merchant {currencyMeta.rail} QR</h2>
@@ -888,23 +888,23 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                   </div>
 
                   {/* Camera Viewfinder Box with Machined Corner Reticles */}
-                  <div className="relative w-full aspect-square max-w-[320px] mx-auto rounded-2xl overflow-hidden bg-[#09090b] border border-white/[0.12] flex items-center justify-center">
+                  <div className="relative w-full aspect-square max-w-[320px] mx-auto rounded-2xl overflow-hidden bg-[#111622] border border-white/[0.12] flex items-center justify-center">
                     <div id="p2p-camera-reader" className="w-full h-full object-cover" />
                     {/* Corner Optical Reticles */}
                     <div className="pointer-events-none absolute inset-4">
-                      <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-[#34d399] rounded-tl-md" />
-                      <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-[#34d399] rounded-tr-md" />
-                      <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-[#34d399] rounded-bl-md" />
-                      <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-[#34d399] rounded-br-md" />
+                      <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-[#CCFF00] rounded-tl-md" />
+                      <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-[#CCFF00] rounded-tr-md" />
+                      <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-[#CCFF00] rounded-bl-md" />
+                      <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-[#CCFF00] rounded-br-md" />
                     </div>
                     {cameraLoading && (
-                      <div className="absolute inset-0 bg-[#09090b]/90 flex flex-col items-center justify-center gap-2 text-xs font-mono tabular-nums text-[#8d90a1]">
-                        <Loader2 className="w-6 h-6 animate-spin text-[#c0c6de]" />
+                      <div className="absolute inset-0 bg-[#111622]/90 flex flex-col items-center justify-center gap-2 text-xs font-mono tabular-nums text-[#8d90a1]">
+                        <Loader2 className="w-6 h-6 animate-spin text-[#2970FF]" />
                         <span>INITIALIZING OPTICAL SENSOR...</span>
                       </div>
                     )}
                     {cameraError && (
-                      <div className="absolute inset-0 bg-[#09090b]/95 p-4 flex flex-col items-center justify-center text-center gap-2 text-xs font-mono tabular-nums text-[#f87171]">
+                      <div className="absolute inset-0 bg-[#111622]/95 p-4 flex flex-col items-center justify-center text-center gap-2 text-xs font-mono tabular-nums text-[#f87171]">
                         <CameraOff className="w-8 h-8" />
                         <span>{cameraError}</span>
                       </div>
@@ -922,13 +922,13 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                         placeholder={currencyMeta.placeholder}
                         value={manualUpiInput}
                         onChange={(e) => setManualUpiInput(e.target.value)}
-                        className="flex-1 p-3 rounded-xl bg-[#09090b] border border-white/[0.1] text-xs font-mono tabular-nums text-white placeholder:text-[#8d90a1]/50 focus:border-[#c0c6de] focus:outline-none"
+                        className="flex-1 p-3 rounded-xl bg-[#111622] border border-white/[0.1] text-xs font-mono tabular-nums text-white placeholder:text-[#8d90a1]/50 focus:border-[#2970FF] focus:outline-none"
                       />
                       <button
                         type="button"
                         onClick={() => handleScanSuccess(manualUpiInput)}
                         disabled={!manualUpiInput.trim()}
-                        className="px-4 py-3 rounded-xl bg-[#c0c6de] hover:bg-white text-[#0e0e0f] font-mono text-xs uppercase tracking-[0.12em] font-bold transition-colors disabled:opacity-40 cursor-pointer"
+                        className="px-4 py-3 rounded-xl bg-[#2970FF] hover:bg-white text-[#050608] font-mono text-xs uppercase tracking-[0.12em] font-bold transition-colors disabled:opacity-40 cursor-pointer"
                       >
                         LOCK
                       </button>
@@ -943,8 +943,8 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
         {/* STEP 4 & 5: DELIVERING ENCRYPTED PAYLOAD & SETTLING */}
         {(step === "delivering" || step === "settling") && (
           <div className="p-1.5 rounded-[32px] bg-white/[0.025] border border-white/[0.08]">
-            <SpotlightCard className="p-8 bg-[#131315] border border-white/[0.07] rounded-[26px] text-center space-y-6">
-              <div className="w-16 h-16 rounded-2xl bg-[#c0c6de]/10 border border-[#c0c6de]/30 flex items-center justify-center text-[#c0c6de] mx-auto animate-pulse">
+            <SpotlightCard className="p-8 bg-[#0B0E14] border border-white/[0.07] rounded-[26px] text-center space-y-6">
+              <div className="w-16 h-16 rounded-2xl bg-[#2970FF]/10 border border-[#2970FF]/30 flex items-center justify-center text-[#2970FF] mx-auto animate-pulse">
                 <Loader2 className="w-8 h-8 animate-spin" />
               </div>
               <div>
@@ -959,7 +959,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                     : `LP node is disbursing ${currencyMeta.symbol}${numericInr.toFixed(2)} over ${currencyMeta.rail} rails`}
                 </p>
               </div>
-              <div className="p-4 rounded-2xl bg-[#09090b] border border-white/[0.08] text-xs font-mono tabular-nums text-[#c0c6de]">
+              <div className="p-4 rounded-2xl bg-[#111622] border border-white/[0.08] text-xs font-mono tabular-nums text-[#2970FF]">
                 {orderId ? `ORDER #${orderId.toString()} / ESCROW VERIFIED` : "SETTLING ON BASE L2..."}
               </div>
             </SpotlightCard>
@@ -969,7 +969,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
         {/* STEP 6: COMPLETED SUCCESS RECEIPT */}
         {step === "completed" && (
           <div className="p-1.5 rounded-[32px] bg-white/[0.03] border border-white/[0.1] shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)]">
-            <SpotlightCard className="p-6 sm:p-7 bg-[#131315] border border-white/[0.08] rounded-[26px] text-center space-y-5 animate-in zoom-in-95 duration-500">
+            <SpotlightCard className="p-6 sm:p-7 bg-[#0B0E14] border border-white/[0.08] rounded-[26px] text-center space-y-5 animate-in zoom-in-95 duration-500">
               {/* Ambient Emerald Verification Halo */}
               <div className="relative w-24 h-24 mx-auto flex items-center justify-center">
                 <div
@@ -979,13 +979,13 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                       "radial-gradient(circle at center, rgba(52, 211, 153, 0.28) 0%, rgba(52, 211, 153, 0.08) 45%, transparent 70%)",
                   }}
                 />
-                <div className="relative w-16 h-16 rounded-2xl border border-[#34d399]/40 bg-[#09090b] flex items-center justify-center">
-                  <CheckCircle2 className="w-8 h-8 text-[#34d399]" />
+                <div className="relative w-16 h-16 rounded-2xl border border-[#CCFF00]/40 bg-[#111622] flex items-center justify-center">
+                  <CheckCircle2 className="w-8 h-8 text-[#CCFF00]" />
                 </div>
               </div>
 
               <div>
-                <span className="font-mono uppercase text-[10px] tracking-[0.2em] text-[#34d399] font-semibold">
+                <span className="font-mono uppercase text-[10px] tracking-[0.2em] text-[#CCFF00] font-semibold">
                   SETTLEMENT VERIFIED
                 </span>
                 <h2 className="text-4xl font-black text-white tracking-tight mt-1 tabular-nums">
@@ -1000,7 +1000,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                 <div className="mt-3">
                   {scannedMerchantName || (scannedUpi ? formatUpiName(scannedUpi) : null) ? (
                     <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.1] text-white text-xs font-medium">
-                      <Store className="w-3.5 h-3.5 text-[#c0c6de]" />
+                      <Store className="w-3.5 h-3.5 text-[#2970FF]" />
                       <span>
                         Settled to{" "}
                         <strong className="text-white font-semibold">
@@ -1009,7 +1009,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                       </span>
                     </div>
                   ) : (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#34d399]/10 border border-[#34d399]/25 text-[#34d399] font-mono text-[10px]">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#CCFF00]/10 border border-[#CCFF00]/25 text-[#CCFF00] font-mono text-[10px]">
                       <ShieldCheck className="w-3.5 h-3.5" />
                       <span>ZERO-KNOWLEDGE PROOF VERIFIED</span>
                     </div>
@@ -1017,9 +1017,9 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                 </div>
 
                 {/* Monthly Cashback Celebration Pill */}
-                <div className="mt-3 p-3 rounded-2xl bg-[#34d399]/[0.08] border border-[#34d399]/25 flex items-center justify-between text-xs font-mono tabular-nums text-[#34d399]">
+                <div className="mt-3 p-3 rounded-2xl bg-[#CCFF00]/[0.08] border border-[#CCFF00]/25 flex items-center justify-between text-xs font-mono tabular-nums text-[#CCFF00]">
                   <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-[#34d399] shrink-0" />
+                    <Sparkles className="w-4 h-4 text-[#CCFF00] shrink-0" />
                     <span className="font-bold">Added to monthly cashback pool</span>
                   </div>
                   <span className="text-[10px] text-[#8d90a1]">MONTH-END</span>
@@ -1027,11 +1027,11 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
               </div>
 
               {/* Receipt Table */}
-              <div className="p-4 rounded-2xl bg-[#09090b] border border-white/[0.08] space-y-2.5 text-xs font-mono tabular-nums text-left">
+              <div className="p-4 rounded-2xl bg-[#111622] border border-white/[0.08] space-y-2.5 text-xs font-mono tabular-nums text-left">
                 {orderId && (
                   <div className="flex justify-between items-center">
                     <span className="text-[#8d90a1]">ORDER ID</span>
-                    <span className="text-[#c0c6de] font-bold">#{orderId.toString()}</span>
+                    <span className="text-[#2970FF] font-bold">#{orderId.toString()}</span>
                   </div>
                 )}
                 <div className="flex justify-between items-center">
@@ -1050,7 +1050,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                   </span>
                 </div>
                 <div className="flex justify-between items-center pt-2 border-t border-white/[0.08]">
-                  <span className="text-[#c0c6de] font-semibold">TOTAL DEBITED</span>
+                  <span className="text-[#2970FF] font-semibold">TOTAL DEBITED</span>
                   <span className="text-white font-bold">
                     ${(usdcAmountNum + protocolFeeUsdc).toFixed(2)} USDC
                   </span>
@@ -1062,7 +1062,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
                       href={`https://basescan.org/tx/${txHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[#c0c6de] hover:text-white flex items-center gap-1 text-[11px]"
+                      className="text-[#2970FF] hover:text-white flex items-center gap-1 text-[11px]"
                     >
                       <span>
                         {txHash.slice(0, 8)}...{txHash.slice(-6)}
@@ -1077,7 +1077,7 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
               <div className="flex flex-col gap-2 pt-2">
                 <button
                   onClick={onBack}
-                  className="w-full py-3.5 rounded-xl bg-gradient-to-b from-[#d8def8] to-[#a7add2] hover:from-white hover:to-white text-[#0e0e0f] font-mono uppercase tracking-[0.14em] font-bold text-xs transition-colors active:scale-[0.98] cursor-pointer"
+                  className="w-full py-3.5 rounded-xl bg-gradient-to-b from-[#d8def8] to-[#a7add2] hover:from-white hover:to-white text-[#050608] font-mono uppercase tracking-[0.14em] font-bold text-xs transition-colors active:scale-[0.98] cursor-pointer"
                 >
                   Return to Vault
                 </button>

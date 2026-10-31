@@ -684,62 +684,62 @@ export default function EarnFlow() {
   const isLoading = isDepositing || isWithdrawing || isClaiming;
 
   return (
-    <div className="w-full relative flex flex-col items-center justify-start pt-4 pb-28 text-[#e5e5e8] space-y-8">
+    <div className="w-full relative flex flex-col items-center justify-start pt-4 pb-28 text-[#F8FAFC] space-y-8">
       {/* 3D Tilting Yield Performance Monolith */}
       <Tilt3DMonolith
         maxTilt={8}
         className="w-full max-w-3xl"
-        innerClassName="p-6 sm:p-9 relative overflow-hidden bg-gradient-to-br from-[#171920]/95 via-[#131315]/95 to-[#0e0e0f]/95"
+        innerClassName="p-6 sm:p-9 relative overflow-hidden bg-gradient-to-br from-[#0B0E14] via-[#111622] to-[#050608]"
       >
         <DepthLayer z={18} className="flex flex-wrap items-center justify-between gap-3 mb-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#34d399]/10 border border-[#34d399]/25">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-pulse" />
-            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#34d399] font-bold">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#CCFF00]/10 border border-[#CCFF00]/30">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#CCFF00] animate-pulse" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#CCFF00] font-bold">
               ERC-4626 AUTO-COMPOUNDING VAULT
             </span>
           </div>
-          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8d90a1]">
+          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A94A6]">
             {displayVaultName.toUpperCase()}
           </span>
         </DepthLayer>
 
         <DepthLayer z={30} className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
           <div className="md:col-span-6">
-            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#8d90a1] block mb-1">
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#8A94A6] block mb-1">
               LIVE BENCHMARK YIELD
             </span>
             <div className="flex items-baseline gap-2.5">
-              <span className="text-5xl sm:text-7xl font-extrabold tracking-tighter text-white tabular-nums leading-none">
+              <span className="text-5xl sm:text-7xl font-extrabold tracking-tighter text-[#F8FAFC] tabular-nums leading-none">
                 <ShinyText text={displayApy} className="tracking-tighter" />
               </span>
-              <span className="font-mono text-sm sm:text-lg font-bold text-[#34d399] uppercase tracking-[0.16em]">
+              <span className="font-mono text-sm sm:text-lg font-bold text-[#CCFF00] uppercase tracking-[0.16em]">
                 APY
               </span>
             </div>
           </div>
 
           <div className="md:col-span-6 grid grid-cols-2 gap-3">
-            <div className="p-4 rounded-2xl bg-[#09090b]/90 border border-white/[0.08]">
-              <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8d90a1] block mb-1">
+            <div className="p-4 rounded-2xl bg-[#111622] border border-[#2970FF]/25">
+              <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8A94A6] block mb-1">
                 STAKED PRINCIPAL
               </span>
               {isLoadingPosition ? (
-                <div className="w-5 h-5 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin mt-1" />
+                <div className="w-5 h-5 border-2 border-[#2970FF] border-t-transparent rounded-full animate-spin mt-1" />
               ) : (
-                <div className="text-xl sm:text-2xl font-bold text-white tracking-tight tabular-nums">
+                <div className="text-xl sm:text-2xl font-bold text-[#F8FAFC] tracking-tight tabular-nums">
                   <CountUp to={effectiveAssetsInVault} prefix="$" decimals={2} />
-                  <span className="text-[10px] font-mono text-[#8d90a1] ml-1">USDC</span>
+                  <span className="text-[10px] font-mono text-[#8A94A6] ml-1">USDC</span>
                 </div>
               )}
             </div>
 
-            <div className="p-4 rounded-2xl bg-[#09090b]/90 border border-white/[0.08]">
-              <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8d90a1] block mb-1">
+            <div className="p-4 rounded-2xl bg-[#111622] border border-[#2970FF]/25">
+              <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8A94A6] block mb-1">
                 ACCRUED YIELD
               </span>
-              <div className="text-xl sm:text-2xl font-bold text-[#34d399] tracking-tight tabular-nums">
+              <div className="text-xl sm:text-2xl font-bold text-[#CCFF00] tracking-tight tabular-nums">
                 <CountUp to={position ? Math.max(0, position.earnedYield) : 0} prefix="+$" decimals={2} />
-                <span className="text-[10px] font-mono text-[#8d90a1] ml-1">USDC</span>
+                <span className="text-[10px] font-mono text-[#8A94A6] ml-1">USDC</span>
               </div>
             </div>
           </div>
@@ -748,10 +748,10 @@ export default function EarnFlow() {
 
       {/* Main Vault Execution Console (Double-Bezel) */}
       <div className="w-full max-w-3xl">
-        <div className="p-1.5 rounded-[32px] bg-white/[0.025] border border-white/[0.08] shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)]">
-          <SpotlightCard className="p-6 sm:p-8 bg-[#131315] border border-white/[0.07] rounded-[26px]">
+        <div className="p-1.5 rounded-[32px] bg-[#0B0E14]/90 border border-[#2970FF]/25 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.95)]">
+          <SpotlightCard className="p-6 sm:p-8 bg-[#0B0E14] border border-white/[0.07] rounded-[26px]">
             {/* Action Tabs: Deposit vs Withdraw */}
-            <div className="flex rounded-2xl bg-[#09090b] p-1.5 border border-white/[0.08] mb-6">
+            <div className="flex rounded-2xl bg-[#111622] p-1.5 border border-[#2970FF]/20 mb-6">
               <button
                 type="button"
                 onClick={() => {
@@ -761,8 +761,8 @@ export default function EarnFlow() {
                 }}
                 className={`flex-1 py-3 font-mono text-xs font-bold uppercase tracking-[0.14em] rounded-xl transition-all cursor-pointer ${
                   activeTab === "deposit"
-                    ? "bg-gradient-to-b from-[#d8def8] to-[#a7add2] text-[#0e0e0f] shadow-md"
-                    : "text-[#8d90a1] hover:text-white"
+                    ? "bg-[#CCFF00] text-[#050608] shadow-md"
+                    : "text-[#8A94A6] hover:text-[#F8FAFC]"
                 }`}
               >
                 Supply USDC
@@ -776,8 +776,8 @@ export default function EarnFlow() {
                 }}
                 className={`flex-1 py-3 font-mono text-xs font-bold uppercase tracking-[0.14em] rounded-xl transition-all cursor-pointer ${
                   activeTab === "withdraw"
-                    ? "bg-gradient-to-b from-[#d8def8] to-[#a7add2] text-[#0e0e0f] shadow-md"
-                    : "text-[#8d90a1] hover:text-white"
+                    ? "bg-[#2970FF] text-[#F8FAFC] shadow-md"
+                    : "text-[#8A94A6] hover:text-[#F8FAFC]"
                 }`}
               >
                 Withdraw USDC
@@ -789,18 +789,18 @@ export default function EarnFlow() {
               {activeTab === "deposit" ? (
                 <div>
                   <div className="flex items-center justify-between mb-2.5">
-                    <label className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8d90a1] font-bold">
+                    <label className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A94A6] font-bold">
                       SUPPLY AMOUNT (BASE USDC)
                     </label>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-[#8d90a1] tabular-nums">
-                        Available: <span className="text-white font-bold">${availableUsdc.toFixed(2)}</span>
+                      <span className="font-mono text-xs text-[#8A94A6] tabular-nums">
+                        Available: <span className="text-[#F8FAFC] font-bold">${availableUsdc.toFixed(2)}</span>
                       </span>
                       <button
                         type="button"
                         onClick={handleSetMax}
                         disabled={availableUsdc <= 0}
-                        className="font-mono text-[10px] tabular-nums font-bold px-2.5 py-0.5 rounded-full bg-[#c0c6de]/15 hover:bg-[#c0c6de]/25 text-[#c0c6de] border border-[#c0c6de]/30 transition-colors disabled:opacity-40 cursor-pointer"
+                        className="font-mono text-[10px] tabular-nums font-bold px-2.5 py-0.5 rounded-full bg-[#2970FF]/15 hover:bg-[#2970FF]/25 text-[#2970FF] border border-[#2970FF]/35 transition-colors disabled:opacity-40 cursor-pointer"
                       >
                         MAX
                       </button>
@@ -808,7 +808,7 @@ export default function EarnFlow() {
                   </div>
 
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#c0c6de] font-bold text-xl">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#CCFF00] font-bold text-xl">
                       $
                     </span>
                     <input
@@ -818,7 +818,7 @@ export default function EarnFlow() {
                       onChange={handleAmountChange}
                       placeholder="0.00"
                       disabled={isLoading}
-                      className="w-full pl-9 pr-4 py-4 rounded-2xl bg-[#09090b] border border-white/[0.08] text-white text-2xl font-bold placeholder-[#8d90a1]/40 focus:outline-none focus:border-[#c0c6de] transition-colors tracking-tight tabular-nums shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)]"
+                      className="w-full pl-9 pr-4 py-4 rounded-2xl bg-[#111622] border border-[#2970FF]/25 text-[#F8FAFC] text-2xl font-bold placeholder-[#8A94A6]/40 focus:outline-none focus:border-[#CCFF00] transition-colors tracking-tight tabular-nums shadow-[inset_0_2px_8px_rgba(0,0,0,0.85)]"
                     />
                   </div>
 
@@ -831,8 +831,8 @@ export default function EarnFlow() {
                         onClick={() => setAmount(String(preset))}
                         className={`px-3.5 py-1.5 rounded-xl font-mono text-xs tabular-nums font-semibold transition-colors cursor-pointer ${
                           amount === String(preset)
-                            ? "bg-[#c0c6de] text-[#0e0e0f] font-bold shadow-md"
-                            : "bg-[#09090b] hover:bg-white/[0.06] text-[#8d90a1] hover:text-white border border-white/[0.08]"
+                            ? "bg-[#CCFF00] text-[#050608] font-bold shadow-md"
+                            : "bg-[#111622] hover:bg-[#161D2B] text-[#8A94A6] hover:text-[#F8FAFC] border border-[#2970FF]/20"
                         }`}
                       >
                         ${preset}
@@ -843,19 +843,19 @@ export default function EarnFlow() {
               ) : (
                 <div>
                   <div className="flex items-center justify-between mb-2.5">
-                    <label className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8d90a1] font-bold">
+                    <label className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8A94A6] font-bold">
                       WITHDRAW AMOUNT (BASE USDC)
                     </label>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-[#8d90a1] tabular-nums">
+                      <span className="font-mono text-xs text-[#8A94A6] tabular-nums">
                         Staked:{" "}
-                        <span className="text-white font-bold">${effectiveAssetsInVault.toFixed(2)}</span>
+                        <span className="text-[#F8FAFC] font-bold">${effectiveAssetsInVault.toFixed(2)}</span>
                       </span>
                       <button
                         type="button"
                         onClick={handleSetMaxWithdraw}
                         disabled={effectiveAssetsInVault <= 0}
-                        className="font-mono text-[10px] tabular-nums font-bold px-2.5 py-0.5 rounded-full bg-[#c0c6de]/15 hover:bg-[#c0c6de]/25 text-[#c0c6de] border border-[#c0c6de]/30 transition-colors disabled:opacity-40 cursor-pointer"
+                        className="font-mono text-[10px] tabular-nums font-bold px-2.5 py-0.5 rounded-full bg-[#2970FF]/15 hover:bg-[#2970FF]/25 text-[#2970FF] border border-[#2970FF]/35 transition-colors disabled:opacity-40 cursor-pointer"
                       >
                         MAX
                       </button>
@@ -863,7 +863,7 @@ export default function EarnFlow() {
                   </div>
 
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#c0c6de] font-bold text-xl">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#2970FF] font-bold text-xl">
                       $
                     </span>
                     <input
@@ -873,7 +873,7 @@ export default function EarnFlow() {
                       onChange={handleWithdrawAmountChange}
                       placeholder={effectiveAssetsInVault > 0 ? effectiveAssetsInVault.toFixed(2) : "0.00"}
                       disabled={isLoading}
-                      className="w-full pl-9 pr-4 py-4 rounded-2xl bg-[#09090b] border border-white/[0.08] text-white text-2xl font-bold placeholder-[#8d90a1]/40 focus:outline-none focus:border-[#c0c6de] transition-colors tracking-tight tabular-nums shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)]"
+                      className="w-full pl-9 pr-4 py-4 rounded-2xl bg-[#111622] border border-[#2970FF]/25 text-[#F8FAFC] text-2xl font-bold placeholder-[#8A94A6]/40 focus:outline-none focus:border-[#2970FF] transition-colors tracking-tight tabular-nums shadow-[inset_0_2px_8px_rgba(0,0,0,0.85)]"
                     />
                   </div>
 
@@ -885,7 +885,7 @@ export default function EarnFlow() {
                         type="button"
                         disabled={effectiveAssetsInVault <= 0}
                         onClick={() => setWithdrawAmount((effectiveAssetsInVault * pct).toFixed(2))}
-                        className="px-3.5 py-1.5 rounded-xl font-mono text-xs tabular-nums font-semibold transition-colors bg-[#09090b] hover:bg-white/[0.06] text-[#8d90a1] hover:text-white border border-white/[0.08] disabled:opacity-40 cursor-pointer"
+                        className="px-3.5 py-1.5 rounded-xl font-mono text-xs tabular-nums font-semibold transition-colors bg-[#111622] hover:bg-[#161D2B] text-[#8A94A6] hover:text-[#F8FAFC] border border-[#2970FF]/20 disabled:opacity-40 cursor-pointer"
                       >
                         {pct === 1 ? "100% (ALL)" : `${pct * 100}%`}
                       </button>
@@ -895,13 +895,13 @@ export default function EarnFlow() {
               )}
 
               {error && (
-                <div className="p-3.5 rounded-2xl bg-[#f87171]/10 border border-[#f87171]/30 font-mono text-xs text-[#f87171]">
+                <div className="p-3.5 rounded-2xl bg-[#FF4D4D]/10 border border-[#FF4D4D]/30 font-mono text-xs text-[#FF4D4D]">
                   {error}
                 </div>
               )}
 
               {success && (
-                <div className="p-3.5 rounded-2xl bg-[#34d399]/10 border border-[#34d399]/30 font-mono text-xs text-[#34d399]">
+                <div className="p-3.5 rounded-2xl bg-[#CCFF00]/10 border border-[#CCFF00]/30 font-mono text-xs text-[#CCFF00]">
                   {success}
                 </div>
               )}
@@ -915,7 +915,7 @@ export default function EarnFlow() {
                     className="w-full py-4 text-xs font-mono uppercase tracking-[0.14em]"
                   >
                     {isDepositing ? (
-                      <div className="w-5 h-5 border-2 border-[#0e0e0f] border-t-transparent rounded-full animate-spin" />
+                      <div className="w-5 h-5 border-2 border-[#050608] border-t-transparent rounded-full animate-spin" />
                     ) : (
                       <>
                         <ArrowDownLeft className="w-4 h-4" />
@@ -936,7 +936,7 @@ export default function EarnFlow() {
                       className="w-full py-4 text-xs font-mono uppercase tracking-[0.14em]"
                     >
                       {isWithdrawing ? (
-                        <div className="w-5 h-5 border-2 border-[#0e0e0f] border-t-transparent rounded-full animate-spin" />
+                        <div className="w-5 h-5 border-2 border-[#050608] border-t-transparent rounded-full animate-spin" />
                       ) : (
                         <>
                           <ArrowUpRight className="w-4 h-4" />
@@ -948,7 +948,7 @@ export default function EarnFlow() {
                         </>
                       )}
                     </ShimmerButton>
-                    <p className="font-mono text-[10px] text-center text-[#8d90a1] uppercase tracking-[0.12em]">
+                    <p className="font-mono text-[10px] text-center text-[#8A94A6] uppercase tracking-[0.12em]">
                       ZERO LOCKUP / ATOMIC ERC-4626 REDEMPTION
                     </p>
                   </div>
@@ -956,7 +956,7 @@ export default function EarnFlow() {
               ) : (
                 <button
                   onClick={() => login()}
-                  className="w-full py-4 rounded-2xl bg-[#c0c6de] hover:bg-white text-[#0e0e0f] font-mono uppercase tracking-[0.14em] font-bold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full py-4 rounded-2xl bg-[#CCFF00] hover:brightness-110 text-[#050608] font-mono uppercase tracking-[0.14em] font-bold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Wallet className="w-4 h-4" />
                   <span>CONNECT WALLET</span>
@@ -969,7 +969,7 @@ export default function EarnFlow() {
                   href={`https://basescan.org/address/${activeVaultAddress}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#8d90a1] hover:text-white flex items-center gap-1.5 transition-colors"
+                  className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#8A94A6] hover:text-[#F8FAFC] flex items-center gap-1.5 transition-colors"
                 >
                   <span>CONTRACT: {displayVaultName.toUpperCase()}</span>
                   <ExternalLink className="w-3 h-3" />
@@ -979,7 +979,7 @@ export default function EarnFlow() {
                   <button
                     onClick={handleClaimRewards}
                     disabled={!hasPosition || isLoading}
-                    className="text-[#34d399] hover:text-white font-mono text-[10px] uppercase tracking-[0.14em] font-bold disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="text-[#CCFF00] hover:text-[#F8FAFC] font-mono text-[10px] uppercase tracking-[0.14em] font-bold disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     {isClaiming && (
                       <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
@@ -990,7 +990,7 @@ export default function EarnFlow() {
                   <button
                     onClick={() => handleWithdraw(undefined, true)}
                     disabled={!hasPosition || isLoading}
-                    className="text-[#c0c6de] hover:text-white font-mono text-[10px] uppercase tracking-[0.14em] font-bold disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="text-[#2970FF] hover:text-[#F8FAFC] font-mono text-[10px] uppercase tracking-[0.14em] font-bold disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     {isWithdrawing && (
                       <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
@@ -1006,39 +1006,39 @@ export default function EarnFlow() {
 
       {/* Protocol Telemetry Feature Cards */}
       <div className="w-full max-w-3xl grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-        <div className="p-4 rounded-2xl bg-[#131315] border border-white/[0.07] flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-[#09090b] border border-white/[0.08] flex items-center justify-center text-[#34d399] shrink-0">
+        <div className="p-4 rounded-2xl bg-[#0B0E14] border border-[#2970FF]/20 flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-[#111622] border border-[#CCFF00]/30 flex items-center justify-center text-[#CCFF00] shrink-0">
             <TrendingUp className="w-4 h-4" />
           </div>
           <div>
-            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8d90a1] block">
+            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8A94A6] block">
               STRATEGY
             </span>
-            <p className="text-xs font-bold text-white">Morpho Auto-Compound</p>
+            <p className="text-xs font-bold text-[#F8FAFC]">Morpho Auto-Compound</p>
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#131315] border border-white/[0.07] flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-[#09090b] border border-white/[0.08] flex items-center justify-center text-[#c0c6de] shrink-0">
+        <div className="p-4 rounded-2xl bg-[#0B0E14] border border-[#2970FF]/20 flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-[#111622] border border-[#2970FF]/30 flex items-center justify-center text-[#2970FF] shrink-0">
             <Sparkles className="w-4 h-4" />
           </div>
           <div>
-            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8d90a1] block">
+            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8A94A6] block">
               LIQUIDITY
             </span>
-            <p className="text-xs font-bold text-white">Zero Lockup Period</p>
+            <p className="text-xs font-bold text-[#F8FAFC]">Zero Lockup Period</p>
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#131315] border border-white/[0.07] flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-[#09090b] border border-white/[0.08] flex items-center justify-center text-[#c0c6de] shrink-0">
+        <div className="p-4 rounded-2xl bg-[#0B0E14] border border-[#2970FF]/20 flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-[#111622] border border-[#2970FF]/30 flex items-center justify-center text-[#2970FF] shrink-0">
             <ShieldCheck className="w-4 h-4" />
           </div>
           <div>
-            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8d90a1] block">
+            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8A94A6] block">
               CUSTODY
             </span>
-            <p className="text-xs font-bold text-white">ERC-4626 Non-Custodial</p>
+            <p className="text-xs font-bold text-[#F8FAFC]">ERC-4626 Non-Custodial</p>
           </div>
         </div>
       </div>

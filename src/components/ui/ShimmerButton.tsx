@@ -13,7 +13,7 @@ interface ShimmerButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 export function ShimmerButton({
   children,
-  shimmerColor = "#ffffff",
+  shimmerColor = "#2970FF",
   shimmerSize = "0.05em",
   shimmerDuration = "3s",
   borderRadius = "12px",
@@ -33,7 +33,7 @@ export function ShimmerButton({
         } as React.CSSProperties
       }
       disabled={disabled}
-      className={`group relative z-0 flex cursor-pointer items-center justify-center overflow-hidden whitespace-nowrap border border-white/20 px-6 py-4 text-surface font-bold text-xs tracking-normal font-label-caps  [background:var(--bg)] [border-radius:var(--radius)] transition-colors duration-300 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none ${className}`}
+      className={`group relative z-0 flex cursor-pointer items-center justify-center overflow-hidden whitespace-nowrap border border-[#CCFF00]/40 px-6 py-4 text-[#050608] font-bold text-xs tracking-normal font-label-caps [background:var(--bg)] [border-radius:var(--radius)] transition-colors duration-300 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none shadow-[0_10px_28px_rgba(204,255,0,0.22)] ${className}`}
       {...props}
     >
       {/* Spark container */}
@@ -50,7 +50,7 @@ export function ShimmerButton({
       </span>
 
       {/* Backdrop */}
-      <div className="absolute inset-[1px] -z-20 rounded-[inherit] bg-on-surface group-hover:bg-white transition-colors" />
+      <div className="absolute inset-[1px] -z-20 rounded-[inherit] bg-[#CCFF00] group-hover:brightness-110 transition-all" />
     </button>
   );
 }

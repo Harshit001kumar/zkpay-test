@@ -22,11 +22,11 @@ export default function BottomNav({ activeTab, setActiveTab }: BottomNavProps) {
   ];
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-max max-w-[94vw]">
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-max max-w-[94vw]">
       {/* Outer Bezel */}
-      <div className="p-1.5 rounded-full bg-white/[0.03] border border-white/[0.08] backdrop-blur-2xl shadow-[0_24px_60px_rgba(0,0,0,0.9)]">
+      <div className="p-1.5 rounded-full bg-[#0B0E14]/90 border border-[#2970FF]/25 backdrop-blur-2xl shadow-[0_24px_60px_rgba(0,0,0,0.95)]">
         {/* Inner Machined Core */}
-        <nav className="flex items-center gap-1 sm:gap-1.5 px-2 py-1.5 rounded-full bg-[#131315]/95 border border-white/[0.07] shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)]">
+        <nav className="flex items-center gap-1 sm:gap-1.5 px-2 py-1.5 rounded-full bg-[#111622]/95 border border-white/[0.08] shadow-[inset_0_1px_1px_rgba(41,112,255,0.18)]">
           {navItems.map((item) => {
             const isActive = activeTab === item.id;
             const Icon = item.icon;
@@ -37,8 +37,8 @@ export default function BottomNav({ activeTab, setActiveTab }: BottomNavProps) {
                 onClick={() => setActiveTab(item.id)}
                 className={`relative flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-full transition-all duration-300 cursor-pointer active:scale-95 ${
                   isActive
-                    ? "bg-gradient-to-b from-[#d8def8] to-[#a7add2] text-[#0e0e0f] shadow-[0_6px_20px_rgba(192,198,222,0.28),inset_0_1px_0_rgba(255,255,255,0.65)]"
-                    : "text-[#8d90a1] hover:text-white hover:bg-white/[0.04]"
+                    ? "bg-[#CCFF00] text-[#050608] shadow-[0_6px_22px_rgba(204,255,0,0.32),inset_0_1px_0_rgba(255,255,255,0.65)]"
+                    : "text-[#8A94A6] hover:text-[#F8FAFC] hover:bg-white/[0.04]"
                 }`}
               >
                 <Icon
