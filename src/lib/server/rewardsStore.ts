@@ -593,7 +593,7 @@ export async function getUserRewardsSummary(rawAddress: string, queryCycle?: str
   return {
     address,
     referralCode,
-    referralLink: `https://zkpay.in/?ref=${referralCode}`,
+    referralLink: `https://zkpay.top/?ref=${referralCode}`,
     referredBy,
     friendsInvited,
     currentCycle,

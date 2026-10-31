@@ -620,450 +620,502 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   // ────────────── RENDER ──────────────
 
   return (
-    <div className="fixed inset-0 z-50 bg-surface text-on-surface font-sans flex flex-col overflow-y-auto min-h-[100dvh]">
-      {/* Background Ambient Glow */}
-      <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
-        <div className="absolute -top-40 -left-40 w-96 h-96 bg-primary/5 rounded-full blur-xl" />
-        <div className="absolute bottom-10 -right-40 w-96 h-96 bg-secondary/5 rounded-full blur-xl" />
-      </div>
-
-      {/* Top App Bar */}
-      <header className="sticky top-0 z-40 bg-surface/90  border-b border-white/10 px-6 py-4 flex items-center justify-between">
-        <button
-          onClick={onBack}
-          disabled={step === "authorizing" || step === "delivering"}
-          className="inline-flex items-center gap-2 text-xs font-sans tabular-nums font-bold tracking-normal text-outline hover:text-on-surface transition-colors disabled:opacity-30 cursor-pointer"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>BACK</span>
-        </button>
-        <div className="flex items-center gap-2 text-xs font-sans tabular-nums text-primary">
-          <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-          <span>BASE MAINNET (8453)</span>
+    <div className="fixed inset-0 z-50 bg-[#0e0e0f] text-[#e5e5e8] font-sans flex flex-col overflow-y-auto min-h-[100dvh]">
+      {/* Floating Double-Bezel Header */}
+      <header className="sticky top-3.5 z-40 px-4 sm:px-6 pointer-events-none">
+        <div className="max-w-xl mx-auto">
+          <div className="pointer-events-auto p-1 rounded-full bg-white/[0.03] border border-white/[0.08] backdrop-blur-2xl shadow-[0_20px_50px_rgba(0,0,0,0.85)]">
+            <div className="px-4 py-2 rounded-full bg-[#131315]/95 border border-white/[0.06] flex items-center justify-between">
+              <button
+                onClick={onBack}
+                disabled={step === "authorizing" || step === "delivering"}
+                className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] font-bold text-[#c0c6de] hover:text-white transition-colors disabled:opacity-30 cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>VAULT</span>
+              </button>
+              <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[#34d399]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-pulse" />
+                <span>{currencyMeta.code} / {currencyMeta.rail}</span>
+              </div>
+            </div>
+          </div>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-xl mx-auto w-full px-5 py-6 md:py-8">
-        
-        {/* STEP 1: ENTER INR AMOUNT FIRST (WITH IN-APP NUMERIC KEYPAD) */}
+      <main className="flex-1 max-w-xl mx-auto w-full px-4 sm:px-5 pt-6 pb-32">
+        {/* STEP 1: ENTER AMOUNT FIRST (WITH IN-APP NUMERIC KEYPAD) */}
         {step === "amount" && (
-          <SpotlightCard className="p-5 sm:p-7 bg-surface-container-low border border-white/15 rounded-3xl shadow-elevated space-y-5">
-            {/* Header / Subheader */}
-            <div className="flex items-center justify-between pb-4 border-b border-white/10">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/30 flex items-center justify-center text-primary shrink-0">
-                  <QrCode className="w-5 h-5" />
+          <div className="p-1.5 rounded-[32px] bg-white/[0.025] border border-white/[0.08] shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)]">
+            <SpotlightCard className="p-5 sm:p-7 bg-[#131315] border border-white/[0.07] rounded-[26px] space-y-5">
+              {/* Header / Subheader */}
+              <div className="flex items-center justify-between pb-4 border-b border-white/[0.07]">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-[#c0c6de]/10 border border-[#c0c6de]/30 flex items-center justify-center text-[#c0c6de] shrink-0">
+                    <QrCode className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                      <span>Scan &amp; Pay</span>
+                    </h1>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#8d90a1]">
+                      1. AMOUNT / 2. ESCROW / 3. SCAN {currencyMeta.rail}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight flex items-center gap-2">
-                    <span>Scan & Pay</span>
-                  </h1>
-                  <p className="text-[11px] text-outline font-sans tabular-nums">
-                    Enter Amount ➔ Escrow ➔ Scan QR
-                  </p>
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-[9px] font-label-caps text-outline  tracking-normal block">Balance</span>
-                <span className="text-xs font-sans tabular-nums font-bold text-primary">
-                  ${availableUsdc.toFixed(2)} USDC
-                </span>
-              </div>
-            </div>
-
-            {/* Hero Amount Display (In-App Keypad Target) */}
-            <div className="flex flex-col items-center justify-center py-3 px-4 rounded-3xl bg-black/40 border border-white/10 relative overflow-hidden">
-              <div className="absolute top-2 left-4 text-[10px] font-label-caps text-outline tracking-normal  font-bold">
-                PAYMENT AMOUNT
-              </div>
-
-              {/* Amount Display */}
-              <div className="flex items-baseline justify-center mt-4 mb-1">
-                <span className="text-3xl sm:text-4xl font-extrabold text-primary font-sans tabular-nums mr-1.5 opacity-80">
-                  {currencyMeta.symbol}
-                </span>
-                <span className="text-5xl sm:text-6xl font-black font-sans tabular-nums tracking-tight text-white select-none">
-                  {amountInr || "0"}
-                </span>
-                <span className="w-0.5 h-9 sm:h-11 bg-primary inline-block animate-pulse ml-1 rounded-full opacity-80" />
-              </div>
-
-              {/* Live USD/USDC Conversion Subtext */}
-              <div className="flex items-center gap-2 text-xs font-sans tabular-nums text-outline mt-1">
-                <span>≈ ${totalUsdcRequired.toFixed(2)} USDC</span>
-                <span className="text-outline-variant">•</span>
-                <span className="text-[11px] text-primary">
-                  {rateLoading ? "Rate loading..." : `1 USDC = ${currencyMeta.symbol}${rateInrPerUsdc.toFixed(2)}`}
-                </span>
-              </div>
-            </div>
-
-            {/* Quick Action Chips (Presets, Max, Clear) */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-              <button
-                type="button"
-                onClick={handleSetMax}
-                disabled={availableUsdc <= 0}
-                className="py-1.5 px-3 rounded-xl bg-primary/15 hover:bg-primary/25 border border-primary/30 text-xs font-sans tabular-nums font-bold text-primary transition-colors shrink-0 disabled:opacity-40"
-              >
-                MAX
-              </button>
-              {PRESET_AMOUNTS.slice(0, 4).map((amt) => (
-                <button
-                  key={amt}
-                  type="button"
-                  onClick={() => handleQuickAdd(amt)}
-                  className="py-1.5 px-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.09] border border-white/10 text-xs font-sans tabular-nums text-on-surface-variant hover:text-white transition-colors shrink-0"
-                >
-                  +{currencyMeta.symbol}{amt}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={handleClear}
-                className="py-1.5 px-2.5 rounded-xl bg-error-container/20 hover:bg-error-container/40 border border-error/20 text-xs font-sans tabular-nums text-error transition-colors shrink-0 ml-auto"
-              >
-                CLEAR
-              </button>
-            </div>
-
-            {/* IN-APP NUMERIC KEYPAD */}
-            <NumericKeypad
-              value={amountInr}
-              onChange={handleKeypadChange}
-              onClear={handleClear}
-              maxDecimals={2}
-              maxDigits={7}
-              className="py-1"
-            />
-
-            {/* Fee & Escrow Info Pill */}
-            <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/10 flex flex-col gap-2 text-xs font-sans tabular-nums text-outline">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Info className="w-3.5 h-3.5 text-primary" />
-                  <span>Platform Fee (1%)</span>
-                </div>
-                <span className="text-on-surface font-bold">
-                  ${platformFeeUsdc.toFixed(2)} USDC
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <span>Protocol Fee</span>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-outline">
-                    {fees.isSmallOrder ? "≤ $10 orders" : "Free > $10"}
+                <div className="text-right">
+                  <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8d90a1] block">
+                    VAULT LIQUIDITY
+                  </span>
+                  <span className="text-xs font-mono tabular-nums font-bold text-[#c0c6de]">
+                    ${availableUsdc.toFixed(2)} USDC
                   </span>
                 </div>
-                <span className={fees.isSmallOrder ? "text-on-surface font-bold" : "text-success font-bold"}>
-                  {fees.isSmallOrder ? `$${protocolFeeUsdc.toFixed(2)} USDC` : "Free"}
+              </div>
+
+              {/* Recessed Numeric Input Well */}
+              <div className="flex flex-col items-center justify-center py-4 px-4 rounded-2xl bg-[#09090b] border border-white/[0.08] shadow-[inset_0_2px_10px_rgba(0,0,0,0.8)] relative overflow-hidden">
+                <div className="w-full flex items-center justify-between mb-1 px-1">
+                  <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#8d90a1]">
+                    SETTLEMENT AMOUNT ({currencyMeta.code})
+                  </span>
+                  <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-[#34d399]">
+                    {currencyMeta.rail}
+                  </span>
+                </div>
+
+                {/* Amount Display */}
+                <div className="flex items-baseline justify-center my-2">
+                  <span className="text-3xl sm:text-4xl font-extrabold text-[#c0c6de] tabular-nums mr-1.5">
+                    {currencyMeta.symbol}
+                  </span>
+                  <span className="text-5xl sm:text-6xl font-black tabular-nums tracking-tight text-white select-none">
+                    {amountInr || "0"}
+                  </span>
+                  <span className="w-0.5 h-9 sm:h-11 bg-[#c0c6de] inline-block animate-pulse ml-1 rounded-full" />
+                </div>
+
+                {/* Live USD/USDC Conversion Subtext */}
+                <div className="flex items-center gap-2 font-mono text-[11px] tabular-nums text-[#8d90a1] mt-1">
+                  <span className="text-white font-semibold">≈ ${totalUsdcRequired.toFixed(2)} USDC</span>
+                  <span className="text-white/20">/</span>
+                  <span className="text-[#c0c6de]">
+                    {rateLoading ? "SYNCING ORACLE..." : `1 USDC = ${currencyMeta.symbol}${rateInrPerUsdc.toFixed(2)}`}
+                  </span>
+                </div>
+              </div>
+
+              {/* Quick Action Chips (Presets, Max, Clear) */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                <button
+                  type="button"
+                  onClick={handleSetMax}
+                  disabled={availableUsdc <= 0}
+                  className="py-1.5 px-3 rounded-xl bg-[#c0c6de]/15 hover:bg-[#c0c6de]/25 border border-[#c0c6de]/30 font-mono text-[10px] tabular-nums font-bold text-[#c0c6de] transition-colors shrink-0 disabled:opacity-40 cursor-pointer"
+                >
+                  MAX
+                </button>
+                {PRESET_AMOUNTS.slice(0, 4).map((amt) => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => handleQuickAdd(amt)}
+                    className="py-1.5 px-3 rounded-xl bg-[#09090b] hover:bg-white/[0.08] border border-white/[0.08] font-mono text-[11px] tabular-nums text-[#8d90a1] hover:text-white transition-colors shrink-0 cursor-pointer"
+                  >
+                    +{currencyMeta.symbol}{amt}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  className="py-1.5 px-2.5 rounded-xl bg-[#f87171]/10 hover:bg-[#f87171]/20 border border-[#f87171]/25 font-mono text-[10px] tabular-nums text-[#f87171] transition-colors shrink-0 ml-auto cursor-pointer"
+                >
+                  CLEAR
+                </button>
+              </div>
+
+              {/* IN-APP NUMERIC KEYPAD */}
+              <NumericKeypad
+                value={amountInr}
+                onChange={handleKeypadChange}
+                onClear={handleClear}
+                maxDecimals={2}
+                maxDigits={7}
+                className="py-1"
+              />
+
+              {/* Fee & Escrow Info Pill */}
+              <div className="p-3.5 rounded-2xl bg-[#09090b]/90 border border-white/[0.07] flex flex-col gap-2 text-xs tabular-nums text-[#8d90a1]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Info className="w-3.5 h-3.5 text-[#c0c6de]" />
+                    <span>Platform Fee (1%)</span>
+                  </div>
+                  <span className="text-white font-mono font-bold">
+                    ${platformFeeUsdc.toFixed(2)} USDC
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span>Protocol Fee</span>
+                    <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-white/[0.04] text-[#8d90a1]">
+                      {fees.isSmallOrder ? "<= $10 ORDERS" : "FREE > $10"}
+                    </span>
+                  </div>
+                  <span className={fees.isSmallOrder ? "text-white font-mono font-bold" : "text-[#34d399] font-mono font-bold"}>
+                    {fees.isSmallOrder ? `$${protocolFeeUsdc.toFixed(2)} USDC` : "FREE"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Monthly Cashback Promo Pill */}
+              <div className="p-3 rounded-2xl bg-[#34d399]/[0.07] border border-[#34d399]/25 flex items-center justify-between text-xs tabular-nums text-[#34d399]">
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-pulse" />
+                  <span className="font-semibold">Accrues Monthly Cashback</span>
+                </div>
+                <span className="font-mono text-[10px] text-[#8d90a1]">BATCH DISBURSED</span>
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="p-3.5 rounded-2xl bg-[#f87171]/10 border border-[#f87171]/30 text-xs tabular-nums text-[#f87171]">
+                  {error}
+                </div>
+              )}
+
+              {/* Action Button */}
+              <ShimmerButton
+                onClick={handlePlaceOrder}
+                disabled={numericInr <= 0 || rateLoading}
+                shimmerColor="#ffffff"
+                className="w-full py-4 rounded-2xl text-[#0e0e0f] font-bold text-xs tracking-normal font-mono uppercase"
+              >
+                <span>
+                  Authorize &amp; Place Order ({currencyMeta.symbol}
+                  {numericInr > 0 ? numericInr.toFixed(2) : "0.00"})
                 </span>
-              </div>
-            </div>
-
-            {/* Monthly Cashback Promo Pill */}
-            <div className="p-3 rounded-2xl bg-gradient-to-r from-success/15/40 to-black/40 border border-success/20 flex items-center justify-between text-xs font-sans tabular-nums text-success">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-                <span className="font-bold">Earn Monthly Cashback on this payment</span>
-              </div>
-              <span className="text-[10px] text-outline">Disbursed at month-end</span>
-            </div>
-
-            {/* Error Message */}
-            {error && (
-              <div className="p-3.5 rounded-2xl bg-error-container/40 border border-error/30 text-xs font-sans tabular-nums text-error">
-                {error}
-              </div>
-            )}
-
-            {/* Action Button */}
-            <ShimmerButton
-              onClick={handlePlaceOrder}
-              disabled={numericInr <= 0 || rateLoading}
-              shimmerColor="#ffffff"
-              className="w-full py-4 rounded-2xl text-surface font-bold text-xs tracking-normal font-label-caps "
-            >
-              <span>Authorize & Place Order (₹{numericInr > 0 ? numericInr.toFixed(2) : "0.00"})</span>
-            </ShimmerButton>
-          </SpotlightCard>
+              </ShimmerButton>
+            </SpotlightCard>
+          </div>
         )}
 
         {/* STEP 2: AUTHORIZING & ESCROWING USDC */}
         {step === "authorizing" && (
-          <SpotlightCard className="p-8 bg-surface-container-low border border-white/15 rounded-3xl text-center space-y-6">
-            <div className="w-16 h-16 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center text-primary mx-auto animate-pulse">
-              <Loader2 className="w-8 h-8 animate-spin" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-white">Placing Order into Escrow</h2>
-              <p className="text-xs text-outline font-sans tabular-nums mt-1">
-                Locking ${totalUsdcRequired.toFixed(2)} USDC into P2P Diamond contract on Base
-              </p>
-            </div>
-            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 text-xs font-sans tabular-nums text-primary space-y-2">
-              <p>Executing transaction on Base…</p>
-              <div className="flex items-center justify-center gap-2 text-[10px] text-outline">
-                <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded text-on-surface">1. Protocol Fee (1%)</span>
-                <span>→</span>
-                <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded text-on-surface">2. Escrow Order</span>
+          <div className="p-1.5 rounded-[32px] bg-white/[0.025] border border-white/[0.08]">
+            <SpotlightCard className="p-8 bg-[#131315] border border-white/[0.07] rounded-[26px] text-center space-y-6">
+              <div className="w-16 h-16 rounded-2xl bg-[#c0c6de]/10 border border-[#c0c6de]/30 flex items-center justify-center text-[#c0c6de] mx-auto animate-pulse">
+                <Loader2 className="w-8 h-8 animate-spin" />
               </div>
-            </div>
-          </SpotlightCard>
+              <div>
+                <h2 className="text-xl font-bold text-white">Locking Liquidity in Escrow</h2>
+                <p className="text-xs text-[#8d90a1] font-mono tabular-nums mt-1">
+                  Escrowing ${totalUsdcRequired.toFixed(2)} USDC in P2P Diamond on Base L2
+                </p>
+              </div>
+              <div className="p-4 rounded-2xl bg-[#09090b] border border-white/[0.08] text-xs font-mono tabular-nums text-[#c0c6de] space-y-2">
+                <p>Broadcasting gasless UserOperation on Base...</p>
+                <div className="flex items-center justify-center gap-2 text-[10px] text-[#8d90a1]">
+                  <span className="bg-white/[0.04] border border-white/[0.08] px-2 py-0.5 rounded text-white">
+                    1. Fee Routing (1%)
+                  </span>
+                  <span>/</span>
+                  <span className="bg-white/[0.04] border border-white/[0.08] px-2 py-0.5 rounded text-white">
+                    2. Diamond Escrow
+                  </span>
+                </div>
+              </div>
+            </SpotlightCard>
+          </div>
         )}
 
         {/* STEP 3: SCAN QR CODE WHILE MATCHING IN BACKGROUND */}
         {step === "scanning_matching" && (
-          <div className="space-y-6 animate-in fade-in duration-300">
+          <div className="space-y-5 animate-in fade-in duration-300">
             {/* Real-Time Status Header */}
-            <div className="p-4 rounded-2xl bg-success/15/40 border border-success/30 flex items-center justify-between">
+            <div className="p-4 rounded-2xl bg-[#34d399]/10 border border-[#34d399]/30 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="w-3 h-3 rounded-full bg-success animate-ping shrink-0" />
+                <span className="w-2.5 h-2.5 rounded-full bg-[#34d399] animate-ping shrink-0" />
                 <div>
-                  <p className="text-xs font-bold text-success font-sans tabular-nums ">
-                    {orderId ? `Order #${orderId.toString()} Escrowed (${currencyMeta.symbol}${numericInr.toFixed(2)})` : `${currencyMeta.symbol}${numericInr.toFixed(2)} In Escrow`}
+                  <p className="text-xs font-bold text-[#34d399] font-mono tabular-nums">
+                    {orderId
+                      ? `ORDER #${orderId.toString()} ESCROWED (${currencyMeta.symbol}${numericInr.toFixed(2)})`
+                      : `${currencyMeta.symbol}${numericInr.toFixed(2)} IN ESCROW`}
                   </p>
-                  <p className="text-[11px] text-on-surface-variant font-sans tabular-nums">
-                    {merchantAcceptedOrder ? "P2P Merchant Ready!" : "Matching liquidity in background…"}
+                  <p className="text-[11px] text-[#e5e5e8] font-mono tabular-nums">
+                    {merchantAcceptedOrder ? "LP NODE LOCKED & READY" : "MATCHING LP NODE IN BACKGROUND..."}
                   </p>
                 </div>
               </div>
-              <div className="text-xs font-sans tabular-nums text-primary font-bold">
+              <div className="text-xs font-mono tabular-nums text-[#c0c6de] font-bold">
                 ${totalUsdcRequired.toFixed(2)} USDC
               </div>
             </div>
 
             {/* Recipient Scanned Confirmation OR Camera Viewfinder */}
             {scannedUpi ? (
-              <SpotlightCard className="p-6 md:p-8 bg-surface-container-low border border-white/15 rounded-3xl space-y-4 text-center">
-                <div className="w-14 h-14 rounded-full bg-success/20 border border-success/40 text-success flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="w-7 h-7" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-white">Merchant Identified</h3>
-                  <p className="text-sm font-sans tabular-nums text-primary mt-1">{scannedUpi}</p>
-                </div>
-                <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 text-xs font-sans tabular-nums text-outline flex items-center justify-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                  <span>
-                    {merchantAcceptedOrder 
-                      ? "Delivering encrypted payment details…" 
-                      : "Connecting with matched merchant…"}
-                  </span>
-                </div>
-              </SpotlightCard>
-            ) : (
-              <SpotlightCard className="p-6 bg-surface-container-low border border-white/15 rounded-3xl space-y-5">
-                <div className="text-center">
-                  <h2 className="text-lg font-bold text-white">Point Camera at Merchant QR</h2>
-                  <p className="text-xs text-outline font-sans tabular-nums mt-0.5">
-                    Works with {currencyMeta.railDescription}
-                  </p>
-                </div>
-
-                {/* Camera Viewfinder Box */}
-                <div className="relative w-full aspect-square max-w-[320px] mx-auto rounded-2xl overflow-hidden bg-black border border-white/15 flex items-center justify-center">
-                  <div id="p2p-camera-reader" className="w-full h-full object-cover" />
-                  {cameraLoading && (
-                    <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-2 text-xs font-sans tabular-nums text-outline">
-                      <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                      <span>Starting Camera…</span>
-                    </div>
-                  )}
-                  {cameraError && (
-                    <div className="absolute inset-0 bg-black/90 p-4 flex flex-col items-center justify-center text-center gap-2 text-xs font-sans tabular-nums text-error">
-                      <CameraOff className="w-8 h-8" />
-                      <span>{cameraError}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Manual UPI Input Fallback */}
-                <div className="pt-2 border-t border-white/10 space-y-2">
-                  <span className="text-[10px] font-label-caps text-outline tracking-normal  font-bold">
-                    OR TYPE UPI ID MANUALLY
-                  </span>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="e.g. merchant@okaxis"
-                      value={manualUpiInput}
-                      onChange={(e) => setManualUpiInput(e.target.value)}
-                      className="flex-1 p-3 rounded-xl bg-black/40 border border-white/10 text-xs font-sans tabular-nums text-white placeholder:text-outline/40 focus:border-primary focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleScanSuccess(manualUpiInput)}
-                      disabled={!manualUpiInput.trim()}
-                      className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-sans tabular-nums font-bold transition-colors disabled:opacity-40 cursor-pointer"
-                    >
-                      Set
-                    </button>
+              <div className="p-1.5 rounded-[32px] bg-white/[0.025] border border-white/[0.08]">
+                <SpotlightCard className="p-6 md:p-8 bg-[#131315] border border-white/[0.07] rounded-[26px] space-y-4 text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-[#34d399]/15 border border-[#34d399]/40 text-[#34d399] flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-7 h-7" />
                   </div>
-                </div>
-              </SpotlightCard>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">Merchant Target Locked</h3>
+                    <p className="text-sm font-mono tabular-nums text-[#c0c6de] mt-1">{scannedUpi}</p>
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-[#09090b] border border-white/[0.08] text-xs font-mono tabular-nums text-[#8d90a1] flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-[#c0c6de]" />
+                    <span>
+                      {merchantAcceptedOrder
+                        ? "Encrypting & delivering payload via ECIES..."
+                        : "Awaiting LP node signature..."}
+                    </span>
+                  </div>
+                </SpotlightCard>
+              </div>
+            ) : (
+              <div className="p-1.5 rounded-[32px] bg-white/[0.025] border border-white/[0.08]">
+                <SpotlightCard className="p-6 bg-[#131315] border border-white/[0.07] rounded-[26px] space-y-5">
+                  <div className="text-center">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#34d399] block mb-1">
+                      OPTICAL QR TELEMETRY
+                    </span>
+                    <h2 className="text-lg font-bold text-white">Scan Merchant {currencyMeta.rail} QR</h2>
+                    <p className="text-xs text-[#8d90a1] font-mono tabular-nums mt-0.5">
+                      Supports {currencyMeta.railDescription}
+                    </p>
+                  </div>
+
+                  {/* Camera Viewfinder Box with Machined Corner Reticles */}
+                  <div className="relative w-full aspect-square max-w-[320px] mx-auto rounded-2xl overflow-hidden bg-[#09090b] border border-white/[0.12] flex items-center justify-center">
+                    <div id="p2p-camera-reader" className="w-full h-full object-cover" />
+                    {/* Corner Optical Reticles */}
+                    <div className="pointer-events-none absolute inset-4">
+                      <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-[#34d399] rounded-tl-md" />
+                      <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-[#34d399] rounded-tr-md" />
+                      <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-[#34d399] rounded-bl-md" />
+                      <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-[#34d399] rounded-br-md" />
+                    </div>
+                    {cameraLoading && (
+                      <div className="absolute inset-0 bg-[#09090b]/90 flex flex-col items-center justify-center gap-2 text-xs font-mono tabular-nums text-[#8d90a1]">
+                        <Loader2 className="w-6 h-6 animate-spin text-[#c0c6de]" />
+                        <span>INITIALIZING OPTICAL SENSOR...</span>
+                      </div>
+                    )}
+                    {cameraError && (
+                      <div className="absolute inset-0 bg-[#09090b]/95 p-4 flex flex-col items-center justify-center text-center gap-2 text-xs font-mono tabular-nums text-[#f87171]">
+                        <CameraOff className="w-8 h-8" />
+                        <span>{cameraError}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Manual Input Fallback */}
+                  <div className="pt-3 border-t border-white/[0.08] space-y-2">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8d90a1] font-bold block">
+                      OR ENTER {currencyMeta.rail.toUpperCase()} ID MANUALLY
+                    </span>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder={currencyMeta.placeholder}
+                        value={manualUpiInput}
+                        onChange={(e) => setManualUpiInput(e.target.value)}
+                        className="flex-1 p-3 rounded-xl bg-[#09090b] border border-white/[0.1] text-xs font-mono tabular-nums text-white placeholder:text-[#8d90a1]/50 focus:border-[#c0c6de] focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleScanSuccess(manualUpiInput)}
+                        disabled={!manualUpiInput.trim()}
+                        className="px-4 py-3 rounded-xl bg-[#c0c6de] hover:bg-white text-[#0e0e0f] font-mono text-xs uppercase tracking-[0.12em] font-bold transition-colors disabled:opacity-40 cursor-pointer"
+                      >
+                        LOCK
+                      </button>
+                    </div>
+                  </div>
+                </SpotlightCard>
+              </div>
             )}
           </div>
         )}
 
-        {/* STEP 4 & 5: DELIVERING ENCRYPTED UPI & SETTLING */}
+        {/* STEP 4 & 5: DELIVERING ENCRYPTED PAYLOAD & SETTLING */}
         {(step === "delivering" || step === "settling") && (
-          <SpotlightCard className="p-8 bg-surface-container-low border border-white/15 rounded-3xl text-center space-y-6">
-            <div className="w-16 h-16 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center text-primary mx-auto animate-pulse">
-              <Loader2 className="w-8 h-8 animate-spin" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-white">
-                {step === "delivering" ? `Encrypting & Delivering ${currencyMeta.rail}` : "Merchant Settling Fiat"}
-              </h2>
-              <p className="text-xs text-outline font-sans tabular-nums mt-1">
-                {step === "delivering" 
-                  ? `Delivering ${scannedUpi} encrypted via ECIES to matched merchant`
-                  : `Merchant is transferring ${currencyMeta.symbol}${numericInr.toFixed(2)} via ${currencyMeta.rail} rails`}
-              </p>
-            </div>
-            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 text-xs font-sans tabular-nums text-primary">
-              {orderId ? `Order #${orderId.toString()} • Safe On-Chain Escrow` : "Processing on Base…"}
-            </div>
-          </SpotlightCard>
+          <div className="p-1.5 rounded-[32px] bg-white/[0.025] border border-white/[0.08]">
+            <SpotlightCard className="p-8 bg-[#131315] border border-white/[0.07] rounded-[26px] text-center space-y-6">
+              <div className="w-16 h-16 rounded-2xl bg-[#c0c6de]/10 border border-[#c0c6de]/30 flex items-center justify-center text-[#c0c6de] mx-auto animate-pulse">
+                <Loader2 className="w-8 h-8 animate-spin" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">
+                  {step === "delivering"
+                    ? `Encrypting & Routing ${currencyMeta.rail}`
+                    : `Settling ${currencyMeta.code} Instant Rail`}
+                </h2>
+                <p className="text-xs text-[#8d90a1] font-mono tabular-nums mt-1">
+                  {step === "delivering"
+                    ? `Delivering ${scannedUpi} via ECIES secp256k1 to matched LP node`
+                    : `LP node is disbursing ${currencyMeta.symbol}${numericInr.toFixed(2)} over ${currencyMeta.rail} rails`}
+                </p>
+              </div>
+              <div className="p-4 rounded-2xl bg-[#09090b] border border-white/[0.08] text-xs font-mono tabular-nums text-[#c0c6de]">
+                {orderId ? `ORDER #${orderId.toString()} / ESCROW VERIFIED` : "SETTLING ON BASE L2..."}
+              </div>
+            </SpotlightCard>
+          </div>
         )}
 
         {/* STEP 6: COMPLETED SUCCESS RECEIPT */}
         {step === "completed" && (
-          <SpotlightCard className="p-6 bg-gradient-to-b from-surface-container-low/90 to-surface/90 border border-white/15 rounded-3xl text-center space-y-5 animate-in zoom-in-95 duration-500  shadow-elevated">
-            
-            {/* Seamless Ambient Halo & Floating Emblem (No Boxy Container) */}
-            <div className="relative w-28 h-28 mx-auto flex items-center justify-center">
-              <div 
-                className="absolute inset-0 rounded-full scale-125 animate-pulse pointer-events-none"
-                style={{
-                  background: "radial-gradient(circle at center, rgba(16, 185, 129, 0.28) 0%, rgba(16, 185, 129, 0.08) 45%, transparent 70%)"
-                }}
-              />
-              <div className="relative w-16 h-16 rounded-full border border-success/40 bg-gradient-to-b from-surface-container to-surface-container-lowest shadow-card flex items-center justify-center">
-                <CheckCircle2 className="w-8 h-8 text-success" />
-              </div>
-            </div>
-
-            <div>
-              <span className="font-sans tabular-nums text-[10px]  tracking-normal text-success font-semibold">
-                Payment Settled
-              </span>
-              <h2 className="text-4xl font-black text-white tracking-tight mt-1">
-                {currencyMeta.symbol}{numericInr.toFixed(2)}
-              </h2>
-              <p className="text-xs text-outline font-sans tabular-nums mt-1">
-                ≈ ${usdcAmountNum.toFixed(2)} USDC
-              </p>
-
-              {/* Dynamic Merchant Name or Zero-Knowledge Status Badge */}
-              <div className="mt-2.5">
-                {(scannedMerchantName || (scannedUpi ? formatUpiName(scannedUpi) : null)) ? (
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.05] border border-white/10 text-white text-xs font-medium">
-                    <Store className="w-3.5 h-3.5 text-primary" />
-                    <span>Paid to <strong className="text-white font-semibold">{scannedMerchantName || formatUpiName(scannedUpi)}</strong></span>
-                  </div>
-                ) : (
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-success/10 border border-success/20 text-success font-sans tabular-nums text-[10px]">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    <span>Zero-Knowledge Proof Verified</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Monthly Cashback Celebration Pill */}
-              <div className="mt-3 p-3 rounded-2xl bg-gradient-to-r from-success/15/60 to-black/60 border border-success/30 flex items-center justify-between text-xs font-sans tabular-nums text-success">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-success shrink-0" />
-                  <span className="font-bold">Added to your monthly cashback pool!</span>
-                </div>
-                <span className="text-[10px] text-outline">Disbursed at month-end</span>
-              </div>
-            </div>
-
-            {/* Receipt Table */}
-            <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2.5 text-xs font-sans tabular-nums text-left">
-              {orderId && (
-                <div className="flex justify-between items-center">
-                  <span className="text-outline">Order ID</span>
-                  <span className="text-primary font-bold">#{orderId.toString()}</span>
-                </div>
-              )}
-              <div className="flex justify-between items-center">
-                <span className="text-outline">Recipient {currencyMeta.rail}</span>
-                <span className="text-white font-bold truncate max-w-[200px]">{scannedUpi}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-outline">Network</span>
-                <span className="text-white font-sans tabular-nums text-[11px]">Base L2 (Gasless)</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-outline">Fee Breakdown</span>
-                <span className="text-white text-[11px]">
-                  ${platformFeeUsdc.toFixed(2)} Platform • {protocolFeeUsdc > 0 ? `$${protocolFeeUsdc.toFixed(2)} Protocol` : "Free Protocol"}
-                </span>
-              </div>
-              <div className="flex justify-between items-center pt-2 border-t border-white/10">
-                <span className="text-primary font-semibold">Total USDC Debited</span>
-                <span className="text-white font-bold">${(usdcAmountNum + protocolFeeUsdc).toFixed(2)} USDC</span>
-              </div>
-              {txHash && (
-                <div className="pt-2 border-t border-white/10 flex justify-between items-center">
-                  <span className="text-outline">Base Receipt</span>
-                  <a
-                    href={`https://basescan.org/tx/${txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline flex items-center gap-1 font-sans tabular-nums text-[11px]"
-                  >
-                    <span>{txHash.slice(0, 8)}…{txHash.slice(-6)}</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-              )}
-            </div>
-
-            {/* Buttons */}
-            <div className="flex flex-col gap-2 pt-2">
-              <button
-                onClick={onBack}
-                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-on-surface to-on-surface-variant hover:from-white hover:to-white text-surface-container-lowest font-bold text-xs  tracking-normal transition-colors shadow-card active:scale-[0.98] cursor-pointer"
-              >
-                Done
-              </button>
-
-              <div className="grid grid-cols-2 gap-2">
-                {txHash && (
-                  <button
-                    onClick={() => router.push(`/tx/${txHash}`)}
-                    className="py-2.5 px-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white text-xs font-sans tabular-nums transition-colors"
-                  >
-                    Full Receipt
-                  </button>
-                )}
-                <button
-                  onClick={async () => {
-                    const finalName = scannedMerchantName || (scannedUpi ? formatUpiName(scannedUpi) : "Merchant");
-                    const shareText = `ZkPay Payment Receipt\nAmount: ₹${numericInr.toFixed(2)}\nRecipient: ${finalName} (${scannedUpi})\nOrder ID: #${orderId ? orderId.toString() : 'N/A'}\nStatus: Settled via UPI Rails`;
-                    if (navigator.share) {
-                      try {
-                        await navigator.share({ title: "ZkPay Receipt", text: shareText });
-                        return;
-                      } catch {}
-                    }
-                    await navigator.clipboard.writeText(shareText);
-                    alert("Receipt copied to clipboard!");
+          <div className="p-1.5 rounded-[32px] bg-white/[0.03] border border-white/[0.1] shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)]">
+            <SpotlightCard className="p-6 sm:p-7 bg-[#131315] border border-white/[0.08] rounded-[26px] text-center space-y-5 animate-in zoom-in-95 duration-500">
+              {/* Ambient Emerald Verification Halo */}
+              <div className="relative w-24 h-24 mx-auto flex items-center justify-center">
+                <div
+                  className="absolute inset-0 rounded-full scale-125 animate-pulse pointer-events-none"
+                  style={{
+                    background:
+                      "radial-gradient(circle at center, rgba(52, 211, 153, 0.28) 0%, rgba(52, 211, 153, 0.08) 45%, transparent 70%)",
                   }}
-                  className={`py-2.5 px-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white text-xs font-sans tabular-nums transition-colors ${!txHash ? 'col-span-2' : ''}`}
-                >
-                  Share Receipt
-                </button>
+                />
+                <div className="relative w-16 h-16 rounded-2xl border border-[#34d399]/40 bg-[#09090b] flex items-center justify-center">
+                  <CheckCircle2 className="w-8 h-8 text-[#34d399]" />
+                </div>
               </div>
-            </div>
-          </SpotlightCard>
-        )}
 
+              <div>
+                <span className="font-mono uppercase text-[10px] tracking-[0.2em] text-[#34d399] font-semibold">
+                  SETTLEMENT VERIFIED
+                </span>
+                <h2 className="text-4xl font-black text-white tracking-tight mt-1 tabular-nums">
+                  {currencyMeta.symbol}
+                  {numericInr.toFixed(2)}
+                </h2>
+                <p className="text-xs text-[#8d90a1] font-mono tabular-nums mt-1">
+                  ≈ ${usdcAmountNum.toFixed(2)} USDC
+                </p>
+
+                {/* Dynamic Merchant Name or Zero-Knowledge Status Badge */}
+                <div className="mt-3">
+                  {scannedMerchantName || (scannedUpi ? formatUpiName(scannedUpi) : null) ? (
+                    <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.1] text-white text-xs font-medium">
+                      <Store className="w-3.5 h-3.5 text-[#c0c6de]" />
+                      <span>
+                        Settled to{" "}
+                        <strong className="text-white font-semibold">
+                          {scannedMerchantName || formatUpiName(scannedUpi)}
+                        </strong>
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#34d399]/10 border border-[#34d399]/25 text-[#34d399] font-mono text-[10px]">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>ZERO-KNOWLEDGE PROOF VERIFIED</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Monthly Cashback Celebration Pill */}
+                <div className="mt-3 p-3 rounded-2xl bg-[#34d399]/[0.08] border border-[#34d399]/25 flex items-center justify-between text-xs font-mono tabular-nums text-[#34d399]">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-[#34d399] shrink-0" />
+                    <span className="font-bold">Added to monthly cashback pool</span>
+                  </div>
+                  <span className="text-[10px] text-[#8d90a1]">MONTH-END</span>
+                </div>
+              </div>
+
+              {/* Receipt Table */}
+              <div className="p-4 rounded-2xl bg-[#09090b] border border-white/[0.08] space-y-2.5 text-xs font-mono tabular-nums text-left">
+                {orderId && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-[#8d90a1]">ORDER ID</span>
+                    <span className="text-[#c0c6de] font-bold">#{orderId.toString()}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center">
+                  <span className="text-[#8d90a1]">RECIPIENT ({currencyMeta.rail})</span>
+                  <span className="text-white font-bold truncate max-w-[200px]">{scannedUpi}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[#8d90a1]">NETWORK</span>
+                  <span className="text-white text-[11px]">BASE L2 (GASLESS)</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[#8d90a1]">FEES</span>
+                  <span className="text-white text-[11px]">
+                    ${platformFeeUsdc.toFixed(2)} PLATFORM /{" "}
+                    {protocolFeeUsdc > 0 ? `$${protocolFeeUsdc.toFixed(2)} PROTOCOL` : "FREE PROTOCOL"}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t border-white/[0.08]">
+                  <span className="text-[#c0c6de] font-semibold">TOTAL DEBITED</span>
+                  <span className="text-white font-bold">
+                    ${(usdcAmountNum + protocolFeeUsdc).toFixed(2)} USDC
+                  </span>
+                </div>
+                {txHash && (
+                  <div className="pt-2 border-t border-white/[0.08] flex justify-between items-center">
+                    <span className="text-[#8d90a1]">BASESCAN PROOF</span>
+                    <a
+                      href={`https://basescan.org/tx/${txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#c0c6de] hover:text-white flex items-center gap-1 text-[11px]"
+                    >
+                      <span>
+                        {txHash.slice(0, 8)}...{txHash.slice(-6)}
+                      </span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* Buttons */}
+              <div className="flex flex-col gap-2 pt-2">
+                <button
+                  onClick={onBack}
+                  className="w-full py-3.5 rounded-xl bg-gradient-to-b from-[#d8def8] to-[#a7add2] hover:from-white hover:to-white text-[#0e0e0f] font-mono uppercase tracking-[0.14em] font-bold text-xs transition-colors active:scale-[0.98] cursor-pointer"
+                >
+                  Return to Vault
+                </button>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {txHash && (
+                    <button
+                      onClick={() => router.push(`/tx/${txHash}`)}
+                      className="py-2.5 px-3 rounded-xl bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] text-white font-mono text-xs transition-colors cursor-pointer"
+                    >
+                      Full Receipt
+                    </button>
+                  )}
+                  <button
+                    onClick={async () => {
+                      const finalName =
+                        scannedMerchantName || (scannedUpi ? formatUpiName(scannedUpi) : "Merchant");
+                      const shareText = `ZkPay Settlement Receipt\nAmount: ${currencyMeta.symbol}${numericInr.toFixed(2)} (${currencyMeta.code})\nRecipient: ${finalName} (${scannedUpi})\nOrder ID: #${orderId ? orderId.toString() : "N/A"}\nStatus: Settled via ${currencyMeta.rail}`;
+                      if (navigator.share) {
+                        try {
+                          await navigator.share({ title: "ZkPay Receipt", text: shareText });
+                          return;
+                        } catch {}
+                      }
+                      await navigator.clipboard.writeText(shareText);
+                      alert("Receipt copied to clipboard!");
+                    }}
+                    className={`py-2.5 px-3 rounded-xl bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] text-white font-mono text-xs transition-colors cursor-pointer ${
+                      !txHash ? "col-span-2" : ""
+                    }`}
+                  >
+                    Share Receipt
+                  </button>
+                </div>
+              </div>
+            </SpotlightCard>
+          </div>
+        )}
       </main>
     </div>
   );

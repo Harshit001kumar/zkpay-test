@@ -13,6 +13,16 @@ import { SpotlightCard } from "@/components/ui/SpotlightCard";
 import { ShinyText } from "@/components/ui/ShinyText";
 import { ShimmerButton } from "@/components/ui/ShimmerButton";
 import { CountUp } from "@/components/ui/CountUp";
+import { Tilt3DMonolith, DepthLayer } from "@/components/ui/Tilt3DMonolith";
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  ExternalLink,
+  ShieldCheck,
+  Sparkles,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
 
 interface VaultInfo {
   address?: string | null;
@@ -674,317 +684,362 @@ export default function EarnFlow() {
   const isLoading = isDepositing || isWithdrawing || isClaiming;
 
   return (
-    <div className="w-full relative flex flex-col items-center justify-start pt-8 pb-32 font-body-md overflow-hidden text-on-surface">
-      {/* Ambient Glow Orbs */}
-      <div className="fixed -top-40 left-1/2 -translate-x-1/2 w-[700px] h-[700px] bg-primary/5 rounded-full blur-xl pointer-events-none" />
-      <div className="fixed -bottom-40 right-1/4 w-[500px] h-[500px] bg-tertiary/5 rounded-full blur-xl pointer-events-none" />
-
-      {/* Hero Performance Header */}
-      <div className="relative z-10 text-center mb-10 animate-in fade-in slide-in-from-bottom-6 duration-700">
-        <div className="flex items-center justify-center gap-2 mb-3">
-          <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-          <span className="font-label-caps text-[10px] text-on-surface-variant  tracking-normal font-bold">
-            CURRENT VAULT YIELD
+    <div className="w-full relative flex flex-col items-center justify-start pt-4 pb-28 text-[#e5e5e8] space-y-8">
+      {/* 3D Tilting Yield Performance Monolith */}
+      <Tilt3DMonolith
+        maxTilt={8}
+        className="w-full max-w-3xl"
+        innerClassName="p-6 sm:p-9 relative overflow-hidden bg-gradient-to-br from-[#171920]/95 via-[#131315]/95 to-[#0e0e0f]/95"
+      >
+        <DepthLayer z={18} className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#34d399]/10 border border-[#34d399]/25">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-pulse" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#34d399] font-bold">
+              ERC-4626 AUTO-COMPOUNDING VAULT
+            </span>
+          </div>
+          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8d90a1]">
+            {displayVaultName.toUpperCase()}
           </span>
-        </div>
+        </DepthLayer>
 
-        <h1 className="font-display-xl text-[68px] md:text-[110px] font-extrabold text-on-surface tracking-tighter leading-none flex items-baseline justify-center gap-2">
-          <ShinyText text={displayApy} className="tracking-tighter" />
-          <span className="text-[28px] md:text-[44px] font-bold text-primary tracking-normal font-label-caps">
-            APY
-          </span>
-        </h1>
-        <p className="font-label-caps text-[9px] text-outline tracking-normal mt-2">
-          AUTO-COMPOUNDING BASE MAINNET USDC LIQUIDITY
-        </p>
-      </div>
+        <DepthLayer z={30} className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
+          <div className="md:col-span-6">
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#8d90a1] block mb-1">
+              LIVE BENCHMARK YIELD
+            </span>
+            <div className="flex items-baseline gap-2.5">
+              <span className="text-5xl sm:text-7xl font-extrabold tracking-tighter text-white tabular-nums leading-none">
+                <ShinyText text={displayApy} className="tracking-tighter" />
+              </span>
+              <span className="font-mono text-sm sm:text-lg font-bold text-[#34d399] uppercase tracking-[0.16em]">
+                APY
+              </span>
+            </div>
+          </div>
 
-      {/* Main Vault Interactive Card */}
-      <div className="w-full max-w-2xl px-4 relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-150">
-        <SpotlightCard className="p-6 md:p-10 border border-white/15 shadow-elevated">
-          {/* Position Stats Header */}
-          <div className="grid grid-cols-2 gap-6 pb-6 border-b border-white/10">
-            <div>
-              <span className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold block mb-1">
-                TOTAL DEPOSITED
+          <div className="md:col-span-6 grid grid-cols-2 gap-3">
+            <div className="p-4 rounded-2xl bg-[#09090b]/90 border border-white/[0.08]">
+              <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8d90a1] block mb-1">
+                STAKED PRINCIPAL
               </span>
               {isLoadingPosition ? (
-                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mt-1" />
+                <div className="w-5 h-5 border-2 border-[#c0c6de] border-t-transparent rounded-full animate-spin mt-1" />
               ) : (
-                <div className="font-display-xl text-2xl sm:text-4xl font-bold text-on-surface tracking-tight">
+                <div className="text-xl sm:text-2xl font-bold text-white tracking-tight tabular-nums">
                   <CountUp to={effectiveAssetsInVault} prefix="$" decimals={2} />
-                  <span className="text-xs font-normal text-outline ml-1.5 font-sans tabular-nums">USDC</span>
+                  <span className="text-[10px] font-mono text-[#8d90a1] ml-1">USDC</span>
                 </div>
               )}
             </div>
 
-            <div className="text-right">
-              <span className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold block mb-1">
+            <div className="p-4 rounded-2xl bg-[#09090b]/90 border border-white/[0.08]">
+              <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8d90a1] block mb-1">
                 ACCRUED YIELD
               </span>
-              <div className="font-display-xl text-2xl sm:text-4xl font-bold text-primary tracking-tight">
+              <div className="text-xl sm:text-2xl font-bold text-[#34d399] tracking-tight tabular-nums">
                 <CountUp to={position ? Math.max(0, position.earnedYield) : 0} prefix="+$" decimals={2} />
-                <span className="text-xs font-normal text-outline ml-1.5 font-sans tabular-nums">USDC</span>
+                <span className="text-[10px] font-mono text-[#8d90a1] ml-1">USDC</span>
               </div>
             </div>
           </div>
+        </DepthLayer>
+      </Tilt3DMonolith>
 
-          {/* Action Tabs: Deposit vs Withdraw */}
-          <div className="flex rounded-xl bg-white/[0.04] p-1 border border-white/10 mt-6 mb-2">
-            <button
-              type="button"
-              onClick={() => { setActiveTab("deposit"); setError(""); setSuccess(""); }}
-              className={`flex-1 py-2.5 text-xs font-bold font-label-caps  tracking-normal rounded-lg transition-colors ${
-                activeTab === "deposit"
-                  ? "bg-primary text-surface shadow-md"
-                  : "text-on-surface-variant hover:text-white"
-              }`}
-            >
-              Deposit USDC
-            </button>
-            <button
-              type="button"
-              onClick={() => { setActiveTab("withdraw"); setError(""); setSuccess(""); }}
-              className={`flex-1 py-2.5 text-xs font-bold font-label-caps  tracking-normal rounded-lg transition-colors ${
-                activeTab === "withdraw"
-                  ? "bg-primary text-surface shadow-md"
-                  : "text-on-surface-variant hover:text-white"
-              }`}
-            >
-              Withdraw USDC
-            </button>
-          </div>
+      {/* Main Vault Execution Console (Double-Bezel) */}
+      <div className="w-full max-w-3xl">
+        <div className="p-1.5 rounded-[32px] bg-white/[0.025] border border-white/[0.08] shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)]">
+          <SpotlightCard className="p-6 sm:p-8 bg-[#131315] border border-white/[0.07] rounded-[26px]">
+            {/* Action Tabs: Deposit vs Withdraw */}
+            <div className="flex rounded-2xl bg-[#09090b] p-1.5 border border-white/[0.08] mb-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("deposit");
+                  setError("");
+                  setSuccess("");
+                }}
+                className={`flex-1 py-3 font-mono text-xs font-bold uppercase tracking-[0.14em] rounded-xl transition-all cursor-pointer ${
+                  activeTab === "deposit"
+                    ? "bg-gradient-to-b from-[#d8def8] to-[#a7add2] text-[#0e0e0f] shadow-md"
+                    : "text-[#8d90a1] hover:text-white"
+                }`}
+              >
+                Supply USDC
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("withdraw");
+                  setError("");
+                  setSuccess("");
+                }}
+                className={`flex-1 py-3 font-mono text-xs font-bold uppercase tracking-[0.14em] rounded-xl transition-all cursor-pointer ${
+                  activeTab === "withdraw"
+                    ? "bg-gradient-to-b from-[#d8def8] to-[#a7add2] text-[#0e0e0f] shadow-md"
+                    : "text-[#8d90a1] hover:text-white"
+                }`}
+              >
+                Withdraw USDC
+              </button>
+            </div>
 
-          {/* Interactive Form Area */}
-          <div className="mt-4 space-y-6">
-            {activeTab === "deposit" ? (
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold">
-                    DEPOSIT AMOUNT (USDC)
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-outline font-sans tabular-nums">
-                      Wallet: <span className="text-primary font-bold">${availableUsdc.toFixed(2)}</span>
+            {/* Interactive Form Area */}
+            <div className="space-y-6">
+              {activeTab === "deposit" ? (
+                <div>
+                  <div className="flex items-center justify-between mb-2.5">
+                    <label className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8d90a1] font-bold">
+                      SUPPLY AMOUNT (BASE USDC)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs text-[#8d90a1] tabular-nums">
+                        Available: <span className="text-white font-bold">${availableUsdc.toFixed(2)}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleSetMax}
+                        disabled={availableUsdc <= 0}
+                        className="font-mono text-[10px] tabular-nums font-bold px-2.5 py-0.5 rounded-full bg-[#c0c6de]/15 hover:bg-[#c0c6de]/25 text-[#c0c6de] border border-[#c0c6de]/30 transition-colors disabled:opacity-40 cursor-pointer"
+                      >
+                        MAX
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#c0c6de] font-bold text-xl">
+                      $
                     </span>
-                    <button
-                      type="button"
-                      onClick={handleSetMax}
-                      disabled={availableUsdc <= 0}
-                      className="text-[10px] font-sans tabular-nums font-bold px-2 py-0.5 rounded bg-primary/15 hover:bg-primary/25 text-primary transition-colors disabled:opacity-40"
-                    >
-                      MAX
-                    </button>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={amount}
+                      onChange={handleAmountChange}
+                      placeholder="0.00"
+                      disabled={isLoading}
+                      className="w-full pl-9 pr-4 py-4 rounded-2xl bg-[#09090b] border border-white/[0.08] text-white text-2xl font-bold placeholder-[#8d90a1]/40 focus:outline-none focus:border-[#c0c6de] transition-colors tracking-tight tabular-nums shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)]"
+                    />
+                  </div>
+
+                  {/* Quick Amount Pills */}
+                  <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1">
+                    {PRESET_AMOUNTS.map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setAmount(String(preset))}
+                        className={`px-3.5 py-1.5 rounded-xl font-mono text-xs tabular-nums font-semibold transition-colors cursor-pointer ${
+                          amount === String(preset)
+                            ? "bg-[#c0c6de] text-[#0e0e0f] font-bold shadow-md"
+                            : "bg-[#09090b] hover:bg-white/[0.06] text-[#8d90a1] hover:text-white border border-white/[0.08]"
+                        }`}
+                      >
+                        ${preset}
+                      </button>
+                    ))}
                   </div>
                 </div>
-
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-primary font-bold text-lg">
-                    $
-                  </span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={amount}
-                    onChange={handleAmountChange}
-                    placeholder="0.00"
-                    disabled={isLoading}
-                    className="w-full pl-9 pr-4 py-4 rounded-xl bg-white/[0.03] border border-white/15 text-on-surface text-xl font-bold placeholder-outline focus:outline-none focus:border-primary transition-colors tracking-tight"
-                  />
-                </div>
-
-                {/* Quick Amount Pills */}
-                <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1">
-                  {PRESET_AMOUNTS.map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => setAmount(String(preset))}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-sans tabular-nums font-medium transition-colors ${
-                        amount === String(preset)
-                          ? "bg-primary text-surface font-bold shadow-md"
-                          : "bg-white/5 hover:bg-white/10 text-on-surface-variant border border-white/10"
-                      }`}
-                    >
-                      ${preset}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold">
-                    WITHDRAW AMOUNT (USDC)
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-outline font-sans tabular-nums">
-                      Staked: <span className="text-primary font-bold">${effectiveAssetsInVault.toFixed(2)}</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleSetMaxWithdraw}
-                      disabled={effectiveAssetsInVault <= 0}
-                      className="text-[10px] font-sans tabular-nums font-bold px-2 py-0.5 rounded bg-primary/15 hover:bg-primary/25 text-primary transition-colors disabled:opacity-40"
-                    >
-                      MAX
-                    </button>
-                  </div>
-                </div>
-
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-primary font-bold text-lg">
-                    $
-                  </span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={withdrawAmount}
-                    onChange={handleWithdrawAmountChange}
-                    placeholder={effectiveAssetsInVault > 0 ? effectiveAssetsInVault.toFixed(2) : "0.00"}
-                    disabled={isLoading}
-                    className="w-full pl-9 pr-4 py-4 rounded-xl bg-white/[0.03] border border-white/15 text-on-surface text-xl font-bold placeholder-outline focus:outline-none focus:border-primary transition-colors tracking-tight"
-                  />
-                </div>
-
-                {/* Percentage Pills */}
-                <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1">
-                  {[0.25, 0.5, 0.75, 1].map((pct) => (
-                    <button
-                      key={pct}
-                      type="button"
-                      disabled={effectiveAssetsInVault <= 0}
-                      onClick={() => setWithdrawAmount((effectiveAssetsInVault * pct).toFixed(2))}
-                      className="px-3 py-1.5 rounded-lg text-xs font-sans tabular-nums font-medium transition-colors bg-white/5 hover:bg-white/10 text-on-surface-variant border border-white/10 disabled:opacity-40"
-                    >
-                      {pct === 1 ? "100% (ALL)" : `${pct * 100}%`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="p-3.5 rounded-xl bg-error-container/40 border border-error/30 text-xs text-error">
-                {error}
-              </div>
-            )}
-
-            {success && (
-              <div className="p-3.5 rounded-xl bg-success/15/40 border border-success/30 text-xs text-success">
-                {success}
-              </div>
-            )}
-
-            {/* CTA Button */}
-            {authenticated ? (
-              activeTab === "deposit" ? (
-                <ShimmerButton
-                  onClick={handleDeposit}
-                  disabled={!amount || isLoading || Number(amount) <= 0}
-                  className="w-full py-4 text-xs"
-                >
-                  {isDepositing ? (
-                    <div className="w-5 h-5 border-2 border-surface border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <span className="material-symbols-outlined text-base">savings</span>
-                      <span>STAKE & EARN YIELD</span>
-                    </>
-                  )}
-                </ShimmerButton>
               ) : (
-                <div className="space-y-3">
+                <div>
+                  <div className="flex items-center justify-between mb-2.5">
+                    <label className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8d90a1] font-bold">
+                      WITHDRAW AMOUNT (BASE USDC)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs text-[#8d90a1] tabular-nums">
+                        Staked:{" "}
+                        <span className="text-white font-bold">${effectiveAssetsInVault.toFixed(2)}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleSetMaxWithdraw}
+                        disabled={effectiveAssetsInVault <= 0}
+                        className="font-mono text-[10px] tabular-nums font-bold px-2.5 py-0.5 rounded-full bg-[#c0c6de]/15 hover:bg-[#c0c6de]/25 text-[#c0c6de] border border-[#c0c6de]/30 transition-colors disabled:opacity-40 cursor-pointer"
+                      >
+                        MAX
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#c0c6de] font-bold text-xl">
+                      $
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={withdrawAmount}
+                      onChange={handleWithdrawAmountChange}
+                      placeholder={effectiveAssetsInVault > 0 ? effectiveAssetsInVault.toFixed(2) : "0.00"}
+                      disabled={isLoading}
+                      className="w-full pl-9 pr-4 py-4 rounded-2xl bg-[#09090b] border border-white/[0.08] text-white text-2xl font-bold placeholder-[#8d90a1]/40 focus:outline-none focus:border-[#c0c6de] transition-colors tracking-tight tabular-nums shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)]"
+                    />
+                  </div>
+
+                  {/* Percentage Pills */}
+                  <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1">
+                    {[0.25, 0.5, 0.75, 1].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        disabled={effectiveAssetsInVault <= 0}
+                        onClick={() => setWithdrawAmount((effectiveAssetsInVault * pct).toFixed(2))}
+                        className="px-3.5 py-1.5 rounded-xl font-mono text-xs tabular-nums font-semibold transition-colors bg-[#09090b] hover:bg-white/[0.06] text-[#8d90a1] hover:text-white border border-white/[0.08] disabled:opacity-40 cursor-pointer"
+                      >
+                        {pct === 1 ? "100% (ALL)" : `${pct * 100}%`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <div className="p-3.5 rounded-2xl bg-[#f87171]/10 border border-[#f87171]/30 font-mono text-xs text-[#f87171]">
+                  {error}
+                </div>
+              )}
+
+              {success && (
+                <div className="p-3.5 rounded-2xl bg-[#34d399]/10 border border-[#34d399]/30 font-mono text-xs text-[#34d399]">
+                  {success}
+                </div>
+              )}
+
+              {/* CTA Button */}
+              {authenticated ? (
+                activeTab === "deposit" ? (
                   <ShimmerButton
-                    onClick={() => handleWithdraw(withdrawAmount ? Number(withdrawAmount) : undefined, !withdrawAmount || Number(withdrawAmount) >= effectiveAssetsInVault)}
-                    disabled={isLoading || (!hasPosition && effectiveAssetsInVault <= 0)}
-                    className="w-full py-4 text-xs"
+                    onClick={handleDeposit}
+                    disabled={!amount || isLoading || Number(amount) <= 0}
+                    className="w-full py-4 text-xs font-mono uppercase tracking-[0.14em]"
                   >
-                    {isWithdrawing ? (
-                      <div className="w-5 h-5 border-2 border-surface border-t-transparent rounded-full animate-spin" />
+                    {isDepositing ? (
+                      <div className="w-5 h-5 border-2 border-[#0e0e0f] border-t-transparent rounded-full animate-spin" />
                     ) : (
                       <>
-                        <span className="material-symbols-outlined text-base">output</span>
-                        <span>{withdrawAmount && Number(withdrawAmount) < effectiveAssetsInVault ? `WITHDRAW $${Number(withdrawAmount).toFixed(2)} USDC` : "WITHDRAW ALL TO WALLET"}</span>
+                        <ArrowDownLeft className="w-4 h-4" />
+                        <span>SUPPLY &amp; AUTO-COMPOUND</span>
                       </>
                     )}
                   </ShimmerButton>
-                  <p className="text-[10px] text-center text-outline font-sans tabular-nums">
-                    Zero lockup. Instant withdrawal back to your Base USDC wallet.
-                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    <ShimmerButton
+                      onClick={() =>
+                        handleWithdraw(
+                          withdrawAmount ? Number(withdrawAmount) : undefined,
+                          !withdrawAmount || Number(withdrawAmount) >= effectiveAssetsInVault
+                        )
+                      }
+                      disabled={isLoading || (!hasPosition && effectiveAssetsInVault <= 0)}
+                      className="w-full py-4 text-xs font-mono uppercase tracking-[0.14em]"
+                    >
+                      {isWithdrawing ? (
+                        <div className="w-5 h-5 border-2 border-[#0e0e0f] border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <>
+                          <ArrowUpRight className="w-4 h-4" />
+                          <span>
+                            {withdrawAmount && Number(withdrawAmount) < effectiveAssetsInVault
+                              ? `WITHDRAW $${Number(withdrawAmount).toFixed(2)} USDC`
+                              : "WITHDRAW ALL TO VAULT"}
+                          </span>
+                        </>
+                      )}
+                    </ShimmerButton>
+                    <p className="font-mono text-[10px] text-center text-[#8d90a1] uppercase tracking-[0.12em]">
+                      ZERO LOCKUP / ATOMIC ERC-4626 REDEMPTION
+                    </p>
+                  </div>
+                )
+              ) : (
+                <button
+                  onClick={() => login()}
+                  className="w-full py-4 rounded-2xl bg-[#c0c6de] hover:bg-white text-[#0e0e0f] font-mono uppercase tracking-[0.14em] font-bold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Wallet className="w-4 h-4" />
+                  <span>CONNECT WALLET</span>
+                </button>
+              )}
+
+              {/* Footer Actions */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-white/[0.07] text-xs">
+                <a
+                  href={`https://basescan.org/address/${activeVaultAddress}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#8d90a1] hover:text-white flex items-center gap-1.5 transition-colors"
+                >
+                  <span>CONTRACT: {displayVaultName.toUpperCase()}</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleClaimRewards}
+                    disabled={!hasPosition || isLoading}
+                    className="text-[#34d399] hover:text-white font-mono text-[10px] uppercase tracking-[0.14em] font-bold disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    {isClaiming && (
+                      <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                    )}
+                    <span>HARVEST YIELD</span>
+                  </button>
+                  <span className="text-white/20">/</span>
+                  <button
+                    onClick={() => handleWithdraw(undefined, true)}
+                    disabled={!hasPosition || isLoading}
+                    className="text-[#c0c6de] hover:text-white font-mono text-[10px] uppercase tracking-[0.14em] font-bold disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    {isWithdrawing && (
+                      <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                    )}
+                    <span>REDEEM ALL</span>
+                  </button>
                 </div>
-              )
-            ) : (
-              <button
-                onClick={() => login()}
-                className="w-full py-4 rounded-xl bg-on-surface hover:bg-white text-surface font-bold text-xs tracking-normal font-label-caps  transition-colors shadow-lg flex items-center justify-center gap-2"
-              >
-                <span className="material-symbols-outlined text-base">account_balance_wallet</span>
-                <span>CONNECT WALLET</span>
-              </button>
-            )}
-
-            {/* Footer Actions */}
-            <div className="flex items-center justify-between pt-4 border-t border-white/10 text-xs">
-              <a
-                href={`https://basescan.org/address/${activeVaultAddress}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-label-caps text-[9px] text-outline hover:text-primary tracking-normal flex items-center gap-1 transition-colors"
-              >
-                <span>PROTOCOL: {displayVaultName.toUpperCase()}</span>
-                <span className="material-symbols-outlined text-[10px]">open_in_new</span>
-              </a>
-
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleClaimRewards}
-                  disabled={!hasPosition || isLoading}
-                  className="text-primary hover:text-white font-label-caps text-[9px]  tracking-normal font-bold disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
-                >
-                  {isClaiming && (
-                    <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-                  )}
-                  <span>CLAIM REWARDS</span>
-                </button>
-                <span className="text-white/20">|</span>
-                <button
-                  onClick={() => handleWithdraw(undefined, true)}
-                  disabled={!hasPosition || isLoading}
-                  className="text-on-surface-variant hover:text-white font-label-caps text-[9px]  tracking-normal font-bold disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 transition-colors"
-                >
-                  {isWithdrawing && (
-                    <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-                  )}
-                  <span>WITHDRAW ALL</span>
-                </button>
               </div>
             </div>
-          </div>
-        </SpotlightCard>
+          </SpotlightCard>
+        </div>
       </div>
 
       {/* Protocol Telemetry Feature Cards */}
-      <div className="mt-12 w-full max-w-2xl px-4 grid grid-cols-1 sm:grid-cols-3 gap-4 relative z-10">
-        <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10">
-          <span className="font-label-caps text-[8px] text-outline tracking-normal font-bold block mb-1">
-            STRATEGY
-          </span>
-          <p className="text-xs font-semibold text-on-surface">Auto-Compound</p>
+      <div className="w-full max-w-3xl grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+        <div className="p-4 rounded-2xl bg-[#131315] border border-white/[0.07] flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-[#09090b] border border-white/[0.08] flex items-center justify-center text-[#34d399] shrink-0">
+            <TrendingUp className="w-4 h-4" />
+          </div>
+          <div>
+            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8d90a1] block">
+              STRATEGY
+            </span>
+            <p className="text-xs font-bold text-white">Morpho Auto-Compound</p>
+          </div>
         </div>
 
-        <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10">
-          <span className="font-label-caps text-[8px] text-outline tracking-normal font-bold block mb-1">
-            NETWORK
-          </span>
-          <p className="text-xs font-semibold text-on-surface">Base Mainnet</p>
+        <div className="p-4 rounded-2xl bg-[#131315] border border-white/[0.07] flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-[#09090b] border border-white/[0.08] flex items-center justify-center text-[#c0c6de] shrink-0">
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <div>
+            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8d90a1] block">
+              LIQUIDITY
+            </span>
+            <p className="text-xs font-bold text-white">Zero Lockup Period</p>
+          </div>
         </div>
 
-        <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10">
-          <span className="font-label-caps text-[8px] text-outline tracking-normal font-bold block mb-1">
-            SECURITY
-          </span>
-          <p className="text-xs font-semibold text-on-surface">Non-Custodial Vault</p>
+        <div className="p-4 rounded-2xl bg-[#131315] border border-white/[0.07] flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-[#09090b] border border-white/[0.08] flex items-center justify-center text-[#c0c6de] shrink-0">
+            <ShieldCheck className="w-4 h-4" />
+          </div>
+          <div>
+            <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8d90a1] block">
+              CUSTODY
+            </span>
+            <p className="text-xs font-bold text-white">ERC-4626 Non-Custodial</p>
+          </div>
         </div>
       </div>
     </div>

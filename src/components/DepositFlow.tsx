@@ -4,7 +4,18 @@ import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { useState, useEffect } from "react";
 import { DEPOSIT_ASSETS, TARGET_ASSET } from "@/lib/constants";
-import { Copy, Check, Loader2, RefreshCw, ChevronDown, Clock, AlertTriangle } from "lucide-react";
+import {
+  Copy,
+  Check,
+  Loader2,
+  RefreshCw,
+  ChevronDown,
+  Clock,
+  AlertTriangle,
+  ArrowLeft,
+  Coins,
+  ShieldCheck,
+} from "lucide-react";
 
 export default function DepositFlow({ onBack }: { onBack?: () => void }) {
   const { ready, authenticated, address } = useActiveAccount();
@@ -90,7 +101,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
     return () => clearTimeout(delayDebounceFn);
   }, [depositAmount, sourceAsset, address, refundAddress]);
 
-  // Status polling — query by deposit address
+  // Status polling by deposit address
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (depositAddress && exchangeStatus !== "settled" && exchangeStatus !== "failed" && exchangeStatus !== "expired" && exchangeStatus !== "refunded") {
@@ -218,262 +229,321 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
   };
 
   return (
-    <div className="bg-surface-container-lowest text-on-surface font-body-md selection:bg-primary/30 min-h-[100dvh] relative flex flex-col z-[60] fixed inset-0 overflow-y-auto">
-      <style dangerouslySetInnerHTML={{__html: `
-        .obsidian-glass {
-            background: rgba(255, 255, 255, 0.02);
-            backdrop-filter: blur(40px);
-            -webkit-backdrop-filter: blur(40px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
-        .silver-rim {
-            box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.02), 0 0 1px rgba(255, 255, 255, 0.3);
-        }
-        .glass-monolith {
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
-            backdrop-filter: blur(60px);
-            -webkit-backdrop-filter: blur(60px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-bottom: none;
-            border-radius: 40px 40px 0 0;
-        }
-      `}} />
-
-      {/* Top AppBar */}
-      <header className="w-full z-50 flex justify-between items-center px-6 py-8">
-        <div className="flex items-center gap-4">
-          <button onClick={onBack} className="active:scale-95 transition-transform text-on-surface">
-            <span className="material-symbols-outlined text-[32px]">arrow_back</span>
-          </button>
-          <h1 className="font-headline-lg text-[24px] text-on-surface tracking-tighter font-bold">Deposit Crypto</h1>
-        </div>
-        <div className="w-10 h-10 rounded-full obsidian-glass flex items-center justify-center silver-rim">
-          <span className="material-symbols-outlined text-primary">person</span>
+    <div className="bg-[#0e0e0f] text-[#e5e5e8] font-sans selection:bg-[#c0c6de]/30 min-h-[100dvh] flex flex-col z-[60] fixed inset-0 overflow-y-auto">
+      {/* Floating Double-Bezel Header */}
+      <header className="sticky top-3.5 z-50 px-4 sm:px-6 pointer-events-none">
+        <div className="max-w-lg mx-auto">
+          <div className="pointer-events-auto p-1 rounded-full bg-white/[0.03] border border-white/[0.08] backdrop-blur-2xl shadow-[0_20px_50px_rgba(0,0,0,0.85)]">
+            <div className="px-4 py-2 rounded-full bg-[#131315]/95 border border-white/[0.06] flex items-center justify-between">
+              <button
+                onClick={onBack}
+                className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] font-bold text-[#c0c6de] hover:text-white transition-colors active:scale-95 cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>VAULT</span>
+              </button>
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#8d90a1] font-bold">
+                NEAR 1CLICK // BRIDGE TO BASE
+              </span>
+              <span className="w-2 h-2 rounded-full bg-[#34d399]" />
+            </div>
+          </div>
         </div>
       </header>
 
-      {/* Minimal Asset Selector */}
-      <section className="px-6 pb-6 relative z-30">
-        <button 
-          onClick={() => !depositAddress && setIsAssetSelectOpen(!isAssetSelectOpen)}
-          className={`w-full max-w-sm mx-auto obsidian-glass silver-rim p-5 rounded-2xl flex items-center justify-between group transition-colors ${depositAddress ? 'opacity-50 cursor-not-allowed' : 'active:scale-[0.98]'}`}
-        >
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
-              <span className="material-symbols-outlined text-primary">currency_bitcoin</span>
-            </div>
-            <div className="text-left">
-              <p className="font-bold text-on-surface">{sourceAsset.name}</p>
-              <p className="text-[12px] text-on-surface-variant  tracking-normal font-label-caps font-bold">{sourceAsset.blockchain} Network</p>
-            </div>
-          </div>
-          {!depositAddress && <ChevronDown className="w-5 h-5 text-on-surface-variant group-hover:text-primary transition-colors" />}
-        </button>
-
-        {isAssetSelectOpen && !depositAddress && (
-          <div className="absolute top-full left-6 right-6 max-w-sm mx-auto mt-2 obsidian-glass silver-rim rounded-2xl overflow-hidden z-40 bg-surface-container-lowest/90">
-            {DEPOSIT_ASSETS.map(asset => (
-              <button 
-                key={`${asset.symbol}-${asset.blockchain}`}
-                onClick={() => { setSourceAsset(asset); setIsAssetSelectOpen(false); }}
-                className="w-full p-4 flex items-center gap-4 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 text-left"
-              >
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">{asset.symbol[0]}</div>
-                <div>
-                  <p className="font-bold text-on-surface">{asset.name}</p>
-                  <p className="text-[10px] text-on-surface-variant  tracking-normal font-bold">{asset.blockchain} Network</p>
+      <main className="w-full max-w-lg mx-auto px-4 sm:px-6 pt-6 pb-36 space-y-4">
+        {/* Source Chain & Asset Selector */}
+        <section className="relative z-30">
+          <div className="p-1.5 rounded-[26px] bg-white/[0.025] border border-white/[0.08]">
+            <button
+              type="button"
+              onClick={() => !depositAddress && setIsAssetSelectOpen(!isAssetSelectOpen)}
+              className={`w-full bg-[#131315] border border-white/[0.06] p-4 sm:p-5 rounded-[20px] flex items-center justify-between group transition-colors ${
+                depositAddress ? "opacity-60 cursor-not-allowed" : "hover:bg-[#17181c] active:scale-[0.99] cursor-pointer"
+              }`}
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-2xl bg-[#09090b] border border-white/[0.1] flex items-center justify-center text-[#c0c6de]">
+                  <Coins className="w-5 h-5" />
                 </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* The Glass Monolith */}
-      <main className="flex-grow glass-monolith mx-0 mt-2 relative overflow-y-auto flex flex-col items-center pt-12 px-6 max-w-2xl md:mx-auto md:w-full md:rounded-t-[40px] md:border-x">
-        {/* Subtle Gradient Background Glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-surface pointer-events-none"></div>
-        
-        <div className="w-full max-w-sm flex flex-col items-center space-y-12 relative z-10 pb-44">
-          
-          {!depositAddress ? (
-            // STEP 1 CONTENT
-            <div className="w-full space-y-8 animate-in fade-in slide-in-from-bottom-4">
-              <div className="space-y-4 text-center">
-                <p className="font-label-caps text-[12px] text-on-surface-variant  tracking-normal font-bold">Amount to Send</p>
-                <div className="relative inline-flex items-baseline group">
-                  <input
-                    type="number"
-                    value={depositAmount}
-                    onChange={(e) => setDepositAmount(e.target.value)}
-                    placeholder="0.00"
-                    className="bg-transparent border-none text-center font-display-xl text-[64px] font-extrabold text-on-surface focus:ring-0 p-0 w-48 tracking-tighter"
-                  />
-                </div>
-                <p className="font-headline-md text-secondary text-lg font-bold tracking-normal">{sourceAsset.symbol}</p>
-              </div>
-
-              {/* Optional Refund Address for Non-EVM assets (Solana, BTC, Tron, LTC) */}
-              {sourceAsset.blockchain !== "eth" && sourceAsset.blockchain !== "arb" && sourceAsset.blockchain !== "bsc" && sourceAsset.blockchain !== "base" && sourceAsset.blockchain !== "polygon" && (
-                <div className="space-y-1.5 text-left w-full bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
-                  <div className="flex items-center justify-between">
-                    <label className="font-label-caps text-[11px] text-on-surface-variant  tracking-normal font-bold">
-                      {sourceAsset.name} Refund Address
-                    </label>
-                    <span className="text-outline text-[10px] lowercase">(optional)</span>
-                  </div>
-                  <input
-                    type="text"
-                    value={refundAddress}
-                    onChange={(e) => setRefundAddress(e.target.value.trim())}
-                    placeholder={`Your ${sourceAsset.symbol} address if swap fails`}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-on-surface font-sans tabular-nums placeholder:text-outline/40 focus:outline-none focus:border-primary transition-colors"
-                  />
-                </div>
-              )}
-
-              <div className="bg-black/20 rounded-2xl p-6 border border-white/5 space-y-3 text-center">
-                <p className="font-label-caps text-[10px] text-outline  tracking-normal font-bold">You will receive approx.</p>
-                <div className="h-10 flex items-center justify-center">
-                  {isEstimating ? (
-                    <Loader2 className="w-5 h-5 animate-spin text-outline" />
-                  ) : estimatedReceive?.startsWith("Error:") ? (
-                    <p className="text-[12px] font-bold text-error">{estimatedReceive.replace("Error: ", "")}</p>
-                  ) : (
-                    <p className="font-headline-md text-3xl font-bold text-primary">{estimatedReceive || "0.00"} <span className="text-sm text-outline">USDC</span></p>
-                  )}
-                </div>
-                {/* Time info (no fee percentage shown to user) */}
-                {timeEstimate && (
-                  <div className="flex items-center justify-center gap-2 text-[10px] text-outline">
-                    <Clock className="w-3 h-3" />
-                    <span>~{Math.ceil(timeEstimate / 60)} min estimated settlement</span>
-                  </div>
-                )}
-              </div>
-
-              {depositError && (
-                <div className="bg-error-container/20 text-error p-3 rounded-xl text-xs border border-error-container/40 text-center">
-                  {depositError}
-                </div>
-              )}
-
-              <button
-                onClick={handleCreateDeposit}
-                disabled={isCreating || !estimatedReceive || estimatedReceive.startsWith("Error") || isEstimating}
-                className="w-full bg-primary text-surface hover:bg-white font-headline-md text-[18px] font-bold py-5 rounded-2xl transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-95"
-              >
-                {isCreating ? (
-                  <><Loader2 className="w-5 h-5 animate-spin" /> Generating Address</>
-                ) : (
-                  <><RefreshCw className="w-5 h-5" /> Generate Deposit Address</>
-                )}
-              </button>
-            </div>
-          ) : (
-            // STEP 2 CONTENT
-            <div className="w-full flex flex-col items-center space-y-12 animate-in fade-in slide-in-from-right-8">
-              <div className="relative group">
-                <div className="absolute -inset-0.5 bg-gradient-to-b from-white/20 to-transparent rounded-[32px] blur-sm opacity-50 group-hover:opacity-100 transition-opacity"></div>
-                <div className="relative bg-white p-6 rounded-[32px] shadow-2xl">
-                  <img 
-                    className="w-64 h-64 mix-blend-multiply" 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(depositAddress)}&margin=0`}
-                    alt="Deposit QR Code" 
-                  />
-                </div>
-              </div>
-
-              <div className="w-full space-y-6 text-center">
-                {/* Deadline countdown */}
-                {deadlineRemaining && exchangeStatus === "pending" && (
-                  <div className={`flex items-center justify-center gap-2 text-sm font-sans tabular-nums ${
-                    deadlineRemaining === "Expired" ? "text-error" : "text-primary"
-                  }`}>
-                    <Clock className="w-4 h-4" />
-                    <span>Deposit window: {deadlineRemaining}</span>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <p className="font-label-caps text-[12px] text-on-surface-variant  tracking-normal font-bold">Deposit Address</p>
-                  <div className="flex flex-col items-center gap-4">
-                    <code className="font-sans tabular-nums text-xl text-white tracking-tight break-all max-w-[280px] bg-black/40 p-4 rounded-xl border border-white/10">
-                      {depositAddress}
-                    </code>
-                    <button 
-                      onClick={copyAddress}
-                      className="flex items-center gap-2 px-6 py-3 rounded-full obsidian-glass silver-rim hover:bg-white/10 transition-colors active:scale-95"
-                    >
-                      <span className={`material-symbols-outlined text-[20px] ${copied ? 'text-success' : 'text-primary'}`}>
-                        {copied ? 'check' : 'content_copy'}
-                      </span>
-                      <span className="font-label-caps text-on-surface  tracking-normal text-[11px] font-bold">
-                        {copied ? "Copied!" : "Copy Address"}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Deposit memo (required for Stellar/TON) */}
-                {depositMemo && (
-                  <div className="space-y-2">
-                    <p className="font-label-caps text-[12px] text-error  tracking-normal font-bold flex items-center justify-center gap-1">
-                      <AlertTriangle className="w-3 h-3" /> Required Memo
-                    </p>
-                    <div className="flex flex-col items-center gap-2">
-                      <code className="font-sans tabular-nums text-lg text-white bg-black/40 p-3 rounded-xl border border-error/30">
-                        {depositMemo}
-                      </code>
-                      <button
-                        onClick={copyMemo}
-                        className="text-xs text-primary underline hover:text-white transition-colors"
-                      >
-                        {copiedMemo ? "Copied!" : "Copy Memo"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="pt-6 border-t border-white/10 w-full flex items-center justify-between text-left">
-                  <div>
-                    <p className="font-label-caps text-[10px] text-outline  tracking-normal font-bold mb-1">Status</p>
-                    <p className="font-headline-md text-lg text-on-surface capitalize">{getStatusText(exchangeStatus)}</p>
-                  </div>
-                  {exchangeStatus === "settled" ? (
-                    <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
-                      <Check className="w-5 h-5 text-surface" />
-                    </div>
-                  ) : (
-                    <div className="w-10 h-10 rounded-full border-2 border-white/20 flex items-center justify-center">
-                      <Loader2 className="w-5 h-5 text-primary animate-spin" />
-                    </div>
-                  )}
-                </div>
-
-                <button onClick={() => {
-                  setDepositAddress(null);
-                  setDepositMemo(null);
-                  setDeadline(null);
-                  setExchangeStatus("waiting");
-                }} className="text-xs text-outline underline mt-4 hover:text-white transition-colors">
-                  Cancel / Start Over
-                </button>
-              </div>
-
-              {/* Floating Warning Toast */}
-              <div className="mt-8 w-full max-w-sm mx-auto">
-                <div className="bg-black/60 border border-white/20 p-5 flex gap-4 items-start rounded-2xl">
-                  <span className="material-symbols-outlined text-primary flex-shrink-0">info</span>
-                  <p className="text-[13px] text-on-surface leading-relaxed">
-                    Only send <span className="text-white font-bold">{sourceAsset.symbol} ({sourceAsset.blockchain.toUpperCase()})</span> to this address.{depositMemo ? " Include the memo above." : ""} Other assets will be lost forever.
+                <div className="text-left">
+                  <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#8d90a1] block">
+                    ORIGIN ASSET
+                  </span>
+                  <p className="font-bold text-white text-base tracking-tight">{sourceAsset.name}</p>
+                  <p className="font-mono text-[10px] text-[#34d399] uppercase tracking-[0.14em] font-semibold">
+                    {sourceAsset.blockchain.toUpperCase()} NETWORK
                   </p>
                 </div>
               </div>
+              {!depositAddress && (
+                <ChevronDown className="w-5 h-5 text-[#8d90a1] group-hover:text-white transition-colors" />
+              )}
+            </button>
+          </div>
 
+          {isAssetSelectOpen && !depositAddress && (
+            <div className="absolute top-full left-0 right-0 mt-2 p-1.5 rounded-[24px] bg-[#131315]/98 border border-white/[0.12] shadow-[0_30px_80px_rgba(0,0,0,0.95)] z-40 max-h-80 overflow-y-auto backdrop-blur-2xl">
+              <div className="rounded-[18px] bg-[#09090b] divide-y divide-white/[0.06] overflow-hidden">
+                {DEPOSIT_ASSETS.map((asset) => (
+                  <button
+                    key={`${asset.symbol}-${asset.blockchain}`}
+                    type="button"
+                    onClick={() => {
+                      setSourceAsset(asset);
+                      setIsAssetSelectOpen(false);
+                    }}
+                    className="w-full p-4 flex items-center justify-between hover:bg-white/[0.04] transition-colors text-left cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-[#c0c6de] font-mono text-xs font-bold">
+                        {asset.symbol.slice(0, 3)}
+                      </div>
+                      <div>
+                        <p className="font-bold text-white text-sm">{asset.name}</p>
+                        <p className="font-mono text-[10px] text-[#8d90a1] uppercase tracking-[0.14em]">
+                          {asset.blockchain} Network
+                        </p>
+                      </div>
+                    </div>
+                    <span className="font-mono text-[10px] text-[#c0c6de] uppercase tracking-[0.12em]">
+                      SELECT
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
+        </section>
 
+        {/* Main Double-Bezel Deposit Console */}
+        <div className="p-1.5 rounded-[32px] bg-white/[0.025] border border-white/[0.08] shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)]">
+          <div className="rounded-[26px] bg-[#131315] border border-white/[0.07] p-6 sm:p-8">
+            {!depositAddress ? (
+              // STEP 1 CONTENT
+              <div className="w-full space-y-6">
+                <div className="p-5 rounded-2xl bg-[#09090b] border border-white/[0.08] shadow-[inset_0_2px_10px_rgba(0,0,0,0.8)] text-center">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#8d90a1] font-bold mb-3">
+                    AMOUNT TO SEND ({sourceAsset.symbol})
+                  </p>
+                  <div className="relative inline-flex items-baseline justify-center">
+                    <input
+                      type="number"
+                      value={depositAmount}
+                      onChange={(e) => setDepositAmount(e.target.value)}
+                      placeholder="0.00"
+                      className="bg-transparent border-none text-center text-5xl sm:text-6xl font-black text-white focus:ring-0 focus:outline-none p-0 w-52 tracking-tight tabular-nums"
+                    />
+                  </div>
+                  <p className="font-mono text-xs text-[#c0c6de] uppercase tracking-[0.16em] font-bold mt-2">
+                    {sourceAsset.symbol} ON {sourceAsset.blockchain.toUpperCase()}
+                  </p>
+                </div>
+
+                {/* Optional Refund Address for Non-EVM assets */}
+                {sourceAsset.blockchain !== "eth" &&
+                  sourceAsset.blockchain !== "arb" &&
+                  sourceAsset.blockchain !== "bsc" &&
+                  sourceAsset.blockchain !== "base" &&
+                  sourceAsset.blockchain !== "polygon" && (
+                    <div className="space-y-2 text-left w-full bg-[#09090b] border border-white/[0.08] p-4 rounded-2xl">
+                      <div className="flex items-center justify-between">
+                        <label className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#c0c6de] font-bold">
+                          {sourceAsset.name} REFUND ADDRESS
+                        </label>
+                        <span className="font-mono text-[#8d90a1] text-[10px] uppercase">
+                          OPTIONAL
+                        </span>
+                      </div>
+                      <input
+                        type="text"
+                        value={refundAddress}
+                        onChange={(e) => setRefundAddress(e.target.value.trim())}
+                        placeholder={`Your ${sourceAsset.symbol} address if route expires`}
+                        className="w-full bg-[#131315] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-xs text-white font-mono tabular-nums placeholder:text-[#8d90a1]/40 focus:outline-none focus:border-[#c0c6de] transition-colors"
+                      />
+                    </div>
+                  )}
+
+                {/* Estimated Receive Box */}
+                <div className="bg-[#09090b] rounded-2xl p-5 border border-white/[0.08] space-y-2 text-center">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8d90a1] font-bold">
+                    ESTIMATED BASE L2 SETTLEMENT
+                  </p>
+                  <div className="min-h-[40px] flex items-center justify-center">
+                    {isEstimating ? (
+                      <Loader2 className="w-5 h-5 animate-spin text-[#c0c6de]" />
+                    ) : estimatedReceive?.startsWith("Error:") ? (
+                      <p className="text-xs font-mono font-bold text-[#f87171]">
+                        {estimatedReceive.replace("Error: ", "")}
+                      </p>
+                    ) : (
+                      <p className="text-3xl font-extrabold text-white tabular-nums tracking-tight">
+                        {estimatedReceive || "0.00"}{" "}
+                        <span className="font-mono text-xs text-[#34d399] uppercase tracking-[0.14em]">
+                          USDC
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                  {timeEstimate && (
+                    <div className="flex items-center justify-center gap-1.5 font-mono text-[10px] text-[#8d90a1]">
+                      <Clock className="w-3 h-3 text-[#34d399]" />
+                      <span>~{Math.ceil(timeEstimate / 60)} MIN SETTLEMENT VIA NEAR 1CLICK</span>
+                    </div>
+                  )}
+                </div>
+
+                {depositError && (
+                  <div className="bg-[#f87171]/10 text-[#f87171] p-3.5 rounded-2xl text-xs font-mono border border-[#f87171]/30 text-center">
+                    {depositError}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleCreateDeposit}
+                  disabled={
+                    isCreating ||
+                    !estimatedReceive ||
+                    estimatedReceive.startsWith("Error") ||
+                    isEstimating
+                  }
+                  className="w-full bg-gradient-to-b from-[#d8def8] to-[#a7add2] hover:from-white hover:to-white text-[#0e0e0f] font-mono uppercase tracking-[0.14em] text-xs font-bold py-4 rounded-2xl transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer shadow-[0_12px_30px_rgba(192,198,222,0.2)]"
+                >
+                  {isCreating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>GENERATING INTENT ADDRESS...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4" />
+                      <span>GENERATE DEPOSIT ADDRESS</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : (
+              // STEP 2 CONTENT
+              <div className="w-full flex flex-col items-center space-y-7">
+                <div className="p-1.5 rounded-[28px] bg-white/[0.06] border border-white/[0.12]">
+                  <div className="bg-white p-5 rounded-[22px] shadow-2xl">
+                    <img
+                      className="w-56 h-56 mix-blend-multiply"
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(
+                        depositAddress
+                      )}&margin=0`}
+                      alt="Deposit QR Code"
+                    />
+                  </div>
+                </div>
+
+                <div className="w-full space-y-5 text-center">
+                  {deadlineRemaining && exchangeStatus === "pending" && (
+                    <div
+                      className={`inline-flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-full bg-[#09090b] border border-white/[0.08] font-mono text-xs tabular-nums ${
+                        deadlineRemaining === "Expired" ? "text-[#f87171]" : "text-[#34d399]"
+                      }`}
+                    >
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>INTENT WINDOW: {deadlineRemaining}</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8d90a1] font-bold">
+                      DEPOSIT ADDRESS ({sourceAsset.blockchain.toUpperCase()})
+                    </p>
+                    <div className="flex flex-col items-center gap-3">
+                      <code className="font-mono tabular-nums text-xs sm:text-sm text-white break-all w-full bg-[#09090b] p-4 rounded-2xl border border-white/[0.08]">
+                        {depositAddress}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={copyAddress}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.1] transition-colors active:scale-95 cursor-pointer"
+                      >
+                        {copied ? (
+                          <Check className="w-4 h-4 text-[#34d399]" />
+                        ) : (
+                          <Copy className="w-4 h-4 text-[#c0c6de]" />
+                        )}
+                        <span className="font-mono text-white uppercase tracking-[0.14em] text-[10px] font-bold">
+                          {copied ? "ADDRESS COPIED" : "COPY DEPOSIT ADDRESS"}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Deposit memo (required for Stellar/TON) */}
+                  {depositMemo && (
+                    <div className="space-y-2 p-4 rounded-2xl bg-[#f87171]/10 border border-[#f87171]/30">
+                      <p className="font-mono text-[10px] text-[#f87171] uppercase tracking-[0.14em] font-bold flex items-center justify-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5" /> REQUIRED MEMO
+                      </p>
+                      <div className="flex flex-col items-center gap-2">
+                        <code className="font-mono tabular-nums text-sm text-white bg-[#09090b] px-4 py-2 rounded-xl border border-[#f87171]/30">
+                          {depositMemo}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={copyMemo}
+                          className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#c0c6de] underline hover:text-white transition-colors cursor-pointer"
+                        >
+                          {copiedMemo ? "MEMO COPIED" : "COPY MEMO"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="p-4 rounded-2xl bg-[#09090b] border border-white/[0.08] w-full flex items-center justify-between text-left">
+                    <div>
+                      <p className="font-mono text-[10px] text-[#8d90a1] uppercase tracking-[0.14em] font-bold mb-0.5">
+                        SETTLEMENT STATUS
+                      </p>
+                      <p className="font-bold text-sm text-white capitalize">
+                        {getStatusText(exchangeStatus)}
+                      </p>
+                    </div>
+                    {exchangeStatus === "settled" ? (
+                      <div className="w-9 h-9 rounded-xl bg-[#34d399]/20 border border-[#34d399]/40 flex items-center justify-center">
+                        <Check className="w-4 h-4 text-[#34d399]" />
+                      </div>
+                    ) : (
+                      <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.1] flex items-center justify-center">
+                        <Loader2 className="w-4 h-4 text-[#c0c6de] animate-spin" />
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDepositAddress(null);
+                      setDepositMemo(null);
+                      setDeadline(null);
+                      setExchangeStatus("waiting");
+                    }}
+                    className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#8d90a1] hover:text-white transition-colors cursor-pointer"
+                  >
+                    CANCEL / GENERATE NEW ROUTE
+                  </button>
+                </div>
+
+                {/* Warning Notice */}
+                <div className="w-full p-4 rounded-2xl bg-[#09090b] border border-white/[0.08] flex gap-3 items-start text-left">
+                  <ShieldCheck className="w-4 h-4 text-[#c0c6de] shrink-0 mt-0.5" />
+                  <p className="font-mono text-[11px] text-[#8d90a1] leading-relaxed">
+                    Send only{" "}
+                    <span className="text-white font-bold">
+                      {sourceAsset.symbol} ({sourceAsset.blockchain.toUpperCase()})
+                    </span>{" "}
+                    to this intent address.{depositMemo ? " Include the required memo above." : ""}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </main>
     </div>
