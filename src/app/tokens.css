@@ -14,11 +14,11 @@
   --color-paper: #050608;
   --color-paper-2: #0B0E14;
   --color-paper-3: #111622;
-  --color-ink: #F8FAFC;
-  --color-ink-2: #94A3B8;
-  --color-muted: #64748B;
+  --color-ink: #F4F7FB;
+  --color-ink-2: #8E9BB0;
+  --color-muted: #606D82;
   --color-rule: rgba(41, 112, 255, 0.18);
-  --color-light: #F8FAFC;
+  --color-light: #F4F7FB;
   --color-shade: #030406;
   --color-accent: #2970FF;
   --color-accent-ink: #050608;
@@ -29,11 +29,11 @@
   --color-accent-2: #CCFF00;
   --color-dusk: #2970FF;
   --color-day-ink: #050608;
-  --color-day-muted: #334155;
-  --color-fog: #F1F5F9;
+  --color-day-muted: #344256;
+  --color-fog: #EFF4FA;
   --color-well: #111622;
   --color-well-2: #0B0E14;
-  --color-well-ink: #F8FAFC;
+  --color-well-ink: #F4F7FB;
   --color-well-muted: #8A94A6;
   --color-well-rule: rgba(41, 112, 255, 0.22);
   --color-card: #0B0E14;
@@ -58,9 +58,9 @@
   --color-outline-variant: var(--color-rule);
   --color-surface-tint: var(--color-accent);
   --color-primary: #2970FF;
-  --color-on-primary: #F8FAFC;
+  --color-on-primary: #F4F7FB;
   --color-primary-container: #0B1938;
-  --color-on-primary-container: #84ADFF;
+  --color-on-primary-container: #9EC0FF;
   --color-inverse-primary: #004EEB;
   --color-secondary: #CCFF00;
   --color-on-secondary: #050608;
@@ -73,7 +73,7 @@
   --color-on-error: #2D0002;
   --color-error-container: #5C0006;
   --color-on-error-container: #FFDAD6;
-  --color-silver: #E2E8F0;
+  --color-silver: #DEE6F2;
 
   --glass: rgba(11, 14, 20, 0.78);
   --glass-bg: rgba(11, 14, 20, 0.82);

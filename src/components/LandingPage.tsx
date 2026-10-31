@@ -46,8 +46,8 @@ const GLOBAL_METRICS = [
 
 const SPATIAL_STEPS = [
   {
-    step: "Connect Self-Custody",
-    railTag: "BASE · ETH · SOL · BTC",
+    step: "01 / Self-Custody",
+    railTag: "Base / ETH / SOL / BTC",
     title: "Authorize from your own wallet",
     description:
       "Keep full custody of your USDC, ETH, SOL, or BTC until the moment you pay. Zero centralized exchange deposits or pre-funded lockups.",
@@ -55,8 +55,8 @@ const SPATIAL_STEPS = [
     offsetClass: "lg:translate-y-0 lg:-rotate-1",
   },
   {
-    step: "Scan Any Global Standard",
-    railTag: "PIX · UPI · SEPA · FEDNOW",
+    step: "02 / Optical Router",
+    railTag: "Pix / UPI / SEPA / FedNow",
     title: "Point at any local QR or bank rail",
     description:
       "Our optical router automatically detects EPC QR in Europe, Pix in Brazil, UPI in India, PayNow in Singapore, or domestic IBAN and ACH details.",
@@ -64,8 +64,8 @@ const SPATIAL_STEPS = [
     offsetClass: "lg:translate-y-8 lg:rotate-1",
   },
   {
-    step: "Instant Domestic Clearing",
-    railTag: "VERIFIED ON-CHAIN ESCROW",
+    step: "03 / Atomic Clearing",
+    railTag: "Verified on-chain escrow",
     title: "Recipient gets native fiat in seconds",
     description:
       "Decentralized liquidity solvers dispatch local currency straight to the merchant bank account while your smart escrow settles atomically on Base.",
@@ -137,10 +137,10 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
 
       {/* ─── 01. Fluid Island Navigation (Single-Line 64px Cap) ─── */}
       <header className="fixed top-4 sm:top-6 left-0 right-0 z-50 px-4 pointer-events-none">
-        <div className="max-w-5xl mx-auto h-14 sm:h-16 flex items-center justify-between bg-surface/85 backdrop-blur-2xl border border-white/10 ring-1 ring-white/5 rounded-full px-4 sm:px-6 pointer-events-auto shadow-elevated transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]">
+        <div className="max-w-5xl mx-auto h-14 sm:h-16 flex items-center justify-between bg-surface/90 backdrop-blur-xl border border-primary/20 rounded-full px-4 sm:px-6 pointer-events-auto shadow-elevated transition-colors duration-300">
           {/* Brand Monogram */}
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="w-8 h-8 rounded-full bg-white/[0.06] border border-white/15 flex items-center justify-center text-primary group-hover:border-primary/50 transition-colors">
+          <Link href="/" className="flex items-center gap-2.5 group whitespace-nowrap">
+            <div className="w-8 h-8 rounded-full bg-surface-container border border-primary/25 flex items-center justify-center text-primary group-hover:border-primary/50 transition-colors">
               <Globe2 className="w-4 h-4" strokeWidth={1.5} />
             </div>
             <span className="font-display font-semibold text-base sm:text-lg tracking-tight text-on-surface">
@@ -149,7 +149,7 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
           </Link>
 
           {/* Single-Line Desktop Nav Links */}
-          <nav className="hidden md:flex items-center gap-7 text-xs font-medium text-outline">
+          <nav className="hidden md:flex items-center gap-7 text-xs font-medium text-on-surface-variant">
             <a href="#corridors" className="hover:text-on-surface transition-colors">
               Global Rails
             </a>
@@ -171,11 +171,11 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
           <div className="flex items-center gap-2.5">
             <button
               onClick={login}
-              className="rounded-full pl-4 pr-1.5 py-1.5 bg-[#CCFF00] text-[#050608] font-semibold text-xs hover:brightness-110 active:scale-[0.98] transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] shadow-[0_0_24px_rgba(204,255,0,0.28)] group flex items-center gap-2.5 whitespace-nowrap"
+              className="rounded-full pl-4 pr-1.5 py-1.5 bg-secondary text-on-secondary font-semibold text-xs hover:brightness-110 active:scale-[0.98] transition-transform duration-200 shadow-card group flex items-center gap-2.5 whitespace-nowrap"
             >
               <span>Launch App</span>
-              <span className="w-6 h-6 rounded-full bg-[#050608] text-[#CCFF00] flex items-center justify-center transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5">
-                <ArrowUpRight className="w-3.5 h-3.5 text-[#CCFF00]" strokeWidth={1.75} />
+              <span className="w-6 h-6 rounded-full bg-surface text-secondary flex items-center justify-center transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5">
+                <ArrowUpRight className="w-3.5 h-3.5 text-secondary" strokeWidth={1.75} />
               </span>
             </button>
 
@@ -183,7 +183,7 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
               type="button"
               aria-label="Toggle navigation menu"
               onClick={() => setMobileMenuOpen((v) => !v)}
-              className="md:hidden w-9 h-9 rounded-full bg-white/[0.05] border border-white/10 flex flex-col items-center justify-center gap-1.5 relative"
+              className="md:hidden w-9 h-9 rounded-full bg-surface-container border border-primary/20 flex flex-col items-center justify-center gap-1.5 relative whitespace-nowrap"
             >
               <span
                 className={`w-4 h-px bg-on-surface transition-transform duration-300 ${
@@ -207,7 +207,7 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -12 }}
               transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
-              className="md:hidden mt-2 max-w-md mx-auto rounded-3xl bg-surface/95 backdrop-blur-2xl border border-white/10 p-5 pointer-events-auto shadow-elevated flex flex-col gap-3"
+              className="md:hidden mt-2 max-w-md mx-auto rounded-3xl bg-surface/95 backdrop-blur-xl border border-primary/20 p-5 pointer-events-auto shadow-elevated flex flex-col gap-3"
             >
               {[
                 { label: "Global Rails", href: "#corridors" },
@@ -223,10 +223,10 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.05 }}
-                  className="text-sm font-medium text-on-surface py-2 border-b border-white/[0.06] last:border-none flex items-center justify-between"
+                  className="text-sm font-medium text-on-surface py-2 border-b border-primary/15 last:border-none flex items-center justify-between"
                 >
                   <span>{item.label}</span>
-                  <ArrowUpRight className="w-4 h-4 text-outline" strokeWidth={1.5} />
+                  <ArrowUpRight className="w-4 h-4 text-on-surface-variant" strokeWidth={1.5} />
                 </motion.a>
               ))}
             </motion.div>
@@ -239,53 +239,36 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
         {/* ─── SECTION 1: Asymmetric 7/5 3D Split Hero (Fits 100dvh, pt-24 cap) ─── */}
         <section className="min-h-[100dvh] pt-20 lg:pt-24 pb-12 flex items-center">
           <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-center">
-            {/* Left Column (7 cols): 4-Element Hero Stack */}
+            {/* Left Column (7 cols): Hero Stack */}
             <motion.div
               style={shouldReduceMotion ? undefined : { y: heroParallaxY }}
               className="lg:col-span-7 flex flex-col items-start text-left gap-6"
             >
-              {/* Element 1: Eyebrow #1 (of 2 on page) */}
-              <div className="inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 bg-white/[0.04] border border-white/10">
-                <span className="w-1.5 h-1.5 rounded-full bg-success" />
-                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-primary">
-                  GLOBAL CRYPTO-TO-FIAT PROTOCOL
-                </span>
-              </div>
-
-              {/* Element 2: 2-Line Display Headline with Inline Visual Pills */}
+              {/* Display Headline */}
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-display font-semibold tracking-tight text-on-surface leading-[1.08] max-w-2xl">
-                Spend crypto in{" "}
-                <span className="inline-flex items-center gap-1.5 align-middle px-3 py-1 rounded-full bg-white/[0.06] border border-white/15 text-base sm:text-xl font-mono text-primary">
-                  <Globe2 className="w-4 h-4 text-success shrink-0" strokeWidth={1.5} />
-                  <span>40+ FIAT</span>
-                </span>{" "}
-                currencies across{" "}
-                <span className="inline-flex items-center gap-1.5 align-middle px-3 py-1 rounded-full bg-white/[0.06] border border-white/15 text-base sm:text-xl font-mono text-on-surface">
-                  <QrCode className="w-4 h-4 text-primary shrink-0" strokeWidth={1.5} />
-                  <span>180+ NATIONS</span>
-                </span>
+                Spend crypto in 40+ currencies globally.
               </h1>
 
-              {/* Element 3: Subtext (18 words, <= 3 lines) */}
-              <p className="text-base sm:text-lg text-outline leading-relaxed max-w-[54ch]">
-                Scan any local merchant QR or settle to domestic bank rails in USD, EUR, GBP, INR, and BRL instantly.
+              {/* Subtext (11 words) */}
+              <p className="text-base sm:text-lg text-on-surface-variant leading-relaxed max-w-[54ch]">
+                Scan any local merchant QR or settle to domestic banks instantly.
               </p>
 
-              {/* Element 4: Primary Button-in-Button CTA + Secondary Anchor */}
+              {/* Primary CTA + Secondary Anchor */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5 w-full sm:w-auto pt-1">
                 <button
                   onClick={login}
-                  className="rounded-full pl-6 pr-2 py-2.5 bg-[#CCFF00] text-[#050608] font-semibold text-sm hover:brightness-110 active:scale-[0.98] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] shadow-[0_0_30px_rgba(204,255,0,0.3)] group flex items-center justify-between sm:justify-start gap-4 whitespace-nowrap"
+                  className="rounded-full pl-6 pr-2 py-2.5 bg-secondary text-on-secondary font-semibold text-sm hover:brightness-110 active:scale-[0.98] transition-transform duration-200 shadow-elevated group flex items-center justify-between sm:justify-start gap-4 whitespace-nowrap"
                 >
                   <span>Launch App</span>
-                  <span className="w-9 h-9 rounded-full bg-[#050608] text-[#CCFF00] flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5">
-                    <ArrowUpRight className="w-4 h-4 text-[#CCFF00]" strokeWidth={1.75} />
+                  <span className="w-9 h-9 rounded-full bg-surface text-secondary flex items-center justify-center transition-transform duration-200 group-hover:translate-x-1 group-hover:-translate-y-0.5">
+                    <ArrowUpRight className="w-4 h-4 text-secondary" strokeWidth={1.75} />
                   </span>
                 </button>
 
                 <a
                   href="#corridors"
-                  className="rounded-full px-6 py-3.5 bg-[#2970FF]/10 hover:bg-[#2970FF]/20 border border-[#2970FF]/30 hover:border-[#2970FF]/50 text-xs sm:text-sm font-medium text-[#F8FAFC] transition-all duration-300 text-center whitespace-nowrap"
+                  className="rounded-full px-6 py-3.5 bg-primary/10 hover:bg-primary/20 border border-primary/30 hover:border-primary/50 text-xs sm:text-sm font-medium text-on-surface transition-colors duration-200 text-center whitespace-nowrap"
                 >
                   Explore Global Rails
                 </a>
@@ -365,20 +348,20 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
                     innerClassName="p-6 sm:p-7 flex flex-col justify-between gap-8 min-h-[290px]"
                   >
                     <DepthLayer z={28} className="flex items-center justify-between gap-3">
-                      <div className="w-11 h-11 rounded-2xl bg-white/[0.05] border border-white/15 flex items-center justify-center text-primary">
+                      <div className="w-11 h-11 rounded-2xl bg-surface-container border border-primary/20 flex items-center justify-center text-primary">
                         <IconComp className="w-5 h-5" strokeWidth={1.5} />
                       </div>
-                      <span className="font-mono text-[10px] text-primary px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/10">
+                      <span className="text-xs font-medium text-primary px-2.5 py-1 rounded-full bg-primary/10 border border-primary/25">
                         {item.railTag}
                       </span>
                     </DepthLayer>
 
                     <DepthLayer z={18} className="flex flex-col gap-2.5">
-                      <span className="font-mono text-xs text-success">{item.step}</span>
+                      <span className="text-xs font-semibold text-secondary">{item.step}</span>
                       <h3 className="text-xl sm:text-2xl font-display font-semibold text-on-surface tracking-tight">
                         {item.title}
                       </h3>
-                      <p className="text-sm text-outline leading-relaxed max-w-[55ch]">
+                      <p className="text-sm text-on-surface-variant leading-relaxed max-w-[55ch]">
                         {item.description}
                       </p>
                     </DepthLayer>
@@ -389,21 +372,14 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
           </div>
         </section>
 
-        {/* ─── SECTION 4: Asymmetric 3D Bento 2.0 Monoliths (Eyebrow #2 of 2) ─── */}
+        {/* ─── SECTION 4: Asymmetric 3D Bento 2.0 Monoliths ─── */}
         <section id="architecture" className="py-24 sm:py-32 flex flex-col gap-12">
           <ScrollReveal>
             <div className="flex flex-col items-start gap-3 max-w-2xl">
-              {/* Eyebrow #2 (Final allowed eyebrow on page) */}
-              <div className="inline-flex items-center gap-2 rounded-full px-3.5 py-1 bg-white/[0.04] border border-white/10">
-                <Sparkles className="w-3.5 h-3.5 text-primary" strokeWidth={1.5} />
-                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-primary">
-                  SPATIAL ARCHITECTURE
-                </span>
-              </div>
               <h2 className="text-3xl sm:text-5xl font-display font-semibold tracking-tight text-on-surface">
                 Built like precision hardware.
               </h2>
-              <p className="text-sm sm:text-base text-outline leading-relaxed max-w-[60ch]">
+              <p className="text-sm sm:text-base text-on-surface-variant leading-relaxed max-w-[60ch]">
                 Four interconnected protocol pillars combining universal QR decoding, zero-KYC micro-corridors, continuous Morpho yield, and multi-chain routing.
               </p>
             </div>
@@ -422,55 +398,55 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
                   <BentoAutoSortingCorridors />
                 </DepthLayer>
 
-                <DepthLayer z={16} className="flex flex-col gap-2 pt-2 border-t border-white/[0.07]">
+                <DepthLayer z={16} className="flex flex-col gap-2 pt-2 border-t border-primary/15">
                   <h3 className="text-xl sm:text-2xl font-display font-semibold text-on-surface tracking-tight">
                     Universal QR &amp; Domestic Rail Decoder
                   </h3>
-                  <p className="text-sm text-outline leading-relaxed max-w-[60ch]">
+                  <p className="text-sm text-on-surface-variant leading-relaxed max-w-[60ch]">
                     Point your camera at any merchant code in São Paulo, Tokyo, London, Mumbai, or Lisbon. ZkPay parses local banking payloads and locks the mid-market oracle rate in milliseconds.
                   </p>
                 </DepthLayer>
               </Tilt3DMonolith>
             </ScrollReveal>
 
-            {/* Cell 2 (5 cols): Tinted Periwinkle Steel Surface - Zero KYC Corridor */}
+            {/* Cell 2 (5 cols): Zero KYC Corridor */}
             <ScrollReveal delay={0.06} className="lg:col-span-5">
               <Tilt3DMonolith
                 maxTilt={8}
                 className="h-full"
-                innerClassName="p-6 sm:p-8 bg-gradient-to-br from-primary/[0.09] via-surface-container-lowest to-surface-container-lowest flex flex-col justify-between gap-8"
+                innerClassName="p-6 sm:p-8 bg-gradient-to-br from-primary/10 via-surface-container-lowest to-surface-container-lowest flex flex-col justify-between gap-8"
               >
                 <DepthLayer z={34} className="flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <div className="w-10 h-10 rounded-xl bg-primary/15 border border-primary/30 flex items-center justify-center text-primary">
                       <Lock className="w-5 h-5" strokeWidth={1.5} />
                     </div>
-                    <span className="font-mono text-[11px] text-success px-2.5 py-1 rounded-full bg-success/10 border border-success/25">
-                      INSTANT ACCESS
+                    <span className="text-xs font-semibold text-secondary px-2.5 py-1 rounded-full bg-secondary/10 border border-secondary/25">
+                      Instant access
                     </span>
                   </div>
                   <div className="pt-4">
                     <span className="font-mono text-5xl sm:text-6xl font-semibold text-on-surface tracking-tighter">
                       $100
                     </span>
-                    <span className="block font-mono text-xs text-primary mt-1">
-                      NO-KYC GLOBAL DAILY THRESHOLD
+                    <span className="block text-xs font-medium text-primary mt-1">
+                      No-KYC global daily threshold
                     </span>
                   </div>
                 </DepthLayer>
 
-                <DepthLayer z={16} className="flex flex-col gap-2 pt-2 border-t border-white/10">
+                <DepthLayer z={16} className="flex flex-col gap-2 pt-2 border-t border-primary/15">
                   <h3 className="text-xl sm:text-2xl font-display font-semibold text-on-surface tracking-tight">
                     Zero KYC Under $100 Equivalent
                   </h3>
-                  <p className="text-sm text-outline leading-relaxed">
+                  <p className="text-sm text-on-surface-variant leading-relaxed">
                     Pay everyday cafe tabs, transit tickets, and grocery runs across 180+ countries without uploading passports or waiting in verification queues.
                   </p>
                 </DepthLayer>
               </Tilt3DMonolith>
             </ScrollReveal>
 
-            {/* Cell 3 (5 cols): Monospace Telemetry Surface - Morpho Yield */}
+            {/* Cell 3 (5 cols): Morpho Yield */}
             <ScrollReveal delay={0.08} className="lg:col-span-5">
               <Tilt3DMonolith
                 maxTilt={8}
@@ -481,11 +457,11 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
                   <BentoYieldCompounding3D />
                 </DepthLayer>
 
-                <DepthLayer z={16} className="flex flex-col gap-2 pt-2 border-t border-white/[0.07]">
+                <DepthLayer z={16} className="flex flex-col gap-2 pt-2 border-t border-primary/15">
                   <h3 className="text-xl sm:text-2xl font-display font-semibold text-on-surface tracking-tight">
                     Continuous 5.51% APY Treasury Yield
                   </h3>
-                  <p className="text-sm text-outline leading-relaxed">
+                  <p className="text-sm text-on-surface-variant leading-relaxed">
                     Idle USDC in your account automatically compounds through Steakhouse Prime vaults on Morpho Blue until the exact second you scan to spend.
                   </p>
                 </DepthLayer>
@@ -503,25 +479,25 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
                   {ORIGIN_CHAINS.map((chain) => (
                     <div
                       key={chain.code}
-                      className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.08] flex flex-col justify-between gap-1.5"
+                      className="p-3 rounded-xl bg-surface-container border border-primary/15 flex flex-col justify-between gap-1.5"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="font-mono text-xs font-semibold text-on-surface">
+                        <span className="text-xs font-semibold text-on-surface">
                           {chain.code}
                         </span>
                         <Layers className="w-3.5 h-3.5 text-primary" strokeWidth={1.5} />
                       </div>
-                      <span className="text-[11px] text-outline">{chain.name}</span>
-                      <span className="font-mono text-[10px] text-success">{chain.finality}</span>
+                      <span className="text-[11px] text-on-surface-variant">{chain.name}</span>
+                      <span className="font-mono text-[10px] text-secondary">{chain.finality}</span>
                     </div>
                   ))}
                 </DepthLayer>
 
-                <DepthLayer z={16} className="flex flex-col gap-2 pt-2 border-t border-white/[0.07]">
+                <DepthLayer z={16} className="flex flex-col gap-2 pt-2 border-t border-primary/15">
                   <h3 className="text-xl sm:text-2xl font-display font-semibold text-on-surface tracking-tight">
                     Cross-Chain Solver Routing
                   </h3>
-                  <p className="text-sm text-outline leading-relaxed max-w-[60ch]">
+                  <p className="text-sm text-on-surface-variant leading-relaxed max-w-[60ch]">
                     Fund your global spending directly from Bitcoin, Solana, Ethereum, Arbitrum, or Tron via decentralized NEAR 1Click solver intents with zero bridge custody risk.
                   </p>
                 </DepthLayer>
@@ -542,7 +518,7 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
               >
                 <div
                   style={shouldReduceMotion ? undefined : { transformStyle: "preserve-3d" }}
-                  className="relative aspect-[1.586] w-full rounded-2xl overflow-hidden border border-white/15"
+                  className="relative aspect-[1.586] w-full rounded-2xl overflow-hidden border border-primary/25"
                 >
                   <img
                     src="/zkpay_obsidian_card.jpg"
@@ -553,12 +529,12 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
 
                   <DepthLayer
                     z={36}
-                    className="absolute bottom-4 left-4 right-4 flex items-center justify-between px-3.5 py-2 rounded-xl bg-surface/85 backdrop-blur-md border border-white/15"
+                    className="absolute bottom-4 left-4 right-4 flex items-center justify-between px-3.5 py-2 rounded-xl bg-surface/90 backdrop-blur-md border border-primary/25"
                   >
-                    <span className="font-mono text-[11px] text-on-surface">
-                      GRADE-5 TITANIUM · NFC WORLDWIDE
+                    <span className="text-xs font-medium text-on-surface">
+                      Grade-5 titanium / NFC worldwide
                     </span>
-                    <span className="font-mono text-[11px] text-success">0% FX SPREAD</span>
+                    <span className="text-xs font-semibold text-secondary">0% FX spread</span>
                   </DepthLayer>
                 </div>
               </Tilt3DMonolith>
@@ -569,7 +545,7 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
               <h2 className="text-3xl sm:text-5xl font-display font-semibold tracking-tight text-on-surface">
                 The Titanium Obsidian Card.
               </h2>
-              <p className="text-sm sm:text-base text-outline leading-relaxed max-w-[58ch]">
+              <p className="text-sm sm:text-base text-on-surface-variant leading-relaxed max-w-[58ch]">
                 When a merchant terminal only accepts physical contactless tap, the CNC-machined Obsidian Card debits your non-custodial Base USDC balance in real time across 180+ countries.
               </p>
 
@@ -580,7 +556,7 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
                   "Instant cryptographic freeze and spending caps from your wallet",
                 ].map((point) => (
                   <div key={point} className="flex items-center gap-3 text-sm text-on-surface-variant">
-                    <CheckCircle2 className="w-4 h-4 text-success shrink-0" strokeWidth={1.5} />
+                    <CheckCircle2 className="w-4 h-4 text-secondary shrink-0" strokeWidth={1.5} />
                     <span>{point}</span>
                   </div>
                 ))}
@@ -589,11 +565,11 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
               <div className="pt-2">
                 <button
                   onClick={login}
-                  className="rounded-full pl-6 pr-2 py-2.5 bg-[#CCFF00] text-[#050608] font-semibold text-sm hover:brightness-110 active:scale-[0.98] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] shadow-[0_0_28px_rgba(204,255,0,0.26)] group flex items-center gap-4 whitespace-nowrap"
+                  className="rounded-full pl-6 pr-2 py-2.5 bg-secondary text-on-secondary font-semibold text-sm hover:brightness-110 active:scale-[0.98] transition-transform duration-200 shadow-elevated group flex items-center gap-4 whitespace-nowrap"
                 >
                   <span>Launch App</span>
-                  <span className="w-9 h-9 rounded-full bg-[#050608] text-[#CCFF00] flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5">
-                    <ArrowUpRight className="w-4 h-4 text-[#CCFF00]" strokeWidth={1.75} />
+                  <span className="w-9 h-9 rounded-full bg-surface text-secondary flex items-center justify-center transition-transform duration-200 group-hover:translate-x-1 group-hover:-translate-y-0.5">
+                    <ArrowUpRight className="w-4 h-4 text-secondary" strokeWidth={1.75} />
                   </span>
                 </button>
               </div>
@@ -610,7 +586,7 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
             >
               <DepthLayer
                 z={32}
-                className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/15 flex items-center justify-center text-primary"
+                className="w-12 h-12 rounded-2xl bg-surface-container border border-primary/25 flex items-center justify-center text-primary"
               >
                 <Globe2 className="w-6 h-6" strokeWidth={1.5} />
               </DepthLayer>
@@ -619,7 +595,7 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
                 <h2 className="text-3xl sm:text-5xl font-display font-semibold tracking-tight text-on-surface">
                   The world is now your local currency.
                 </h2>
-                <p className="text-sm sm:text-base text-outline leading-relaxed max-w-[54ch]">
+                <p className="text-sm sm:text-base text-on-surface-variant leading-relaxed max-w-[54ch]">
                   Connect your wallet and settle in 40+ local currencies across 180+ countries in under a second.
                 </p>
               </DepthLayer>
@@ -627,11 +603,11 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
               <DepthLayer z={36} className="pt-2">
                 <button
                   onClick={login}
-                  className="rounded-full pl-7 pr-2 py-2.5 bg-[#CCFF00] text-[#050608] font-semibold text-sm hover:brightness-110 active:scale-[0.98] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] shadow-[0_0_32px_rgba(204,255,0,0.3)] group flex items-center gap-4 whitespace-nowrap"
+                  className="rounded-full pl-7 pr-2 py-2.5 bg-secondary text-on-secondary font-semibold text-sm hover:brightness-110 active:scale-[0.98] transition-transform duration-200 shadow-elevated group flex items-center gap-4 whitespace-nowrap"
                 >
                   <span>Launch App</span>
-                  <span className="w-9 h-9 rounded-full bg-[#050608] text-[#CCFF00] flex items-center justify-center transition-transform duration-300 group-hover:translate-x-1 group-hover:-translate-y-0.5">
-                    <ArrowUpRight className="w-4 h-4 text-[#CCFF00]" strokeWidth={1.75} />
+                  <span className="w-9 h-9 rounded-full bg-surface text-secondary flex items-center justify-center transition-transform duration-200 group-hover:translate-x-1 group-hover:-translate-y-0.5">
+                    <ArrowUpRight className="w-4 h-4 text-secondary" strokeWidth={1.75} />
                   </span>
                 </button>
               </DepthLayer>
@@ -639,9 +615,9 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
           </ScrollReveal>
 
           {/* Minimalist Architectural Footer */}
-          <footer className="mt-16 pt-8 border-t border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 text-xs text-outline">
+          <footer className="mt-16 pt-8 border-t border-primary/15 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 text-xs text-on-surface-variant">
             <div className="flex items-center gap-3">
-              <div className="w-6 h-6 rounded-full bg-white/[0.05] border border-white/15 flex items-center justify-center text-primary">
+              <div className="w-6 h-6 rounded-full bg-surface-container border border-primary/20 flex items-center justify-center text-primary">
                 <ShieldCheck className="w-3.5 h-3.5" strokeWidth={1.5} />
               </div>
               <span className="font-display font-semibold text-on-surface">ZkPay</span>
@@ -664,7 +640,7 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
                 rel="noopener noreferrer"
                 className="font-mono text-primary hover:text-on-surface transition-colors flex items-center gap-1"
               >
-                <span>0x5610...0b2f</span>
+                <span>0x5610…0b2f</span>
                 <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={1.5} />
               </a>
             </div>
@@ -673,15 +649,15 @@ export default function LandingPage({ login: loginProp }: LandingPageProps = {})
       </div>
 
       {/* ─── Sticky Mobile Thumb Bar (< 1024px) ─── */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-[#050608]/90 backdrop-blur-xl border-t border-[#2970FF]/20 px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom))]">
+      <div className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-surface/90 backdrop-blur-xl border-t border-primary/20 px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom))]">
         <div className="max-w-md mx-auto">
           <button
             onClick={login}
-            className="w-full rounded-full pl-6 pr-2 py-2 bg-[#CCFF00] text-[#050608] font-semibold text-xs active:scale-[0.98] transition-all flex items-center justify-between shadow-[0_0_24px_rgba(204,255,0,0.25)]"
+            className="w-full rounded-full pl-6 pr-2 py-2 bg-secondary text-on-secondary font-semibold text-xs active:scale-[0.98] transition-transform flex items-center justify-between shadow-card whitespace-nowrap"
           >
             <span>Launch App</span>
-            <span className="w-8 h-8 rounded-full bg-[#050608] text-[#CCFF00] flex items-center justify-center">
-              <ArrowUpRight className="w-4 h-4 text-[#CCFF00]" strokeWidth={1.75} />
+            <span className="w-8 h-8 rounded-full bg-surface text-secondary flex items-center justify-center">
+              <ArrowUpRight className="w-4 h-4 text-secondary" strokeWidth={1.75} />
             </span>
           </button>
         </div>

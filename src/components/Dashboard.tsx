@@ -110,36 +110,26 @@ export default function Dashboard() {
       <Tilt3DMonolith
         maxTilt={8}
         className="w-full"
-        innerClassName="p-6 sm:p-9 relative overflow-hidden bg-gradient-to-br from-[#0B0E14] via-[#111622] to-[#050608]"
+        innerClassName="p-6 sm:p-9 relative overflow-hidden bg-gradient-to-br from-surface-container-low via-surface-container to-surface"
       >
-        {/* Subtle Machined Grid Backdrop */}
-        <div
-          className="absolute inset-0 opacity-[0.08] pointer-events-none"
-          style={{
-            backgroundImage:
-              "radial-gradient(rgba(41,112,255,0.6) 1px, transparent 1px)",
-            backgroundSize: "20px 20px",
-          }}
-        />
-
         {/* Top Telemetry Bar */}
         <DepthLayer z={16} className="flex flex-wrap items-center justify-between gap-3 mb-7">
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#CCFF00]/10 border border-[#CCFF00]/30 font-mono text-[10px] uppercase tracking-[0.15em] text-[#CCFF00] font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#CCFF00] animate-pulse" />
-              {isSmartWallet ? "ERC-4337 GASLESS VAULT" : "NON-CUSTODIAL VAULT"}
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary/10 border border-secondary/30 text-xs text-secondary font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
+              {isSmartWallet ? "ERC-4337 gasless vault" : "Non-custodial vault"}
             </span>
 
             {address && (
               <button
                 type="button"
                 onClick={handleCopyAddress}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#050608]/80 hover:bg-[#111622] border border-[#2970FF]/25 font-mono text-[10px] text-[#8A94A6] hover:text-[#F8FAFC] transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface/80 hover:bg-surface-container border border-primary/25 font-mono text-xs text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer whitespace-nowrap"
                 title="Copy Base USDC deposit address"
               >
                 <span className="tabular-nums">{shortAddr}</span>
                 {copiedAddr ? (
-                  <Check className="w-3 h-3 text-[#CCFF00]" />
+                  <Check className="w-3 h-3 text-secondary" />
                 ) : (
                   <Copy className="w-3 h-3" />
                 )}
@@ -150,28 +140,28 @@ export default function Dashboard() {
           <button
             type="button"
             onClick={() => setIsSelectorOpen(true)}
-            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#2970FF]/10 hover:bg-[#2970FF]/20 border border-[#2970FF]/30 font-mono text-[10px] uppercase tracking-[0.14em] text-[#F8FAFC] transition-colors cursor-pointer"
+            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary/10 hover:bg-primary/20 border border-primary/30 text-xs font-medium text-on-surface transition-colors cursor-pointer whitespace-nowrap"
           >
-            <Globe className="w-3.5 h-3.5 text-[#CCFF00]" />
+            <Globe className="w-3.5 h-3.5 text-secondary" />
             <span>
-              ACTIVE RAIL: {currencyMeta.code} ({currencyMeta.symbol}) / {currencyMeta.rail}
+              Active rail: {currencyMeta.code} ({currencyMeta.symbol}) / {currencyMeta.rail}
             </span>
           </button>
         </DepthLayer>
 
         {/* Primary 3D Balance Readout */}
         <DepthLayer z={28} className="my-2">
-          <span className="block font-mono text-[10px] uppercase tracking-[0.2em] text-[#8A94A6] mb-2">
-            AVAILABLE LIQUIDITY (BASE USDC)
+          <span className="block text-xs font-medium text-on-surface-variant mb-2">
+            Available liquidity (Base USDC)
           </span>
           <div className="flex items-baseline flex-wrap gap-x-2">
-            <span className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tighter text-[#F8FAFC] tabular-nums leading-none">
+            <span className="font-mono text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tighter text-on-surface tabular-nums leading-none">
               ${wholePart}
             </span>
-            <span className="text-2xl sm:text-4xl md:text-5xl font-bold tracking-tight text-[#8A94A6] tabular-nums leading-none">
+            <span className="font-mono text-2xl sm:text-4xl md:text-5xl font-bold tracking-tight text-on-surface-variant tabular-nums leading-none">
               {decimalPart}
             </span>
-            <span className="ml-2 px-2.5 py-1 rounded-lg bg-[#2970FF]/15 border border-[#2970FF]/35 font-mono text-xs font-bold text-[#2970FF] uppercase tracking-[0.14em]">
+            <span className="ml-2 px-2.5 py-1 rounded-lg bg-primary/15 border border-primary/35 text-xs font-bold text-primary">
               USDC
             </span>
           </div>
@@ -180,20 +170,20 @@ export default function Dashboard() {
         {/* Bottom Vault Telemetry Strip */}
         <DepthLayer
           z={18}
-          className="mt-8 pt-5 border-t border-white/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+          className="mt-8 pt-5 border-t border-primary/15 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
         >
-          <div className="flex items-center gap-4 text-xs text-[#8A94A6]">
+          <div className="flex items-center gap-4 text-xs text-on-surface-variant">
             <div className="flex items-center gap-1.5">
-              <Shield className="w-3.5 h-3.5 text-[#2970FF]" />
-              <span className="font-mono text-[10px] uppercase tracking-[0.12em]">
-                ECIES SECP256K1 ENCRYPTED
+              <Shield className="w-3.5 h-3.5 text-primary" />
+              <span className="text-xs font-medium">
+                ECIES secp256k1 encrypted
               </span>
             </div>
-            <span className="text-white/15">|</span>
+            <span className="text-on-surface/15">|</span>
             <div className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-[#CCFF00]" />
-              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#CCFF00]">
-                MONTHLY CASHBACK ACTIVE
+              <Sparkles className="w-3.5 h-3.5 text-secondary" />
+              <span className="text-xs font-medium text-secondary">
+                Monthly cashback active
               </span>
             </div>
           </div>
@@ -204,9 +194,9 @@ export default function Dashboard() {
               if (address) router.push(`/wallet/${address}`);
               else router.push("/wallet");
             }}
-            className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-[#2970FF] hover:text-[#CCFF00] transition-colors self-start sm:self-auto cursor-pointer"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-secondary transition-colors self-start sm:self-auto cursor-pointer whitespace-nowrap"
           >
-            <span>OPEN BASE WALLET TELEMETRY</span>
+            <span>Open Base wallet telemetry</span>
             <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </DepthLayer>
@@ -215,11 +205,11 @@ export default function Dashboard() {
       {/* SECTION 2: 3D HARDWARE TRIGGER DECK (4 CORE ACTIONS) */}
       <section aria-label="Primary Settlement Actions">
         <div className="flex items-center justify-between mb-3.5 px-1">
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#8A94A6]">
-            EXECUTION CONSOLE // {currencyMeta.rail.toUpperCase()} &amp; CROSS-CHAIN
+          <span className="text-xs font-medium text-on-surface-variant">
+            Execution console · {currencyMeta.rail} &amp; cross-chain
           </span>
-          <span className="font-mono text-[10px] text-[#CCFF00] uppercase tracking-[0.14em]">
-            ZERO GAS FEES
+          <span className="text-xs font-semibold text-secondary">
+            Zero gas fees
           </span>
         </div>
 
@@ -228,25 +218,23 @@ export default function Dashboard() {
           <button
             type="button"
             onClick={() => setActiveModal("scan")}
-            className="group text-left p-1.5 rounded-[24px] bg-gradient-to-b from-[#CCFF00]/25 to-[#2970FF]/10 border border-[#CCFF00]/45 hover:border-[#CCFF00] transition-all duration-300 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.9)] active:scale-[0.98] cursor-pointer"
+            className="group text-left rounded-2xl bg-gradient-to-br from-surface-container to-surface-container-low p-5 border border-secondary/45 hover:border-secondary transition-colors duration-200 shadow-elevated active:scale-[0.98] cursor-pointer flex flex-col justify-between gap-6 whitespace-nowrap"
           >
-            <div className="h-full rounded-[18px] bg-gradient-to-br from-[#111622] to-[#0B0E14] p-5 border border-white/[0.1] shadow-[inset_0_1px_1px_rgba(204,255,0,0.2)] flex flex-col justify-between gap-6">
-              <div className="flex items-center justify-between">
-                <div className="w-11 h-11 rounded-2xl bg-[#CCFF00] text-[#050608] flex items-center justify-center shadow-[0_8px_22px_rgba(204,255,0,0.35)] group-hover:scale-105 transition-transform">
-                  <QrCode className="w-5 h-5 stroke-[2.2]" />
-                </div>
-                <span className="px-2 py-0.5 rounded-full bg-[#CCFF00]/15 border border-[#CCFF00]/35 font-mono text-[9px] font-bold text-[#CCFF00] uppercase tracking-[0.12em]">
-                  INSTANT
-                </span>
+            <div className="flex items-center justify-between">
+              <div className="w-11 h-11 rounded-2xl bg-secondary text-on-secondary flex items-center justify-center shadow-dock-label group-hover:scale-105 transition-transform">
+                <QrCode className="w-5 h-5 stroke-[2.2]" />
               </div>
-              <div>
-                <span className="block font-bold text-base sm:text-lg text-[#F8FAFC] tracking-tight">
-                  Scan &amp; Pay
-                </span>
-                <span className="block font-mono text-[10px] text-[#8A94A6] uppercase tracking-[0.12em] mt-1">
-                  {currencyMeta.code} QR / {currencyMeta.rail}
-                </span>
-              </div>
+              <span className="px-2.5 py-0.5 rounded-full bg-secondary/15 border border-secondary/35 text-[11px] font-bold text-secondary">
+                Instant
+              </span>
+            </div>
+            <div>
+              <span className="block font-bold text-base sm:text-lg text-on-surface tracking-tight">
+                Scan &amp; Pay
+              </span>
+              <span className="block text-xs text-on-surface-variant mt-1">
+                {currencyMeta.code} QR / {currencyMeta.rail}
+              </span>
             </div>
           </button>
 
@@ -254,25 +242,23 @@ export default function Dashboard() {
           <button
             type="button"
             onClick={() => setActiveModal("cashout")}
-            className="group text-left p-1.5 rounded-[24px] bg-[#0B0E14] border border-[#2970FF]/20 hover:border-[#2970FF]/50 transition-all duration-300 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.9)] active:scale-[0.98] cursor-pointer"
+            className="group text-left rounded-2xl bg-surface-container-low hover:bg-surface-container p-5 border border-primary/20 hover:border-primary/50 transition-colors duration-200 shadow-elevated active:scale-[0.98] cursor-pointer flex flex-col justify-between gap-6 whitespace-nowrap"
           >
-            <div className="h-full rounded-[18px] bg-[#0B0E14] p-5 border border-white/[0.06] shadow-[inset_0_1px_1px_rgba(41,112,255,0.12)] flex flex-col justify-between gap-6 group-hover:bg-[#111622] transition-colors">
-              <div className="flex items-center justify-between">
-                <div className="w-11 h-11 rounded-2xl bg-[#111622] border border-[#2970FF]/30 text-[#2970FF] flex items-center justify-center group-hover:border-[#2970FF] transition-colors">
-                  <ArrowUpRight className="w-5 h-5" />
-                </div>
-                <span className="font-mono text-[9px] text-[#8A94A6] uppercase tracking-[0.14em]">
-                  OFF-RAMP
-                </span>
+            <div className="flex items-center justify-between">
+              <div className="w-11 h-11 rounded-2xl bg-surface-container border border-primary/30 text-primary flex items-center justify-center group-hover:border-primary transition-colors">
+                <ArrowUpRight className="w-5 h-5" />
               </div>
-              <div>
-                <span className="block font-bold text-base sm:text-lg text-[#F8FAFC] tracking-tight">
-                  Cash Out
-                </span>
-                <span className="block font-mono text-[10px] text-[#8A94A6] uppercase tracking-[0.12em] mt-1">
-                  USDC TO {currencyMeta.code} BANK
-                </span>
-              </div>
+              <span className="text-[11px] font-medium text-on-surface-variant">
+                Off-ramp
+              </span>
+            </div>
+            <div>
+              <span className="block font-bold text-base sm:text-lg text-on-surface tracking-tight">
+                Cash Out
+              </span>
+              <span className="block text-xs text-on-surface-variant mt-1">
+                USDC to {currencyMeta.code} bank
+              </span>
             </div>
           </button>
 
@@ -280,25 +266,23 @@ export default function Dashboard() {
           <button
             type="button"
             onClick={() => setActiveModal("deposit")}
-            className="group text-left p-1.5 rounded-[24px] bg-[#0B0E14] border border-[#2970FF]/20 hover:border-[#2970FF]/50 transition-all duration-300 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.9)] active:scale-[0.98] cursor-pointer"
+            className="group text-left rounded-2xl bg-surface-container-low hover:bg-surface-container p-5 border border-primary/20 hover:border-primary/50 transition-colors duration-200 shadow-elevated active:scale-[0.98] cursor-pointer flex flex-col justify-between gap-6 whitespace-nowrap"
           >
-            <div className="h-full rounded-[18px] bg-[#0B0E14] p-5 border border-white/[0.06] shadow-[inset_0_1px_1px_rgba(41,112,255,0.12)] flex flex-col justify-between gap-6 group-hover:bg-[#111622] transition-colors">
-              <div className="flex items-center justify-between">
-                <div className="w-11 h-11 rounded-2xl bg-[#111622] border border-[#CCFF00]/30 text-[#CCFF00] flex items-center justify-center group-hover:border-[#CCFF00] transition-colors">
-                  <ArrowDownLeft className="w-5 h-5" />
-                </div>
-                <span className="font-mono text-[9px] text-[#8A94A6] uppercase tracking-[0.14em]">
-                  NEAR 1CLICK
-                </span>
+            <div className="flex items-center justify-between">
+              <div className="w-11 h-11 rounded-2xl bg-surface-container border border-secondary/30 text-secondary flex items-center justify-center group-hover:border-secondary transition-colors">
+                <ArrowDownLeft className="w-5 h-5" />
               </div>
-              <div>
-                <span className="block font-bold text-base sm:text-lg text-[#F8FAFC] tracking-tight">
-                  Deposit
-                </span>
-                <span className="block font-mono text-[10px] text-[#8A94A6] uppercase tracking-[0.12em] mt-1">
-                  15+ CHAINS TO BASE
-                </span>
-              </div>
+              <span className="text-[11px] font-medium text-on-surface-variant">
+                NEAR 1Click
+              </span>
+            </div>
+            <div>
+              <span className="block font-bold text-base sm:text-lg text-on-surface tracking-tight">
+                Deposit
+              </span>
+              <span className="block text-xs text-on-surface-variant mt-1">
+                15+ chains to Base
+              </span>
             </div>
           </button>
 
@@ -306,25 +290,23 @@ export default function Dashboard() {
           <button
             type="button"
             onClick={() => router.push("/create-link")}
-            className="group text-left p-1.5 rounded-[24px] bg-[#0B0E14] border border-[#2970FF]/20 hover:border-[#2970FF]/50 transition-all duration-300 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.9)] active:scale-[0.98] cursor-pointer"
+            className="group text-left rounded-2xl bg-surface-container-low hover:bg-surface-container p-5 border border-primary/20 hover:border-primary/50 transition-colors duration-200 shadow-elevated active:scale-[0.98] cursor-pointer flex flex-col justify-between gap-6 whitespace-nowrap"
           >
-            <div className="h-full rounded-[18px] bg-[#0B0E14] p-5 border border-white/[0.06] shadow-[inset_0_1px_1px_rgba(41,112,255,0.12)] flex flex-col justify-between gap-6 group-hover:bg-[#111622] transition-colors">
-              <div className="flex items-center justify-between">
-                <div className="w-11 h-11 rounded-2xl bg-[#111622] border border-[#2970FF]/30 text-[#2970FF] flex items-center justify-center group-hover:border-[#2970FF] transition-colors">
-                  <Link2 className="w-5 h-5" />
-                </div>
-                <span className="font-mono text-[9px] text-[#8A94A6] uppercase tracking-[0.14em]">
-                  MERCHANT
-                </span>
+            <div className="flex items-center justify-between">
+              <div className="w-11 h-11 rounded-2xl bg-surface-container border border-primary/30 text-primary flex items-center justify-center group-hover:border-primary transition-colors">
+                <Link2 className="w-5 h-5" />
               </div>
-              <div>
-                <span className="block font-bold text-base sm:text-lg text-[#F8FAFC] tracking-tight">
-                  Pay Link
-                </span>
-                <span className="block font-mono text-[10px] text-[#8A94A6] uppercase tracking-[0.12em] mt-1">
-                  SHAREABLE CHECKOUT
-                </span>
-              </div>
+              <span className="text-[11px] font-medium text-on-surface-variant">
+                Merchant
+              </span>
+            </div>
+            <div>
+              <span className="block font-bold text-base sm:text-lg text-on-surface tracking-tight">
+                Pay Link
+              </span>
+              <span className="block text-xs text-on-surface-variant mt-1">
+                Shareable checkout
+              </span>
             </div>
           </button>
         </div>
@@ -334,32 +316,32 @@ export default function Dashboard() {
       <section aria-label="Recent Settlement Activity" className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-1">
           <div>
-            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#8A94A6] block">
-              VERIFIED ON-CHAIN ARCHIVE
-            </span>
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#F8FAFC] mt-0.5">
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-on-surface">
               Settlement Ledger
             </h2>
+            <p className="text-xs text-on-surface-variant mt-0.5">
+              Verified on-chain archive
+            </p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
             {/* Functional Filter Pill Bar */}
-            <div className="p-1 rounded-full bg-[#0B0E14] border border-[#2970FF]/25 flex items-center gap-1">
+            <div className="p-1 rounded-full bg-surface-container-low border border-primary/25 flex items-center gap-1">
               {(
                 [
-                  { id: "all", label: "ALL" },
-                  { id: "payment", label: "PAYMENTS" },
-                  { id: "cashout", label: "CASHOUTS" },
+                  { id: "all", label: "All" },
+                  { id: "payment", label: "Payments" },
+                  { id: "cashout", label: "Cashouts" },
                 ] as { id: HistoryFilter; label: string }[]
               ).map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => setHistoryFilter(tab.id)}
-                  className={`px-3 py-1 rounded-full font-mono text-[10px] uppercase tracking-[0.14em] font-bold transition-colors cursor-pointer ${
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                     historyFilter === tab.id
-                      ? "bg-[#2970FF] text-[#F8FAFC]"
-                      : "text-[#8A94A6] hover:text-[#F8FAFC]"
+                      ? "bg-primary text-on-primary"
+                      : "text-on-surface-variant hover:text-on-surface"
                   }`}
                 >
                   {tab.label}
@@ -370,20 +352,18 @@ export default function Dashboard() {
             <button
               type="button"
               onClick={handleExportCsv}
-              className="px-3.5 py-2 rounded-full bg-[#0B0E14] hover:bg-[#111622] border border-[#2970FF]/25 font-mono text-[10px] uppercase tracking-[0.14em] text-[#CCFF00] flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-3.5 py-2 rounded-full bg-surface-container-low hover:bg-surface-container border border-primary/25 text-xs font-semibold text-secondary flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
               title="Download CSV Audit Log"
             >
               <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">EXPORT CSV</span>
+              <span className="hidden sm:inline">Export CSV</span>
             </button>
           </div>
         </div>
 
-        {/* Double-Bezel Ledger Enclosure */}
-        <div className="p-1.5 rounded-[28px] bg-[#0B0E14]/90 border border-[#2970FF]/20 shadow-[0_24px_60px_-15px_rgba(0,0,0,0.9)]">
-          <div className="rounded-[22px] bg-[#0B0E14] border border-white/[0.06] overflow-hidden">
-            <PaymentHistory filter={historyFilter} />
-          </div>
+        {/* Ledger Enclosure */}
+        <div className="rounded-2xl bg-surface-container-low border border-primary/20 shadow-elevated overflow-hidden">
+          <PaymentHistory filter={historyFilter} />
         </div>
       </section>
     </div>

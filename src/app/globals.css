@@ -231,7 +231,7 @@ input[type=number] {
 
 /* ─── Status Chips ─── */
 .status-completed {
-  color: var(--color-accent);
+  color: var(--color-on-primary-container);
   background: var(--color-primary-container);
 }
 
@@ -241,7 +241,7 @@ input[type=number] {
 }
 
 .status-failed {
-  color: var(--color-error);
+  color: var(--color-on-error-container);
   background: var(--color-error-container);
 }
 
@@ -283,8 +283,8 @@ input[type=number] {
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, #2970FF, #CCFF00, #2970FF, transparent);
-  box-shadow: 0 0 14px rgba(204, 255, 0, 0.55);
+  background: linear-gradient(90deg, transparent, var(--color-accent), var(--color-accent-2), var(--color-accent), transparent);
+  box-shadow: var(--shadow-card);
   animation: scanner-sweep 2.4s ease-in-out infinite;
   pointer-events: none;
 }

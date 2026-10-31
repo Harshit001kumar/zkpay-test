@@ -430,34 +430,32 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[70] bg-[#050608] text-[#e5e5e8] font-sans overflow-y-auto">
-      {/* Floating Double-Bezel Header */}
+    <div className="fixed inset-0 z-[70] bg-surface text-on-surface font-sans overflow-y-auto">
+      {/* Floating Header */}
       <header className="sticky top-3.5 z-50 px-4 sm:px-6 pointer-events-none">
         <div className="max-w-lg mx-auto">
-          <div className="pointer-events-auto p-1 rounded-full bg-white/[0.03] border border-white/[0.08] backdrop-blur-2xl shadow-[0_20px_50px_rgba(0,0,0,0.85)]">
-            <div className="px-4 py-2 rounded-full bg-[#0B0E14]/95 border border-white/[0.06] flex items-center justify-between">
-              <button
-                onClick={onBack}
-                aria-label="Go back"
-                className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] font-bold text-[#2970FF] hover:text-white transition-colors active:scale-95 cursor-pointer"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>VAULT</span>
-              </button>
-              <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#8d90a1] font-bold">
-                OFF-RAMP // {currencyMeta.code}
-              </span>
-              <span className="w-2 h-2 rounded-full bg-[#CCFF00]" />
-            </div>
+          <div className="pointer-events-auto px-4 py-2.5 rounded-full bg-surface-container-low/95 border border-primary/25 backdrop-blur-xl shadow-elevated flex items-center justify-between">
+            <button
+              onClick={onBack}
+              aria-label="Go back"
+              className="inline-flex items-center gap-2 text-xs font-bold text-primary hover:text-on-surface transition-colors active:scale-95 cursor-pointer whitespace-nowrap"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Vault</span>
+            </button>
+            <span className="text-xs font-semibold text-on-surface-variant">
+              Off-ramp · {currencyMeta.code}
+            </span>
+            <span className="w-2 h-2 rounded-full bg-secondary" />
           </div>
         </div>
       </header>
 
       <main className="w-full max-w-lg mx-auto px-4 sm:px-6 pt-6 pb-40 flex flex-col gap-3 relative z-10">
         {initError && (
-          <div className="bg-[#f87171]/10 text-[#f87171] p-4 rounded-2xl text-xs mb-2 border border-[#f87171]/30 font-mono">
-            <span className="font-bold block mb-1 uppercase tracking-[0.14em] text-[10px]">
-              PROTOCOL LIMIT NOTICE
+          <div className="bg-error/10 text-error p-4 rounded-2xl text-xs mb-2 border border-error/30">
+            <span className="font-bold block mb-1 text-xs">
+              Protocol limit notice
             </span>
             {initError}
           </div>
@@ -466,138 +464,132 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         {status === "input" && (
           <>
             {/* Module 1: Source USDC Input Well */}
-            <div className="p-1.5 rounded-[28px] bg-white/[0.025] border border-white/[0.08] shadow-[0_24px_60px_-15px_rgba(0,0,0,0.85)]">
-              <section className="bg-[#0B0E14] border border-white/[0.06] p-6 sm:p-7 rounded-[22px] flex flex-col items-center text-center">
-                <div className="flex justify-between items-center w-full mb-4">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8d90a1] font-bold">
-                    SOURCE LIQUIDITY (BASE USDC)
-                  </span>
-                  {maxSellable !== null && (
-                    <button
-                      type="button"
-                      onClick={() => setAmountStr(String(maxSellable))}
-                      className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#2970FF] hover:text-white px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/[0.08] font-bold transition-colors cursor-pointer"
-                    >
-                      MAX: ${maxSellable}
-                    </button>
-                  )}
-                </div>
+            <section className="bg-surface-container-low border border-primary/20 p-6 sm:p-7 rounded-3xl shadow-elevated flex flex-col items-center text-center">
+              <div className="flex justify-between items-center w-full mb-4">
+                <span className="text-xs font-semibold text-on-surface-variant">
+                  Source liquidity (Base USDC)
+                </span>
+                {maxSellable !== null && (
+                  <button
+                    type="button"
+                    onClick={() => setAmountStr(String(maxSellable))}
+                    className="text-xs text-primary hover:text-on-surface px-2.5 py-1 rounded-full bg-surface-container border border-primary/20 font-bold transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    Max: ${maxSellable}
+                  </button>
+                )}
+              </div>
 
-                <div className="w-full py-5 px-4 rounded-2xl bg-[#111622] border border-white/[0.08] shadow-[inset_0_2px_10px_rgba(0,0,0,0.8)] flex flex-col items-center">
-                  <div className="flex items-baseline justify-center">
-                    <span className="text-3xl sm:text-4xl font-extrabold text-[#2970FF] select-none mr-1">
-                      $
-                    </span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={amountStr}
-                      onChange={handleAmountChange}
-                      className="bg-transparent border-none focus:ring-0 focus:outline-none text-5xl sm:text-6xl font-black p-0 text-center text-white tracking-tight w-48 tabular-nums"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#8d90a1] mt-2">
-                    USDC ON BASE MAINNET
+              <div className="w-full py-5 px-4 rounded-2xl bg-surface-container border border-primary/15 flex flex-col items-center">
+                <div className="flex items-baseline justify-center">
+                  <span className="text-3xl sm:text-4xl font-extrabold text-primary select-none mr-1">
+                    $
                   </span>
-                  {maxSellable !== null && amountUsdc > maxSellable && (
-                    <p className="font-mono text-[10px] text-[#f87171] mt-2 font-bold uppercase tracking-[0.12em]">
-                      Exceeds order limit ({maxSellable} USDC)
-                    </p>
-                  )}
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={amountStr}
+                    onChange={handleAmountChange}
+                    className="bg-transparent border-none focus:ring-0 focus:outline-none font-mono text-5xl sm:text-6xl font-black p-0 text-center text-on-surface tracking-tight w-48 tabular-nums"
+                    placeholder="0.00"
+                  />
                 </div>
-              </section>
-            </div>
+                <span className="text-xs text-on-surface-variant mt-2">
+                  USDC on Base Mainnet
+                </span>
+                {maxSellable !== null && amountUsdc > maxSellable && (
+                  <p className="text-xs text-error mt-2 font-bold">
+                    Exceeds order limit ({maxSellable} USDC)
+                  </p>
+                )}
+              </div>
+            </section>
 
             {/* Connector Node */}
             <div className="flex justify-center -my-1.5 relative z-20">
-              <div className="w-9 h-9 rounded-xl bg-[#0B0E14] border border-white/[0.12] flex items-center justify-center text-[#2970FF] shadow-lg">
+              <div className="w-9 h-9 rounded-xl bg-surface-container-low border border-primary/25 flex items-center justify-center text-primary shadow-dock-label">
                 <ArrowDown className="w-4 h-4" />
               </div>
             </div>
 
             {/* Module 2: Conversion Telemetry */}
-            <div className="p-1.5 rounded-[28px] bg-white/[0.025] border border-white/[0.08] shadow-[0_24px_60px_-15px_rgba(0,0,0,0.85)]">
-              <section className="bg-[#0B0E14] border border-white/[0.06] p-6 sm:p-7 rounded-[22px] relative overflow-hidden">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8d90a1] font-bold">
-                    ESTIMATED PAYOUT
-                  </span>
-                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#CCFF00] font-semibold">
-                    {currencyMeta.rail} RAIL
-                  </span>
-                </div>
+            <section className="bg-surface-container-low border border-primary/20 p-6 sm:p-7 rounded-3xl shadow-elevated relative overflow-hidden">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-xs font-semibold text-on-surface-variant">
+                  Estimated payout
+                </span>
+                <span className="text-xs text-secondary font-semibold">
+                  {currencyMeta.rail} rail
+                </span>
+              </div>
 
-                <div className="py-4 px-4 rounded-2xl bg-[#111622] border border-white/[0.07] text-center mb-5">
-                  <span className="text-4xl sm:text-5xl font-extrabold text-white tracking-tight tabular-nums block">
-                    {currencyMeta.symbol}
-                    {estimatedFiat > 0 ? estimatedFiat.toFixed(2) : "0.00"}
-                  </span>
-                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8d90a1] mt-1 block">
-                    {currencyMeta.name} ({currencyMeta.code})
-                  </span>
-                </div>
+              <div className="py-4 px-4 rounded-2xl bg-surface-container border border-primary/15 text-center mb-5">
+                <span className="font-mono text-4xl sm:text-5xl font-extrabold text-on-surface tracking-tight tabular-nums block">
+                  {currencyMeta.symbol}
+                  {estimatedFiat > 0 ? estimatedFiat.toFixed(2) : "0.00"}
+                </span>
+                <span className="text-xs text-on-surface-variant mt-1 block">
+                  {currencyMeta.name} ({currencyMeta.code})
+                </span>
+              </div>
 
-                <div className="space-y-2.5 pt-2 text-xs font-mono tabular-nums">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[#8d90a1]">ORACLE RATE</span>
-                    <span className="text-white">{rateDisplay}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-[#8d90a1]">PLATFORM FEE (1%)</span>
-                    <span className="text-white">${feeUsdc.toFixed(2)} USDC</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[#8d90a1]">PROTOCOL FEE</span>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.04] text-[#8d90a1]">
-                        {fees.isSmallOrder ? "<= $10 ORDERS" : "FREE > $10"}
-                      </span>
-                    </div>
-                    <span className={fees.isSmallOrder ? "text-white" : "text-[#CCFF00] font-bold"}>
-                      {fees.isSmallOrder ? `$${protocolFeeUsdc.toFixed(2)} USDC` : "FREE"}
+              <div className="space-y-2.5 pt-2 text-xs tabular-nums">
+                <div className="flex justify-between items-center">
+                  <span className="text-on-surface-variant">Oracle rate</span>
+                  <span className="font-mono text-on-surface">{rateDisplay}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-on-surface-variant">Platform fee (1%)</span>
+                  <span className="font-mono text-on-surface">${feeUsdc.toFixed(2)} USDC</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-on-surface-variant">Protocol fee</span>
+                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant">
+                      {fees.isSmallOrder ? "<= $10 orders" : "Free > $10"}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center pt-2.5 border-t border-white/[0.07]">
-                    <span className="text-[#2970FF] font-bold">TOTAL DEBITED</span>
-                    <span className="text-white font-bold">${totalUsdc.toFixed(2)} USDC</span>
-                  </div>
+                  <span className={fees.isSmallOrder ? "font-mono text-on-surface" : "text-secondary font-bold"}>
+                    {fees.isSmallOrder ? `$${protocolFeeUsdc.toFixed(2)} USDC` : "Free"}
+                  </span>
                 </div>
-              </section>
-            </div>
+                <div className="flex justify-between items-center pt-2.5 border-t border-primary/15">
+                  <span className="text-primary font-bold">Total debited</span>
+                  <span className="font-mono text-on-surface font-bold">${totalUsdc.toFixed(2)} USDC</span>
+                </div>
+              </div>
+            </section>
 
             {/* Module 3: Destination Account */}
-            <div className="p-1.5 rounded-[28px] bg-white/[0.025] border border-white/[0.08] shadow-[0_24px_60px_-15px_rgba(0,0,0,0.85)] mt-1">
-              <section className="bg-[#0B0E14] border border-white/[0.06] p-6 rounded-[22px]">
-                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8d90a1] font-bold block mb-3">
-                  DESTINATION ACCOUNT ({currencyMeta.rail})
-                </span>
-                <div className="flex items-center gap-3.5 p-3.5 rounded-2xl bg-[#111622] border border-white/[0.08] focus-within:border-[#2970FF]/50 transition-colors">
-                  <div className="w-10 h-10 bg-white/[0.04] rounded-xl flex items-center justify-center border border-white/[0.08] text-[#2970FF] shrink-0">
-                    <Building2 className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <input
-                      type="text"
-                      value={upiId}
-                      onChange={(e) => setUpiId(e.target.value)}
-                      placeholder={currencyMeta.placeholder}
-                      className="w-full bg-transparent border-none p-0 text-sm sm:text-base font-mono text-white focus:ring-0 outline-none placeholder:text-[#8d90a1]/40 truncate"
-                    />
-                    {upiId && !isValidPayoutId() && (
-                      <p className="font-mono text-[10px] text-[#f87171] mt-1 font-bold uppercase tracking-[0.12em] truncate">
-                        Invalid {currencyMeta.rail} identifier format
-                      </p>
-                    )}
-                  </div>
+            <section className="bg-surface-container-low border border-primary/20 p-6 rounded-3xl shadow-elevated mt-1">
+              <span className="text-xs font-semibold text-on-surface-variant block mb-3">
+                Destination account ({currencyMeta.rail})
+              </span>
+              <div className="flex items-center gap-3.5 p-3.5 rounded-2xl bg-surface-container border border-primary/20 focus-within:border-primary/50 transition-colors">
+                <div className="w-10 h-10 bg-surface-container-low rounded-xl flex items-center justify-center border border-primary/20 text-primary shrink-0">
+                  <Building2 className="w-5 h-5" />
                 </div>
-              </section>
-            </div>
+                <div className="flex-1 min-w-0">
+                  <input
+                    type="text"
+                    value={upiId}
+                    onChange={(e) => setUpiId(e.target.value)}
+                    placeholder={currencyMeta.placeholder}
+                    className="w-full bg-transparent border-none p-0 text-sm sm:text-base font-mono text-on-surface focus:ring-0 outline-none placeholder:text-on-surface-variant/40 truncate"
+                  />
+                  {upiId && !isValidPayoutId() && (
+                    <p className="text-xs text-error mt-1 font-bold truncate">
+                      Invalid {currencyMeta.rail} identifier format
+                    </p>
+                  )}
+                </div>
+              </div>
+            </section>
 
             {/* Security Telemetry Badge */}
-            <div className="mt-2 px-4 py-3.5 rounded-2xl border border-white/[0.07] flex gap-3 items-start bg-[#0B0E14]/70">
-              <ShieldCheck className="w-4 h-4 text-[#CCFF00] shrink-0 mt-0.5" />
-              <p className="font-mono text-[10px] leading-relaxed text-[#8d90a1]">
+            <div className="mt-2 px-4 py-3.5 rounded-2xl border border-primary/15 flex gap-3 items-start bg-surface-container-low/70">
+              <ShieldCheck className="w-4 h-4 text-secondary shrink-0 mt-0.5" />
+              <p className="text-xs leading-relaxed text-on-surface-variant">
                 ECIES secp256k1 encrypted payout routing. Your banking identifier is never stored on-chain in plaintext.
               </p>
             </div>
@@ -605,111 +597,109 @@ export default function CashoutFlow({ onBack }: { onBack?: () => void }) {
         )}
 
         {status !== "input" && (
-          <div className="p-1.5 rounded-[32px] bg-white/[0.025] border border-white/[0.08] shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)]">
-            <section className="bg-[#0B0E14] border border-white/[0.07] p-8 sm:p-10 rounded-[26px] flex flex-col items-center text-center">
-              {status !== "error" && (
-                <div className="w-16 h-16 rounded-2xl bg-[#2970FF]/10 border border-[#2970FF]/30 flex items-center justify-center text-[#2970FF] mb-6">
-                  <Loader2 className="w-8 h-8 animate-spin" />
-                </div>
-              )}
+          <section className="bg-surface-container-low border border-primary/20 p-8 sm:p-10 rounded-3xl shadow-elevated flex flex-col items-center text-center">
+            {status !== "error" && (
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/30 flex items-center justify-center text-primary mb-6">
+                <Loader2 className="w-8 h-8 animate-spin" />
+              </div>
+            )}
 
-              {status === "processing" && (
-                <>
-                  <h3 className="text-xl font-bold mb-1.5 text-white">Escrowing USDC on Base...</h3>
-                  <p className="text-xs font-mono text-[#8d90a1]">
-                    Executing gasless UserOperation via P2P Diamond contract
-                  </p>
-                </>
-              )}
+            {status === "processing" && (
+              <>
+                <h3 className="text-xl font-bold mb-1.5 text-on-surface">Escrowing USDC on Base…</h3>
+                <p className="text-xs text-on-surface-variant">
+                  Executing gasless UserOperation via P2P Diamond contract
+                </p>
+              </>
+            )}
 
-              {status === "matching" && (
-                <>
-                  <h3 className="text-xl font-bold mb-1.5 text-white">Matching Liquidity Node...</h3>
-                  <p className="text-xs font-mono text-[#8d90a1]">
-                    Selecting optimal {currencyMeta.rail} settlement node (typically 20 to 90s)
-                  </p>
-                  {(orderId || pendingOrderData?.orderId) && (
-                    <div className="mt-5 px-4 py-2 rounded-full bg-[#111622] border border-white/[0.1] text-xs font-mono tabular-nums text-[#2970FF] inline-flex items-center gap-2">
-                      <span className="text-[#8d90a1]">ORDER ID:</span>
-                      <strong className="text-white font-bold">
-                        #{orderId ? orderId.toString() : pendingOrderData?.orderId}
-                      </strong>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {status === "paying" && (
-                <>
-                  <h3 className="text-xl font-bold mb-1.5 text-white">
-                    Disbursing {currencyMeta.code} Payout...
-                  </h3>
-                  <p className="text-xs font-mono text-[#8d90a1]">
-                    Matched LP node is transferring {currencyMeta.code} via {currencyMeta.rail} rails.
-                  </p>
-                  {(orderId || pendingOrderData?.orderId) && (
-                    <div className="mt-5 px-4 py-2 rounded-full bg-[#111622] border border-white/[0.1] text-xs font-mono tabular-nums text-[#2970FF] inline-flex items-center gap-2">
-                      <span className="text-[#8d90a1]">ORDER ID:</span>
-                      <strong className="text-white font-bold">
-                        #{orderId ? orderId.toString() : pendingOrderData?.orderId}
-                      </strong>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {status === "error" && (
-                <div className="flex flex-col items-center max-w-sm mx-auto text-center">
-                  <div className="w-14 h-14 rounded-2xl bg-[#f87171]/10 border border-[#f87171]/30 flex items-center justify-center text-[#f87171] mb-4">
-                    <AlertCircle className="w-7 h-7" />
+            {status === "matching" && (
+              <>
+                <h3 className="text-xl font-bold mb-1.5 text-on-surface">Matching Liquidity Node…</h3>
+                <p className="text-xs text-on-surface-variant">
+                  Selecting optimal {currencyMeta.rail} settlement node (typically 20 to 90s)
+                </p>
+                {(orderId || pendingOrderData?.orderId) && (
+                  <div className="mt-5 px-4 py-2 rounded-full bg-surface-container border border-primary/20 text-xs tabular-nums text-primary inline-flex items-center gap-2">
+                    <span className="text-on-surface-variant">Order ID:</span>
+                    <strong className="font-mono text-on-surface font-bold">
+                      #{orderId ? orderId.toString() : pendingOrderData?.orderId}
+                    </strong>
                   </div>
-                  <h3 className="text-xl font-bold mb-2 text-[#f87171]">Cashout Notice</h3>
-                  <p className="text-xs font-mono text-[#8d90a1] mb-7 leading-relaxed">{error}</p>
-                  <div className="flex flex-col sm:flex-row gap-3 w-full justify-center">
-                    {pendingOrderData && (
-                      <button
-                        onClick={() => {
-                          setError(null);
-                          setStatus("matching");
-                          resumePendingOrder(
-                            BigInt(pendingOrderData.orderId),
-                            pendingOrderData.upiId,
-                            pendingOrderData.hash,
-                            pendingOrderData
-                          );
-                        }}
-                        className="px-5 py-3 rounded-xl bg-[#2970FF] text-[#050608] font-mono uppercase tracking-[0.12em] font-bold text-xs hover:bg-white transition-colors cursor-pointer"
-                      >
-                        Retry Payload Delivery
-                      </button>
-                    )}
+                )}
+              </>
+            )}
+
+            {status === "paying" && (
+              <>
+                <h3 className="text-xl font-bold mb-1.5 text-on-surface">
+                  Disbursing {currencyMeta.code} Payout…
+                </h3>
+                <p className="text-xs text-on-surface-variant">
+                  Matched LP node is transferring {currencyMeta.code} via {currencyMeta.rail} rails.
+                </p>
+                {(orderId || pendingOrderData?.orderId) && (
+                  <div className="mt-5 px-4 py-2 rounded-full bg-surface-container border border-primary/20 text-xs tabular-nums text-primary inline-flex items-center gap-2">
+                    <span className="text-on-surface-variant">Order ID:</span>
+                    <strong className="font-mono text-on-surface font-bold">
+                      #{orderId ? orderId.toString() : pendingOrderData?.orderId}
+                    </strong>
+                  </div>
+                )}
+              </>
+            )}
+
+            {status === "error" && (
+              <div className="flex flex-col items-center max-w-sm mx-auto text-center">
+                <div className="w-14 h-14 rounded-2xl bg-error/10 border border-error/30 flex items-center justify-center text-error mb-4">
+                  <AlertCircle className="w-7 h-7" />
+                </div>
+                <h3 className="text-xl font-bold mb-2 text-error">Cashout Notice</h3>
+                <p className="text-xs text-on-surface-variant mb-7 leading-relaxed">{error}</p>
+                <div className="flex flex-col sm:flex-row gap-3 w-full justify-center">
+                  {pendingOrderData && (
                     <button
                       onClick={() => {
-                        localStorage.removeItem("pending_cashout_order");
-                        setPendingOrderData(null);
-                        setStatus("input");
+                        setError(null);
+                        setStatus("matching");
+                        resumePendingOrder(
+                          BigInt(pendingOrderData.orderId),
+                          pendingOrderData.upiId,
+                          pendingOrderData.hash,
+                          pendingOrderData
+                        );
                       }}
-                      className="px-5 py-3 rounded-xl border border-white/[0.15] text-white font-mono uppercase tracking-[0.12em] text-xs hover:bg-white/[0.06] transition-colors cursor-pointer"
+                      className="px-5 py-3 rounded-xl bg-primary text-on-primary font-bold text-xs hover:brightness-110 transition-colors cursor-pointer whitespace-nowrap"
                     >
-                      {pendingOrderData ? "Start New Order" : "Try Again"}
+                      Retry Payload Delivery
                     </button>
-                  </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem("pending_cashout_order");
+                      setPendingOrderData(null);
+                      setStatus("input");
+                    }}
+                    className="px-5 py-3 rounded-xl border border-primary/25 text-on-surface text-xs font-semibold hover:bg-surface-container transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    {pendingOrderData ? "Start New Order" : "Try Again"}
+                  </button>
                 </div>
-              )}
-            </section>
-          </div>
+              </div>
+            )}
+          </section>
         )}
       </main>
 
       {/* Bottom Action Bar */}
       {status === "input" && (
-        <div className="fixed bottom-0 left-0 w-full px-4 sm:px-6 py-5 z-[60] bg-gradient-to-t from-[#050608] via-[#050608]/95 to-transparent">
+        <div className="fixed bottom-0 left-0 w-full px-4 sm:px-6 py-5 z-[60] bg-gradient-to-t from-surface via-surface/95 to-transparent">
           <div className="max-w-lg mx-auto">
             <button
               onClick={handleCashout}
               disabled={!isFormValid || !sellPrice}
-              className={`w-full py-4 rounded-2xl bg-gradient-to-b from-[#d8def8] to-[#a7add2] text-[#050608] font-mono uppercase tracking-[0.14em] text-xs font-bold transition-all flex items-center justify-center gap-2.5 shadow-[0_12px_30px_rgba(192,198,222,0.25)] group cursor-pointer ${
-                !isFormValid ? "opacity-40 cursor-not-allowed" : "hover:from-white hover:to-white active:scale-[0.98]"
+              className={`w-full py-4 rounded-2xl bg-secondary text-on-secondary text-xs font-bold transition-colors flex items-center justify-center gap-2.5 shadow-card group cursor-pointer whitespace-nowrap ${
+                !isFormValid ? "opacity-40 cursor-not-allowed" : "hover:brightness-110 active:scale-[0.98]"
               }`}
             >
               <span>Confirm {currencyMeta.code} Cashout</span>
