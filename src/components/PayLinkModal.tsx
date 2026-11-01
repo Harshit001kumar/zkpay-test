@@ -3,9 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { motion, AnimatePresence } from "framer-motion";
-import { SpotlightCard } from "@/components/ui/SpotlightCard";
-import { ShinyText } from "@/components/ui/ShinyText";
-import { ShimmerButton } from "@/components/ui/ShimmerButton";
 import {
   Link2,
   X,
@@ -30,8 +27,6 @@ interface PayLinkModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
-const PRESET_AMOUNTS = [500, 1000, 2500, 5000];
 
 export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
   const { authenticated, getAccessToken } = usePrivy();
@@ -278,7 +273,7 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
 
   const shareWhatsApp = (url: string, amt: string, pinCode?: string) => {
     const text = pinCode
-      ? `You have a claimable payout of ${amt} on ZkPay! Open link to claim: ${url} (PIN: ${pinCode})`
+      ? `You have a claimable payout of ${amt} on ZkPay. Open link to claim: ${url} (PIN: ${pinCode})`
       : `Pay ${amt} with Crypto on Base Mainnet: ${url}`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
   };
@@ -323,65 +318,72 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
               onClose();
               resetForm();
             }}
-            className="absolute inset-0 bg-surface-container-lowest/80 "
+            className="absolute inset-0 bg-surface/80 backdrop-blur-sm"
           />
 
           {/* Modal Container */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            initial={{ opacity: 0, scale: 0.96, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            exit={{ opacity: 0, scale: 0.96, y: 16 }}
             transition={{ type: "spring", stiffness: 350, damping: 28 }}
             className="relative w-full max-w-lg z-10"
           >
-            <SpotlightCard className="p-6 md:p-8 border border-white/20 bg-surface/95">
+            <div className="p-6 sm:p-7 rounded-3xl bg-surface-container-low border border-outline-variant/20 shadow-elevated">
               {/* Header */}
-              <div className="flex items-center justify-between pb-4 mb-4 border-b border-white/10">
+              <div className="flex items-center justify-between pb-4 mb-4 border-b border-outline-variant/15">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-white/5 border border-white/15 flex items-center justify-center text-primary">
-                    <Link2 className="w-4 h-4" />
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/25 flex items-center justify-center text-primary shrink-0">
+                    <Link2 className="w-5 h-5" />
                   </div>
                   <div>
-                    <ShinyText
-                      text="PAY LINK ENGINE"
-                      className="font-label-caps text-[10px] tracking-normal font-bold block"
-                    />
-                    <p className="text-xs text-on-surface-variant">Invoices & Escrow Disbursements</p>
+                    <h2 className="text-base font-bold text-on-surface tracking-tight">
+                      Pay Link Engine
+                    </h2>
+                    <p className="text-xs text-on-surface-variant">
+                      Invoices &amp; Escrow Disbursements
+                    </p>
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => {
                     onClose();
                     resetForm();
                   }}
-                  className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 text-on-surface-variant hover:text-white flex items-center justify-center transition-colors active:scale-95"
+                  className="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface flex items-center justify-center transition-colors active:scale-95 cursor-pointer"
+                  aria-label="Close modal"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* Top Sub-Navigation: Create vs My Links */}
-              <div className="flex items-center gap-2 mb-4">
+              {/* Sub-Navigation: Create vs My Links */}
+              <div className="flex items-center gap-1.5 mb-5 p-1 rounded-xl bg-surface border border-outline-variant/15">
                 <button
                   type="button"
                   onClick={() => setMainTab("create")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-label-caps tracking-normal font-bold transition-colors ${
-                    mainTab === "create" ? "bg-white/15 text-white" : "text-on-surface-variant hover:text-white"
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                    mainTab === "create"
+                      ? "bg-primary text-on-primary"
+                      : "text-on-surface-variant hover:text-on-surface"
                   }`}
                 >
-                  CREATE LINK
+                  Create link
                 </button>
                 {authenticated && (
                   <button
                     type="button"
                     onClick={() => setMainTab("history")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-label-caps tracking-normal font-bold transition-colors flex items-center gap-1.5 ${
-                      mainTab === "history" ? "bg-white/15 text-white" : "text-on-surface-variant hover:text-white"
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                      mainTab === "history"
+                        ? "bg-primary text-on-primary"
+                        : "text-on-surface-variant hover:text-on-surface"
                     }`}
                   >
-                    <span>MY LINKS</span>
+                    <span>My links</span>
                     {myLinks.length > 0 && (
-                      <span className="px-1.5 py-0.2 rounded-full bg-primary/20 text-primary text-[10px] font-sans tabular-nums">
+                      <span className="px-1.5 py-0.5 rounded-full bg-surface-container font-mono text-[10px] tabular-nums">
                         {myLinks.length}
                       </span>
                     )}
@@ -393,50 +395,44 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
               {mainTab === "history" ? (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="font-label-caps text-[10px] text-on-surface-variant tracking-normal font-bold">
-                      YOUR CREATED LINKS
+                    <span className="text-xs font-semibold text-on-surface-variant">
+                      Your created links
                     </span>
                     <button
                       type="button"
                       onClick={loadMyLinks}
-                      className="text-primary hover:text-white text-xs flex items-center gap-1 font-sans tabular-nums"
+                      className="text-primary hover:text-on-surface text-xs font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                     >
-                      <RefreshCw className={`w-3 h-3 ${isLoadingLinks ? "animate-spin" : ""}`} />
+                      <RefreshCw className={`w-3.5 h-3.5 ${isLoadingLinks ? "motion-safe:animate-spin" : ""}`} />
                       <span>Refresh</span>
                     </button>
                   </div>
 
                   {isLoadingLinks ? (
-                    <div className="py-12 flex flex-col items-center justify-center gap-2 text-center text-xs text-outline">
-                      <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    <div className="py-12 flex flex-col items-center justify-center gap-2 text-center text-xs text-on-surface-variant">
+                      <div className="w-6 h-6 border-2 border-secondary border-t-transparent rounded-full motion-safe:animate-spin" />
                       <span>Loading your links…</span>
                     </div>
                   ) : myLinks.length === 0 ? (
-                    <div className="py-12 text-center text-xs text-outline border border-dashed border-white/10 rounded-xl">
-                      No links created yet. Click &quot;Create Link&quot; to generate your first invoice or escrow payout.
+                    <div className="py-12 px-4 text-center text-xs text-on-surface-variant border border-dashed border-outline-variant/25 rounded-2xl">
+                      No links created yet. Click &quot;Create link&quot; to generate your first invoice or payout.
                     </div>
                   ) : (
-                    <div className="max-h-[360px] overflow-y-auto space-y-2.5 pr-1">
+                    <div className="max-h-[340px] overflow-y-auto space-y-2.5 pr-1">
                       {myLinks.map((l) => (
                         <div
                           key={l.id}
-                          className="p-3.5 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-between gap-3 text-xs"
+                          className="p-3.5 rounded-2xl bg-surface border border-outline-variant/15 flex items-center justify-between gap-3 text-xs"
                         >
                           <div className="space-y-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span
-                                className={`px-1.5 py-0.5 rounded text-[9px] font-sans tabular-nums font-bold  ${
-                                  l.mode === "disburse"
-                                    ? "bg-primary/15 text-primary border border-primary/30"
-                                    : "bg-primary/15 text-primary border border-primary/30"
-                                }`}
-                              >
+                              <span className="px-2 py-0.5 rounded-md bg-primary/15 text-primary border border-primary/25 text-[10px] font-semibold">
                                 {l.mode === "disburse" ? "Claimable" : "Invoice"}
                               </span>
                               <span
-                                className={`px-1.5 py-0.5 rounded text-[9px] font-sans tabular-nums font-semibold  ${
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${
                                   l.status === "PAID"
-                                    ? "bg-success/15 text-success"
+                                    ? "bg-secondary/15 text-secondary"
                                     : l.status === "PIN_LOCKED"
                                     ? "bg-error/15 text-error"
                                     : l.status === "ACTIVE"
@@ -447,9 +443,14 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
                                 {l.status}
                               </span>
                             </div>
-                            <p className="font-semibold text-on-surface truncate">{l.title}</p>
-                            <p className="font-sans tabular-nums text-[11px] text-primary">
-                              ₹{l.amountINR} <span className="text-outline">({l.estimatedUsdc})</span>
+                            <p className="font-bold text-sm text-on-surface truncate">
+                              {l.title}
+                            </p>
+                            <p className="font-mono text-xs text-primary tabular-nums">
+                              ₹{l.amountINR}{" "}
+                              <span className="text-on-surface-variant">
+                                ({l.estimatedUsdc})
+                              </span>
                             </p>
                           </div>
 
@@ -458,10 +459,10 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
                               type="button"
                               onClick={() => copyToClipboard(l.payUrl, l.id)}
                               title="Copy URL"
-                              className="p-2 rounded-lg bg-white/5 hover:bg-white/15 text-on-surface transition-colors"
+                              className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface transition-colors cursor-pointer"
                             >
                               {copiedId === l.id ? (
-                                <Check className="w-3.5 h-3.5 text-success" />
+                                <Check className="w-3.5 h-3.5 text-secondary" />
                               ) : (
                                 <Copy className="w-3.5 h-3.5" />
                               )}
@@ -471,7 +472,7 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
                               target="_blank"
                               rel="noreferrer"
                               title="Open Checkout"
-                              className="p-2 rounded-lg bg-white/5 hover:bg-white/15 text-on-surface transition-colors"
+                              className="p-2 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface transition-colors"
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
                             </a>
@@ -480,7 +481,7 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
                                 type="button"
                                 onClick={() => handleCancelLink(l.id)}
                                 title="Deactivate Link"
-                                className="p-2 rounded-lg bg-error/10 hover:bg-error/25 text-error transition-colors"
+                                className="p-2 rounded-xl bg-error/10 hover:bg-error/20 text-error transition-colors cursor-pointer"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -496,58 +497,66 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
                 <div>
                   {!generatedLink ? (
                     <form onSubmit={handleCreate} className="space-y-4">
-                      {/* Mode Selector Tabs */}
-                      <div className="grid grid-cols-2 p-1 rounded-xl bg-white/[0.04] border border-white/10 mb-2">
+                      {/* Mode Selector */}
+                      <div className="grid grid-cols-2 p-1 rounded-xl bg-surface border border-outline-variant/15 gap-1">
                         <button
                           type="button"
                           onClick={() => setMode("request")}
-                          className={`py-2 rounded-lg text-xs font-label-caps tracking-normal font-bold transition-colors ${
-                            mode === "request" ? "bg-on-surface text-surface shadow-md" : "text-on-surface-variant hover:text-white"
+                          className={`py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                            mode === "request"
+                              ? "bg-secondary text-on-secondary"
+                              : "text-on-surface-variant hover:text-on-surface"
                           }`}
                         >
-                          REQUEST INVOICE
+                          Request invoice
                         </button>
                         <button
                           type="button"
                           onClick={() => setMode("disburse")}
-                          className={`py-2 rounded-lg text-xs font-label-caps tracking-normal font-bold transition-colors ${
-                            mode === "disburse" ? "bg-on-surface text-surface shadow-md" : "text-on-surface-variant hover:text-white"
+                          className={`py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                            mode === "disburse"
+                              ? "bg-secondary text-on-secondary"
+                              : "text-on-surface-variant hover:text-on-surface"
                           }`}
                         >
-                          SEND CLAIMABLE LINK
+                          Send claimable link
                         </button>
                       </div>
 
                       {/* Title */}
                       <div>
-                        <label className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold block mb-1.5">
-                          {mode === "disburse" ? "PAYOUT TITLE / REASON" : "INVOICE / PRODUCT TITLE"}
+                        <label className="text-xs font-semibold text-on-surface-variant block mb-1">
+                          {mode === "disburse" ? "Payout title or reason" : "Invoice or product title"}
                         </label>
                         <input
                           type="text"
-                          placeholder={mode === "disburse" ? "e.g. Bounty, Team Payout, Gift" : "e.g. Consulting, Invoice #104"}
+                          placeholder={
+                            mode === "disburse"
+                              ? "e.g. Bounty, Team Payout, Gift"
+                              : "e.g. Consulting, Invoice #104"
+                          }
                           value={title}
                           onChange={(e) => setTitle(e.target.value)}
-                          className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-white/15 text-on-surface text-sm placeholder-outline focus:outline-none focus:border-primary transition-colors"
+                          className="w-full px-4 py-2.5 rounded-xl bg-surface border border-outline-variant/20 text-on-surface text-sm placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary transition-colors disabled:opacity-40"
                         />
                       </div>
 
-                      {/* Amount in INR */}
+                      {/* Amount */}
                       <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <label className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold">
-                            AMOUNT IN {currencyMeta.code} ({currencyMeta.symbol})
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-semibold text-on-surface-variant">
+                            Amount in INR (₹)
                           </label>
                           {estimatedUsdcPreview > 0 && (
-                            <span className="font-sans tabular-nums text-xs text-primary font-semibold">
-                              ≈ {estimatedUsdcPreview.toFixed(2)} USDC
+                            <span className="text-xs text-primary font-bold">
+                              ≈ <span className="font-mono tabular-nums">${estimatedUsdcPreview.toFixed(2)}</span> USDC
                             </span>
                           )}
                         </div>
 
                         <div className="relative">
-                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-primary font-bold text-lg">
-                            {currencyMeta.symbol}
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-primary font-mono font-bold text-base">
+                            ₹
                           </span>
                           <input
                             type="number"
@@ -557,21 +566,20 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
                             required
                             min="10"
                             max="8500"
-                            className="w-full pl-9 pr-4 py-3 rounded-xl bg-white/[0.03] border border-white/15 text-on-surface text-base font-semibold placeholder-outline focus:outline-none focus:border-primary transition-colors tracking-tight"
+                            className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-surface border border-outline-variant/20 text-on-surface font-mono text-base font-bold placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary transition-colors tabular-nums disabled:opacity-40"
                           />
                         </div>
 
-                        {/* Quick Preset Pills */}
-                        <div className="flex items-center gap-2 mt-2">
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
                           {PRESET_AMOUNTS.map((preset) => (
                             <button
                               key={preset}
                               type="button"
                               onClick={() => setAmountINR(String(preset))}
-                              className={`px-3 py-1 rounded-lg text-xs font-sans tabular-nums font-medium transition-colors ${
+                              className={`px-3 py-1 rounded-lg font-mono text-xs tabular-nums font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                                 amountINR === String(preset)
-                                  ? "bg-primary text-surface font-bold shadow-md"
-                                  : "bg-white/5 hover:bg-white/10 text-on-surface-variant border border-white/10"
+                                  ? "bg-primary text-on-primary"
+                                  : "bg-surface hover:bg-surface-container text-on-surface-variant border border-outline-variant/15"
                               }`}
                             >
                               ₹{preset.toLocaleString("en-IN")}
@@ -580,11 +588,11 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
                         </div>
                       </div>
 
-                      {/* Mode-Specific Fields */}
+                      {/* Mode-Specific Field */}
                       {mode === "request" ? (
                         <div>
-                          <label className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold block mb-1.5">
-                            YOUR SETTLEMENT UPI ID
+                          <label className="text-xs font-semibold text-on-surface-variant block mb-1">
+                            Your settlement UPI ID
                           </label>
                           <input
                             type="text"
@@ -592,21 +600,21 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
                             value={recipientUpi}
                             onChange={(e) => setRecipientUpi(e.target.value)}
                             required
-                            className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-white/15 text-on-surface text-sm font-sans tabular-nums placeholder-outline focus:outline-none focus:border-primary transition-colors"
+                            className="w-full px-4 py-2.5 rounded-xl bg-surface border border-outline-variant/20 text-on-surface text-sm placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary transition-colors disabled:opacity-40"
                           />
-                          <p className="font-label-caps text-[9px] text-outline tracking-normal mt-1">
-                            Crypto will be auto-swapped to INR and delivered directly to this UPI.
+                          <p className="text-xs text-on-surface-variant mt-1">
+                            Incoming Base USDC is auto-converted to INR and delivered to this UPI ID.
                           </p>
                         </div>
                       ) : (
                         <div>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <label className="font-label-caps text-[9px] text-on-surface-variant tracking-normal font-bold">
-                              4-DIGIT SECURITY PIN
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-xs font-semibold text-on-surface-variant">
+                              4-digit security PIN
                             </label>
-                            <span className="text-[10px] text-warning font-sans tabular-nums flex items-center gap-1">
+                            <span className="text-xs text-warning font-medium flex items-center gap-1">
                               <Lock className="w-3 h-3" />
-                              Receiver must enter this
+                              Recipient must enter this
                             </span>
                           </div>
                           <input
@@ -614,96 +622,103 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
                             inputMode="numeric"
                             pattern="[0-9]*"
                             maxLength={4}
-                            placeholder="e.g. 4829"
+                            placeholder="4829"
                             value={pin}
-                            onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                            onChange={(e) =>
+                              setPin(e.target.value.replace(/\D/g, "").slice(0, 4))
+                            }
                             required
-                            className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-white/15 text-on-surface text-base font-sans tabular-nums tracking-normal text-center placeholder-outline focus:outline-none focus:border-primary transition-colors"
+                            className="w-full px-4 py-2.5 rounded-xl bg-surface border border-outline-variant/20 text-on-surface font-mono text-base font-bold tabular-nums text-center placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary transition-colors disabled:opacity-40"
                           />
-                          <p className="font-label-caps text-[9px] text-outline tracking-normal mt-1">
-                            Protected by salted cryptographic hash. Share this PIN privately with the recipient.
+                          <p className="text-xs text-on-surface-variant mt-1">
+                            Protected by salted hash. Share this PIN privately with the recipient.
                           </p>
                         </div>
                       )}
 
                       {error && (
-                        <div className="p-3 rounded-xl bg-error-container/40 border border-error/30 text-xs text-error">
+                        <div className="p-3 rounded-xl bg-error/10 border border-error/30 text-xs text-error">
                           {error}
                         </div>
                       )}
 
-                      {/* Generate Button */}
-                      <ShimmerButton
+                      <button
                         type="submit"
                         disabled={isLoading || (mode === "disburse" && pin.length !== 4)}
-                        className="w-full mt-2"
+                        className="w-full h-11 rounded-2xl bg-secondary hover:bg-secondary-container text-on-secondary font-bold text-xs transition-colors flex items-center justify-center gap-2 disabled:opacity-40 cursor-pointer whitespace-nowrap"
                       >
                         {isLoading ? (
-                          <div className="w-5 h-5 border-2 border-surface border-t-transparent rounded-full animate-spin" />
+                          <div className="w-4 h-4 border-2 border-on-secondary border-t-transparent rounded-full motion-safe:animate-spin" />
                         ) : (
                           <>
                             <Zap className="w-4 h-4 fill-current" />
-                            <span>{mode === "disburse" ? "GENERATE CLAIMABLE LINK" : "GENERATE PAY LINK"}</span>
+                            <span>
+                              {mode === "disburse"
+                                ? "Generate claimable link"
+                                : "Generate pay link"}
+                            </span>
                           </>
                         )}
-                      </ShimmerButton>
+                      </button>
                     </form>
                   ) : (
-                    /* ─── Success Result View ─── */
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="space-y-5"
-                    >
-                      <div className="p-5 rounded-xl bg-white/[0.03] border border-white/15 text-center relative overflow-hidden">
-                        <div className="flex items-center justify-center gap-1.5 mb-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-                          <span className="font-label-caps text-[9px] text-primary tracking-normal font-bold">
-                            {generatedLink.mode === "disburse" ? "CLAIMABLE ESCROW LINK CREATED" : "ACTIVE PAY LINK"}
+                    /* Success View */
+                    <div className="space-y-4">
+                      <div className="p-4 sm:p-5 rounded-2xl bg-surface border border-outline-variant/15 text-center space-y-3">
+                        <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-secondary/10 border border-secondary/30 text-xs font-semibold text-secondary">
+                          <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
+                          <span>
+                            {generatedLink.mode === "disburse"
+                              ? "Claimable escrow link ready"
+                              : "Active pay link ready"}
                           </span>
                         </div>
 
-                        <div className="text-3xl font-extrabold text-on-surface tracking-tighter mb-1">
-                          {generatedLink.amountINR}
+                        <div>
+                          <div className="font-mono text-2xl sm:text-3xl font-extrabold text-on-surface tracking-tight tabular-nums">
+                            {generatedLink.amountINR}
+                          </div>
+                          <p className="text-xs text-primary mt-0.5">
+                            ≈ <span className="font-mono tabular-nums">{generatedLink.estimatedUsdc}</span> on Base Mainnet
+                          </p>
                         </div>
-                        <p className="text-xs text-primary font-sans tabular-nums mb-4">
-                          ≈ {generatedLink.estimatedUsdc} on Base Mainnet
-                        </p>
 
-                        {/* PIN Alert Card for Disburse Mode */}
                         {generatedLink.pin && (
-                          <div className="p-3 rounded-xl bg-warning/10 border border-warning/30 mb-4 text-left flex items-center justify-between">
+                          <div className="p-3 rounded-xl bg-warning/10 border border-warning/30 text-left flex items-center justify-between gap-3">
                             <div>
-                              <span className="text-[10px] font-label-caps text-warning tracking-normal font-bold block">
-                                SECURITY CLAIM PIN
+                              <span className="text-xs font-semibold text-warning block">
+                                Security claim PIN
                               </span>
-                              <span className="font-sans tabular-nums text-lg font-bold text-white tracking-normal">
+                              <span className="font-mono text-base font-bold text-on-surface tabular-nums">
                                 {generatedLink.pin}
                               </span>
                             </div>
-                            <span className="text-[10px] text-warning/80 max-w-[160px] text-right font-sans tabular-nums">
-                              Share this 4-digit code privately with claimant!
+                            <span className="text-xs text-warning/90 max-w-[170px] text-right">
+                              Share this 4-digit code privately with recipient
                             </span>
                           </div>
                         )}
 
-                        {/* 1-Click Funding Card if Disburse Mode */}
                         {generatedLink.escrowAddress && (
-                          <div className="p-3 rounded-xl bg-white/[0.04] border border-white/10 mb-4 text-left space-y-2">
-                            <div className="flex items-center justify-between text-xs font-sans tabular-nums">
-                              <span className="text-outline">Escrow Deposit Address</span>
+                          <div className="p-3 rounded-xl bg-surface-container-low border border-outline-variant/15 text-left space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-on-surface-variant font-medium">
+                                Escrow deposit address
+                              </span>
                               <button
                                 type="button"
                                 onClick={() => copyEscrow(generatedLink.escrowAddress!)}
-                                className="text-primary hover:text-white flex items-center gap-1 text-[11px]"
+                                className="text-primary hover:text-on-surface flex items-center gap-1 text-xs font-semibold cursor-pointer"
                               >
-                                <span className="material-symbols-outlined text-xs">
-                                  {copiedEscrow ? "check" : "content_copy"}
-                                </span>
+                                {copiedEscrow ? (
+                                  <Check className="w-3.5 h-3.5 text-secondary" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
                                 <span>{copiedEscrow ? "Copied" : "Copy"}</span>
                               </button>
                             </div>
-                            <p className="font-sans tabular-nums text-[11px] text-on-surface truncate">
+                            <p className="font-mono text-xs text-on-surface truncate tabular-nums">
                               {generatedLink.escrowAddress}
                             </p>
 
@@ -712,23 +727,23 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
                                 type="button"
                                 onClick={handleFundEscrow}
                                 disabled={isFunding || fundSuccess}
-                                className={`w-full py-2.5 rounded-lg text-xs font-sans tabular-nums font-bold transition-colors flex items-center justify-center gap-1.5 ${
+                                className={`w-full py-2.5 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer whitespace-nowrap ${
                                   fundSuccess
-                                    ? "bg-success/20 text-success border border-success/30"
-                                    : "bg-primary hover:bg-white text-surface shadow-md"
+                                    ? "bg-secondary/15 text-secondary border border-secondary/30"
+                                    : "bg-primary text-on-primary hover:bg-primary/90"
                                 }`}
                               >
                                 {isFunding ? (
-                                  <div className="w-4 h-4 border-2 border-surface border-t-transparent rounded-full animate-spin" />
+                                  <div className="w-4 h-4 border-2 border-on-primary border-t-transparent rounded-full motion-safe:animate-spin" />
                                 ) : fundSuccess ? (
                                   <>
-                                    <ShieldCheck className="w-3.5 h-3.5" />
-                                    <span>Escrow Pre-Funded Successfully!</span>
+                                    <ShieldCheck className="w-4 h-4" />
+                                    <span>Escrow pre-funded</span>
                                   </>
                                 ) : (
                                   <>
-                                    <Zap className="w-3.5 h-3.5 fill-current" />
-                                    <span>1-Click Pre-Fund {generatedLink.estimatedUsdc}</span>
+                                    <Zap className="w-4 h-4 fill-current" />
+                                    <span>1-click pre-fund {generatedLink.estimatedUsdc}</span>
                                   </>
                                 )}
                               </button>
@@ -736,26 +751,27 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
                           </div>
                         )}
 
-                        {/* QR Code */}
-                        <div className="flex justify-center mb-3">
-                          <div className="p-2.5 bg-white rounded-xl shadow-xl">
+                        <div className="flex justify-center">
+                          <div className="p-2.5 bg-white rounded-xl">
                             <img
                               src={generatedLink.qrCodeUrl}
-                              alt="QR Code"
+                              alt="Pay Link QR Code"
                               className="w-32 h-32"
                             />
                           </div>
                         </div>
 
-                        {/* Link Box */}
-                        <div className="flex items-center gap-2 p-2.5 rounded-xl bg-black/50 border border-white/10 text-xs font-sans tabular-nums text-primary text-left">
-                          <span className="truncate flex-1 text-[11px]">{generatedLink.payUrl}</span>
+                        <div className="flex items-center gap-2 p-2 rounded-xl bg-surface-container-low border border-outline-variant/15 text-xs text-left">
+                          <span className="font-mono truncate flex-1 text-xs text-primary">
+                            {generatedLink.payUrl}
+                          </span>
                           <button
+                            type="button"
                             onClick={() => copyToClipboard(generatedLink.payUrl)}
-                            className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-on-surface shrink-0 transition-colors flex items-center gap-1.5 font-sans text-xs"
+                            className="px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface shrink-0 transition-colors flex items-center gap-1.5 text-xs font-semibold cursor-pointer whitespace-nowrap"
                           >
                             {copied ? (
-                              <Check className="w-3.5 h-3.5 text-success" />
+                              <Check className="w-3.5 h-3.5 text-secondary" />
                             ) : (
                               <Copy className="w-3.5 h-3.5" />
                             )}
@@ -764,36 +780,46 @@ export default function PayLinkModal({ isOpen, onClose }: PayLinkModalProps) {
                         </div>
                       </div>
 
-                      {/* Actions */}
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-2 gap-2.5">
                         <button
-                          onClick={() => shareWhatsApp(generatedLink.payUrl, generatedLink.amountINR, generatedLink.pin)}
-                          className="py-3 px-4 rounded-xl bg-success/15 hover:bg-success/25 border border-success/30 text-success font-bold text-xs tracking-normal font-label-caps  transition-colors flex items-center justify-center gap-2 active:scale-95"
+                          type="button"
+                          onClick={() =>
+                            shareWhatsApp(
+                              generatedLink.payUrl,
+                              generatedLink.amountINR,
+                              generatedLink.pin
+                            )
+                          }
+                          className="py-2.5 px-3 rounded-xl bg-secondary/15 hover:bg-secondary/25 border border-secondary/30 text-secondary font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
                         >
-                          <MessageCircle className="w-4 h-4" />
-                          <span>WHATSAPP</span>
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          <span>WhatsApp</span>
                         </button>
 
                         <button
-                          onClick={() => downloadQR(generatedLink.qrCodeUrl, generatedLink.linkId)}
-                          className="py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-on-surface font-bold text-xs tracking-normal font-label-caps  transition-colors flex items-center justify-center gap-2 active:scale-95"
+                          type="button"
+                          onClick={() =>
+                            downloadQR(generatedLink.qrCodeUrl, generatedLink.linkId)
+                          }
+                          className="py-2.5 px-3 rounded-xl bg-surface hover:bg-surface-container border border-outline-variant/20 text-on-surface font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
                         >
-                          <Download className="w-4 h-4" />
-                          <span>SAVE QR</span>
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Save QR</span>
                         </button>
                       </div>
 
                       <button
+                        type="button"
                         onClick={resetForm}
-                        className="w-full py-2.5 text-xs font-label-caps text-on-surface-variant hover:text-on-surface tracking-normal  transition-colors"
+                        className="w-full py-2 text-xs font-semibold text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
                       >
-                        + CREATE ANOTHER LINK
+                        + Create another link
                       </button>
-                    </motion.div>
+                    </div>
                   )}
                 </div>
               )}
-            </SpotlightCard>
+            </div>
           </motion.div>
         </div>
       )}
