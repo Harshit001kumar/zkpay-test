@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useReadContract } from "wagmi";
 import { base } from "viem/chains";
@@ -43,7 +43,9 @@ export default function Dashboard() {
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   const [copiedAddr, setCopiedAddr] = useState(false);
+  const [apiBalance, setApiBalance] = useState<number | null>(null);
 
+  // 1. Smart Wallet on-chain USDC balance via Wagmi
   const { data: rawBal } = useReadContract({
     address: CONTRACTS.USDC as `0x${string}`,
     abi: ERC20_ABI,
@@ -56,7 +58,34 @@ export default function Dashboard() {
     },
   });
 
-  const formattedBal = rawBal !== undefined ? floorTo2Decimals(rawBal as bigint) : 0;
+  // 2. Multi-RPC Resilience Fallback (bypasses browser ad-blockers / public node timeouts)
+  useEffect(() => {
+    if (!address) return;
+
+    let active = true;
+    const fetchSmartWalletBal = async () => {
+      try {
+        const res = await fetch(`/api/wallet/balance?address=${encodeURIComponent(address)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (active && data.success && typeof data.balanceUsdc === "number") {
+          setApiBalance(data.balanceUsdc);
+        }
+      } catch (err) {
+        console.warn("[Dashboard] Smart wallet balance sync:", err);
+      }
+    };
+
+    fetchSmartWalletBal();
+    const interval = setInterval(fetchSmartWalletBal, 6000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [address]);
+
+  const wagmiBal = rawBal !== undefined ? floorTo2Decimals(rawBal as bigint) : 0;
+  const formattedBal = Math.max(wagmiBal, apiBalance ?? 0);
   const wholePart = Math.floor(formattedBal).toLocaleString();
   const decimalPart = (formattedBal % 1).toFixed(2).substring(1);
   const shortAddr = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "Syncing";

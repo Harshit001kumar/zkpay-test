@@ -73,8 +73,9 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
   const [rateLoading, setRateLoading] = useState(true);
   const [maxSellable, setMaxSellable] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [apiBalance, setApiBalance] = useState<number | null>(null);
 
-  // Available Base USDC balance (formatted to 2 decimal places)
+  // 1. Available Base USDC balance via Wagmi
   const { data: rawBal } = useReadContract({
     address: CONTRACTS.USDC as `0x${string}`,
     abi: ERC20_ABI,
@@ -87,7 +88,32 @@ export default function ScanAndPayFlow({ onBack }: { onBack: () => void }) {
     },
   });
 
-  const availableUsdc = rawBal !== undefined ? floorTo2Decimals(rawBal as bigint) : 0;
+  // 2. Resilient API balance sync
+  useEffect(() => {
+    if (!activeAddress) return;
+    let active = true;
+    const fetchBalance = async () => {
+      try {
+        const res = await fetch(`/api/wallet/balance?address=${encodeURIComponent(activeAddress)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (active && data.success && typeof data.balanceUsdc === "number") {
+          setApiBalance(data.balanceUsdc);
+        }
+      } catch (err) {
+        console.warn("[ScanAndPay] Balance sync warning:", err);
+      }
+    };
+    fetchBalance();
+    const interval = setInterval(fetchBalance, 6000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [activeAddress]);
+
+  const wagmiBal = rawBal !== undefined ? floorTo2Decimals(rawBal as bigint) : 0;
+  const availableUsdc = Math.max(wagmiBal, apiBalance ?? 0);
 
   // Keypad Handlers
   const handleKeypadChange = (newVal: string) => {

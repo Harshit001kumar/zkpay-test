@@ -20,6 +20,23 @@ import {
 export default function DepositFlow({ onBack }: { onBack?: () => void }) {
   const { ready, authenticated, address } = useActiveAccount();
   const { wallets } = useWallets();
+  const [currentBaseBal, setCurrentBaseBal] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!address) return;
+    let active = true;
+    fetch(`/api/wallet/balance?address=${encodeURIComponent(address)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (active && data.success && typeof data.balanceUsdc === "number") {
+          setCurrentBaseBal(data.balanceUsdc);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [address]);
 
   // Step 1: Input state
   type DepositAsset = typeof DEPOSIT_ASSETS[number];
@@ -285,7 +302,14 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
             <span className="text-xs font-semibold text-on-surface-variant">
               NEAR 1Click · Bridge to Base
             </span>
-            <span className="w-2 h-2 rounded-full bg-secondary" />
+            <div className="flex items-center gap-2">
+              {currentBaseBal !== null && (
+                <span className="font-mono text-xs font-bold text-primary tabular-nums">
+                  ${currentBaseBal.toFixed(2)} USDC
+                </span>
+              )}
+              <span className="w-2 h-2 rounded-full bg-secondary" />
+            </div>
           </div>
         </div>
       </header>
