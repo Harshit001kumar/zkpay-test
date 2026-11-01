@@ -728,7 +728,7 @@ export default function AdminPage() {
   if (isVerifying) {
     return (
       <div className="min-h-screen bg-surface-container-lowest text-on-surface flex flex-col items-center justify-center p-6">
-        <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+        <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin motion-reduce:animate-none mb-4"></div>
         <p className="font-sans tabular-nums text-xs tracking-normal text-outline ">Verifying Admin Access…</p>
       </div>
     );
@@ -828,10 +828,21 @@ export default function AdminPage() {
             <div className="h-3.5 w-px bg-white/10" />
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-              <h1 className="text-xs sm:text-sm font-bold tracking-normal  text-white">
+              <h1 className="text-xs sm:text-sm font-bold tracking-normal text-white">
                 Admin Console
               </h1>
             </div>
+            <nav className="hidden md:flex items-center gap-1 p-1 rounded-xl bg-white/5 border border-white/10 ml-2">
+              <span className="px-3 py-1 rounded-lg text-xs font-bold bg-white/10 text-white border border-white/15 shadow-sm">
+                Infrastructure & System
+              </span>
+              <Link
+                href="/admin/transactions"
+                className="px-3 py-1 rounded-lg text-xs font-medium text-outline hover:text-white transition-colors"
+              >
+                Transactions Ledger
+              </Link>
+            </nav>
           </div>
 
           <div className="flex items-center gap-2.5">
@@ -929,6 +940,30 @@ export default function AdminPage() {
         {/* ────────────── TAB 1: OVERVIEW ────────────── */}
         {activeTab === "overview" && (
           <div className="space-y-6 animate-in fade-in duration-300">
+            {/* System Transactions Quick-Action Banner */}
+            <Link
+              href="/admin/transactions"
+              className="p-4 sm:p-5 rounded-2xl bg-surface-container-low border border-primary/25 hover:border-primary/50 transition-colors flex items-center justify-between group"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center text-primary shrink-0 group-hover:scale-105 transition-transform">
+                  <Activity className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-bold text-white tracking-tight">System Transactions Ledger</h4>
+                    <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-[10px] font-bold">Live explorer</span>
+                  </div>
+                  <p className="text-xs text-outline font-sans tabular-nums mt-0.5">
+                    View total volume, in-app payments & swaps, developer API transactions, and export CSV archives.
+                  </p>
+                </div>
+              </div>
+              <div className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-primary group-hover:translate-x-0.5 transition-transform shrink-0">
+                <span>Open ledger</span>
+                <ChevronRight className="w-4 h-4" />
+              </div>
+            </Link>
             
             {/* Infrastructure & Gas Sponsorship Banners */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
