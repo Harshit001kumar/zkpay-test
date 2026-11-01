@@ -2,7 +2,7 @@
 
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { DEPOSIT_ASSETS, TARGET_ASSET } from "@/lib/constants";
 import {
   Copy,
@@ -24,7 +24,48 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
   // Step 1: Input state
   type DepositAsset = typeof DEPOSIT_ASSETS[number];
   const [sourceAsset, setSourceAsset] = useState<DepositAsset>(DEPOSIT_ASSETS[0]);
-  const [depositAmount, setDepositAmount] = useState("0.01");
+  const [depositAmount, setDepositAmountRaw] = useState("0.01");
+  const [isFocused, setIsFocused] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const setDepositAmount = (val: string) => {
+    let clean = val.replace(/,/g, ".");
+    if (clean === "" || /^\d*\.?\d*$/.test(clean)) {
+      const maxDecimals = Math.min(sourceAsset?.decimals || 8, 8);
+      if (clean.includes(".")) {
+        const [, f] = clean.split(".");
+        if (f && f.length > maxDecimals) return;
+      }
+      if (clean === ".") clean = "0.";
+      if (/^0\d+/.test(clean)) clean = clean.replace(/^0+/, "");
+      setDepositAmountRaw(clean);
+    }
+  };
+
+  const getAssetPresets = (symbol: string): string[] => {
+    switch (symbol.toUpperCase()) {
+      case "BTC":
+        return ["0.001", "0.005", "0.01", "0.05"];
+      case "ETH":
+        return ["0.01", "0.05", "0.1", "0.5"];
+      case "SOL":
+        return ["0.2", "0.5", "1.0", "5.0"];
+      case "LTC":
+        return ["0.05", "0.1", "0.5", "1.0"];
+      case "BNB":
+        return ["0.05", "0.1", "0.25", "0.5"];
+      case "ARB":
+        return ["10", "25", "50", "100"];
+      case "TRX":
+        return ["50", "100", "250", "500"];
+      case "USDC":
+      case "USDT":
+        return ["10", "25", "50", "100"];
+      default:
+        return ["0.1", "0.5", "1.0", "5.0"];
+    }
+  };
+
   const [refundAddress, setRefundAddress] = useState("");
   const [estimatedReceive, setEstimatedReceive] = useState<string | null>(null);
   const [timeEstimate, setTimeEstimate] = useState<number | null>(null);
@@ -147,7 +188,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
   if (!ready || (authenticated && !address)) {
     return (
       <div className="bg-surface-container-lowest text-on-surface min-h-[100dvh] flex flex-col items-center justify-center p-6 gap-3">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <Loader2 className="w-8 h-8 motion-safe:animate-spin text-primary" />
         <p className="text-sm text-outline">Initializing wallet account…</p>
       </div>
     );
@@ -315,22 +356,74 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
           {!depositAddress ? (
             // STEP 1 CONTENT
             <div className="w-full space-y-6">
-              <div className="p-5 rounded-2xl bg-surface-container border border-primary/15 text-center">
-                <p className="text-xs font-semibold text-on-surface-variant mb-3">
-                  Amount to send ({sourceAsset.symbol})
-                </p>
-                <div className="relative inline-flex items-baseline justify-center">
+              <div
+                onClick={() => inputRef.current?.focus()}
+                className={`p-5 sm:p-6 rounded-2xl bg-surface-container border transition-colors text-center cursor-text ${
+                  isFocused
+                    ? "border-secondary/60 ring-1 ring-secondary/30"
+                    : "border-primary/15 hover:border-primary/30"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-on-surface-variant">
+                    Amount to send ({sourceAsset.symbol})
+                  </span>
+                  {depositAmount && depositAmount !== "0" && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDepositAmount("");
+                        inputRef.current?.focus();
+                      }}
+                      className="text-[11px] font-semibold text-on-surface-variant hover:text-on-surface transition-colors px-2 py-0.5 rounded-md hover:bg-surface-container-high cursor-pointer whitespace-nowrap"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                <div className="w-full flex items-center justify-center my-1">
                   <input
-                    type="number"
+                    ref={inputRef}
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck="false"
                     value={depositAmount}
                     onChange={(e) => setDepositAmount(e.target.value)}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setIsFocused(false)}
                     placeholder="0.00"
-                    className="bg-transparent border-none text-center font-mono text-5xl sm:text-6xl font-black text-on-surface focus:ring-0 focus:outline-none p-0 w-52 tracking-tight tabular-nums"
+                    className="bg-transparent border-none text-center font-mono text-5xl sm:text-6xl font-black text-on-surface focus:outline-none p-0 w-full tracking-tight tabular-nums cursor-text"
                   />
                 </div>
-                <p className="text-xs text-primary font-bold mt-2">
+
+                <p className="text-xs text-secondary font-bold mt-2">
                   {sourceAsset.symbol} on {sourceAsset.blockchain.toUpperCase()}
                 </p>
+
+                {/* Quick Presets for Selected Asset */}
+                <div className="flex items-center justify-center gap-1.5 mt-3.5 flex-wrap">
+                  {getAssetPresets(sourceAsset.symbol).map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDepositAmount(preset);
+                      }}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                        depositAmount === preset
+                          ? "bg-secondary text-on-secondary"
+                          : "bg-surface-container-low hover:bg-surface text-on-surface-variant hover:text-on-surface border border-outline-variant/15"
+                      }`}
+                    >
+                      <span className="font-mono tabular-nums">{preset}</span> {sourceAsset.symbol}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Optional Refund Address for Non-EVM assets */}
@@ -365,7 +458,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
                 </p>
                 <div className="min-h-[40px] flex items-center justify-center">
                   {isEstimating ? (
-                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                    <Loader2 className="w-5 h-5 motion-safe:animate-spin text-primary" />
                   ) : estimatedReceive?.startsWith("Error:") ? (
                     <p className="text-xs font-bold text-error">
                       {estimatedReceive.replace("Error: ", "")}
@@ -405,7 +498,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
               >
                 {isCreating ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-4 h-4 motion-safe:animate-spin" />
                     <span>Generating intent address…</span>
                   </>
                 ) : (
@@ -502,7 +595,7 @@ export default function DepositFlow({ onBack }: { onBack?: () => void }) {
                     </div>
                   ) : (
                     <div className="w-9 h-9 rounded-xl bg-surface-container-low border border-primary/20 flex items-center justify-center">
-                      <Loader2 className="w-4 h-4 text-primary animate-spin" />
+                      <Loader2 className="w-4 h-4 text-primary motion-safe:animate-spin" />
                     </div>
                   )}
                 </div>
