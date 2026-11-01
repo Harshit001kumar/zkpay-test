@@ -2,20 +2,20 @@
 
 import { useRouter } from "next/navigation";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
-import { LogOut, ChevronRight } from "lucide-react";
+import { LogOut, Wallet } from "lucide-react";
 
 export default function WalletConnect() {
   const router = useRouter();
-  const { login, logout, authenticated, ready, address, isSmartWallet } = useActiveAccount();
+  const { login, logout, authenticated, ready, address } = useActiveAccount();
 
   if (!ready) {
     return (
-      <div className="h-9 w-28 bg-white/10 rounded-full animate-pulse" />
+      <div className="h-9 w-28 bg-surface-container rounded-xl animate-pulse" />
     );
   }
 
   if (authenticated && address) {
-    const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
+    const shortAddress = `${address.slice(0, 6)}…${address.slice(-4)}`;
 
     const handleNavigateToWallet = () => {
       if (address) {
@@ -26,26 +26,28 @@ export default function WalletConnect() {
     };
 
     return (
-      <div className="flex items-center gap-2">
-        {/* Clickable Address Pill to Navigate to /wallet/[address] */}
+      <div className="flex items-center gap-1.5">
         <button
+          type="button"
           onClick={handleNavigateToWallet}
-          className="group px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 hover:border-primary flex items-center gap-2 text-xs font-sans tabular-nums font-medium text-white transition-colors active:scale-95 shadow-sm cursor-pointer"
-          title="Click to open Base USDC deposit & wallet page"
+          className="group h-9 px-3 rounded-xl bg-surface-container hover:bg-surface-container-high border border-outline-variant/20 hover:border-primary/40 flex items-center gap-2 text-xs font-medium text-on-surface transition-colors active:scale-95 cursor-pointer whitespace-nowrap"
+          title="Open Base USDC deposit & wallet page"
         >
-          <span className="w-2 h-2 rounded-full bg-success animate-pulse shrink-0" />
-          <span className="tracking-tight">{shortAddress}</span>
-          <ChevronRight className="w-3.5 h-3.5 text-on-surface-variant group-hover:text-white transition-transform group-hover:translate-x-0.5" />
+          <span className="w-2 h-2 rounded-full bg-secondary shrink-0" />
+          <Wallet className="w-3.5 h-3.5 text-on-surface-variant group-hover:text-primary transition-colors hidden sm:block" />
+          <span className="font-mono text-xs tabular-nums tracking-tight">
+            {shortAddress}
+          </span>
         </button>
 
-        {/* Direct Logout Button */}
         <button
+          type="button"
           onClick={logout}
-          className="p-2 rounded-full hover:bg-white/10 border border-transparent hover:border-white/15 transition-colors text-on-surface-variant hover:text-error"
+          className="h-9 w-9 rounded-xl bg-surface-container/60 hover:bg-error/15 border border-outline-variant/15 hover:border-error/30 flex items-center justify-center transition-colors text-on-surface-variant hover:text-error cursor-pointer"
           aria-label="Disconnect wallet"
           title="Disconnect wallet"
         >
-          <LogOut size={16} />
+          <LogOut className="w-3.5 h-3.5" />
         </button>
       </div>
     );
@@ -53,7 +55,7 @@ export default function WalletConnect() {
 
   if (authenticated && !address) {
     return (
-      <div className="h-9 w-28 bg-white/10 rounded-full animate-pulse flex items-center justify-center text-[11px] font-medium text-outline">
+      <div className="h-9 w-28 bg-surface-container rounded-xl animate-pulse flex items-center justify-center text-xs font-medium text-on-surface-variant">
         Syncing…
       </div>
     );
@@ -61,10 +63,11 @@ export default function WalletConnect() {
 
   return (
     <button
+      type="button"
       onClick={login}
-      className="btn-primary text-xs px-5 py-2 rounded-full flex items-center gap-1.5 shadow-lg shadow-white/10 font-bold"
+      className="h-9 px-4 rounded-xl bg-secondary text-on-secondary text-xs font-bold flex items-center gap-1.5 transition-colors hover:bg-secondary-container cursor-pointer whitespace-nowrap"
     >
-      <span>Sign In</span>
+      <span>Sign in</span>
     </button>
   );
 }

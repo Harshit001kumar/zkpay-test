@@ -22,8 +22,11 @@ export default function BottomNav({ activeTab, setActiveTab }: BottomNavProps) {
   ];
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-max max-w-[94vw]">
-      <nav className="flex items-center gap-1 sm:gap-1.5 px-2 py-1.5 rounded-full bg-surface-container/95 border border-primary/25 backdrop-blur-xl shadow-elevated">
+    <div className="fixed bottom-0 inset-x-0 z-40 md:hidden bg-surface/95 border-t border-outline-variant/15 backdrop-blur-xl">
+      <nav
+        aria-label="Mobile navigation"
+        className="grid grid-cols-4 gap-1 max-w-md mx-auto px-3 py-2"
+      >
         {navItems.map((item) => {
           const isActive = activeTab === item.id;
           const Icon = item.icon;
@@ -32,18 +35,18 @@ export default function BottomNav({ activeTab, setActiveTab }: BottomNavProps) {
               key={item.id}
               type="button"
               onClick={() => setActiveTab(item.id)}
-              className={`relative flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-full transition-colors duration-200 cursor-pointer active:scale-95 whitespace-nowrap ${
+              className={`flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl transition-colors duration-200 cursor-pointer active:scale-95 whitespace-nowrap ${
                 isActive
-                  ? "bg-secondary text-on-secondary shadow-dock-label"
-                  : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
+                  ? "bg-secondary/15 text-secondary"
+                  : "text-on-surface-variant hover:text-on-surface"
               }`}
             >
               <Icon
                 className={`w-4 h-4 transition-transform duration-200 ${
-                  isActive ? "scale-105 stroke-[2.4]" : "stroke-[1.9]"
+                  isActive ? "scale-105 stroke-[2.3]" : "stroke-[1.8]"
                 }`}
               />
-              <span className="text-xs font-semibold">
+              <span className="text-[11px] font-semibold">
                 {item.label}
               </span>
             </button>
