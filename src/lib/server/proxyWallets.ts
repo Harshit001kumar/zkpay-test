@@ -3,7 +3,7 @@ import { Buffer } from "buffer";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { getAddress } from "viem";
 import { encryptKey } from "./payStore";
-import { normalizeChain } from "@/lib/constants";
+import { normalizeChain, SWAP_ALLOWED_TOKENS } from "@/lib/constants";
 
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
@@ -134,11 +134,23 @@ export function generateProxyDepositWallet(chain: string): GeneratedProxyWallet 
 
 function extractCleanSymbol(fromAsset?: string | null): string {
   if (!fromAsset) return "";
-  const s = fromAsset.trim().toUpperCase();
+  const raw = fromAsset.trim();
+  const found = SWAP_ALLOWED_TOKENS.find(
+    (t) => t.assetId.toLowerCase() === raw.toLowerCase() || t.symbol.toLowerCase() === raw.toLowerCase()
+  );
+  if (found) return found.symbol.toUpperCase();
+
+  const s = raw.toUpperCase();
+  if (s.includes("QISTMOQJDQPTEBAPJGX5VBXZV6L") || s.includes("USDC")) return "USDC";
+  if (s.includes("3HPYOALTT8MP1Z2GH1U473DMRKGR") || s.includes("USDT")) return "USDT";
+
   if (s.includes(":")) {
-    const part = s.split(":")[1]?.split(".")[0] || "";
-    if (part.includes("-")) return part.split("-")[0];
-    return part;
+    const parts = s.split(":");
+    const lastPart = parts[parts.length - 1];
+    if (lastPart.includes("-")) return lastPart.split("-")[0];
+    const middlePart = parts[1]?.split(".")[0] || "";
+    if (middlePart && middlePart !== "V2_1") return middlePart;
+    return lastPart;
   }
   return s;
 }

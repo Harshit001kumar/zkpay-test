@@ -120,7 +120,9 @@ export async function GET(request: Request) {
     const positionData = positionRes && positionRes.ok ? await positionRes.json() : null;
 
     if (!vaultRes.ok) {
-      console.warn(`[Earn Position] Privy vault query returned ${vaultRes.status}`);
+      if (vaultRes.status !== 404) {
+        console.warn(`[Earn Position] Privy vault query returned ${vaultRes.status}`);
+      }
     } else {
       console.log(`[Earn Position] Privy vault data:`, vaultData);
     }

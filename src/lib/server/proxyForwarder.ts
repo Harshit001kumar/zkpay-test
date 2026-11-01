@@ -14,7 +14,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, arbitrum, polygon, bsc } from "viem/chains";
-import { CONTRACTS, normalizeChain } from "@/lib/constants";
+import { CONTRACTS, normalizeChain, SWAP_ALLOWED_TOKENS } from "@/lib/constants";
 import {
   ProxySwapOrder,
   getProxyOrderByAddress,
@@ -333,6 +333,8 @@ export const CHAIN_TOKENS: Record<string, Record<string, `0x${string}`>> = {
     USDCe: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
     USDT: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
     DAI: "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
+    V2_1: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+    v2_1: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
   },
   bsc: {
     USDT: "0x55d398326f99059fF775485246999027B3197955",
@@ -748,13 +750,38 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
   } else {
     // ─── CASE B: Stablecoins & ERC-20s (USDC, USDT) ───
     const tokenMap = CHAIN_TOKENS[chainKey] || {};
-    let tokenAddress: `0x${string}` | undefined = tokenMap[upperSymbol];
+    let resolvedSymbol = upperSymbol;
+
+    if (resolvedSymbol === "V2_1" || !tokenMap[resolvedSymbol]) {
+      const found = SWAP_ALLOWED_TOKENS.find(
+        (t) => t.assetId.toLowerCase() === (order.originAssetId || "").toLowerCase()
+      );
+      if (found) {
+        resolvedSymbol = found.symbol.toUpperCase();
+      } else if (order.originAssetId?.includes("3hpYoaLtt8MP1Z2GH1U473DMRKgr") || order.originAssetId?.toLowerCase().includes("usdt")) {
+        resolvedSymbol = "USDT";
+      } else if (order.originAssetId?.includes("qiStmoQJDQPTebaPjgx5VBxZv6L") || order.originAssetId?.includes("v2_1") || order.originAssetId?.toLowerCase().includes("usdc")) {
+        resolvedSymbol = "USDC";
+      }
+    }
+
+    let tokenAddress: `0x${string}` | undefined = tokenMap[resolvedSymbol] || tokenMap[upperSymbol];
 
     if (!tokenAddress && order.originAssetId.includes("0x")) {
       const match = order.originAssetId.match(/0x[a-fA-F0-9]{40}/);
       if (match) {
         tokenAddress = getAddress(match[0]);
       }
+    }
+
+    if (!tokenAddress && chainKey === "polygon") {
+      tokenAddress = tokenMap["USDC"];
+      resolvedSymbol = "USDC";
+    }
+
+    if (tokenAddress && order.fromAsset !== resolvedSymbol) {
+      updateProxySwapOrder(order.swapId, { fromAsset: resolvedSymbol }).catch(() => {});
+      order.fromAsset = resolvedSymbol;
     }
 
     if (!tokenAddress) {
@@ -2340,7 +2367,11 @@ export async function recoverProxyDeposit(
     if (options?.tokenAddress && isAddress(options.tokenAddress)) {
       tokenAddress = getAddress(options.tokenAddress);
     } else {
-      tokenAddress = CHAIN_TOKENS[normChain]?.[upperSymbol] || null;
+      let resolvedUpper = upperSymbol;
+      if (resolvedUpper === "V2_1") {
+        resolvedUpper = order.originAssetId?.includes("3hpYoaLtt8MP1Z2GH1U473DMRKgr") ? "USDT" : "USDC";
+      }
+      tokenAddress = CHAIN_TOKENS[normChain]?.[resolvedUpper] || CHAIN_TOKENS[normChain]?.[upperSymbol] || null;
       if (!tokenAddress && order.originAssetId.includes("0x")) {
         const match = order.originAssetId.match(/0x[a-fA-F0-9]{40}/);
         if (match) tokenAddress = getAddress(match[0]);
