@@ -331,7 +331,7 @@ export async function requestPartnerPayout(params: {
   };
 
   if (db) {
-    await db.collection<PartnerPayoutRequest>("partner_payout_requests").insertOne(ticket);
+    await db.collection<PartnerPayoutRequest>("partner_payout_requests").insertOne(ticket as any);
   }
   memoryPayouts.set(payoutId, ticket);
 
@@ -345,11 +345,11 @@ export async function listPartnerPayoutRequests(userId: string): Promise<Partner
   try {
     const db = await getMongoDb();
     if (db) {
-      return await db
+      return (await db
         .collection<PartnerPayoutRequest>("partner_payout_requests")
-        .find({ partnerUserId: userId })
+        .find({ partnerUserId: userId } as any)
         .sort({ createdAt: -1 })
-        .toArray();
+        .toArray()) as PartnerPayoutRequest[];
     }
   } catch (err) {
     console.warn("[PartnerBalanceStore] listPartnerPayoutRequests warning:", err);
@@ -367,12 +367,12 @@ export async function listPartnerFeeCredits(userId: string, limit = 50): Promise
   try {
     const db = await getMongoDb();
     if (db) {
-      return await db
+      return (await db
         .collection<PartnerFeeCreditRecord>("partner_fee_credits")
-        .find({ partnerUserId: userId })
+        .find({ partnerUserId: userId } as any)
         .sort({ settledAt: -1 })
         .limit(limit)
-        .toArray();
+        .toArray()) as PartnerFeeCreditRecord[];
     }
   } catch (err) {
     console.warn("[PartnerBalanceStore] listPartnerFeeCredits warning:", err);
@@ -390,12 +390,15 @@ export async function listAdminPayoutRequests(status?: string): Promise<PartnerP
   try {
     const db = await getMongoDb();
     if (db) {
-      const query = status && status !== "ALL" ? { status } : {};
-      return await db
+      const query: any = {};
+      if (status && status !== "ALL") {
+        query.status = status;
+      }
+      return (await db
         .collection<PartnerPayoutRequest>("partner_payout_requests")
-        .find(query)
+        .find(query as any)
         .sort({ createdAt: -1 })
-        .toArray();
+        .toArray()) as PartnerPayoutRequest[];
     }
   } catch (err) {
     console.warn("[PartnerBalanceStore] listAdminPayoutRequests warning:", err);
@@ -422,7 +425,7 @@ export async function completeAdminPayout(
   let ticket: PartnerPayoutRequest | null = null;
 
   if (db) {
-    ticket = await db.collection<PartnerPayoutRequest>("partner_payout_requests").findOne({ id: payoutId });
+    ticket = (await db.collection<PartnerPayoutRequest>("partner_payout_requests").findOne({ id: payoutId } as any)) as PartnerPayoutRequest | null;
   } else {
     ticket = memoryPayouts.get(payoutId) || null;
   }
@@ -478,7 +481,7 @@ export async function rejectAdminPayout(
   let ticket: PartnerPayoutRequest | null = null;
 
   if (db) {
-    ticket = await db.collection<PartnerPayoutRequest>("partner_payout_requests").findOne({ id: payoutId });
+    ticket = (await db.collection<PartnerPayoutRequest>("partner_payout_requests").findOne({ id: payoutId } as any)) as PartnerPayoutRequest | null;
   } else {
     ticket = memoryPayouts.get(payoutId) || null;
   }
