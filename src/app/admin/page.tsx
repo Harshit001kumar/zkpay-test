@@ -124,7 +124,7 @@ interface OrderItem {
   timestamp: number;
 }
 
-type AdminTab = "overview" | "orders" | "payments" | "rewards" | "tools";
+type AdminTab = "overview" | "orders" | "payments" | "payouts" | "rewards" | "tools";
 
 export default function AdminPage() {
   const { ready, authenticated, user, login, logout, getAccessToken } = usePrivy();
@@ -149,6 +149,19 @@ export default function AdminPage() {
   const [manualRefundAmount, setManualRefundAmount] = useState<string>("");
   const [isExecutingAdminAction, setIsExecutingAdminAction] = useState(false);
   const [adminActionResult, setAdminActionResult] = useState<{ success: boolean; message: string; txHash?: string } | null>(null);
+
+  // Partner Payouts State
+  const [adminPayouts, setAdminPayouts] = useState<any[]>([]);
+  const [isLoadingAdminPayouts, setIsLoadingAdminPayouts] = useState(false);
+  const [adminPayoutFilter, setAdminPayoutFilter] = useState<"ALL" | "PENDING" | "COMPLETED" | "REJECTED">("ALL");
+  const [completeModalPayout, setCompleteModalPayout] = useState<any | null>(null);
+  const [payoutTxHashInput, setPayoutTxHashInput] = useState<string>("");
+  const [isCompletingPayout, setIsCompletingPayout] = useState(false);
+  const [completePayoutError, setCompletePayoutError] = useState<string | null>(null);
+  const [rejectModalPayout, setRejectModalPayout] = useState<any | null>(null);
+  const [payoutRejectReasonInput, setPayoutRejectReasonInput] = useState<string>("");
+  const [isRejectingPayout, setIsRejectingPayout] = useState(false);
+  const [rejectPayoutError, setRejectPayoutError] = useState<string | null>(null);
 
   // Rewards State
   const [rewardsData, setRewardsData] = useState<any>(null);
@@ -677,6 +690,91 @@ export default function AdminPage() {
     }
   }, [isAuthorized, activeTab, loadRecentProxyOrders]);
 
+  const loadAdminPayouts = useCallback(async (statusOverride?: string) => {
+    setIsLoadingAdminPayouts(true);
+    try {
+      const token = await getAccessToken();
+      const statusParam = statusOverride || adminPayoutFilter;
+      const res = await fetch(`/api/admin/payouts?status=${statusParam}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data?.success) {
+        setAdminPayouts(data.payouts || []);
+      }
+    } catch (err) {
+      console.warn("[Admin] loadAdminPayouts error:", err);
+    } finally {
+      setIsLoadingAdminPayouts(false);
+    }
+  }, [getAccessToken, adminPayoutFilter]);
+
+  useEffect(() => {
+    if (isAuthorized && (activeTab === "payouts" || activeTab === "overview")) {
+      loadAdminPayouts();
+    }
+  }, [isAuthorized, activeTab, loadAdminPayouts]);
+
+  const handleCompletePayout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!completeModalPayout || !payoutTxHashInput.trim()) return;
+
+    setIsCompletingPayout(true);
+    setCompletePayoutError(null);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch(`/api/admin/payouts/${completeModalPayout.id}/complete`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ txHash: payoutTxHashInput.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to complete payout");
+      }
+      setCompleteModalPayout(null);
+      setPayoutTxHashInput("");
+      loadAdminPayouts();
+    } catch (err: any) {
+      setCompletePayoutError(err.message || "Failed to complete payout");
+    } finally {
+      setIsCompletingPayout(false);
+    }
+  };
+
+  const handleRejectPayout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rejectModalPayout) return;
+
+    setIsRejectingPayout(true);
+    setRejectPayoutError(null);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch(`/api/admin/payouts/${rejectModalPayout.id}/reject`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reason: payoutRejectReasonInput.trim() || "Rejected by administrator" }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to reject payout");
+      }
+      setRejectModalPayout(null);
+      setPayoutRejectReasonInput("");
+      loadAdminPayouts();
+    } catch (err: any) {
+      setRejectPayoutError(err.message || "Failed to reject payout");
+    } finally {
+      setIsRejectingPayout(false);
+    }
+  };
+
   const handleLookupShift = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!shiftIdInput.trim()) return;
@@ -869,7 +967,7 @@ export default function AdminPage() {
       <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-5 space-y-6">
 
         {/* Segmented Tab Bar (Mobile-First) */}
-        <div className="grid grid-cols-5 p-1 rounded-2xl bg-black/40 border border-white/10 max-w-2xl mx-auto sm:mx-0">
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 p-1 rounded-2xl bg-black/40 border border-white/10 max-w-3xl mx-auto sm:mx-0">
           <button
             onClick={() => setActiveTab("overview")}
             className={`py-2 px-2.5 rounded-xl text-xs font-sans tabular-nums font-bold transition-colors ${
@@ -909,6 +1007,21 @@ export default function AdminPage() {
                 {paymentData.stats.storedRefundsCount}
               </span>
             ) : null}
+          </button>
+          <button
+            onClick={() => setActiveTab("payouts")}
+            className={`py-2 px-2.5 rounded-xl text-xs font-sans tabular-nums font-bold transition-colors relative ${
+              activeTab === "payouts"
+                ? "bg-white/10 text-white shadow-sm border border-white/15"
+                : "text-outline hover:text-on-surface"
+            }`}
+          >
+            <span>Payouts</span>
+            {adminPayouts.filter((p) => p.status === "PENDING").length > 0 && (
+              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-400 text-[9px] font-bold">
+                {adminPayouts.filter((p) => p.status === "PENDING").length}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab("rewards")}
@@ -2306,6 +2419,367 @@ export default function AdminPage() {
                       <span>{isExecutingAdminAction ? "Sending…" : "Confirm Refund"}</span>
                     </button>
                   </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ────────────── TAB: PARTNER PAYOUTS ────────────── */}
+        {activeTab === "payouts" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Header & Controls */}
+            <div className="obsidian-glass rounded-2xl p-5 sm:p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
+                    <DollarSign className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white tracking-normal font-sans tabular-nums flex items-center gap-2">
+                      <span>Partner Fee Payout Requests</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-sans tabular-nums">
+                        Manual Disbursement
+                      </span>
+                    </h3>
+                    <p className="text-xs text-outline font-sans tabular-nums mt-0.5">
+                      Review withdrawal requests from partners. Transfer the requested asset manually, then enter the txHash to close the ticket.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => loadAdminPayouts()}
+                  disabled={isLoadingAdminPayouts}
+                  className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-1.5 self-start sm:self-auto"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingAdminPayouts ? "animate-spin" : ""}`} />
+                  <span>Refresh</span>
+                </button>
+              </div>
+
+              {/* Status Filter Buttons */}
+              <div className="flex flex-wrap items-center gap-2">
+                {(["ALL", "PENDING", "COMPLETED", "REJECTED"] as const).map((st) => {
+                  const count = st === "ALL" ? adminPayouts.length : adminPayouts.filter((p) => p.status === st).length;
+                  return (
+                    <button
+                      key={st}
+                      onClick={() => {
+                        setAdminPayoutFilter(st);
+                        loadAdminPayouts(st);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        adminPayoutFilter === st
+                          ? "bg-white text-black shadow-sm"
+                          : "bg-black/40 text-outline border border-white/10 hover:border-white/20 hover:text-white"
+                      }`}
+                    >
+                      {st} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Payouts Table / Cards */}
+            <div className="obsidian-glass rounded-2xl overflow-hidden border border-white/10">
+              {isLoadingAdminPayouts ? (
+                <div className="py-16 text-center text-outline text-xs flex justify-center items-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Loading payout requests...</span>
+                </div>
+              ) : adminPayouts.length === 0 ? (
+                <div className="py-16 text-center text-outline text-xs">
+                  No payout requests found for the selected filter.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs font-sans tabular-nums">
+                    <thead className="bg-white/5 text-outline text-[11px] uppercase tracking-wider border-b border-white/10">
+                      <tr>
+                        <th className="py-3 px-4">Ticket</th>
+                        <th className="py-3 px-4">Partner</th>
+                        <th className="py-3 px-4">Amount</th>
+                        <th className="py-3 px-4">Payout Asset & Chain</th>
+                        <th className="py-3 px-4">Destination Address</th>
+                        <th className="py-3 px-4">Status</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {adminPayouts.map((p) => {
+                        const isPending = p.status === "PENDING";
+                        const isCompleted = p.status === "COMPLETED";
+                        const isRejected = p.status === "REJECTED";
+
+                        const c = (p.targetChain || "").toLowerCase();
+                        let explorerUrl: string | null = null;
+                        if (p.txHash) {
+                          if (c.includes("poly") || c.includes("matic")) explorerUrl = `https://polygonscan.com/tx/${p.txHash}`;
+                          else if (c.includes("base")) explorerUrl = `https://basescan.org/tx/${p.txHash}`;
+                          else if (c.includes("sol")) explorerUrl = `https://solscan.io/tx/${p.txHash}`;
+                          else if (c.includes("ltc") || c.includes("lite")) explorerUrl = `https://litecoinspace.org/tx/${p.txHash}`;
+                          else explorerUrl = `https://basescan.org/tx/${p.txHash}`;
+                        }
+
+                        return (
+                          <tr key={p.id} className="hover:bg-white/[0.02] transition-colors">
+                            {/* Ticket ID & Time */}
+                            <td className="py-3.5 px-4 font-mono text-[11px]">
+                              <div className="text-white font-medium">{p.id.slice(0, 16)}...</div>
+                              <div className="text-[10px] text-outline">
+                                {new Date(p.createdAt).toLocaleDateString()} {new Date(p.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              </div>
+                            </td>
+
+                            {/* Partner ID */}
+                            <td className="py-3.5 px-4 font-mono text-[11px] text-outline">
+                              <span title={p.partnerUserId}>{p.partnerUserId ? `${p.partnerUserId.slice(0, 12)}...` : "Unknown"}</span>
+                              {p.partnerWalletAddress && (
+                                <div className="text-[10px] text-primary">
+                                  {p.partnerWalletAddress.slice(0, 6)}...{p.partnerWalletAddress.slice(-4)}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Amount USD */}
+                            <td className="py-3.5 px-4 font-bold text-white text-sm">
+                              ${Number(p.amountUsd).toFixed(2)}
+                            </td>
+
+                            {/* Asset & Chain */}
+                            <td className="py-3.5 px-4">
+                              <span className="font-semibold text-white">{p.targetAsset}</span>
+                              <span className="text-outline text-[11px] block">{p.targetChain}</span>
+                            </td>
+
+                            {/* Destination Address */}
+                            <td className="py-3.5 px-4 font-mono text-[11px]">
+                              <div className="flex items-center gap-1.5 bg-black/40 border border-white/5 rounded-lg px-2 py-1 max-w-[200px]">
+                                <span className="truncate text-white">{p.destinationAddress}</span>
+                                <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(p.destinationAddress);
+                                    setCopiedKey(p.id);
+                                    setTimeout(() => setCopiedKey(null), 2000);
+                                  }}
+                                  className="text-outline hover:text-white shrink-0"
+                                  title="Copy address"
+                                >
+                                  {copiedKey === p.id ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3" />}
+                                </button>
+                              </div>
+                            </td>
+
+                            {/* Status */}
+                            <td className="py-3.5 px-4">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1 ${
+                                  isCompleted
+                                    ? "bg-success/20 text-success border border-success/30"
+                                    : isRejected
+                                    ? "bg-error/20 text-error border border-error/30"
+                                    : "bg-warning/20 text-warning border border-warning/30"
+                                }`}
+                              >
+                                {isCompleted && <CheckCircle2 className="w-2.5 h-2.5" />}
+                                {isRejected && <AlertCircle className="w-2.5 h-2.5" />}
+                                {isPending && <Clock className="w-2.5 h-2.5" />}
+                                {p.status}
+                              </span>
+                              {p.adminNote && (
+                                <div className="text-[10px] text-error italic mt-0.5 max-w-[150px] truncate" title={p.adminNote}>
+                                  {p.adminNote}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Actions */}
+                            <td className="py-3.5 px-4 text-right space-x-2">
+                              {isPending ? (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      setCompleteModalPayout(p);
+                                      setPayoutTxHashInput("");
+                                      setCompletePayoutError(null);
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg bg-success hover:bg-success/90 text-black text-xs font-bold transition-all shadow-sm"
+                                  >
+                                    Fulfill
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setRejectModalPayout(p);
+                                      setPayoutRejectReasonInput("");
+                                      setRejectPayoutError(null);
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg bg-error/20 hover:bg-error/30 border border-error/30 text-error text-xs font-bold transition-all"
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              ) : isCompleted && p.txHash ? (
+                                <a
+                                  href={explorerUrl || "#"}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 text-success hover:underline text-xs font-bold font-mono"
+                                >
+                                  <span>{p.txHash.slice(0, 8)}...</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              ) : (
+                                <span className="text-outline text-[11px]">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* FULFILL PAYOUT MODAL */}
+            {completeModalPayout && (
+              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="w-full max-w-md bg-neutral-950 border border-white/10 rounded-2xl p-6 shadow-2xl relative space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-success" />
+                      <span>Fulfill Partner Payout</span>
+                    </h3>
+                    <button
+                      onClick={() => setCompleteModalPayout(null)}
+                      className="text-outline hover:text-white"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="bg-white/5 rounded-xl p-3 text-xs space-y-1.5 font-mono">
+                    <div className="flex justify-between">
+                      <span className="text-outline">Amount:</span>
+                      <span className="text-white font-bold">${completeModalPayout.amountUsd.toFixed(2)} USD</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-outline">Send As:</span>
+                      <span className="text-white font-bold">{completeModalPayout.targetAsset} on {completeModalPayout.targetChain}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-outline">Recipient:</span>
+                      <span className="text-white font-bold truncate max-w-[220px]" title={completeModalPayout.destinationAddress}>
+                        {completeModalPayout.destinationAddress}
+                      </span>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleCompletePayout} className="space-y-4">
+                    <div>
+                      <label className="text-xs font-bold text-outline uppercase tracking-wider block mb-1">
+                        On-Chain Transaction Hash (TxHash)
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={payoutTxHashInput}
+                        onChange={(e) => setPayoutTxHashInput(e.target.value)}
+                        placeholder="Paste transaction hash (0x... or sol/ltc hash)"
+                        className="w-full px-3 py-2.5 bg-black/60 border border-white/10 rounded-xl text-white text-xs font-mono focus:outline-none focus:border-white transition-colors"
+                      />
+                    </div>
+
+                    {completePayoutError && (
+                      <div className="p-2.5 rounded-xl bg-error/10 border border-error/20 text-error text-xs">
+                        {completePayoutError}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setCompleteModalPayout(null)}
+                        className="flex-1 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-outline text-xs font-bold transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isCompletingPayout || !payoutTxHashInput.trim()}
+                        className="flex-1 py-2 rounded-xl bg-success hover:bg-success/90 text-black text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                      >
+                        {isCompletingPayout && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                        <span>Confirm Fulfilled</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* REJECT PAYOUT MODAL */}
+            {rejectModalPayout && (
+              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="w-full max-w-md bg-neutral-950 border border-white/10 rounded-2xl p-6 shadow-2xl relative space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                    <h3 className="text-sm font-bold text-error flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4" />
+                      <span>Reject Partner Payout</span>
+                    </h3>
+                    <button
+                      onClick={() => setRejectModalPayout(null)}
+                      className="text-outline hover:text-white"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <p className="text-xs text-outline leading-relaxed">
+                    Rejecting this ticket will automatically <span className="text-white font-bold">refund the ${rejectModalPayout.amountUsd.toFixed(2)} USD</span> back to the partner&apos;s available balance immediately.
+                  </p>
+
+                  <form onSubmit={handleRejectPayout} className="space-y-4">
+                    <div>
+                      <label className="text-xs font-bold text-outline uppercase tracking-wider block mb-1">
+                        Reason for Rejection
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={payoutRejectReasonInput}
+                        onChange={(e) => setPayoutRejectReasonInput(e.target.value)}
+                        placeholder="e.g. Invalid address format, Partner requested cancellation"
+                        className="w-full px-3 py-2.5 bg-black/60 border border-white/10 rounded-xl text-white text-xs font-sans focus:outline-none focus:border-white transition-colors"
+                      />
+                    </div>
+
+                    {rejectPayoutError && (
+                      <div className="p-2.5 rounded-xl bg-error/10 border border-error/20 text-error text-xs">
+                        {rejectPayoutError}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setRejectModalPayout(null)}
+                        className="flex-1 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-outline text-xs font-bold transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isRejectingPayout}
+                        className="flex-1 py-2 rounded-xl bg-error hover:bg-error/90 text-white text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                      >
+                        {isRejectingPayout && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                        <span>Confirm Rejection & Refund</span>
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </div>
             )}

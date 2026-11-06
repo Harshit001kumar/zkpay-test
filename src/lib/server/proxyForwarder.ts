@@ -77,6 +77,13 @@ const CHAIN_IDS: Record<string, number> = {
   bsc: 56,
 };
 
+// ─── BSC Dynamic Gas Calculation ───
+// BSC gas advances are 100% dynamic (no fixed BNB floor): advance = live gasPrice × gas units × safety margin.
+// At ~0.1–1 gwei this is ~$0.01–$0.25 instead of a flat ~$0.50, and unused BNB is swept back to the relayer.
+// The only floor is on the gas PRICE (BSC validators reject txs below 0.1 gwei).
+const BSC_MIN_GAS_PRICE = 100_000_000n; // 0.1 gwei
+const BSC_FALLBACK_GAS_PRICE = 1_000_000_000n; // 1 gwei, used only if the RPC gasPrice call fails
+
 /**
  * Preemptively notifies NEAR Intents 1Click service (POST /v0/deposit/submit)
  * that a deposit transaction has been broadcast for the specified solver deposit address.
@@ -379,7 +386,7 @@ async function sendResilientErc20Transfer(params: {
 }): Promise<{ txHash?: `0x${string}`; error?: string }> {
   const { chainKey, publicClient, walletClient, proxyAccount, tokenAddress, to, amount } = params;
   const gasLimit = 90_000n;
-  const minGasFloor = chainKey === "polygon" ? 35_000_000_000n : 0n;
+  const minGasFloor = chainKey === "polygon" ? 35_000_000_000n : chainKey === "bsc" ? BSC_MIN_GAS_PRICE : 0n;
   const baseGasPrice = (await publicClient
     .getGasPrice()
     .catch(() => (chainKey === "polygon" ? 40_000_000_000n : 1_000_000_000n))) as bigint;
@@ -401,7 +408,7 @@ async function sendResilientErc20Transfer(params: {
         chainKey === "polygon"
           ? parseUnits("0.025", 18)
           : chainKey === "bsc"
-          ? parseUnits("0.0005", 18)
+          ? 0n // Dynamic: top up exactly neededForTx (gasLimit × live gasPrice × 1.4)
           : 15_000_000_000_000n;
       const neededForTx = (gasLimit * effectiveGasPrice * 14n) / 10n;
       const targetBal = neededForTx > minTopUpFloor ? neededForTx : minTopUpFloor;
@@ -538,6 +545,34 @@ async function sendResilientErc20Transfer(params: {
 const sweepLocks = new Set<string>();
 
 /**
+ * FEE SAFETY INVARIANT (single source of truth for every ERC-20 solver forward):
+ *
+ * The solver may only ever receive (liveBalance − fees), and ONLY while the user's principal is
+ * still sitting in the proxy. Any balance at or below the fee total belongs to ZkPay / the partner
+ * and must NEVER be forwarded to the solver: the quote is FLEX_INPUT, so the solver silently
+ * absorbs any extra tokens and the fee is lost.
+ *
+ * `expectedNetUnits` is the net we computed when the deposit was detected. If the live net is far
+ * below it, the principal has already left (stale RPC read, concurrent sweep, or a previous
+ * forward that confirmed late) and we must not send anything.
+ *
+ * Returns 0n whenever a solver transfer must NOT be made.
+ */
+export function getSafeSolverForwardAmount(
+  liveBalance: bigint,
+  totalFeeUnits: bigint,
+  expectedNetUnits: bigint
+): bigint {
+  if (liveBalance <= totalFeeUnits) return 0n;
+  const net = liveBalance - totalFeeUnits;
+  if (expectedNetUnits > 0n && net < (expectedNetUnits * 90n) / 100n) return 0n;
+  return net;
+}
+
+// A broadcast solver forward with no receipt after this long is treated as dropped and may be retried.
+const PENDING_FORWARD_STALE_MS = 10 * 60 * 1000;
+
+/**
  * Checks on-chain deposit on the proxy address and automatically executes
  * the upfront fee split and forward to Near Intents solvers.
  */
@@ -634,21 +669,22 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       zkpayFeeWei = (balanceWei * BigInt(order.feeAmount)) / expectedAtomic;
     }
 
-    const hasFees =
-      (zkpayFeeWei > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) ||
-      (partnerFeeWei > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient));
+    // 100% of all fees collected are swept to ZkPay Treasury on-chain.
+    // Partner's share is credited off-chain upon swap completion.
+    const totalFeeWei = zkpayFeeWei + partnerFeeWei;
+    const hasFees = totalFeeWei > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase();
 
     const feeData = await publicClient.estimateFeesPerGas().catch(() => null);
     const maxFee = feeData?.maxFeePerGas || (await publicClient.getGasPrice());
     const l1Buffer = (chainKey === "base" || chainKey === "arb") ? 600_000_000_000n : 10_000_000_000n;
-    const gasLimit = hasFees ? 75000n : 30000n;
+    const gasLimit = hasFees ? 60000n : 30000n;
     const gasReserve = gasLimit * maxFee + l1Buffer;
 
-    if (balanceWei <= gasReserve + zkpayFeeWei + partnerFeeWei) {
+    if (balanceWei <= gasReserve + totalFeeWei) {
       throw new Error("Remaining native balance too small to cover gas and fees.");
     }
 
-    const netWei = balanceWei - gasReserve - zkpayFeeWei - partnerFeeWei;
+    const netWei = balanceWei - gasReserve - totalFeeWei;
     if (netWei <= 0n) {
       throw new Error("Net balance for solver is 0 after fees and gas reserve.");
     }
@@ -668,25 +704,15 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
         callData: "0x",
       });
 
-      if (zkpayFeeWei > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
-        calls.push({
-          target: treasuryAddress,
-          allowFailure: false,
-          value: zkpayFeeWei,
-          callData: "0x",
-        });
-      }
+      // 100% of fees to Treasury
+      calls.push({
+        target: treasuryAddress,
+        allowFailure: false,
+        value: totalFeeWei,
+        callData: "0x",
+      });
 
-      if (partnerFeeWei > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
-        calls.push({
-          target: getAddress(order.partnerFeeRecipient),
-          allowFailure: false,
-          value: partnerFeeWei,
-          callData: "0x",
-        });
-      }
-
-      const totalToSend = netWei + zkpayFeeWei + partnerFeeWei;
+      const totalToSend = netWei + totalFeeWei;
 
       try {
         forwardTxHash = await walletClient.writeContract({
@@ -702,7 +728,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
         console.log(`[ProxyForwarder] ✓ Atomic Multicall3 bundled native transfer (solver + fees): ${forwardTxHash}`);
       } catch (mcErr: any) {
         console.warn("[ProxyForwarder] Multicall3 aggregate3Value failed, falling back to sequential transfers:", mcErr?.message || mcErr);
-        // Fallback: send solver first, then fees
+        // Fallback: send solver first, then 100% fee to treasury
         forwardTxHash = await walletClient.sendTransaction({
           account: proxyAccount,
           to: solverAddress,
@@ -710,20 +736,11 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
         });
         notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
 
-        if (zkpayFeeWei > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
-          feeTxHash = await walletClient.sendTransaction({
-            account: proxyAccount,
-            to: treasuryAddress,
-            value: zkpayFeeWei,
-          }).catch(() => "");
-        }
-        if (partnerFeeWei > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
-          await walletClient.sendTransaction({
-            account: proxyAccount,
-            to: getAddress(order.partnerFeeRecipient),
-            value: partnerFeeWei,
-          }).catch(() => "");
-        }
+        feeTxHash = await walletClient.sendTransaction({
+          account: proxyAccount,
+          to: treasuryAddress,
+          value: totalFeeWei,
+        }).catch(() => "");
       }
     } else {
       // Direct transfer to solver (no fees)
@@ -920,14 +937,9 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       // 1. Solver forward (First in list so Near Intents receives funds immediately!)
       outputs.push({ to: solverAddress, value: netTokenUnits });
 
-      // 2. ZkPay fee to Treasury
-      if (zkpayFeeUnits > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
-        outputs.push({ to: treasuryAddress, value: zkpayFeeUnits });
-      }
-
-      // 3. Partner fee
-      if (partnerFeeUnits > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
-        outputs.push({ to: getAddress(order.partnerFeeRecipient), value: partnerFeeUnits });
+      // 2. 100% of fees to Treasury
+      if (totalFeeUnits > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
+        outputs.push({ to: treasuryAddress, value: totalFeeUnits });
       }
 
       const bundleTxHash = await executeBundledGaslessUsdcTransfers({
@@ -957,17 +969,17 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     const feeData = await publicClient.estimateFeesPerGas().catch(() => null);
     const gasPrice = await publicClient.getGasPrice();
     const rawMaxFee = feeData?.maxFeePerGas && feeData.maxFeePerGas > gasPrice ? feeData.maxFeePerGas : gasPrice;
-    const minPolygonGasPrice = chainKey === "polygon" ? 40_000_000_000n : 0n;
-    const maxFee = rawMaxFee > minPolygonGasPrice ? rawMaxFee : minPolygonGasPrice;
+    const minChainGasPrice = chainKey === "polygon" ? 40_000_000_000n : chainKey === "bsc" ? BSC_MIN_GAS_PRICE : 0n;
+    const maxFee = rawMaxFee > minChainGasPrice ? rawMaxFee : minChainGasPrice;
     const nativeSym = chainKey === "polygon" ? "POL" : chainKey === "bsc" ? "BNB" : "ETH";
 
-    const transfersCount = partnerFeeUnits > 0n ? 3n : 2n;
+    const transfersCount = 2n;
     // Dynamic gas: (maxFee * 95,000 gas * count) + 50% safety margin for multi-block baseFee spikes
     // (All unused native gas is automatically swept back to the relayer in Step 4)
     const calculatedGasNeeded = (maxFee * 95000n * transfersCount * 15n) / 10n;
     const minNeededFloor = chainKey === "polygon"
       ? parseUnits("0.035", 18)
-      : (chainKey === "bsc" ? parseUnits("0.0009", 18) : 35_000_000_000_000n);
+      : (chainKey === "bsc" ? 0n /* Dynamic: no fixed BNB floor */ : 35_000_000_000_000n);
     const gasNeeded = calculatedGasNeeded > minNeededFloor ? calculatedGasNeeded : minNeededFloor;
 
     if (nativeBalance < gasNeeded) {
@@ -1017,12 +1029,32 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       return order;
     }
 
-    const finalNetTokens = remainingTokenBalance > totalFeeUnits
-      ? remainingTokenBalance - totalFeeUnits
-      : remainingTokenBalance;
+    // GUARD 1: never re-send if a solver forward was already broadcast and is pending or confirmed.
+    // (Re-read the order so we see a forwardTxHash persisted by an earlier tick.)
+    const latestOrder = (await getProxyOrderBySwapId(order.swapId).catch(() => null)) || order;
+    if (latestOrder.forwardTxHash && latestOrder.forwardTxHash.startsWith("0x")) {
+      const priorReceipt = await publicClient
+        .getTransactionReceipt({ hash: latestOrder.forwardTxHash as `0x${string}` })
+        .catch(() => null);
+      const isStalePending =
+        !priorReceipt &&
+        !!latestOrder.lastAttemptAt &&
+        Date.now() - latestOrder.lastAttemptAt > PENDING_FORWARD_STALE_MS;
+      if (priorReceipt?.status === "success" || (!priorReceipt && !isStalePending)) {
+        console.warn(
+          `[ProxyForwarder] Solver forward ${latestOrder.forwardTxHash} already ${priorReceipt ? "confirmed" : "pending"} for order ${order.swapId}. Not re-sending; remaining fee will be swept to Treasury by reconciliation.`
+        );
+        return latestOrder;
+      }
+    }
+
+    // GUARD 2: amount invariant - the fee portion can never be sent to the solver.
+    const finalNetTokens = getSafeSolverForwardAmount(remainingTokenBalance, totalFeeUnits, netTokenUnits);
 
     if (finalNetTokens === 0n) {
-      console.log(`[ProxyForwarder] Final net tokens to send is 0 for order ${order.swapId}.`);
+      console.warn(
+        `[ProxyForwarder] Refusing solver forward for order ${order.swapId}: live balance ${remainingTokenBalance.toString()} vs fees ${totalFeeUnits.toString()} / expected net ${netTokenUnits.toString()}. Principal already left the proxy; remaining balance is the platform fee and will be swept to Treasury.`
+      );
       return order;
     }
 
@@ -1048,6 +1080,13 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     const forwardTxHash = forwardRes.txHash;
     console.log(`[ProxyForwarder] Net token forward to solver broadcast FIRST: ${forwardTxHash}`);
+
+    // Persist the hash IMMEDIATELY (before waiting for the receipt) so any later tick / instance sees
+    // that a solver forward is in flight and never sends a second one (see GUARD 1 above).
+    await updateProxySwapOrder(order.swapId, {
+      forwardTxHash,
+      lastAttemptAt: Date.now(),
+    }).catch(() => {});
 
     // CRITICAL: Wait for solver forward receipt and verify it succeeded on-chain BEFORE saving forwardTxHash or sending fees!
     const solverReceipt = await publicClient
@@ -1097,9 +1136,9 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
     console.log(`[ProxyForwarder] ✓ Solver forward confirmed on-chain: ${forwardTxHash}`);
 
-    // 2. Transfer ZkPay fee to Treasury
+    // 2. Transfer 100% of fees to Treasury
     let feeTxHash = "";
-    if (zkpayFeeUnits > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
+    if (totalFeeUnits > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
       try {
         const remainingBal = (await publicClient.readContract({
           address: tokenAddress,
@@ -1107,7 +1146,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
           functionName: "balanceOf",
           args: [proxyAddress],
         })) as bigint;
-        const feeToSend = remainingBal >= zkpayFeeUnits ? zkpayFeeUnits : remainingBal;
+        const feeToSend = remainingBal >= totalFeeUnits ? totalFeeUnits : remainingBal;
         if (feeToSend > 0n) {
           const feeRes = await sendResilientErc20Transfer({
             chainKey,
@@ -1119,52 +1158,20 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
             amount: feeToSend,
           });
           if (feeRes.txHash) {
-            console.log(`[ProxyForwarder] Token ZkPay fee transfer broadcast: ${feeRes.txHash}`);
+            console.log(`[ProxyForwarder] Token fee transfer to Treasury broadcast: ${feeRes.txHash}`);
             const feeReceipt = await publicClient
               .waitForTransactionReceipt({ hash: feeRes.txHash as `0x${string}` })
               .catch(() => null);
             if (!feeReceipt || feeReceipt.status === "success") {
               feeTxHash = feeRes.txHash;
-              console.log(`[ProxyForwarder] ✓ Token ZkPay fee confirmed on-chain: ${feeTxHash}`);
+              console.log(`[ProxyForwarder] ✓ Token fee confirmed on-chain to Treasury: ${feeTxHash}`);
             } else {
-              console.warn(`[ProxyForwarder] ✗ Token ZkPay fee transfer reverted on-chain: ${feeRes.txHash}`);
+              console.warn(`[ProxyForwarder] ✗ Token fee transfer to Treasury reverted on-chain: ${feeRes.txHash}`);
             }
           }
         }
       } catch (feeErr) {
-        console.error("[ProxyForwarder] Token ZkPay fee transfer error:", feeErr);
-      }
-    }
-
-    // 3. Transfer Partner fee
-    let partnerTxHash = "";
-    if (partnerFeeUnits > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
-      try {
-        const remainingBal = (await publicClient.readContract({
-          address: tokenAddress,
-          abi: ERC20_ABI,
-          functionName: "balanceOf",
-          args: [proxyAddress],
-        })) as bigint;
-        const partnerToSend = remainingBal >= partnerFeeUnits ? partnerFeeUnits : remainingBal;
-        if (partnerToSend > 0n) {
-          const partnerRes = await sendResilientErc20Transfer({
-            chainKey,
-            publicClient,
-            walletClient,
-            proxyAccount,
-            tokenAddress,
-            to: getAddress(order.partnerFeeRecipient),
-            amount: partnerToSend,
-          });
-          if (partnerRes.txHash) {
-            partnerTxHash = partnerRes.txHash;
-            console.log(`[ProxyForwarder] Token partner fee transfer broadcast: ${partnerTxHash}`);
-            await publicClient.waitForTransactionReceipt({ hash: partnerTxHash as `0x${string}` }).catch(() => {});
-          }
-        }
-      } catch (partnerErr) {
-        console.error("[ProxyForwarder] Token partner fee transfer error:", partnerErr);
+        console.error("[ProxyForwarder] Token fee transfer error:", feeErr);
       }
     }
 
@@ -1474,107 +1481,47 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
 
     const feeNotes: string[] = [];
 
-    // Check if treasury and partner are the same recipient address
-    const isSameRecipient =
-      order.treasuryAddress &&
-      order.partnerFeeRecipient &&
-      isSolanaAddr(order.treasuryAddress) &&
-      isSolanaAddr(order.partnerFeeRecipient) &&
-      order.treasuryAddress.trim() === order.partnerFeeRecipient.trim();
-
+    const totalFeeLamports = zkpayFeeLamports + partnerFeeLamports;
     let effectiveZkpayFee = 0n;
-    let effectivePartnerFee = 0n;
+    const effectivePartnerFee = 0n;
 
-    if (isSameRecipient) {
-      const combinedFee = zkpayFeeLamports + partnerFeeLamports;
-      if (combinedFee >= SOLANA_RENT_EXEMPT_MIN) {
-        effectiveZkpayFee = combinedFee;
-        effectivePartnerFee = 0n;
+    if (
+      order.treasuryAddress &&
+      isSolanaAddr(order.treasuryAddress) &&
+      order.treasuryAddress.trim() !== order.proxyDepositAddress.trim() &&
+      order.treasuryAddress.trim() !== order.solverDepositAddress.trim() &&
+      totalFeeLamports > 0n
+    ) {
+      if (totalFeeLamports >= SOLANA_RENT_EXEMPT_MIN) {
+        effectiveZkpayFee = totalFeeLamports;
       } else {
         try {
-          const balRes = await fetchSolanaRpc("getBalance", [order.treasuryAddress.trim()]);
-          const bal = BigInt(balRes?.value || 0);
-          if (bal >= SOLANA_RENT_EXEMPT_MIN) {
-            effectiveZkpayFee = combinedFee;
-            effectivePartnerFee = 0n;
+          const treasuryBalRes = await fetchSolanaRpc("getBalance", [order.treasuryAddress.trim()]);
+          const treasuryBal = BigInt(treasuryBalRes?.value || 0);
+          if (treasuryBal >= SOLANA_RENT_EXEMPT_MIN) {
+            effectiveZkpayFee = totalFeeLamports;
           } else {
-            feeNotes.push(`Combined fee (${combinedFee} lamports) rolled into solver transfer (below rent-exempt threshold)`);
+            feeNotes.push(
+              `Treasury fee (${totalFeeLamports} lamports) rolled into solver transfer (below rent threshold)`
+            );
           }
         } catch {
-          feeNotes.push(`Combined fee (${combinedFee} lamports) rolled into solver transfer (RPC check failed)`);
-        }
-      }
-    } else {
-      if (
-        order.treasuryAddress &&
-        isSolanaAddr(order.treasuryAddress) &&
-        order.treasuryAddress.trim() !== order.proxyDepositAddress.trim() &&
-        order.treasuryAddress.trim() !== order.solverDepositAddress.trim() &&
-        zkpayFeeLamports > 0n
-      ) {
-        if (zkpayFeeLamports >= SOLANA_RENT_EXEMPT_MIN) {
-          effectiveZkpayFee = zkpayFeeLamports;
-        } else {
-          try {
-            const treasuryBalRes = await fetchSolanaRpc("getBalance", [order.treasuryAddress.trim()]);
-            const treasuryBal = BigInt(treasuryBalRes?.value || 0);
-            if (treasuryBal >= SOLANA_RENT_EXEMPT_MIN) {
-              effectiveZkpayFee = zkpayFeeLamports;
-            } else {
-              feeNotes.push(
-                `Treasury fee (${zkpayFeeLamports} lamports) rolled into solver transfer (below rent threshold)`
-              );
-              console.log(
-                `[ProxyForwarder] Solana treasury fee (${zkpayFeeLamports} lamports) is below rent threshold and treasury is uninitialized; rolling into solver transfer.`
-              );
-            }
-          } catch {
-            feeNotes.push(`Treasury fee (${zkpayFeeLamports} lamports) rolled into solver transfer (RPC check failed)`);
-          }
-        }
-      }
-
-      if (
-        order.partnerFeeRecipient &&
-        isSolanaAddr(order.partnerFeeRecipient) &&
-        order.partnerFeeRecipient.trim() !== order.proxyDepositAddress.trim() &&
-        order.partnerFeeRecipient.trim() !== order.solverDepositAddress.trim() &&
-        partnerFeeLamports > 0n
-      ) {
-        if (partnerFeeLamports >= SOLANA_RENT_EXEMPT_MIN) {
-          effectivePartnerFee = partnerFeeLamports;
-        } else {
-          try {
-            const partnerBalRes = await fetchSolanaRpc("getBalance", [order.partnerFeeRecipient.trim()]);
-            const partnerBal = BigInt(partnerBalRes?.value || 0);
-            if (partnerBal >= SOLANA_RENT_EXEMPT_MIN) {
-              effectivePartnerFee = partnerFeeLamports;
-            } else {
-              feeNotes.push(
-                `Partner fee (${partnerFeeLamports} lamports) rolled into solver transfer (below rent threshold)`
-              );
-              console.log(
-                `[ProxyForwarder] Solana partner fee (${partnerFeeLamports} lamports) is below rent threshold; rolling into solver transfer.`
-              );
-            }
-          } catch {
-            feeNotes.push(`Partner fee (${partnerFeeLamports} lamports) rolled into solver transfer (RPC check failed)`);
-          }
+          feeNotes.push(`Treasury fee (${totalFeeLamports} lamports) rolled into solver transfer (RPC check failed)`);
         }
       }
     }
 
     // CRITICAL: The total lamports leaving the proxy account MUST equal (lamports - SOLANA_NETWORK_FEE).
-    // Any fee that is not routed to Treasury/Partner is given to Solver.
+    // Any fee that is not routed to Treasury is given to Solver.
     // This GUARANTEES the remaining balance in proxy account is EXACTLY 0 LAMPORTS (never stuck with dust).
-    const solverLamports = lamports - SOLANA_NETWORK_FEE - effectiveZkpayFee - effectivePartnerFee;
+    const solverLamports = lamports - SOLANA_NETWORK_FEE - effectiveZkpayFee;
 
     if (solverLamports <= 0n) {
       throw new Error(`Solana deposit (${lamports} lamports) too small to cover 5,000 lamport network fee.`);
     }
 
     console.log(
-      `[ProxyForwarder] Sweeping SOL: ${solverLamports} -> Solver (${order.solverDepositAddress}), ${effectiveZkpayFee} -> Treasury (${order.treasuryAddress}), ${effectivePartnerFee} -> Partner (${order.partnerFeeRecipient || "none"}), 5000 fee. Residual balance = 0 lamports.`
+      `[ProxyForwarder] Sweeping SOL: ${solverLamports} -> Solver (${order.solverDepositAddress}), ${effectiveZkpayFee} -> Treasury (${order.treasuryAddress}), 5000 fee. Residual balance = 0 lamports.`
     );
 
     const txHash = await sendSolanaTransfer({
@@ -1584,8 +1531,8 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
       transferLamports: solverLamports,
       feeRecipientBase58: effectiveZkpayFee > 0n ? order.treasuryAddress : null,
       feeLamports: effectiveZkpayFee,
-      partnerRecipientBase58: (effectivePartnerFee > 0n && order.partnerFeeRecipient) ? order.partnerFeeRecipient : null,
-      partnerLamports: effectivePartnerFee,
+      partnerRecipientBase58: null,
+      partnerLamports: 0n,
     });
 
     notifyNearIntentsDepositSubmit(order.solverDepositAddress, txHash).catch(() => {});
@@ -1669,20 +1616,22 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       zkpayFeeSats = (balanceSatoshis * BigInt(order.feeAmount)) / expectedAtomic;
     }
 
+    const totalFeeSats = zkpayFeeSats + partnerFeeSats;
+
     const txHash = await sweepLtcDeposit({
       proxyAddress: order.proxyDepositAddress,
       privKeyHex,
       solverAddress: order.solverDepositAddress,
       treasuryAddress: order.treasuryAddress,
-      partnerAddress: order.partnerFeeRecipient,
-      zkpayFeeSatoshis: zkpayFeeSats,
-      partnerFeeSatoshis: partnerFeeSats,
+      partnerAddress: undefined,
+      zkpayFeeSatoshis: totalFeeSats,
+      partnerFeeSatoshis: 0n,
     });
 
     notifyNearIntentsDepositSubmit(order.solverDepositAddress, txHash).catch(() => {});
 
     const dustLimit = LTC_DUST_THRESHOLD_SATOSHIS || 5460n;
-    const hasFeeOutput = zkpayFeeSats >= dustLimit || partnerFeeSats >= dustLimit;
+    const hasFeeOutput = totalFeeSats >= dustLimit;
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: "FORWARDED",
@@ -2502,8 +2451,12 @@ export async function recoverProxyDeposit(
       }
 
       const ethBalance = await publicClient.getBalance({ address: proxyAccount.address });
-      const gasPrice = await publicClient.getGasPrice().catch(() => 40_000_000_000n);
-      const minNeededFloor = normChain === "polygon" ? parseUnits("0.02", 18) : 30_000_000_000_000n;
+      const rawGasPrice = await publicClient
+        .getGasPrice()
+        .catch(() => (normChain === "bsc" ? BSC_FALLBACK_GAS_PRICE : 40_000_000_000n));
+      const gasPrice = normChain === "bsc" && rawGasPrice < BSC_MIN_GAS_PRICE ? BSC_MIN_GAS_PRICE : rawGasPrice;
+      const minNeededFloor =
+        normChain === "polygon" ? parseUnits("0.02", 18) : normChain === "bsc" ? 0n : 30_000_000_000_000n;
       const gasNeeded = (gasPrice * 95_000n * 15n) / 10n;
       const targetGas = gasNeeded > minNeededFloor ? gasNeeded : minNeededFloor;
 
@@ -2569,6 +2522,18 @@ export async function recoverProxyDeposit(
         recoveredAmount: `${formatUnits(liveFeeBal, decimals)} ${tokenSymbol}`,
         destination: treasuryAddress,
         explorerUrl: getExplorerTxUrl(order.chain, feeTxHash),
+      };
+    }
+
+    // FEE SAFETY: when forwarding to the solver, a balance at or below the fee total is the platform
+    // fee itself and must never be sent to the solver (it would be absorbed by the FLEX_INPUT quote).
+    const isSolverDestination =
+      cleanDestination.toLowerCase() === (order.solverDepositAddress || "").toLowerCase();
+    if (action === "forward" && isSolverDestination && totalFeeUnits > 0n && tokenBalance <= totalFeeUnits) {
+      return {
+        success: false,
+        message: `Refusing to forward ${formatUnits(tokenBalance, decimals)} ${tokenSymbol} to the solver: this is at or below the platform fee (${formatUnits(totalFeeUnits, decimals)} ${tokenSymbol}), so the swap principal has already left the proxy. To sweep it to Treasury, retry with customRecipient=${treasuryAddress}.`,
+        order,
       };
     }
 
@@ -2644,13 +2609,13 @@ export async function recoverProxyDeposit(
     const feeData = await publicClient.estimateFeesPerGas().catch(() => null);
     const gasPrice = await publicClient.getGasPrice();
     const rawMaxFee = feeData?.maxFeePerGas && feeData.maxFeePerGas > gasPrice ? feeData.maxFeePerGas : (gasPrice * 13n) / 10n;
-    const minPolygonGasPrice = normChain === "polygon" ? 40_000_000_000n : 0n;
-    const maxFee = rawMaxFee > minPolygonGasPrice ? rawMaxFee : minPolygonGasPrice;
+    const minChainGasPrice = normChain === "polygon" ? 40_000_000_000n : normChain === "bsc" ? BSC_MIN_GAS_PRICE : 0n;
+    const maxFee = rawMaxFee > minChainGasPrice ? rawMaxFee : minChainGasPrice;
     const transfersCount = (action === "forward" && totalFeeUnits > 0n) ? 2n : 1n;
     const calculatedGas = (maxFee * 95000n * transfersCount * 15n) / 10n;
     const minNeededFloor = normChain === "polygon" 
       ? parseUnits("0.035", 18) 
-      : (normChain === "bsc" ? parseUnits("0.0009", 18) : 35_000_000_000_000n);
+      : (normChain === "bsc" ? 0n /* Dynamic: no fixed BNB floor */ : 35_000_000_000_000n);
     const gasNeeded = calculatedGas > minNeededFloor ? calculatedGas : minNeededFloor;
 
     if (ethBalance < gasNeeded) {
@@ -2741,7 +2706,19 @@ export async function recoverProxyDeposit(
       };
     }
 
-    const finalSolverUnits = liveTokenBal >= netSolverUnits ? netSolverUnits : liveTokenBal;
+    const finalSolverUnits =
+      action === "forward" && isSolverDestination && totalFeeUnits > 0n
+        ? getSafeSolverForwardAmount(liveTokenBal, totalFeeUnits, netSolverUnits)
+        : liveTokenBal >= netSolverUnits
+        ? netSolverUnits
+        : liveTokenBal;
+    if (finalSolverUnits === 0n) {
+      return {
+        success: false,
+        message: `Live proxy balance (${formatUnits(liveTokenBal, decimals)} ${tokenSymbol}) dropped below the expected net amount; the principal has already left the proxy. Not forwarding the remaining fee to the solver.`,
+        order,
+      };
+    }
     console.log(`[Recover] Executing ERC-20 transfer of ${formatUnits(finalSolverUnits, decimals)} ${tokenSymbol} to ${cleanDestination}...`);
 
     const transferRes = await sendResilientErc20Transfer({

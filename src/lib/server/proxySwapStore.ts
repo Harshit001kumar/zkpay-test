@@ -39,6 +39,9 @@ export interface ProxySwapOrder {
   // Partner attribution (used by the /partner dashboard)
   apiKeyId?: string | null; // API key that created this order
   partnerUserId?: string | null; // Privy user ID owning that API key
+  feeCredited?: boolean; // True once partner's USD share has been credited upon settlement
+  feeCreditedAt?: number; // Timestamp of fee crediting
+  partnerFeeUsd?: number; // USD value credited to partner
   source?: "api" | "app" | "checkout";
   createdAt: number;
   expiresAt: number;

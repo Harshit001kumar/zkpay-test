@@ -37,6 +37,7 @@ import {
 } from "./proxySwapStore";
 import { saveDirectSwapOrder } from "./directSwapStore";
 import { checkAndForwardProxyDeposit } from "./proxyForwarder";
+import { creditPartnerFeeOnSettlement } from "./partnerBalanceStore";
 
 const ONECLICK_API = "https://1click.chaindefuser.com/v0";
 
@@ -1179,6 +1180,15 @@ export async function getSwapStatus(depositAddress: string) {
                 ? { forwardTxHash: solverStatus.originTxHash }
                 : {}),
             })) || currentOrder;
+
+          // Accrue fee to partner off-chain strictly upon settlement!
+          creditPartnerFeeOnSettlement(currentOrder).catch((e) =>
+            console.warn("[SwapRouter] Partner fee settlement credit error:", e)
+          );
+        } else if (solverStatus.status === "settled" && !currentOrder.feeCredited) {
+          creditPartnerFeeOnSettlement(currentOrder).catch((e) =>
+            console.warn("[SwapRouter] Partner fee settlement credit retry error:", e)
+          );
         } else if (isSolverActiveOrDone && currentOrder.status === "PENDING_DEPOSIT") {
           currentOrder =
             (await updateProxySwapOrder(currentOrder.swapId, {
