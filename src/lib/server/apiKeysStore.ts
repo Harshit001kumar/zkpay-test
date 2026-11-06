@@ -167,6 +167,11 @@ export async function listApiKeysForUser(userId: string): Promise<ApiKeyRecord[]
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
+export async function getApiKeyById(keyId: string): Promise<ApiKeyRecord | null> {
+  await hydrate();
+  return apiKeys.get(keyId) || null;
+}
+
 export async function revokeApiKeyForUser(userId: string, keyId: string): Promise<boolean> {
   await hydrate();
   const rec = apiKeys.get(keyId);

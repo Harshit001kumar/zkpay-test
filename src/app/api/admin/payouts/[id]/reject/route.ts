@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   const auth = await verifyAdminRequest(req);
   if (!auth.authorized) {
@@ -14,7 +14,10 @@ export async function POST(
   }
 
   try {
-    const { id } = await params;
+    const id = params?.id;
+    if (!id) {
+      return NextResponse.json({ success: false, error: "Missing payout ID" }, { status: 400 });
+    }
     const body = await req.json().catch(() => ({}));
     const { reason } = body;
 
