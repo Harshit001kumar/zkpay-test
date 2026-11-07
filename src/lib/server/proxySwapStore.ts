@@ -308,10 +308,14 @@ export async function getForwardedOrUncreditedProxyOrders(limit = 30): Promise<P
     const db = await getMongoDb();
     if (db) {
       const collection = db.collection<ProxySwapOrder>("proxy_swap_orders");
-      const query: any = {
-        $or: [
-          { status: "FORWARDED", createdAt: { $gte: since24h } },
-          {
+      const [forwardedList, uncreditedSettledList] = await Promise.all([
+        collection
+          .find({ status: "FORWARDED", createdAt: { $gte: since24h } } as any)
+          .sort({ createdAt: -1 })
+          .limit(limit)
+          .toArray(),
+        collection
+          .find({
             status: "SETTLED",
             feeCredited: { $ne: true },
             $or: [
@@ -319,16 +323,22 @@ export async function getForwardedOrUncreditedProxyOrders(limit = 30): Promise<P
               { apiKeyId: { $exists: true, $ne: null } },
               { partnerFeeRecipient: { $exists: true, $ne: null } },
             ],
-          },
-        ],
-      };
-      const list = await collection
-        .find(query)
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .toArray();
-      if (list && list.length > 0) {
-        return list as ProxySwapOrder[];
+          } as any)
+          .sort({ createdAt: -1 })
+          .limit(limit)
+          .toArray(),
+      ]);
+      const combined = [...(forwardedList || []), ...(uncreditedSettledList || [])];
+      if (combined.length > 0) {
+        const seen = new Set<string>();
+        const deduped: ProxySwapOrder[] = [];
+        for (const item of combined) {
+          if (!seen.has(item.swapId)) {
+            seen.add(item.swapId);
+            deduped.push(item as ProxySwapOrder);
+          }
+        }
+        return deduped;
       }
     }
   } catch (e) {

@@ -2,6 +2,7 @@ import { getMongoDb } from "./mongodb";
 import { ProxySwapOrder, updateProxySwapOrder } from "./proxySwapStore";
 import { calculateTokenUsdValue } from "./priceService";
 import { getApiKeyById, listApiKeysForUser, findUserIdByWalletAddress } from "./apiKeysStore";
+import { SWAP_ALLOWED_TOKENS } from "@/lib/constants";
 
 export const MIN_PAYOUT_AMOUNT_USD = 1.0;
 
@@ -88,9 +89,26 @@ function validateAddressForOption(
   return { valid: false, error: "Unsupported payout option." };
 }
 
+function resolveOrderAssetMeta(order: { fromAsset?: string; originAssetId?: string }): { symbol: string; decimals: number } {
+  const match = SWAP_ALLOWED_TOKENS.find(
+    (t) => t.assetId.toLowerCase() === (order.originAssetId || "").toLowerCase()
+  );
+  if (match) {
+    return { symbol: match.symbol.toUpperCase(), decimals: match.decimals };
+  }
+  let sym = (order.fromAsset || "").toUpperCase();
+  if (sym === "BASE" || sym === "ARB") sym = "ETH";
+  else if (sym === "BSC") sym = "BNB";
+  else if (sym === "POLYGON") sym = "POL";
+  else if (sym === "V2_1") {
+    sym = order.originAssetId?.includes("3hpYoaLtt8MP1Z2GH1U473DMRKgr") ? "USDT" : "USDC";
+  }
+  return { symbol: sym || "USDC", decimals: getDecimalsForAsset(sym) };
+}
+
 function getDecimalsForAsset(symbol?: string): number {
   const sym = (symbol || "").toUpperCase();
-  if (sym.includes("USDC") || sym.includes("USDT")) return 6;
+  if (sym.includes("USDC") || sym.includes("USDT") || sym === "V2_1") return 6;
   if (sym.includes("SOL")) return 9;
   if (sym.includes("BTC") || sym.includes("WBTC") || sym.includes("LTC")) return 8;
   return 18;
@@ -272,6 +290,18 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
     return false; // Already credited
   }
 
+  // Guard against any order that was refunded instead of settled
+  if (order.error && order.error.toLowerCase().includes("refund")) {
+    await updateProxySwapOrder(order.swapId, {
+      status: "EXPIRED",
+      feeCredited: true,
+      feeAmount: "0",
+      partnerFeeAmount: "0",
+      zkpayFeeAmount: "0",
+    }).catch(() => {});
+    return false;
+  }
+
   // 1. Identify partner user ID (via partnerUserId, apiKeyId, or partnerFeeRecipient wallet)
   let targetUserId = order.partnerUserId || null;
   if (!targetUserId && order.apiKeyId) {
@@ -285,6 +315,8 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
   }
 
   if (!targetUserId) {
+    // Mark feeCredited so unlinked non-partner orders don't block the 12s sweeper queue
+    await updateProxySwapOrder(order.swapId, { feeCredited: true }).catch(() => {});
     return false;
   }
 
@@ -307,20 +339,27 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
   }
 
   if (!effectivePartnerFeeAtomic || effectivePartnerFeeAtomic === "0") {
+    // Legitimate 0-fee settled swap (e.g. fee was below Solana rent-exempt minimum or LTC dust):
+    // mark feeCredited = true so the 12s daemon does not re-scan this order forever.
+    await updateProxySwapOrder(order.swapId, {
+      feeCredited: true,
+      partnerUserId: targetUserId,
+      partnerFeeUsd: 0,
+    }).catch(() => {});
     return false;
   }
 
   // Compute live USD fee amount BEFORE locking feeCredited so we never lock in a $0 / fake price
-  const decimals = getDecimalsForAsset(order.fromAsset);
+  const { symbol: canonicalSymbol, decimals } = resolveOrderAssetMeta(order);
   const { humanAmount, pricePerToken, usdValue } = await calculateTokenUsdValue(
     effectivePartnerFeeAtomic,
-    order.fromAsset,
+    canonicalSymbol,
     decimals
   );
 
   if (pricePerToken <= 0) {
     console.warn(
-      `[PartnerBalanceStore] Live USD price unavailable for ${order.fromAsset} on swap ${order.swapId}; will retry on next sweep.`
+      `[PartnerBalanceStore] Live USD price unavailable for ${canonicalSymbol} on swap ${order.swapId}; will retry on next sweep.`
     );
     return false;
   }
@@ -333,6 +372,7 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
       { swapId: order.swapId, feeCredited: { $ne: true } },
       {
         $set: {
+          fromAsset: canonicalSymbol,
           feeCredited: true,
           feeCreditedAt: Date.now(),
           partnerUserId: targetUserId,
@@ -347,7 +387,7 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
   }
 
   console.log(
-    `[PartnerBalanceStore] Crediting settled fee for swap ${order.swapId} to partner ${targetUserId}: ${humanAmount} ${order.fromAsset} @ $${pricePerToken} = $${usdValue} USD`
+    `[PartnerBalanceStore] Crediting settled fee for swap ${order.swapId} to partner ${targetUserId}: ${humanAmount} ${canonicalSymbol} @ $${pricePerToken} = $${usdValue} USD`
   );
 
   const creditId = `cred_${order.swapId}`;
@@ -357,7 +397,7 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
     apiKeyId: order.apiKeyId || null,
     swapId: order.swapId,
     chain: order.chain,
-    fromAsset: order.fromAsset,
+    fromAsset: canonicalSymbol,
     tokenAmount: effectivePartnerFeeAtomic,
     humanTokenAmount: humanAmount,
     usdRate: pricePerToken,
@@ -367,6 +407,7 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
 
   // Update order record with exact USD credited
   await updateProxySwapOrder(order.swapId, {
+    fromAsset: canonicalSymbol,
     feeCredited: true,
     feeCreditedAt: Date.now(),
     partnerUserId: targetUserId,
@@ -608,10 +649,13 @@ export async function completeAdminPayout(
   ticket.processedBy = adminIdentifier;
 
   if (db) {
-    await db.collection("partner_payout_requests").updateOne(
-      { id: payoutId },
+    const upd = await db.collection("partner_payout_requests").updateOne(
+      { id: payoutId, status: { $in: ["PENDING", "PROCESSING"] } },
       { $set: { status: "COMPLETED", txHash: cleanTx, processedAt: now, processedBy: adminIdentifier } }
     );
+    if (upd.matchedCount === 0) {
+      throw new Error("Payout was already processed by another request.");
+    }
 
     // Deduct pending and increment totalWithdrawn
     await db.collection("partner_balances").updateOne(
@@ -664,10 +708,13 @@ export async function rejectAdminPayout(
   ticket.processedBy = adminIdentifier;
 
   if (db) {
-    await db.collection("partner_payout_requests").updateOne(
-      { id: payoutId },
+    const upd = await db.collection("partner_payout_requests").updateOne(
+      { id: payoutId, status: { $in: ["PENDING", "PROCESSING"] } },
       { $set: { status: "REJECTED", adminNote: cleanReason, processedAt: now, processedBy: adminIdentifier } }
     );
+    if (upd.matchedCount === 0) {
+      throw new Error("Payout was already processed by another request.");
+    }
 
     // Refund pending amount back to available balance!
     await db.collection("partner_balances").updateOne(

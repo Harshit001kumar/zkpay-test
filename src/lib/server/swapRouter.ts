@@ -1149,6 +1149,14 @@ export async function getSwapStatus(depositAddress: string) {
           creditPartnerFeeOnSettlement(currentOrder).catch((e) =>
             console.warn("[SwapRouter] Partner fee settlement credit retry error:", e)
           );
+        } else if (
+          (solverStatus.status === "failed" || solverStatus.status === "refunded") &&
+          currentOrder.status !== "FAILED"
+        ) {
+          currentOrder =
+            (await updateProxySwapOrder(currentOrder.swapId, {
+              status: "FAILED",
+            })) || currentOrder;
         } else if (isSolverActiveOrDone && currentOrder.status === "PENDING_DEPOSIT") {
           currentOrder =
             (await updateProxySwapOrder(currentOrder.swapId, {
@@ -1174,8 +1182,21 @@ export async function getSwapStatus(depositAddress: string) {
       }
     }
 
+    const mappedOrderStatus =
+      currentOrder.status === "PENDING_DEPOSIT"
+        ? "pending"
+        : currentOrder.status === "SETTLED"
+        ? "settled"
+        : currentOrder.status === "FAILED"
+        ? "failed"
+        : currentOrder.status === "EXPIRED"
+        ? currentOrder.error?.toLowerCase().includes("refund")
+          ? "refunded"
+          : "expired"
+        : "processing";
+
     return {
-      status: currentOrder.status === "PENDING_DEPOSIT" ? "pending" : "processing",
+      status: mappedOrderStatus,
       rawStatus: currentOrder.status,
       depositAddress: currentOrder.proxyDepositAddress,
       solverDepositAddress: currentOrder.solverDepositAddress,

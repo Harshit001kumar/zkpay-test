@@ -616,8 +616,33 @@ export async function checkAndForwardProxyDeposit(order: ProxySwapOrder): Promis
 }
 
 /**
- * Handles EVM deposit detection, Case A (Native) and Case B (Stablecoins / ERC-20).
+ * Normalizes order.fromAsset so chain prefixes ("BASE", "ARB", "BSC", "POLYGON", "V2_1")
+ * always resolve to the canonical asset symbol ("ETH", "BNB", "POL", "USDC", "USDT", etc.).
  */
+function normalizeOrderFromAsset(order: ProxySwapOrder): string {
+  let upperSymbol = (order.fromAsset || "").toUpperCase();
+  const allowedMatch = SWAP_ALLOWED_TOKENS.find(
+    (t) => t.assetId.toLowerCase() === (order.originAssetId || "").toLowerCase()
+  );
+  if (allowedMatch) {
+    upperSymbol = allowedMatch.symbol.toUpperCase();
+  } else if (upperSymbol === "BASE" || upperSymbol === "ARB") {
+    upperSymbol = "ETH";
+  } else if (upperSymbol === "BSC") {
+    upperSymbol = "BNB";
+  } else if (upperSymbol === "POLYGON") {
+    upperSymbol = "POL";
+  } else if (upperSymbol === "V2_1") {
+    upperSymbol = order.originAssetId?.includes("3hpYoaLtt8MP1Z2GH1U473DMRKgr") ? "USDT" : "USDC";
+  }
+
+  if (upperSymbol && order.fromAsset !== upperSymbol) {
+    order.fromAsset = upperSymbol;
+    updateProxySwapOrder(order.swapId, { fromAsset: upperSymbol }).catch(() => {});
+  }
+  return upperSymbol;
+}
+
 /**
  * Handles EVM deposit detection, Case A (Native) and Case B (Stablecoins / ERC-20).
  */
@@ -631,25 +656,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
   const { chain, key: chainKey } = getChainConfig(order.chain);
 
-  // Normalize order.fromAsset if it was stored as a chain prefix (e.g. "BASE", "ARB", "BSC", "V2_1")
-  let upperSymbol = (order.fromAsset || "").toUpperCase();
-  const allowedMatch = SWAP_ALLOWED_TOKENS.find(
-    (t) => t.assetId.toLowerCase() === (order.originAssetId || "").toLowerCase()
-  );
-  if (allowedMatch) {
-    upperSymbol = allowedMatch.symbol.toUpperCase();
-  } else if (upperSymbol === "BASE" || upperSymbol === "ARB") {
-    upperSymbol = "ETH";
-  } else if (upperSymbol === "BSC") {
-    upperSymbol = "BNB";
-  } else if (upperSymbol === "POLYGON") {
-    upperSymbol = "POL";
-  }
-
-  if (upperSymbol && order.fromAsset !== upperSymbol) {
-    order.fromAsset = upperSymbol;
-    updateProxySwapOrder(order.swapId, { fromAsset: upperSymbol }).catch(() => {});
-  }
+  const upperSymbol = normalizeOrderFromAsset(order);
 
   const isNative =
     upperSymbol === "ETH" ||
@@ -1758,7 +1765,7 @@ export async function inspectProxyDepositBalances(
   }
 
   const normChain = normalizeChain(order.chain) || order.chain.toLowerCase();
-  const upperSymbol = order.fromAsset.toUpperCase();
+  const upperSymbol = normalizeOrderFromAsset(order);
 
   // 1. SOLANA
   if (normChain === "sol") {
@@ -2060,10 +2067,25 @@ export async function recoverProxyDeposit(
     }
 
     const updated = await updateProxySwapOrder(order.swapId, {
-      status: action === "refund" ? "SETTLED" : "FORWARDED",
+      status: action === "refund" ? "EXPIRED" : "FORWARDED",
       forwardTxHash: txHash,
       feeTxHash: (action === "forward" && effectiveTreasuryFee > 0n) ? txHash : undefined,
-      error: action === "refund" ? `Manually refunded to ${destination}` : undefined,
+      ...(action === "refund"
+        ? {
+            feeCredited: true,
+            feeAmount: "0",
+            zkpayFeeAmount: "0",
+            partnerFeeAmount: "0",
+            error: `Refunded to ${destination}`,
+          }
+        : {
+            totalAmountIn: lamports.toString(),
+            netSwapAmount: solverLamports.toString(),
+            feeAmount: effectiveTreasuryFee.toString(),
+            ...(effectiveTreasuryFee === 0n
+              ? { zkpayFeeAmount: "0", partnerFeeAmount: "0" }
+              : {}),
+          }),
     });
 
     const explorerUrl = getExplorerTxUrl("sol", txHash);
@@ -2113,8 +2135,9 @@ export async function recoverProxyDeposit(
       }
     }
 
+    const effectiveFeeSats = totalFeeSats >= 5460n ? totalFeeSats : 0n;
     const solverSats = (action === "forward")
-      ? balanceSatoshis - MINER_FEE_SATOSHIS - totalFeeSats
+      ? balanceSatoshis - MINER_FEE_SATOSHIS - effectiveFeeSats
       : balanceSatoshis - MINER_FEE_SATOSHIS;
 
     const txHash = await sweepLtcDeposit({
@@ -2122,7 +2145,7 @@ export async function recoverProxyDeposit(
       privKeyHex,
       solverAddress: destination,
       treasuryAddress: order.treasuryAddress || destination,
-      zkpayFeeSatoshis: totalFeeSats,
+      zkpayFeeSatoshis: effectiveFeeSats,
       partnerFeeSatoshis: 0n,
     });
 
@@ -2131,17 +2154,32 @@ export async function recoverProxyDeposit(
     }
 
     const updated = await updateProxySwapOrder(order.swapId, {
-      status: action === "refund" ? "SETTLED" : "FORWARDED",
+      status: action === "refund" ? "EXPIRED" : "FORWARDED",
       forwardTxHash: txHash,
-      feeTxHash: (action === "forward" && totalFeeSats > 0n) ? txHash : undefined,
-      error: action === "refund" ? `Manually refunded to ${destination}` : undefined,
+      feeTxHash: (action === "forward" && effectiveFeeSats > 0n) ? txHash : undefined,
+      ...(action === "refund"
+        ? {
+            feeCredited: true,
+            feeAmount: "0",
+            zkpayFeeAmount: "0",
+            partnerFeeAmount: "0",
+            error: `Refunded to ${destination}`,
+          }
+        : {
+            totalAmountIn: balanceSatoshis.toString(),
+            netSwapAmount: solverSats.toString(),
+            feeAmount: effectiveFeeSats.toString(),
+            ...(effectiveFeeSats === 0n
+              ? { zkpayFeeAmount: "0", partnerFeeAmount: "0" }
+              : {}),
+          }),
     });
 
     const explorerUrl = getExplorerTxUrl("ltc", txHash);
 
     return {
       success: true,
-      message: `Successfully forwarded ${(Number(solverSats) / 1e8).toFixed(8)} LTC to ${destination}${totalFeeSats > 0n ? ` (+ fee ${(Number(totalFeeSats) / 1e8).toFixed(8)} LTC to ZkPay Treasury)` : ""}!`,
+      message: `Successfully forwarded ${(Number(solverSats) / 1e8).toFixed(8)} LTC to ${destination}${effectiveFeeSats > 0n ? ` (+ fee ${(Number(effectiveFeeSats) / 1e8).toFixed(8)} LTC to ZkPay Treasury)` : ""}!`,
       txHash,
       order: updated,
       recoveredAmount: (Number(solverSats) / 1e8).toFixed(8) + " LTC",
@@ -2165,7 +2203,7 @@ export async function recoverProxyDeposit(
   const proxyAccount = privateKeyToAccount(privKeyHex);
   const walletClient = getWalletClientForChain(order.chain, proxyAccount);
 
-  const upperSymbol = order.fromAsset.toUpperCase();
+  const upperSymbol = normalizeOrderFromAsset(order);
   const isNative =
     upperSymbol === "ETH" ||
     upperSymbol === "BNB" ||
@@ -2315,10 +2353,23 @@ export async function recoverProxyDeposit(
     await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` }).catch(() => {});
 
     const updated = await updateProxySwapOrder(order.swapId, {
-      status: action === "refund" ? "SETTLED" : "FORWARDED",
+      status: action === "refund" ? "EXPIRED" : "FORWARDED",
       forwardTxHash: txHash,
       feeTxHash: (action === "forward" && hasFees) ? txHash : undefined,
-      error: action === "refund" ? `Manually refunded to ${cleanDestination}` : undefined,
+      ...(action === "refund"
+        ? {
+            feeCredited: true,
+            feeAmount: "0",
+            zkpayFeeAmount: "0",
+            partnerFeeAmount: "0",
+            error: `Refunded to ${cleanDestination}`,
+          }
+        : {
+            totalAmountIn: balanceWei.toString(),
+            netSwapAmount: netSolverWei.toString(),
+            feeAmount: (hasFees ? totalFeeWei : 0n).toString(),
+            ...(!hasFees ? { zkpayFeeAmount: "0", partnerFeeAmount: "0" } : {}),
+          }),
     });
 
     const explorerUrl = getExplorerTxUrl(order.chain, txHash);
@@ -2599,10 +2650,23 @@ export async function recoverProxyDeposit(
         }
 
         const updated = await updateProxySwapOrder(order.swapId, {
-          status: action === "refund" ? "SETTLED" : "FORWARDED",
+          status: action === "refund" ? "EXPIRED" : "FORWARDED",
           forwardTxHash: txHash,
           feeTxHash: (action === "forward" && totalFeeUnits > 0n) ? txHash : undefined,
-          error: action === "refund" ? `Manually refunded to ${cleanDestination}` : undefined,
+          ...(action === "refund"
+            ? {
+                feeCredited: true,
+                feeAmount: "0",
+                zkpayFeeAmount: "0",
+                partnerFeeAmount: "0",
+                error: `Refunded to ${cleanDestination}`,
+              }
+            : {
+                totalAmountIn: tokenBalance.toString(),
+                netSwapAmount: netSolverUnits.toString(),
+                feeAmount: totalFeeUnits.toString(),
+                ...(totalFeeUnits === 0n ? { zkpayFeeAmount: "0", partnerFeeAmount: "0" } : {}),
+              }),
         });
 
         const explorerUrl = getExplorerTxUrl(order.chain, txHash);
@@ -2681,7 +2745,10 @@ export async function recoverProxyDeposit(
     if (liveTokenBal === 0n) {
       console.log(`[Recover] Proxy ${proxyAccount.address} balance is 0 ${tokenSymbol}. Funds already swept.`);
       const updated = await updateProxySwapOrder(order.swapId, {
-        status: action === "refund" ? "SETTLED" : "FORWARDED",
+        status: action === "refund" ? "EXPIRED" : "FORWARDED",
+        ...(action === "refund"
+          ? { feeCredited: true, feeAmount: "0", zkpayFeeAmount: "0", partnerFeeAmount: "0" }
+          : {}),
       });
       return {
         success: true,
@@ -2759,7 +2826,10 @@ export async function recoverProxyDeposit(
 
       if (postBal === 0n) {
         const updated = await updateProxySwapOrder(order.swapId, {
-          status: action === "refund" ? "SETTLED" : "FORWARDED",
+          status: action === "refund" ? "EXPIRED" : "FORWARDED",
+          ...(action === "refund"
+            ? { feeCredited: true, feeAmount: "0", zkpayFeeAmount: "0", partnerFeeAmount: "0" }
+            : {}),
         });
         return {
           success: true,
@@ -2802,9 +2872,17 @@ export async function recoverProxyDeposit(
 
     // Confirmed on-chain: checkpoint status & forwardTxHash in DB so order never remains in PENDING_DEPOSIT
     await updateProxySwapOrder(order.swapId, {
-      status: action === "refund" ? "SETTLED" : "FORWARDED",
+      status: action === "refund" ? "EXPIRED" : "FORWARDED",
       forwardTxHash: txHash,
-      error: action === "refund" ? `Manually refunded to ${cleanDestination}` : undefined,
+      ...(action === "refund"
+        ? {
+            feeCredited: true,
+            feeAmount: "0",
+            zkpayFeeAmount: "0",
+            partnerFeeAmount: "0",
+            error: `Refunded to ${cleanDestination}`,
+          }
+        : {}),
     }).catch(() => {});
 
     if (action === "forward") {
@@ -2882,10 +2960,22 @@ export async function recoverProxyDeposit(
     }
 
     const updated = await updateProxySwapOrder(order.swapId, {
-      status: action === "refund" ? "SETTLED" : "FORWARDED",
+      status: action === "refund" ? "EXPIRED" : "FORWARDED",
       forwardTxHash: txHash,
       feeTxHash: feeTxHash || (action === "forward" ? txHash : undefined),
-      error: action === "refund" ? `Manually refunded to ${cleanDestination}` : undefined,
+      ...(action === "refund"
+        ? {
+            feeCredited: true,
+            feeAmount: "0",
+            zkpayFeeAmount: "0",
+            partnerFeeAmount: "0",
+            error: `Refunded to ${cleanDestination}`,
+          }
+        : {
+            totalAmountIn: liveTokenBal.toString(),
+            netSwapAmount: finalSolverUnits.toString(),
+            feeAmount: (feeTxHash ? totalFeeUnits : 0n).toString(),
+          }),
     });
 
     const explorerUrl = getExplorerTxUrl(order.chain, txHash);
