@@ -176,6 +176,49 @@ export async function reconcilePartnerSwaps(userId: string): Promise<void> {
         }
       }
     }
+
+    // Also repair any existing credits that were saved with hardcoded fallback rates (e.g. 150 for SOL)
+    const fallbackCredits = (await db
+      .collection<PartnerFeeCreditRecord>("partner_fee_credits")
+      .find({
+        partnerUserId: userId,
+        usdRate: { $in: [150, 2500, 70, 600, 0.089] },
+      } as any)
+      .limit(20)
+      .toArray()) as PartnerFeeCreditRecord[];
+
+    for (const cred of fallbackCredits) {
+      try {
+        const decimals = getDecimalsForAsset(cred.fromAsset);
+        const { pricePerToken, usdValue } = await calculateTokenUsdValue(
+          cred.tokenAmount,
+          cred.fromAsset,
+          decimals
+        );
+        if (pricePerToken > 0 && Math.abs(pricePerToken - cred.usdRate) > 0.01) {
+          const deltaUsd = Math.round((usdValue - cred.feeUsd) * 10000) / 10000;
+          await db.collection("partner_fee_credits").updateOne(
+            { id: cred.id } as any,
+            { $set: { usdRate: pricePerToken, feeUsd: usdValue } }
+          );
+          await updateProxySwapOrder(cred.swapId, { partnerFeeUsd: usdValue });
+          if (deltaUsd !== 0) {
+            await db.collection("partner_balances").updateOne(
+              { userId } as any,
+              {
+                $inc: {
+                  availableBalanceUsd: deltaUsd,
+                  totalEarnedUsd: deltaUsd,
+                },
+                $set: { updatedAt: Date.now() },
+              }
+            );
+          }
+        }
+      } catch {
+        // non-fatal
+      }
+    }
   } catch (err) {
     console.warn("[PartnerBalanceStore] reconcilePartnerSwaps warning:", err);
   }
@@ -267,6 +310,21 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
     return false;
   }
 
+  // Compute live USD fee amount BEFORE locking feeCredited so we never lock in a $0 / fake price
+  const decimals = getDecimalsForAsset(order.fromAsset);
+  const { humanAmount, pricePerToken, usdValue } = await calculateTokenUsdValue(
+    effectivePartnerFeeAtomic,
+    order.fromAsset,
+    decimals
+  );
+
+  if (pricePerToken <= 0) {
+    console.warn(
+      `[PartnerBalanceStore] Live USD price unavailable for ${order.fromAsset} on swap ${order.swapId}; will retry on next sweep.`
+    );
+    return false;
+  }
+
   const db = await getMongoDb();
 
   // MongoDB atomic lock: lock feeCredited = true so concurrent queries don't double-credit
@@ -279,6 +337,7 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
           feeCreditedAt: Date.now(),
           partnerUserId: targetUserId,
           partnerFeeAmount: effectivePartnerFeeAtomic,
+          partnerFeeUsd: usdValue,
         },
       }
     );
@@ -286,14 +345,6 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
       return false; // Another concurrent call already claimed credit
     }
   }
-
-  // Compute live USD fee amount
-  const decimals = getDecimalsForAsset(order.fromAsset);
-  const { humanAmount, pricePerToken, usdValue } = await calculateTokenUsdValue(
-    effectivePartnerFeeAtomic,
-    order.fromAsset,
-    decimals
-  );
 
   console.log(
     `[PartnerBalanceStore] Crediting settled fee for swap ${order.swapId} to partner ${targetUserId}: ${humanAmount} ${order.fromAsset} @ $${pricePerToken} = $${usdValue} USD`
