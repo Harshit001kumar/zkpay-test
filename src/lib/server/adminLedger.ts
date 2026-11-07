@@ -125,9 +125,10 @@ export async function getAdminSystemTransactions(
     ]);
 
     for (const o of proxySwaps) {
-      const txHash = o.solverDepositTxHash || o.partnerFeeTxHash || o.zkpayFeeTxHash || null;
+      const txHash = o.forwardTxHash || o.depositTxHash || o.feeTxHash || null;
       const usdEst = parseFloat(o.totalAmountFormatted) || 0;
-      const feeUsdEst = (usdEst * (o.totalFeeBps || 100)) / 10000;
+      const totalBps = (o.zkpayFeeBps || 50) + (o.partnerFeeBps || 50);
+      const feeUsdEst = (usdEst * totalBps) / 10000;
       const txChannel: AdminTxChannel = o.apiKeyId || o.source === "api" ? "api" : "app";
 
       entries.push({
