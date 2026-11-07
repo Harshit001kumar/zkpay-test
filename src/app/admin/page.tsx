@@ -50,6 +50,24 @@ function formatUpiName(id: string): string {
 
 interface AdminPaymentOverview {
   success: boolean;
+  stats?: {
+    storedRefundsCount: number;
+    totalSessions: number;
+    settledSessions: number;
+    activeSessions: number;
+    [key: string]: any;
+  };
+  wallets?: {
+    treasuryBalanceUsdc: string;
+    refundWalletBalanceUsdc: string;
+    [key: string]: any;
+  };
+  relayer?: {
+    address: string;
+    balanceEth: string;
+    healthy: boolean;
+    [key: string]: any;
+  };
   metrics: {
     totalPayinSessions: number;
     settledCount: number;
@@ -66,11 +84,27 @@ interface AdminPaymentOverview {
   relayerWallet: { address: string; balanceUsdc: string; balanceEth: string };
   sessions: any[];
   payLinks: any[];
+  [key: string]: any;
 }
 
 async function getAdminPaymentOverview(_token?: string | null): Promise<AdminPaymentOverview> {
   return {
     success: true,
+    stats: {
+      storedRefundsCount: 0,
+      totalSessions: 0,
+      settledSessions: 0,
+      activeSessions: 0,
+    },
+    wallets: {
+      treasuryBalanceUsdc: "0.00",
+      refundWalletBalanceUsdc: "0.00",
+    },
+    relayer: {
+      address: CONTRACTS.TREASURY,
+      balanceEth: "0.0000",
+      healthy: true,
+    },
     metrics: {
       totalPayinSessions: 0,
       settledCount: 0,
