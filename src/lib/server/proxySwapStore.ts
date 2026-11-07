@@ -134,9 +134,10 @@ async function persistOrder(order: ProxySwapOrder) {
     const db = await getMongoDb();
     if (db) {
       const collection = db.collection<ProxySwapOrder>("proxy_swap_orders");
+      const { _id, ...cleanOrder } = order as any;
       await collection.updateOne(
         { swapId: order.swapId },
-        { $set: order },
+        { $set: cleanOrder },
         { upsert: true }
       );
       return;
@@ -295,6 +296,56 @@ export async function getRecentProxyOrders(limit = 50): Promise<ProxySwapOrder[]
     .slice(0, limit);
 }
 
+/**
+ * Retrieves proxy swap orders that are either:
+ * 1) In FORWARDED status (created within last 24h) awaiting upstream solver settlement check, OR
+ * 2) In SETTLED status where partner fee credit has not yet been processed.
+ */
+export async function getForwardedOrUncreditedProxyOrders(limit = 30): Promise<ProxySwapOrder[]> {
+  await hydrateCache();
+  const since24h = Date.now() - 24 * 60 * 60 * 1000;
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const collection = db.collection<ProxySwapOrder>("proxy_swap_orders");
+      const query: any = {
+        $or: [
+          { status: "FORWARDED", createdAt: { $gte: since24h } },
+          {
+            status: "SETTLED",
+            feeCredited: { $ne: true },
+            $or: [
+              { partnerUserId: { $exists: true, $ne: null } },
+              { apiKeyId: { $exists: true, $ne: null } },
+              { partnerFeeRecipient: { $exists: true, $ne: null } },
+            ],
+          },
+        ],
+      };
+      const list = await collection
+        .find(query)
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .toArray();
+      if (list && list.length > 0) {
+        return list as ProxySwapOrder[];
+      }
+    }
+  } catch (e) {
+    // Fall back to memory
+  }
+
+  return Array.from(ordersBySwapId.values())
+    .filter(
+      (o) =>
+        (o.status === "FORWARDED" && o.createdAt >= since24h) ||
+        (o.status === "SETTLED" &&
+          !o.feeCredited &&
+          Boolean(o.partnerUserId || o.apiKeyId || o.partnerFeeRecipient))
+    )
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, limit);
+}
 
 /**
  * Updates an existing proxy swap order with partial changes.
@@ -304,11 +355,15 @@ export async function updateProxySwapOrder(
   updates: Partial<ProxySwapOrder>
 ): Promise<ProxySwapOrder | null> {
   await hydrateCache();
-  const existing = ordersBySwapId.get(swapId);
+  let existing = ordersBySwapId.get(swapId);
+  if (!existing) {
+    existing = (await getProxyOrderBySwapId(swapId)) || undefined;
+  }
   if (!existing) return null;
 
   const updated: ProxySwapOrder = { ...existing, ...updates };
   ordersByAddress.set(updated.proxyDepositAddress.toLowerCase(), updated);
+  ordersByAddress.set(updated.proxyDepositAddress, updated);
   ordersBySwapId.set(updated.swapId, updated);
 
   persistOrder(updated).catch((err) =>

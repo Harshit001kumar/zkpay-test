@@ -1,7 +1,7 @@
 import { getMongoDb } from "./mongodb";
 import { ProxySwapOrder, updateProxySwapOrder } from "./proxySwapStore";
 import { calculateTokenUsdValue } from "./priceService";
-import { getApiKeyById } from "./apiKeysStore";
+import { getApiKeyById, listApiKeysForUser, findUserIdByWalletAddress } from "./apiKeysStore";
 
 export const MIN_PAYOUT_AMOUNT_USD = 1.0;
 
@@ -102,9 +102,91 @@ const memoryCredits = new Map<string, PartnerFeeCreditRecord>();
 const memoryPayouts = new Map<string, PartnerPayoutRequest>();
 
 /**
- * Returns the current partner balance.
+ * Scans all proxy swap orders belonging to `userId` (or any of `userId`'s API keys)
+ * that have not yet been credited:
+ * - If status === "SETTLED", immediately credits the partner's 50% USD fee share.
+ * - If status === "FORWARDED", checks upstream NEAR Intents status and, if settled,
+ *   marks the order "SETTLED" and credits the partner immediately.
+ */
+export async function reconcilePartnerSwaps(userId: string): Promise<void> {
+  try {
+    const db = await getMongoDb();
+    if (!db) return;
+
+    const userKeys = await listApiKeysForUser(userId);
+    const keyIds = userKeys.map((k) => k.id);
+    const walletAddrs = Array.from(
+      new Set(
+        userKeys
+          .map((k) => k.walletAddress?.toLowerCase())
+          .filter(Boolean) as string[]
+      )
+    );
+
+    const orConditions: any[] = [{ partnerUserId: userId }];
+    if (keyIds.length > 0) {
+      orConditions.push({ apiKeyId: { $in: keyIds } });
+    }
+    if (walletAddrs.length > 0) {
+      for (const w of walletAddrs) {
+        orConditions.push({ partnerFeeRecipient: new RegExp(`^${w}$`, "i") });
+      }
+    }
+
+    const uncreditedOrders = (await db
+      .collection<ProxySwapOrder>("proxy_swap_orders")
+      .find({
+        feeCredited: { $ne: true },
+        status: { $in: ["SETTLED", "FORWARDED"] },
+        $or: orConditions,
+      } as any)
+      .sort({ createdAt: -1 })
+      .limit(30)
+      .toArray()) as ProxySwapOrder[];
+
+    for (const ord of uncreditedOrders) {
+      if (!ord.partnerUserId) {
+        ord.partnerUserId = userId;
+      }
+      if (ord.status === "SETTLED") {
+        await creditPartnerFeeOnSettlement(ord);
+      } else if (ord.status === "FORWARDED" && ord.solverDepositAddress) {
+        try {
+          const solverUrl = `https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(ord.solverDepositAddress.trim())}`;
+          const headers: Record<string, string> = { Accept: "application/json" };
+          if (process.env.NEAR_INTENTS_API_KEY) {
+            headers["X-API-Key"] = process.env.NEAR_INTENTS_API_KEY;
+          }
+          const res = await fetch(solverUrl, { headers, signal: AbortSignal.timeout(3500) }).catch(() => null);
+          if (res && res.ok) {
+            const data = await res.json().catch(() => null);
+            if (data?.status === "SUCCESS") {
+              const rawOriginHash = data?.swapDetails?.originChainTxHashes?.[0]?.hash;
+              const updatedOrder =
+                (await updateProxySwapOrder(ord.swapId, {
+                  status: "SETTLED",
+                  partnerUserId: userId,
+                  ...(rawOriginHash && !ord.forwardTxHash ? { forwardTxHash: rawOriginHash } : {}),
+                })) || { ...ord, status: "SETTLED" as const, partnerUserId: userId };
+              await creditPartnerFeeOnSettlement(updatedOrder);
+            }
+          }
+        } catch {
+          // non-fatal
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[PartnerBalanceStore] reconcilePartnerSwaps warning:", err);
+  }
+}
+
+/**
+ * Returns the current partner balance (after reconciling any newly settled swaps).
  */
 export async function getPartnerBalance(userId: string): Promise<PartnerBalanceRecord> {
+  await reconcilePartnerSwaps(userId);
+
   const defaultRecord: PartnerBalanceRecord = {
     userId,
     availableBalanceUsd: 0,
@@ -118,14 +200,14 @@ export async function getPartnerBalance(userId: string): Promise<PartnerBalanceR
   try {
     const db = await getMongoDb();
     if (db) {
-      const record = await db.collection<PartnerBalanceRecord>("partner_balances").findOne({ userId });
+      const record = await db.collection<PartnerBalanceRecord>("partner_balances").findOne({ userId } as any);
       if (record) {
         return {
           userId: record.userId,
-          availableBalanceUsd: Math.round((record.availableBalanceUsd || 0) * 10000) / 10000,
-          pendingPayoutUsd: Math.round((record.pendingPayoutUsd || 0) * 10000) / 10000,
-          totalEarnedUsd: Math.round((record.totalEarnedUsd || 0) * 10000) / 10000,
-          totalWithdrawnUsd: Math.round((record.totalWithdrawnUsd || 0) * 10000) / 10000,
+          availableBalanceUsd: Math.max(0, Math.round((record.availableBalanceUsd || 0) * 10000) / 10000),
+          pendingPayoutUsd: Math.max(0, Math.round((record.pendingPayoutUsd || 0) * 10000) / 10000),
+          totalEarnedUsd: Math.max(0, Math.round((record.totalEarnedUsd || 0) * 10000) / 10000),
+          totalWithdrawnUsd: Math.max(0, Math.round((record.totalWithdrawnUsd || 0) * 10000) / 10000),
           settledSwapsCount: record.settledSwapsCount || 0,
           updatedAt: record.updatedAt || Date.now(),
         };
@@ -147,22 +229,41 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
     return false; // Already credited
   }
 
-  // Must have a partner fee amount > 0
-  if (!order.partnerFeeAmount || order.partnerFeeAmount === "0") {
-    return false;
-  }
-
-  // Identify partner user ID
-  let targetUserId = order.partnerUserId;
+  // 1. Identify partner user ID (via partnerUserId, apiKeyId, or partnerFeeRecipient wallet)
+  let targetUserId = order.partnerUserId || null;
   if (!targetUserId && order.apiKeyId) {
     const keyRec = await getApiKeyById(order.apiKeyId);
     if (keyRec?.userId) {
       targetUserId = keyRec.userId;
     }
   }
+  if (!targetUserId && order.partnerFeeRecipient) {
+    targetUserId = await findUserIdByWalletAddress(order.partnerFeeRecipient);
+  }
 
   if (!targetUserId) {
-    console.log(`[PartnerBalanceStore] Order ${order.swapId} has partner fee but no associated partner userId.`);
+    return false;
+  }
+
+  // 2. Resolve partner fee atomic amount (with automatic 50/50 percentage fee recovery if order was created without feeRecipient)
+  let effectivePartnerFeeAtomic = order.partnerFeeAmount || "0";
+  try {
+    if (!effectivePartnerFeeAtomic || BigInt(effectivePartnerFeeAtomic) <= 0n) {
+      const totalFee = BigInt(order.feeAmount || "0");
+      const fixedFee = BigInt(order.fixedFeeAmount || "0");
+      if (totalFee > fixedFee) {
+        const percentageFee = totalFee - fixedFee;
+        const partnerHalf = percentageFee - percentageFee / 2n;
+        if (partnerHalf > 0n) {
+          effectivePartnerFeeAtomic = partnerHalf.toString();
+        }
+      }
+    }
+  } catch {
+    effectivePartnerFeeAtomic = "0";
+  }
+
+  if (!effectivePartnerFeeAtomic || effectivePartnerFeeAtomic === "0") {
     return false;
   }
 
@@ -172,7 +273,14 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
   if (db) {
     const lockRes = await db.collection("proxy_swap_orders").updateOne(
       { swapId: order.swapId, feeCredited: { $ne: true } },
-      { $set: { feeCredited: true, feeCreditedAt: Date.now() } }
+      {
+        $set: {
+          feeCredited: true,
+          feeCreditedAt: Date.now(),
+          partnerUserId: targetUserId,
+          partnerFeeAmount: effectivePartnerFeeAtomic,
+        },
+      }
     );
     if (lockRes.matchedCount === 0) {
       return false; // Another concurrent call already claimed credit
@@ -182,7 +290,7 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
   // Compute live USD fee amount
   const decimals = getDecimalsForAsset(order.fromAsset);
   const { humanAmount, pricePerToken, usdValue } = await calculateTokenUsdValue(
-    order.partnerFeeAmount,
+    effectivePartnerFeeAtomic,
     order.fromAsset,
     decimals
   );
@@ -199,7 +307,7 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
     swapId: order.swapId,
     chain: order.chain,
     fromAsset: order.fromAsset,
-    tokenAmount: order.partnerFeeAmount,
+    tokenAmount: effectivePartnerFeeAtomic,
     humanTokenAmount: humanAmount,
     usdRate: pricePerToken,
     feeUsd: usdValue,
@@ -210,13 +318,15 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
   await updateProxySwapOrder(order.swapId, {
     feeCredited: true,
     feeCreditedAt: Date.now(),
+    partnerUserId: targetUserId,
+    partnerFeeAmount: effectivePartnerFeeAtomic,
     partnerFeeUsd: usdValue,
   }).catch(() => {});
 
   if (db) {
     try {
       await db.collection<PartnerFeeCreditRecord>("partner_fee_credits").updateOne(
-        { id: creditId },
+        { id: creditId } as any,
         { $set: creditRecord },
         { upsert: true }
       );
@@ -288,12 +398,12 @@ export async function requestPartnerPayout(params: {
   }
 
   const db = await getMongoDb();
-  const roundedAmount = Math.round(amountUsd * 100) / 100;
+  const roundedAmount = Math.round(amountUsd * 10000) / 10000;
 
   if (db) {
-    // Atomic deduction guard: only decrement if availableBalanceUsd >= roundedAmount
+    // Atomic deduction guard (with 0.0001 epsilon for IEEE-754 float precision)
     const updateRes = await db.collection("partner_balances").updateOne(
-      { userId, availableBalanceUsd: { $gte: roundedAmount } },
+      { userId, availableBalanceUsd: { $gte: roundedAmount - 0.0001 } },
       {
         $inc: {
           availableBalanceUsd: -roundedAmount,
@@ -306,12 +416,18 @@ export async function requestPartnerPayout(params: {
     if (updateRes.matchedCount === 0) {
       throw new Error("Insufficient available balance for this payout request.");
     }
+
+    // Clamp tiny negative float residue to 0
+    await db.collection("partner_balances").updateOne(
+      { userId, availableBalanceUsd: { $lt: 0 } },
+      { $set: { availableBalanceUsd: 0 } }
+    ).catch(() => {});
   } else {
     const memBal = memoryBalances.get(userId);
-    if (!memBal || memBal.availableBalanceUsd < roundedAmount) {
+    if (!memBal || memBal.availableBalanceUsd + 0.0001 < roundedAmount) {
       throw new Error("Insufficient available balance.");
     }
-    memBal.availableBalanceUsd -= roundedAmount;
+    memBal.availableBalanceUsd = Math.max(0, memBal.availableBalanceUsd - roundedAmount);
     memBal.pendingPayoutUsd += roundedAmount;
     memBal.updatedAt = Date.now();
   }

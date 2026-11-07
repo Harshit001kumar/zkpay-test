@@ -63,6 +63,21 @@ interface ApiKeyItem {
   status: string;
 }
 
+interface PartnerSwapTx {
+  id: string;
+  status: "COMPLETED" | "PENDING" | "FAILED" | "EXPIRED";
+  rawStatus: string;
+  amount: string;
+  fromAsset: string;
+  toAsset: string;
+  chain: string;
+  destinationChain: string;
+  partnerFeeAmount: string | null;
+  partnerFeeUsdEstimate: number;
+  explorerUrl?: string | null;
+  createdAt: number;
+}
+
 const PAYOUT_OPTIONS = [
   { id: "usdc-base", asset: "USDC", chain: "Base", icon: "🔵", placeholder: "0x..." },
   { id: "usdt-polygon", asset: "USDT", chain: "Polygon", icon: "🟣", placeholder: "0x..." },
@@ -74,12 +89,13 @@ export default function PartnerDashboard() {
   const { ready, authenticated, login, user, getAccessToken } = usePrivy();
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<"payouts" | "credits" | "apikeys">("payouts");
+  const [activeTab, setActiveTab] = useState<"payouts" | "credits" | "swaps" | "apikeys">("payouts");
 
   // Data state
   const [balance, setBalance] = useState<PartnerBalance | null>(null);
   const [payouts, setPayouts] = useState<PayoutTicket[]>([]);
   const [credits, setCredits] = useState<FeeCredit[]>([]);
+  const [swaps, setSwaps] = useState<PartnerSwapTx[]>([]);
   const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>([]);
 
   // Loading state
@@ -113,17 +129,19 @@ export default function PartnerDashboard() {
       const token = await getAccessToken();
       const headers = { Authorization: `Bearer ${token}` };
 
-      const [balRes, payoutsRes, creditsRes, overviewRes] = await Promise.all([
+      const [balRes, payoutsRes, creditsRes, overviewRes, swapsRes] = await Promise.all([
         fetch("/api/partner/balance", { headers }).then((r) => r.json()).catch(() => null),
         fetch("/api/partner/payouts", { headers }).then((r) => r.json()).catch(() => null),
         fetch("/api/partner/credits", { headers }).then((r) => r.json()).catch(() => null),
         fetch("/api/partner/overview", { headers }).then((r) => r.json()).catch(() => null),
+        fetch("/api/partner/transactions?type=swaps&limit=50", { headers }).then((r) => r.json()).catch(() => null),
       ]);
 
       if (balRes?.success) setBalance(balRes.balance);
       if (payoutsRes?.success) setPayouts(payoutsRes.payouts || []);
       if (creditsRes?.success) setCredits(creditsRes.credits || []);
       if (overviewRes?.success && overviewRes.apiKeys) setApiKeys(overviewRes.apiKeys);
+      if (swapsRes?.success && swapsRes.transactions) setSwaps(swapsRes.transactions);
     } catch (err) {
       console.error("Failed to load partner data:", err);
     } finally {
@@ -152,7 +170,7 @@ export default function PartnerDashboard() {
       return;
     }
 
-    if (!balance || amt > balance.availableBalanceUsd) {
+    if (!balance || amt > balance.availableBalanceUsd + 0.0001) {
       setPayoutError("Requested amount exceeds available balance.");
       return;
     }
@@ -344,8 +362,19 @@ export default function PartnerDashboard() {
               activeTab === "credits" ? "text-white font-semibold" : "text-neutral-500 hover:text-neutral-300"
             }`}
           >
-            Fee Credits ({credits.length})
+            Credits ({credits.length})
             {activeTab === "credits" && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-white rounded-full" />
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("swaps")}
+            className={`flex-1 pb-2.5 text-center transition-colors relative ${
+              activeTab === "swaps" ? "text-white font-semibold" : "text-neutral-500 hover:text-neutral-300"
+            }`}
+          >
+            Swaps ({swaps.length})
+            {activeTab === "swaps" && (
               <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-white rounded-full" />
             )}
           </button>
@@ -355,7 +384,7 @@ export default function PartnerDashboard() {
               activeTab === "apikeys" ? "text-white font-semibold" : "text-neutral-500 hover:text-neutral-300"
             }`}
           >
-            API Keys ({apiKeys.length})
+            Keys ({apiKeys.length})
             {activeTab === "apikeys" && (
               <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-white rounded-full" />
             )}
@@ -486,7 +515,78 @@ export default function PartnerDashboard() {
               </div>
             )}
 
-            {/* TAB 3: API KEYS */}
+            {/* TAB 3: PARTNER SWAPS */}
+            {activeTab === "swaps" && (
+              <div className="space-y-2">
+                {swaps.length === 0 ? (
+                  <div className="border border-dashed border-neutral-800 rounded-xl p-8 text-center text-neutral-500 text-xs">
+                    <RefreshCw className="w-5 h-5 mx-auto mb-2 text-neutral-600" />
+                    No API swaps recorded yet. Swaps created with your API key or partner fee recipient appear here automatically.
+                  </div>
+                ) : (
+                  swaps.map((s) => (
+                    <div
+                      key={s.id}
+                      className="border border-neutral-900 rounded-xl p-3 bg-neutral-950/40 text-xs space-y-1.5 hover:border-neutral-800 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-white font-mono">
+                            {s.amount} {s.fromAsset}
+                          </span>
+                          <span className="text-neutral-500">→</span>
+                          <span className="text-neutral-300 font-medium">
+                            {s.toAsset} ({s.destinationChain})
+                          </span>
+                        </div>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider inline-flex items-center gap-1 ${
+                            s.rawStatus === "SETTLED"
+                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                              : s.rawStatus === "FORWARDED"
+                              ? "bg-sky-500/10 text-sky-400 border border-sky-500/20"
+                              : s.rawStatus === "EXPIRED" || s.rawStatus === "FAILED"
+                              ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                              : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                          }`}
+                        >
+                          {s.rawStatus}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[10px] text-neutral-500 font-mono">
+                        <span>
+                          {s.id.slice(0, 14)}... • Partner Fee:{" "}
+                          <span className="text-emerald-400">
+                            {s.partnerFeeUsdEstimate > 0
+                              ? `$${s.partnerFeeUsdEstimate.toFixed(4)} USD`
+                              : s.partnerFeeAmount
+                              ? `${s.partnerFeeAmount} ${s.fromAsset}`
+                              : "50% share"}
+                          </span>
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {s.explorerUrl && (
+                            <a
+                              href={s.explorerUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-emerald-400 hover:underline inline-flex items-center gap-0.5"
+                            >
+                              <span>Tx</span>
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                          )}
+                          <span>{new Date(s.createdAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* TAB 4: API KEYS */}
             {activeTab === "apikeys" && (
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between mb-1">
@@ -578,15 +678,15 @@ export default function PartnerDashboard() {
                   <label className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider">
                     Amount (USD)
                   </label>
-                  <span className="text-[11px] text-neutral-400">
-                    Avail: ${balance ? balance.availableBalanceUsd.toFixed(2) : "0.00"}
+                  <span className="text-[11px] text-neutral-400 font-mono">
+                    Avail: ${balance ? balance.availableBalanceUsd.toFixed(4).replace(/\.?0+$/, "") || "0.00" : "0.00"}
                   </span>
                 </div>
                 <div className="relative">
                   <span className="absolute left-3 top-2.5 text-neutral-500 text-xs">$</span>
                   <input
                     type="number"
-                    step="0.01"
+                    step="any"
                     min="1.00"
                     max={balance?.availableBalanceUsd || 0}
                     value={payoutAmount}

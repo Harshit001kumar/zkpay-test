@@ -15,29 +15,30 @@ export default function DocsPage() {
   const [promptCopied, setPromptCopied] = useState<"swap" | "payments" | null>(null);
   const [promptExpanded, setPromptExpanded] = useState<"swap" | "payments" | null>(null);
 
-  const SWAP_API_PROMPT = `# ZkPay Swap API — Integration Context for AI Agents
+  const SWAP_API_PROMPT = `# ZkPay Swap API — Integration Context for AI Agents (v2 USD Partner Ledger)
 
-You are helping a developer integrate ZkPay's cross-chain Swap API. This API enables non-custodial crypto-to-crypto swaps across 8 supported blockchains (Bitcoin, Ethereum, Base, Solana, Arbitrum, BSC, Tron, Litecoin) with a built-in 50/50 revenue share for partners.
+You are helping a developer integrate or upgrade to ZkPay's cross-chain Swap API. This API enables non-custodial crypto-to-crypto swaps across 9 supported blockchains (Bitcoin, Ethereum, Base, Polygon, Solana, Arbitrum, BSC, Tron, Litecoin) with an automated 50/50 USD revenue share for partners.
 
 Base URL: https://zkpay.top
-Supported Chains: btc, eth, base, sol, arb, bsc, tron, ltc
+Supported Chains: btc, eth, base, polygon, sol, arb, bsc, tron, ltc
 
-## Authentication
-- GET endpoints: No auth required
-- POST endpoints: Pass API key via \`X-API-Key: zkpay_live_...\` header or \`Authorization: Bearer zkpay_live_...\`
-- Get your key at zkpay.top → Profile → Merchant & Bot API Keys
+## Authentication (REQUIRED for Partner Fee Share)
+- Pass your API key via \`X-API-Key: zkpay_live_...\` header (or \`Authorization: Bearer zkpay_live_...\`) on \`/api/v1/swap/create\` and \`/api/v1/swap/quote\`.
+- Get your key at https://zkpay.top/profile → Merchant & Bot API Keys
+- Manage your swaps, USD fee credits, and crypto payouts at https://zkpay.top/partner
 
-## CRITICAL: Fee Settlement & Solver Architecture ($0 Threshold, Instant Payout)
-- Supported crypto for 50% fee share is done upfront:
-  - Base ('base' - ETH, USDC, USDT), Solana ('sol' - Native SOL), and native gas tokens on Arbitrum ('arb' - ETH), Polygon ('polygon' - POL), and BSC ('bsc' - BNB).
+## WHAT CHANGED FOR PARTNERS (v2 Upgrade Guide)
+1. **No \`feeRecipient\` Required**: You no longer need to pass or manage per-chain \`feeRecipient\` addresses (e.g. separate Solana, Litecoin, and EVM wallets). Simply authenticate with your \`X-API-Key\` header and your 50% fee share is automatically attributed to your Partner account across all supported chains. (Passing \`feeRecipient\` is still accepted for backward compatibility and will never throw cross-chain address errors.)
+2. **100% On-Chain Treasury Sweep**: Users send 100% of their deposit to a single deposit address (\`order.deposit.address\`). On-chain, 100% of the platform fee is swept in a single transfer to the ZkPay Treasury and the net amount is forwarded to solvers.
+3. **Live USD Fee Credit on Settlement**: As soon as the swap settles (\`status === "settled"\`), your 50% partner fee share is converted to USD at the live CoinGecko rate and credited to your Partner Portal balance. Background daemons track settlement automatically even if the client stops polling.
+4. **Flexible Crypto Withdrawals ($1.00 Minimum)**: Withdraw your USD balance anytime (minimum $1.00 USD) from https://zkpay.top/partner in **USDC (Base)**, **USDT (Polygon)**, **SOL (Solana)**, or **LTC (Litecoin)**.
+
+## Supported Chains for 50/50 Partner Fee Share
+- **Fee-Share Enabled Chains**: Base ('base' - ETH, USDC, USDT), Polygon ('polygon' - POL, USDT, USDC), Solana ('sol' - Native SOL), Litecoin ('ltc' - Native LTC), Arbitrum ('arb' - ETH), and BSC ('bsc' - BNB).
   - Single-Transfer: Users send 100% of funds to ONE single deposit address (\`order.deposit.address\`).
-  - Upfront Fee Settlement: The system automatically detects the incoming deposit, settles the 50% fee share upfront to the partner's \`feeRecipient\` and ZkPay Treasury, and forwards the net amount directly to solvers.
-  - Stablecoins (Base USDC / USDT): All fees and transfers are settled strictly out of the deposited token balance with zero native gas required from the user.
-  - 100% instant settlement, $0 minimum payout threshold.
-- Some crypto don't have fee share because of high transaction cost:
-  - High transaction cost routes like Ethereum Mainnet ('eth') and Bitcoin ('btc') (as well as Litecoin, Tron, and Solana SPL tokens) route directly to solvers with 0% platform fee to protect users from high network transaction costs.
-- PARTNERS MUST provide a \`feeRecipient\` address that matches the ORIGIN CHAIN for supported crypto.
-- An \`executionPlan\` is returned by both /quote and /create, detailing the exact transfers (upfront fee share + solver deposit).
+  - Stablecoins (Base/Polygon USDC & USDT): All fees and transfers are settled strictly out of the deposited token balance with zero native gas required from the user.
+- **0% Fee Direct Routes (High Gas Networks)**:
+  - Ethereum Mainnet ('eth'), Bitcoin ('btc'), Tron ('tron'), and non-native SPL/ERC-20 tokens route directly to solvers with 0% platform fee (\`isDirectRoute: true\`) to protect users from high network transaction costs.
 
 ## Endpoints
 
@@ -57,17 +58,18 @@ Response:
 }
 
 ### 2. GET /api/v1/swap/quote?fromAsset={}&toAsset={}&amount={}&chain={}&destinationChain={}
-Preview swap pricing, fee breakdown, and execution plan. Dry run — no funds committed.
+Preview swap pricing, 50/50 partner fee breakdown, and execution plan. Dry run — no funds committed.
+Pass \`X-API-Key\` header so the quote reflects your 50/50 partner split.
 Rate limit: 30 req/min (IP) · 120 req/min (API Key)
 
 Query params:
-- fromAsset (required): Token symbol like "SOL", "ETH", "BTC"
+- fromAsset (required): Token symbol like "SOL", "ETH", "LTC", "USDC"
 - toAsset (optional): Destination token symbol like "USDC", "SOL". Defaults to Base USDC if omitted.
 - amount (required): Integer string in ATOMIC UNITS (see conversion table below)
-- chain (optional): Source chain e.g. "sol", "base", "eth", "btc"
-- destinationChain (optional): Target chain e.g. "base", "sol". Defaults to Base if omitted.
-- feeRecipient (optional): Partner's origin-chain address for 50% upfront fee share on supported crypto (0 on assets without fee share due to high transaction costs).
-- totalFeeBps (optional): Total fee in bps (range: 20–450 bps, default 100 = 1.00%).
+- chain (optional): Source chain e.g. "sol", "base", "polygon", "ltc", "arb", "bsc", "eth", "btc"
+- destinationChain (optional): Target chain e.g. "base", "sol", "polygon". Defaults to Base if omitted.
+- totalFeeBps (optional): Total custom fee in bps (range: 20–450 bps, default 100 = 1.00%, split 50/50 between Partner and ZkPay).
+- slippageBps (optional): Slippage tolerance in bps (range: 10–500 bps, default 100 = 1.00%).
 
 Response:
 {
@@ -77,10 +79,12 @@ Response:
     "originAsset": "nep141:sol.omft.near",
     "destinationAsset": "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
     "totalAmountIn": "1000000000",
-    "netSwapAmount": "990000000",
-    "feeAmount": "10000000",
-    "amountIn": "990000000",
-    "amountInFormatted": "0.99",
+    "netSwapAmount": "988800000",
+    "feeAmount": "11200000",
+    "partnerFeeAmount": "5000000",
+    "zkpayFeeAmount": "6200000",
+    "amountIn": "988800000",
+    "amountInFormatted": "0.9888",
     "amountOut": "102500000",
     "amountOutFormatted": "102.50",
     "minAmountOut": "101475000",
@@ -89,25 +93,29 @@ Response:
       "isDirectRoute": false,
       "type": "UPFRONT_FEE_SPLIT",
       "totalAmountIn": "1000000000",
-      "netSwapAmount": "990000000",
-      "feeAmount": "10000000",
+      "netSwapAmount": "988800000",
+      "feeAmount": "11200000",
+      "partnerFeeAmount": "5000000",
+      "zkpayFeeAmount": "6200000",
       "feeAsset": "nep141:sol.omft.near",
       "treasuryAddress": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
-      "partnerFeeRecipient": "7vN24xV8y...SolanaPayoutAddress",
+      "partnerFeeRecipient": null,
       "depositAddress": "solver_deposit_address...",
       "transfers": [
-        { "purpose": "PLATFORM_FEE", "recipient": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf", "amount": "10000000" },
-        { "purpose": "SWAP_DEPOSIT", "recipient": "solver_deposit_address...", "amount": "990000000" }
+        { "purpose": "PLATFORM_FEE", "recipient": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf", "amount": "11200000" },
+        { "purpose": "SWAP_DEPOSIT", "recipient": "solver_deposit_address...", "amount": "988800000" }
       ]
     },
     "feeBreakdown": {
       "isDirectRoute": false,
       "networkProtocolFeeBps": 25,
       "totalCustomFeeBps": 100,
-      "feeAmount": "10000000",
-      "split": { "zkpayFeeBps": 50, "partnerFeeBps": 50, "partnerFeeRecipient": "7vN24xV8y...SolanaPayoutAddress", "treasuryAddress": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf" },
+      "feeAmount": "11200000",
+      "partnerFeeAmount": "5000000",
+      "zkpayFeeAmount": "6200000",
+      "split": { "zkpayFeeBps": 50, "partnerFeeBps": 50, "partnerFeeRecipient": null, "treasuryAddress": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf" },
       "totalDeductionsBps": 125,
-      "feeSettlementNote": "Upfront fee settlement on origin chain (sol). $0 minimum payout threshold."
+      "feeSettlementNote": "100% of fees are swept to ZkPay Treasury on-chain (sol). Partner's 50% fee share is converted to USD at live market rates and credited to the Partner Portal upon swap settlement."
     },
     "timeEstimateSeconds": 45,
     "expiresAt": "2026-10-01T15:00:00.000Z"
@@ -118,6 +126,9 @@ Response:
 Creates a live swap order. Returns a single-use deposit address on the source chain and the executionPlan.
 Rate limit: 10 req/min (IP) · 60 req/min (API Key)
 
+Headers:
+- \`X-API-Key: zkpay_live_your_secret_key\` (Required for partner attribution & 50/50 fee share)
+
 Request body:
 {
   "fromAsset": "SOL",
@@ -127,14 +138,13 @@ Request body:
   "amount": "1000000000",
   "recipient": "0xUserBaseRecipientAddress",
   "refundTo": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
-  "feeRecipient": "7vN24xV8y...SolanaPartnerAddress",
   "totalFeeBps": 100
 }
 
 - recipient: User's destination-chain wallet address
 - refundTo: User's origin-chain wallet address (for automatic refund on failure/expiry)
-- feeRecipient: Partner's payout address on the ORIGIN CHAIN (must match chain format! E.g. Solana address for SOL source)
 - totalFeeBps: Your desired fee in basis points (range: 20–450 bps, 0 on ETH/BTC L1)
+- feeRecipient (optional/legacy): Not needed when authenticating with \`X-API-Key\`.
 
 Response:
 {
@@ -143,11 +153,13 @@ Response:
     "swapId": "swp_1727382000000",
     "status": "PENDING_DEPOSIT",
     "totalAmountIn": "1000000000",
-    "netSwapAmount": "990000000",
-    "feeAmount": "10000000",
+    "netSwapAmount": "988800000",
+    "feeAmount": "11200000",
+    "partnerFeeAmount": "5000000",
+    "zkpayFeeAmount": "6200000",
     "deposit": {
       "address": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
-      "amount": "0.99",
+      "amount": "1",
       "deadline": "2026-10-01T15:15:00.000Z"
     },
     "settlement": {
@@ -160,21 +172,26 @@ Response:
       "isDirectRoute": false,
       "type": "UPFRONT_FEE_SPLIT",
       "totalAmountIn": "1000000000",
-      "netSwapAmount": "990000000",
-      "feeAmount": "10000000",
+      "netSwapAmount": "988800000",
+      "feeAmount": "11200000",
+      "partnerFeeAmount": "5000000",
+      "zkpayFeeAmount": "6200000",
       "transfers": [
-        { "purpose": "PLATFORM_FEE", "recipient": "7vN24xV8y...SolanaPartnerAddress", "amount": "10000000" },
-        { "purpose": "SWAP_DEPOSIT", "recipient": "solver_deposit_address...", "amount": "990000000" }
+        { "purpose": "PLATFORM_FEE", "recipient": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf", "amount": "11200000" },
+        { "purpose": "SWAP_DEPOSIT", "recipient": "solver_deposit_address...", "amount": "988800000" }
       ]
     },
     "feeSplit": {
       "isDirectRoute": false,
       "totalCustomFeeBps": 100,
+      "feeAmount": "11200000",
+      "partnerFeeAmount": "5000000",
+      "zkpayFeeAmount": "6200000",
       "zkpayFeeBps": 50,
       "partnerFeeBps": 50,
-      "partnerFeeRecipient": "7vN24xV8y...SolanaPartnerAddress",
+      "partnerFeeRecipient": null,
       "treasuryAddress": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
-      "feeSettlementNote": "Upfront fee settlement on origin chain (sol). $0 minimum payout threshold."
+      "feeSettlementNote": "100% of fees are swept to ZkPay Treasury on-chain (sol). Partner's 50% fee share is converted to USD at live market rates and credited to the Partner Portal upon swap settlement."
     }
   }
 }
@@ -189,7 +206,7 @@ Response:
 {
   "success": true,
   "status": "settled",
-  "depositedAmount": "0.99 SOL",
+  "depositedAmount": "1 SOL",
   "settledAmount": "102.50 USDC",
   "destinationTxHash": "0x89c1...baseTxHash",
   "destinationExplorerUrl": "https://basescan.org/tx/0x89c1..."
@@ -197,24 +214,21 @@ Response:
 
 ## Integration Flow
 1. Call /swap/tokens to discover supported assets
-2. Call /swap/quote to preview rate & fees (show user the quote)
-3. Validate user's destination recipient and your feeRecipient for origin chain compatibility
-4. Call /swap/create to get deposit address and execution plan
-5. User sends crypto to the deposit address on source chain
-6. Poll /swap/status until status is "settled", "failed", or "refunded"
+2. Call /swap/quote with \`X-API-Key\` to preview rate & 50/50 partner fee split
+3. Call /swap/create with \`X-API-Key\` to get deposit address and execution plan
+4. User sends \`order.deposit.amount\` to \`order.deposit.address\` on source chain
+5. Poll /swap/status until status is "settled", "failed", or "refunded"
+6. Upon settlement, your 50% fee share is automatically converted to USD at the live CoinGecko rate and credited to your Partner Portal balance (\`https://zkpay.top/partner\`).
 
-## Fee Structure ($0 Threshold, Upfront Origin Settlement)
-- Supported crypto for 50% fee share is done upfront:
-  - Base, Arbitrum, Polygon, BSC, Solana (SOL): 50% fee share is done upfront directly to your feeRecipient in the origin asset.
+## Fee Structure (50/50 USD Partner Ledger & $1.00 Minimum Withdrawal)
+- **Fee-Share Enabled Chains**: Base, Polygon, Arbitrum, BSC, Solana (SOL), and Litecoin (LTC).
   - Network Protocol Fee: 25 bps (0.25%) — deducted by solvers
-  - Your Partner Share: 50% of totalFeeBps → settled UPFRONT in ORIGIN ASSET to feeRecipient
-  - ZkPay Treasury Share: 50% of totalFeeBps → settled UPFRONT in ORIGIN ASSET to ZkPay treasury
-  - Minimum totalFeeBps: 20 (0.20%)
-  - Maximum totalFeeBps: 450 (4.50%)
-  - If no feeRecipient provided: 100% of custom fee goes to ZkPay treasury
-  - Settlement: Instant on origin chain, $0 minimum payout threshold, no portal delays.
-- Some crypto don't have fee share because of high transaction cost:
-  - Routes on high transaction cost networks like Ethereum Mainnet ('eth') and Bitcoin ('btc') route directly to solvers with 0% platform fee to protect users from high network gas fees.
+  - Customizable Fee (\`totalFeeBps\`): 20 to 450 bps (0.20% – 4.50%, default 100 bps = 1.00%)
+  - Your Partner Share: 50% of \`totalFeeBps\` → automatically credited in **USD** at live CoinGecko rate when the swap settles
+  - ZkPay Treasury Share: 50% of \`totalFeeBps\` + fixed gas recovery fee → swept on-chain to ZkPay Treasury
+  - Withdrawals: Request payouts anytime ($1.00 USD minimum) from \`https://zkpay.top/partner\` in **USDC (Base)**, **USDT (Polygon)**, **SOL**, or **LTC**.
+- **0% Fee Direct Routes**:
+  - High transaction cost networks like Ethereum Mainnet ('eth') and Bitcoin ('btc') route directly to solvers with 0% platform fee to protect users from high network gas fees.
 
 ## CRITICAL: Atomic Units Conversion Table
 ALL amounts MUST be integer strings in atomic/base units. NEVER pass decimals like "0.01".
@@ -760,18 +774,46 @@ Verify with:
           <div className="bg-white/5  border border-white/15 rounded-xl p-8 md:p-10 shadow-elevated">
             <div className="flex items-center gap-3 mb-6">
               <span className="font-label-caps text-primary text-[10px] tracking-normal font-bold">
-                SWAP API - MULTI-CHAIN FEE SETTLEMENT ($0 THRESHOLD)
+                SWAP API — 50/50 USD PARTNER REVENUE &amp; MIGRATION GUIDE
               </span>
               <div className="h-px w-8 bg-white/20" />
+              <span className="text-[9px] font-label-caps text-success tracking-normal bg-success/10 px-2.5 py-1 rounded-md border border-success/20">
+                V2 UPGRADE
+              </span>
             </div>
 
             <h2 className="text-2xl md:text-3xl font-medium tracking-tight text-on-surface mb-4">
-              Instant Upfront Revenue on Every Swap
+              Automated 50/50 USD Fee Share on Every Settled Swap
             </h2>
-            <p className="text-sm text-on-surface-variant max-w-3xl mb-8 leading-relaxed">
-              Embed multi-chain crypto-to-crypto token swaps (BTC, ETH, SOL, USDT, USDC across 8+ blockchains) into your app or bot.
-              Supported crypto for 50% fee share is done upfront directly to your wallet (<code className="text-primary bg-white/5 px-1.5 py-0.5 rounded">feeRecipient</code>) with <strong className="text-primary">$0 minimum payout threshold</strong> and instant settlement, with net funds routed directly to solvers. Some crypto don&apos;t have fee share because of high transaction cost, routing directly to solvers with <strong className="text-success">0% platform fee</strong> to protect users from punitive network fees.
+            <p className="text-sm text-on-surface-variant max-w-3xl mb-6 leading-relaxed">
+              Embed multi-chain crypto-to-crypto token swaps (BTC, ETH, SOL, LTC, USDT, USDC across 9 blockchains) into your app or bot.
+              Simply pass your <code className="text-primary bg-white/5 px-1.5 py-0.5 rounded">X-API-Key</code> header on <code className="text-primary bg-white/5 px-1.5 py-0.5 rounded">/api/v1/swap/quote</code> and <code className="text-primary bg-white/5 px-1.5 py-0.5 rounded">/api/v1/swap/create</code>.
+              On-chain, 100% of the platform fee is swept in a single transfer to the ZkPay Treasury, and as soon as the swap settles, <strong className="text-primary">50% of the custom fee is converted to USD at the live CoinGecko rate</strong> and credited to your <a href="/partner" className="text-primary underline hover:opacity-80">Partner Portal</a> balance. Withdraw anytime (<strong className="text-success">$1.00 USD minimum</strong>) in <strong className="text-white">USDC (Base)</strong>, <strong className="text-white">USDT (Polygon)</strong>, <strong className="text-white">SOL</strong>, or <strong className="text-white">LTC</strong>.
             </p>
+
+            {/* Migration Callout for Existing Partners */}
+            <div className="mb-8 rounded-xl bg-primary/10 border border-primary/25 p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-base">upgrade</span>
+                <h3 className="text-xs font-bold text-primary font-label-caps tracking-normal">
+                  HOW TO UPDATE YOUR APP FOR THE NEW API (PARTNER MIGRATION CHECKLIST)
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-on-surface-variant leading-relaxed">
+                <div className="bg-black/30 rounded-lg p-3.5 border border-white/10">
+                  <strong className="text-white block mb-1">1. Pass X-API-Key Header</strong>
+                  Include <code className="text-primary">X-API-Key: zkpay_live_...</code> on <code className="text-primary">/swap/quote</code> and <code className="text-primary">/swap/create</code>. Every swap created with your key automatically activates the 50/50 partner fee split.
+                </div>
+                <div className="bg-black/30 rounded-lg p-3.5 border border-white/10">
+                  <strong className="text-white block mb-1">2. Remove Per-Chain feeRecipient</strong>
+                  You no longer need to pass or validate origin-chain <code className="text-primary">feeRecipient</code> wallets (e.g. separate SOL, LTC, or EVM addresses). You can safely omit <code className="text-primary">feeRecipient</code> from all requests.
+                </div>
+                <div className="bg-black/30 rounded-lg p-3.5 border border-white/10">
+                  <strong className="text-white block mb-1">3. Withdraw in Any Supported Crypto</strong>
+                  Settled swap fees accrue in USD on <a href="/partner" className="text-primary underline">/partner</a> (tracked automatically in the background even if users close your app) and can be withdrawn starting at $1.00 USD.
+                </div>
+              </div>
+            </div>
 
             {/* Fee Breakdown Table */}
             <div className="overflow-x-auto mb-8">
@@ -782,22 +824,22 @@ Verify with:
                     <th className="font-label-caps text-[9px] text-on-surface-variant tracking-normal pb-3 pr-4">BPS</th>
                     <th className="font-label-caps text-[9px] text-on-surface-variant tracking-normal pb-3 pr-4">% RATE</th>
                     <th className="font-label-caps text-[9px] text-on-surface-variant tracking-normal pb-3 pr-4">ON $1,000</th>
-                    <th className="font-label-caps text-[9px] text-on-surface-variant tracking-normal pb-3">SETTLEMENT & RECIPIENT</th>
+                    <th className="font-label-caps text-[9px] text-on-surface-variant tracking-normal pb-3">SETTLEMENT &amp; RECIPIENT</th>
                   </tr>
                 </thead>
                 <tbody className="text-on-surface">
                   {/* High Transaction Cost Routes Header */}
                   <tr className="bg-white/[0.03]">
                     <td colSpan={5} className="py-2.5 px-3 text-[10px] font-sans tabular-nums font-bold text-warning  tracking-normal">
-                      Routes Without Fee Share (High Transaction Cost: Ethereum Mainnet &amp; Bitcoin)
+                      Routes Without Fee Share (High Transaction Cost: Ethereum Mainnet, Bitcoin &amp; Tron)
                     </td>
                   </tr>
                   <tr className="border-b border-white/5">
-                    <td className="py-3 pr-4 text-outline pl-3">Platform Fee (ETH/BTC)</td>
+                    <td className="py-3 pr-4 text-outline pl-3">Platform Fee (ETH/BTC/TRX)</td>
                     <td className="py-3 pr-4 font-sans tabular-nums text-success">0</td>
                     <td className="py-3 pr-4 text-success">0.00%</td>
                     <td className="py-3 pr-4 font-sans tabular-nums text-success">$0.00</td>
-                    <td className="py-3 text-success">0% fee — No fee share due to high transaction cost; routes directly to solvers</td>
+                    <td className="py-3 text-success">0% fee — Routes directly to solvers to save user gas</td>
                   </tr>
                   <tr className="border-b border-white/5">
                     <td className="py-3 pr-4 text-outline pl-3">Network Protocol Fee</td>
@@ -810,7 +852,7 @@ Verify with:
                   {/* Supported Crypto Header */}
                   <tr className="bg-white/[0.03]">
                     <td colSpan={5} className="py-2.5 px-3 text-[10px] font-sans tabular-nums font-bold text-primary  tracking-normal">
-                      Supported Crypto (50% Fee Share Done Upfront: Base, Arb, Polygon, BSC, Solana SOL)
+                      Fee-Share Enabled Crypto (Base, Polygon, Arbitrum, BSC, Solana SOL, Litecoin LTC)
                     </td>
                   </tr>
                   <tr className="border-b border-white/5">
@@ -818,14 +860,14 @@ Verify with:
                     <td className="py-3 pr-4 font-sans tabular-nums text-primary">50</td>
                     <td className="py-3 pr-4 text-primary">0.50%</td>
                     <td className="py-3 pr-4 font-sans tabular-nums text-primary">$5.00</td>
-                    <td className="py-3 text-primary">Upfront in origin token → Your feeRecipient wallet ($0 min)</td>
+                    <td className="py-3 text-primary">Credited in USD at live CoinGecko rate upon swap settlement ($1.00 min withdrawal)</td>
                   </tr>
                   <tr className="border-b border-white/5">
                     <td className="py-3 pr-4 pl-3">ZkPay Treasury Share (50%)</td>
                     <td className="py-3 pr-4 font-sans tabular-nums">50</td>
                     <td className="py-3 pr-4">0.50%</td>
                     <td className="py-3 pr-4 font-sans tabular-nums">$5.00</td>
-                    <td className="py-3 text-outline">Upfront in origin token → ZkPay Treasury</td>
+                    <td className="py-3 text-outline">Swept on-chain in origin token → ZkPay Treasury</td>
                   </tr>
                   <tr className="border-b border-white/5">
                     <td className="py-3 pr-4 text-outline pl-3">Network Protocol Fee</td>
@@ -847,14 +889,14 @@ Verify with:
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
-                <span className="font-label-caps text-[9px] text-warning tracking-normal font-bold">HIGH TRANSACTION COST</span>
-                <p className="text-sm font-medium text-success">0% Platform Fee</p>
-                <p className="text-xs text-outline">Some crypto don&apos;t have fee share because of high transaction cost</p>
+                <span className="font-label-caps text-[9px] text-primary tracking-normal font-bold">USD PARTNER LEDGER</span>
+                <p className="text-sm font-medium text-on-surface">Live USD Conversion on Settlement</p>
+                <p className="text-xs text-outline">50% fee share converted at live CoinGecko rate once settled</p>
               </div>
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
-                <span className="font-label-caps text-[9px] text-primary tracking-normal font-bold">SUPPORTED CRYPTO</span>
-                <p className="text-sm font-medium text-on-surface">50% Fee Share Done Upfront</p>
-                <p className="text-xs text-outline">$0 minimum threshold, instant payout in origin token</p>
+                <span className="font-label-caps text-[9px] text-success tracking-normal font-bold">FLEXIBLE PAYOUTS</span>
+                <p className="text-sm font-medium text-success">$1.00 Minimum Withdrawal</p>
+                <p className="text-xs text-outline">Withdraw in USDC (Base), USDT (Polygon), SOL, or LTC</p>
               </div>
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
                 <span className="font-label-caps text-[9px] text-primary tracking-normal font-bold">CUSTOMIZABLE BPS</span>
@@ -876,10 +918,10 @@ Verify with:
                 <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-3">
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-success text-base">payments</span>
-                    <h4 className="text-xs font-bold text-white  tracking-normal font-sans tabular-nums">1. 50% Fee Share Done Upfront ($0 Min)</h4>
+                    <h4 className="text-xs font-bold text-white  tracking-normal font-sans tabular-nums">1. Single-Transfer Treasury Sweep &amp; USD Credit</h4>
                   </div>
                   <p className="text-xs text-on-surface-variant leading-relaxed">
-                    Users send 100% of their deposit in a single transfer to the deposit address. Supported crypto for 50% fee share is done upfront to <code className="text-primary font-sans tabular-nums">feeRecipient</code>, and the net amount is forwarded directly to solvers. Some crypto don&apos;t have fee share because of high transaction cost. For supported stablecoins (USDT/USDC), all gas and fees are paid strictly out of the token balance with zero native gas required.
+                    Users send 100% of their deposit in a single transfer to <code className="text-primary font-sans tabular-nums">order.deposit.address</code>. On-chain, 100% of the platform fee is swept to the ZkPay Treasury and the net amount is forwarded to solvers. When the swap settles, your 50% partner fee share is converted to USD at the live CoinGecko rate and credited to your Partner Portal balance.
                   </p>
                 </div>
 
@@ -889,7 +931,7 @@ Verify with:
                     <h4 className="text-xs font-bold text-white  tracking-normal font-sans tabular-nums">2. High Transaction Cost Routes</h4>
                   </div>
                   <p className="text-xs text-on-surface-variant leading-relaxed">
-                    Some crypto don&apos;t have fee share because of high transaction cost (such as Ethereum Mainnet and Bitcoin). Swaps on these assets route directly to solvers with 0% platform fee (<code className="text-success font-sans tabular-nums">isDirectRoute: true</code>) to protect users from paying double transaction fees.
+                    High transaction cost chains (such as Ethereum Mainnet and Bitcoin) route directly to solvers with 0% platform fee (<code className="text-success font-sans tabular-nums">isDirectRoute: true</code>) to protect users from paying double transaction fees.
                   </p>
                 </div>
               </div>
@@ -901,7 +943,7 @@ Verify with:
                     <h4 className="text-xs font-bold text-white  tracking-normal font-sans tabular-nums">3. User Refund Protection</h4>
                   </div>
                   <p className="text-xs text-on-surface-variant leading-relaxed">
-                    Always include <code className="text-primary font-sans tabular-nums">refundTo</code> with the user's origin-chain address (e.g. their Ethereum address when depositing ETH, Solana address for SOL).
+                    Always include <code className="text-primary font-sans tabular-nums">refundTo</code> with the user&apos;s origin-chain address (e.g. their Ethereum address when depositing ETH, Solana address for SOL).
                     If a trade exceeds slippage or the deposit deadline passes, 100% of the user deposit is automatically refunded back to <code className="text-primary font-sans tabular-nums">refundTo</code> on the origin chain.
                   </p>
                 </div>
@@ -909,10 +951,10 @@ Verify with:
                 <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-3">
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-primary text-base">sync_alt</span>
-                    <h4 className="text-xs font-bold text-white  tracking-normal font-sans tabular-nums">4. Execution Plan Transparency</h4>
+                    <h4 className="text-xs font-bold text-white  tracking-normal font-sans tabular-nums">4. Background Settlement Tracking</h4>
                   </div>
                   <p className="text-xs text-on-surface-variant leading-relaxed">
-                    Both <code className="text-primary font-sans tabular-nums">/swap/quote</code> and <code className="text-primary font-sans tabular-nums">/swap/create</code> return an <code className="text-primary font-sans tabular-nums">executionPlan</code> specifying exact transfers for platform fees and solver deposits, giving client apps full programmatic visibility into fund flows.
+                    Even if a user closes your app right after depositing, ZkPay&apos;s background settlement daemon monitors the solver network every 12 seconds and automatically credits your USD partner balance as soon as the swap settles.
                   </p>
                 </div>
               </div>

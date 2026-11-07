@@ -129,7 +129,7 @@ export function computeUpfrontFees(
   const isStable = !!meta && (meta.symbol === "USDC" || meta.symbol === "USDT") && meta.decimals >= 2;
   const fixedFee = isStable ? FIXED_STABLE_FEE_CENTS * 10n ** BigInt(meta!.decimals - 2) : 0n;
 
-  const partnerFee = feeSplit.partnerFeeRecipient
+  const partnerFee = feeSplit.partnerFeeBps > 0
     ? (totalAtomic * BigInt(feeSplit.partnerFeeBps)) / 10000n
     : 0n;
   const zkpayPercentFee = (totalAtomic * BigInt(feeSplit.zkpayFeeBps)) / 10000n;
@@ -235,14 +235,15 @@ export function calculateFeeSplit(
   requestedFeeBps?: number | null,
   partnerFeeRecipient?: string | null,
   originChain?: string | null,
-  fromAsset?: string | null
+  fromAsset?: string | null,
+  hasPartnerAttribution?: boolean
 ): FeeSplitResult {
   const normChain = normalizeChain(originChain);
 
   // RULE 1: Direct Route, 0% Platform Fee
   // Applied to:
   // - Zero-fee chains (Ethereum L1, Bitcoin) to protect users from high gas.
-  // - Any chain or asset that does NOT use Single-Transfer Proxy (Litecoin, Tron, Solana SPL tokens, etc.)
+  // - Any chain or asset that does NOT use Single-Transfer Proxy (Tron, Solana SPL tokens, etc.)
   //   so 100% of user deposit routes directly to Near Intents solvers with 0 amount mismatch and 0 risk of stuck funds!
   if (isZeroFeeChain(normChain) || !isProxySupportedChain(normChain, fromAsset)) {
     return {
@@ -260,7 +261,7 @@ export function calculateFeeSplit(
     };
   }
 
-  // RULE 2 & 3: Low-fee L2s (Base, Arbitrum, Polygon, BSC) and low-fee L1s (Solana, Litecoin, Tron)
+  // RULE 2 & 3: Low-fee L2s (Base, Arbitrum, Polygon, BSC) and low-fee L1s (Solana, Litecoin)
   let totalCustom = typeof requestedFeeBps === "number" && !isNaN(requestedFeeBps)
     ? Math.round(requestedFeeBps)
     : DEFAULT_CUSTOM_FEE_BPS;
@@ -273,7 +274,7 @@ export function calculateFeeSplit(
   let zkpayFeeBps: number;
   let partnerFeeBps: number;
 
-  if (cleanPartnerRecipient) {
+  if (cleanPartnerRecipient || hasPartnerAttribution) {
     zkpayFeeBps = Math.floor(totalCustom / 2);
     partnerFeeBps = totalCustom - zkpayFeeBps;
   } else {
@@ -281,8 +282,7 @@ export function calculateFeeSplit(
     partnerFeeBps = 0;
   }
 
-  // Upfront fee settlement: appFees sent to NEAR Intents is ALWAYS []
-  // This bypasses NEAR's $1,000 threshold and ensures instant on-chain settlement directly to treasury.
+  // Upfront fee collection: 100% swept to Treasury on-chain, partner's 50% share credited in USD upon swap settlement.
   return {
     totalCustomFeeBps: totalCustom,
     zkpayFeeBps,
@@ -294,7 +294,7 @@ export function calculateFeeSplit(
     appFees: [],
     treasuryAddress,
     isDirectRoute: false,
-    feeSettlementNote: `Upfront fee settlement on origin chain (${normChain || "L2"}). Fee is transferred directly to treasury/partner address before or atomically with the swap. $0 minimum payout threshold.`,
+    feeSettlementNote: `100% of fee is collected on origin chain (${normChain || "L2"}) to ZkPay Treasury. Partner 50% share is converted to USD at the live CoinGecko rate upon swap settlement and credited to the Partner Portal balance ($1.00 min withdrawal).`,
   };
 }
 
@@ -692,6 +692,8 @@ export interface SwapQuoteParams {
   slippageBps?: number | null;
   recipientAddress?: string | null;
   refundTo?: string | null;
+  apiKeyId?: string | null;
+  partnerUserId?: string | null;
 }
 
 /**
@@ -713,22 +715,10 @@ export async function getSwapQuote(params: SwapQuoteParams) {
   // Validate atomic units and minimum volume threshold
   validateSwapAmount(amount, originAssetId);
 
-  // Fee split is resolved per ORIGIN chain because 1Click appFees carve out input tokens
+  // Fee split is resolved per ORIGIN chain
   const originSymbol = getOriginTokenMeta(originAssetId)?.symbol || fromAsset;
-  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain, originSymbol);
-
-  // Validate partner fee recipient format if provided
-  if (
-    feeSplit.partnerFeeRecipient &&
-    !isValidFeeRecipient(feeSplit.partnerFeeRecipient, resolvedOriginChain)
-  ) {
-    const err: any = new Error(
-      `Partner fee recipient address '${feeSplit.partnerFeeRecipient}' is invalid for origin chain '${resolvedOriginChain}'.`
-    );
-    err.code = "INVALID_FEE_RECIPIENT";
-    err.statusCode = 400;
-    throw err;
-  }
+  const hasPartnerAttribution = Boolean(params.partnerUserId || params.apiKeyId || feeRecipient);
+  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain, originSymbol, hasPartnerAttribution);
 
   // Compute upfront fee deduction (single source of truth)
   const fees = computeUpfrontFees(BigInt(amount.trim()), feeSplit, originAssetId);
@@ -796,17 +786,8 @@ export async function getSwapQuote(params: SwapQuoteParams) {
           {
             purpose: "PLATFORM_FEE",
             recipient: feeSplit.treasuryAddress,
-            amount: fees.zkpayFee.toString(),
+            amount: feeAmount,
           },
-          ...(fees.partnerFee > 0n && feeSplit.partnerFeeRecipient
-            ? [
-                {
-                  purpose: "PARTNER_FEE" as const,
-                  recipient: feeSplit.partnerFeeRecipient,
-                  amount: fees.partnerFee.toString(),
-                },
-              ]
-            : []),
           {
             purpose: "SWAP_DEPOSIT",
             recipient: quote.depositAddress,
@@ -897,20 +878,8 @@ export async function createSwapOrder(params: CreateSwapParams) {
 
   // Fee split is resolved per ORIGIN chain
   const originSymbol = getOriginTokenMeta(originAssetId)?.symbol || fromAsset;
-  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain, originSymbol);
-
-  // Validate partner fee recipient format if provided
-  if (
-    feeSplit.partnerFeeRecipient &&
-    !isValidFeeRecipient(feeSplit.partnerFeeRecipient, resolvedOriginChain)
-  ) {
-    const err: any = new Error(
-      `Partner fee recipient address '${feeSplit.partnerFeeRecipient}' is invalid for origin chain '${resolvedOriginChain}'.`
-    );
-    err.code = "INVALID_FEE_RECIPIENT";
-    err.statusCode = 400;
-    throw err;
-  }
+  const hasPartnerAttribution = Boolean(params.partnerUserId || params.apiKeyId || feeRecipient);
+  const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain, originSymbol, hasPartnerAttribution);
 
   // Compute upfront fee deduction (single source of truth)
   const fees = computeUpfrontFees(BigInt(amount.trim()), feeSplit, originAssetId);
@@ -1058,17 +1027,8 @@ export async function createSwapOrder(params: CreateSwapParams) {
           {
             purpose: "PLATFORM_FEE",
             recipient: feeSplit.treasuryAddress,
-            amount: fees.zkpayFee.toString(),
+            amount: feeAmount,
           },
-          ...(fees.partnerFee > 0n && feeSplit.partnerFeeRecipient
-            ? [
-                {
-                  purpose: "PARTNER_FEE" as const,
-                  recipient: feeSplit.partnerFeeRecipient,
-                  amount: fees.partnerFee.toString(),
-                },
-              ]
-            : []),
           {
             purpose: "SWAP_DEPOSIT",
             recipient: quote.depositAddress,

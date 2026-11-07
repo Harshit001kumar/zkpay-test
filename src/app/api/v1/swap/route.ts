@@ -37,9 +37,9 @@ export async function GET() {
       },
     },
     feeSettlement: {
-      mechanism: "UPFRONT_FEE_SPLIT",
-      note: "Supported crypto for 50% fee share is done upfront. Some crypto don't have fee share because of high transaction cost.",
-      partnerGuidance: "feeRecipient must match the origin blockchain format. Fees are settled upfront on the origin chain directly to the partner feeRecipient wallet with $0 minimum threshold.",
+      mechanism: "TREASURY_SWEEP_WITH_USD_PARTNER_CREDIT",
+      note: "100% of fees are swept to ZkPay Treasury on-chain. Upon swap settlement, 50% of the fee is converted to USD at the live CoinGecko rate and credited to the Partner Portal balance.",
+      partnerGuidance: "Authenticate with your x-api-key header. Settled fees accrue in USD and can be withdrawn ($1.00 minimum) in LTC, SOL, USDT (Polygon), or USDC (Base) from the Partner Portal.",
       defaultFeeBps: 100,
       feeSplitModel: "50/50 between ZkPay Treasury and Partner",
     },

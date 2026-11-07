@@ -172,6 +172,18 @@ export async function getApiKeyById(keyId: string): Promise<ApiKeyRecord | null>
   return apiKeys.get(keyId) || null;
 }
 
+export async function findUserIdByWalletAddress(walletAddress: string): Promise<string | null> {
+  await hydrate();
+  const clean = (walletAddress || "").trim().toLowerCase();
+  if (!clean) return null;
+  for (const rec of apiKeys.values()) {
+    if (rec.walletAddress && rec.walletAddress.toLowerCase() === clean && rec.userId) {
+      return rec.userId;
+    }
+  }
+  return null;
+}
+
 export async function revokeApiKeyForUser(userId: string, keyId: string): Promise<boolean> {
   await hydrate();
   const rec = apiKeys.get(keyId);

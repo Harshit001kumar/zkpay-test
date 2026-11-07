@@ -24,7 +24,7 @@ function getDecimalsForAsset(assetId?: string, symbol?: string): number {
   const sym = (symbol || "").toUpperCase();
   if (sym.includes("USDC") || sym.includes("USDT")) return 6;
   if (sym.includes("SOL")) return 9;
-  if (sym.includes("BTC") || sym.includes("WBTC")) return 8;
+  if (sym.includes("BTC") || sym.includes("WBTC") || sym.includes("LTC")) return 8;
   return 18;
 }
 
@@ -223,13 +223,34 @@ function mapProxySwapToTx(
   const keyLabel = keyRec ? (keyRec.label || `${keyRec.keyPrefix}...${keyRec.keyLast4}`) : "Partner API";
 
   const decimals = getDecimalsForAsset(o.originAssetId, o.fromAsset);
-  const partnerFeeFormatted = formatAtomicToHuman(o.partnerFeeAmount, decimals);
+
+  // Resolve partner fee atomic amount (including 50% recovery if created without feeRecipient)
+  let rawPartnerFeeAtomic = o.partnerFeeAmount || "0";
+  try {
+    if (!rawPartnerFeeAtomic || BigInt(rawPartnerFeeAtomic) <= 0n) {
+      const totalFee = BigInt(o.feeAmount || "0");
+      const fixedFee = BigInt(o.fixedFeeAmount || "0");
+      if (totalFee > fixedFee) {
+        const pctFee = totalFee - fixedFee;
+        rawPartnerFeeAtomic = (pctFee - pctFee / 2n).toString();
+      }
+    }
+  } catch {
+    rawPartnerFeeAtomic = "0";
+  }
+
+  const partnerFeeFormatted = formatAtomicToHuman(rawPartnerFeeAtomic, decimals);
   const isUsdPegged = (o.fromAsset || "").toUpperCase().includes("USD");
 
   const amountNumber = parseFloat(o.totalAmountFormatted) || (Number(o.totalAmountIn) / Math.pow(10, decimals));
   const amountUsdEstimate = isUsdPegged ? amountNumber : amountNumber;
   const partnerFeeNumber = parseFloat(partnerFeeFormatted);
-  const partnerFeeUsdEstimate = isUsdPegged ? partnerFeeNumber : partnerFeeNumber;
+  const partnerFeeUsdEstimate =
+    typeof o.partnerFeeUsd === "number" && o.partnerFeeUsd > 0
+      ? o.partnerFeeUsd
+      : isUsdPegged
+      ? partnerFeeNumber
+      : partnerFeeNumber;
 
   const primaryTxHash = o.forwardTxHash || o.depositTxHash || o.feeTxHash || null;
 
@@ -258,13 +279,15 @@ function mapProxySwapToTx(
     explorerUrl: getExplorerTxUrl(o.chain, primaryTxHash),
     createdAt: o.createdAt,
     expiresAt: o.expiresAt,
-    settledAt: o.status === "SETTLED" ? o.createdAt : undefined,
+    settledAt: o.status === "SETTLED" ? (o.feeCreditedAt || o.createdAt) : undefined,
     source: o.source || (o.apiKeyId ? "api" : "app"),
     details: {
       netSwapAmount: o.netSwapAmount,
       feeAmount: o.feeAmount,
       partnerFeeBps: o.partnerFeeBps,
       partnerFeeRecipient: o.partnerFeeRecipient,
+      partnerFeeUsd: o.partnerFeeUsd,
+      feeCredited: o.feeCredited,
       zkpayFeeAmount: o.zkpayFeeAmount,
       solverDepositAddress: o.solverDepositAddress,
       depositTxHash: o.depositTxHash,
@@ -355,6 +378,12 @@ export async function getPartnerMetrics(
       if (validKeyIds.length > 0) {
         swapOr.push({ apiKeyId: { $in: validKeyIds } });
         payOr.push({ apiKeyId: { $in: validKeyIds } });
+      }
+      const walletAddrs = Array.from(
+        new Set(userKeys.map((k) => k.walletAddress?.toLowerCase()).filter(Boolean) as string[])
+      );
+      for (const w of walletAddrs) {
+        swapOr.push({ partnerFeeRecipient: new RegExp(`^${w}$`, "i") });
       }
       swapFilter.$or = swapOr;
       payFilter.$or = payOr;
@@ -493,6 +522,12 @@ export async function getPartnerTransactions(params: {
       if (validKeyIds.length > 0) {
         swapOr.push({ apiKeyId: { $in: validKeyIds } });
         payOr.push({ apiKeyId: { $in: validKeyIds } });
+      }
+      const walletAddrs = Array.from(
+        new Set(userKeys.map((k) => k.walletAddress?.toLowerCase()).filter(Boolean) as string[])
+      );
+      for (const w of walletAddrs) {
+        swapOr.push({ partnerFeeRecipient: new RegExp(`^${w}$`, "i") });
       }
       swapFilter.$or = swapOr;
       payFilter.$or = payOr;

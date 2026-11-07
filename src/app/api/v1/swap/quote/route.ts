@@ -86,7 +86,15 @@ async function handleQuote(req: Request) {
       );
     }
 
-    const quote = await getSwapQuote(params);
+    const apiKeyId = auth.apiKeyRecord?.id || undefined;
+    const partnerUserId = auth.apiKeyRecord?.userId || auth.userId || undefined;
+
+    const quote = await getSwapQuote({
+      ...params,
+      feeRecipient: params.feeRecipient || (auth.apiKeyRecord?.walletAddress || undefined),
+      apiKeyId,
+      partnerUserId,
+    });
 
     return corsJson(
       {

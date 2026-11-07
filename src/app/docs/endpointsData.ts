@@ -997,18 +997,18 @@ bot.command('tokens', async (ctx) => {
   // ─── 08. SWAP: Get Swap Quote (Dry Run) ───
   {
     method: "GET",
-    path: "/api/v1/swap/quote?fromAsset=SOL&chain=sol&toAsset=USDC&destinationChain=base&amount=1000000000&feeRecipient=7vN24xV8y...SolanaPayoutAddress&totalFeeBps=100&slippageBps=100",
+    path: "/api/v1/swap/quote?fromAsset=SOL&chain=sol&toAsset=USDC&destinationChain=base&amount=1000000000&totalFeeBps=100&slippageBps=100",
     title: "Get Swap Quote (Dry Run)",
     category: "swap",
     rateLimit: "30 req/min (IP) · 120 req/min (API Key)",
-    description: "Preview real-time crypto-to-crypto pricing with transparent fee breakdown and execution plan. High-fee L1 routes (Ethereum Mainnet and Bitcoin) are routed directly with 0% platform fee to protect user gas. For L2s (Base, Arbitrum, Polygon, BSC) and low-fee chains (Solana, Litecoin, Tron), fees are collected upfront in the origin token directly to the partner/treasury wallet ($0 minimum payout threshold, 100% instant settlement). Returns an 'executionPlan' detailing exact split transfers.",
+    description: "Preview real-time crypto-to-crypto pricing with transparent 50/50 partner fee breakdown and execution plan. Pass your X-API-Key header to preview your exact 50% partner fee share. On fee-share chains (Base, Polygon, Arbitrum, BSC, Solana SOL, Litecoin LTC), 100% of fees are swept to ZkPay Treasury on-chain and your 50% share is credited in USD at the live CoinGecko rate upon settlement. High-gas L1 routes (Ethereum Mainnet and Bitcoin) route directly with 0% platform fee to save user gas.",
     parameters: [
       {
         name: "fromAsset",
         type: "string",
         location: "query",
         required: true,
-        description: "Source token symbol (e.g. 'SOL', 'ETH', 'BTC') or full assetId.",
+        description: "Source token symbol (e.g. 'SOL', 'ETH', 'LTC', 'BTC') or full assetId.",
         example: "SOL"
       },
       {
@@ -1024,7 +1024,7 @@ bot.command('tokens', async (ctx) => {
         type: "string",
         location: "query",
         required: false,
-        description: "Source blockchain: 'sol', 'base', 'eth', 'btc', 'tron', 'arb', 'bsc', 'ltc'.",
+        description: "Source blockchain: 'sol', 'base', 'polygon', 'ltc', 'arb', 'bsc', 'eth', 'btc', 'tron'.",
         example: "sol"
       },
       {
@@ -1040,23 +1040,15 @@ bot.command('tokens', async (ctx) => {
         type: "string",
         location: "query",
         required: false,
-        description: "Destination blockchain (e.g. 'sol', 'base', 'eth', 'btc', 'tron', 'arb', 'bsc', 'ltc'). Defaults to Base if omitted.",
-        example: "sol"
-      },
-      {
-        name: "feeRecipient",
-        type: "string",
-        location: "query",
-        required: false,
-        description: "Partner's payout address on the ORIGIN CHAIN. Supported crypto for 50% fee share is done upfront in the origin token ($0 threshold, instant payout). Some crypto don't have fee share because of high transaction cost. Split 50/50 with ZkPay Treasury.",
-        example: "7vN24xV8y...SolanaPayoutAddress"
+        description: "Destination blockchain (e.g. 'sol', 'base', 'polygon', 'ltc', 'arb', 'bsc', 'eth', 'btc', 'tron'). Defaults to Base if omitted.",
+        example: "base"
       },
       {
         name: "totalFeeBps",
         type: "number",
         location: "query",
         required: false,
-        description: "Custom partner fee in basis points (range: 20 to 450 bps, e.g. 100 for 1.00%). Supported crypto for 50% fee share is done upfront with partner feeRecipient. Some crypto don't have fee share because of high transaction cost.",
+        description: "Custom partner fee in basis points (range: 20 to 450 bps, default 100 for 1.00%). Split 50/50 between Partner (credited in USD on settlement) and ZkPay Treasury.",
         example: "100"
       },
       {
@@ -1068,20 +1060,20 @@ bot.command('tokens', async (ctx) => {
         example: "100"
       },
       {
-        name: "recipient",
+        name: "X-API-Key",
         type: "string",
-        location: "query",
+        location: "header",
         required: false,
-        description: "User's destination-chain address for exact quote route calculation.",
-        example: "7vN24xV8y...SolanaAddress"
+        description: "Partner API key (recommended so the quote preview reflects your 50/50 partner fee split and higher rate limits).",
+        example: "zkpay_live_secret_key"
       },
       {
-        name: "refundTo",
+        name: "feeRecipient",
         type: "string",
         location: "query",
         required: false,
-        description: "User's origin-chain address for automatic refunds on expiry.",
-        example: "0xUserEthAddress"
+        description: "Legacy/optional partner identifier. No longer required when authenticating with X-API-Key.",
+        example: "0xPartnerAddress"
       }
     ],
     response: {
@@ -1091,10 +1083,12 @@ bot.command('tokens', async (ctx) => {
         originAsset: "nep141:sol.omft.near",
         destinationAsset: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
         totalAmountIn: "1000000000",
-        netSwapAmount: "990000000",
-        feeAmount: "10000000",
-        amountIn: "990000000",
-        amountInFormatted: "0.99",
+        netSwapAmount: "988800000",
+        feeAmount: "11200000",
+        partnerFeeAmount: "5000000",
+        zkpayFeeAmount: "6200000",
+        amountIn: "988800000",
+        amountInFormatted: "0.9888",
         amountOut: "102500000",
         amountOutFormatted: "102.50",
         minAmountOut: "101475000",
@@ -1103,76 +1097,83 @@ bot.command('tokens', async (ctx) => {
           isDirectRoute: false,
           type: "UPFRONT_FEE_SPLIT",
           totalAmountIn: "1000000000",
-          netSwapAmount: "990000000",
-          feeAmount: "10000000",
+          netSwapAmount: "988800000",
+          feeAmount: "11200000",
+          partnerFeeAmount: "5000000",
+          zkpayFeeAmount: "6200000",
           feeAsset: "nep141:sol.omft.near",
           treasuryAddress: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
-          partnerFeeRecipient: "7vN24xV8y...SolanaPayoutAddress",
+          partnerFeeRecipient: null,
           depositAddress: "solver_deposit_address...",
           transfers: [
-            { purpose: "PLATFORM_FEE", recipient: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf", amount: "10000000" },
-            { purpose: "SWAP_DEPOSIT", recipient: "solver_deposit_address...", amount: "990000000" }
+            { purpose: "PLATFORM_FEE", recipient: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf", amount: "11200000" },
+            { purpose: "SWAP_DEPOSIT", recipient: "solver_deposit_address...", amount: "988800000" }
           ]
         },
         feeBreakdown: {
           isDirectRoute: false,
           networkProtocolFeeBps: 25,
           totalCustomFeeBps: 100,
-          feeAmount: "10000000",
-          split: { zkpayFeeBps: 50, partnerFeeBps: 50, partnerFeeRecipient: "7vN24xV8y...SolanaPayoutAddress", treasuryAddress: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf" },
+          feeAmount: "11200000",
+          partnerFeeAmount: "5000000",
+          zkpayFeeAmount: "6200000",
+          split: { zkpayFeeBps: 50, partnerFeeBps: 50, partnerFeeRecipient: null, treasuryAddress: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf" },
           totalDeductionsBps: 125,
-          feeSettlementNote: "Upfront fee settlement on origin chain (sol). Fee is transferred directly to treasury/partner address before or atomically with the swap. $0 minimum payout threshold."
+          feeSettlementNote: "100% of fees are swept to ZkPay Treasury on-chain (sol). Partner's 50% fee share is converted to USD at live market rates and credited to the Partner Portal upon swap settlement."
         },
         timeEstimateSeconds: 45,
         expiresAt: "2026-10-01T15:00:00.000Z"
       }
     },
     codeExamples: {
-      curl: `# GET request for Solana to Base USDC swap with upfront fee split:
-curl -X GET "https://zkpay.top/api/v1/swap/quote?fromAsset=SOL&chain=sol&toAsset=USDC&destinationChain=base&amount=1000000000&feeRecipient=7vN24xV8y...SolanaPayoutAddress&totalFeeBps=100&slippageBps=100" \\
+      curl: `# GET request for Solana to Base USDC swap with 50/50 partner fee share:
+curl -X GET "https://zkpay.top/api/v1/swap/quote?fromAsset=SOL&chain=sol&toAsset=USDC&destinationChain=base&amount=1000000000&totalFeeBps=100&slippageBps=100" \\
+  -H "X-API-Key: zkpay_live_your_secret_key" \\
   -H "Accept: application/json"
 
 # Direct Route example on Ethereum L1 (0% fee to save user gas):
 curl -X GET "https://zkpay.top/api/v1/swap/quote?fromAsset=ETH&chain=eth&toAsset=SOL&destinationChain=sol&amount=10000000000000000" \\
   -H "Accept: application/json"`,
-      js: `// Calculate swap quote with upfront fee split and atomic units
-// NOTE: feeRecipient is your payout address on the ORIGIN chain (e.g. Solana address when swapping SOL)
+      js: `// Calculate swap quote with 50/50 partner fee split and atomic units
+// Pass your X-API-Key header — no per-chain feeRecipient wallet needed!
 const query = new URLSearchParams({
   fromAsset: "SOL",
   chain: "sol",
   toAsset: "USDC",
   destinationChain: "base",
   amount: "1000000000", // 1 SOL in lamports (atomic integer string)
-  feeRecipient: "7vN24xV8y...SolanaPayoutAddress", // Origin-chain address receiving instant fee payout
-  totalFeeBps: "100", // 1.00% total fee (50 bps to partner, 50 bps to ZkPay)
-  slippageBps: "100"  // 1.00% max slippage
+  totalFeeBps: "100",   // 1.00% total fee (50 bps credited in USD to Partner, 50 bps to ZkPay)
+  slippageBps: "100"    // 1.00% max slippage
 });
 
 const res = await fetch(\`https://zkpay.top/api/v1/swap/quote?\${query}\`, {
-  headers: { "Accept": "application/json" }
+  headers: {
+    "Accept": "application/json",
+    "X-API-Key": "YOUR_ZKPAY_API_KEY"
+  }
 });
 const { quote } = await res.json();
 console.log(\`Estimated: \${quote.amountOutFormatted} USDC (Min: \${quote.minAmountOutFormatted} USDC)\`);
-console.log("Execution Plan:", quote.executionPlan);`,
+console.log("Partner Fee (atomic):", quote.partnerFeeAmount);`,
       python: `import requests
 
-# NOTE: feeRecipient is your payout address on the ORIGIN chain (e.g. Solana address for SOL source)
+# Pass X-API-Key header to preview your 50/50 partner fee split
 params = {
     "fromAsset": "SOL",
     "chain": "sol",
     "toAsset": "USDC",
     "destinationChain": "base",
     "amount": "1000000000",  # Atomic units integer string
-    "feeRecipient": "7vN24xV8y...SolanaPayoutAddress",
     "totalFeeBps": 100,
     "slippageBps": 100
 }
-response = requests.get("https://zkpay.top/api/v1/swap/quote", params=params)
+headers = {"X-API-Key": "YOUR_ZKPAY_API_KEY"}
+response = requests.get("https://zkpay.top/api/v1/swap/quote", params=params, headers=headers)
 data = response.json()
 q = data["quote"]
 
 print(f"Est Output: {q['amountOutFormatted']} USDC (Est Time: {q['timeEstimateSeconds']}s)")
-print("Execution Plan:", q["executionPlan"])`,
+print("Partner Fee Share (atomic):", q.get("partnerFeeAmount"))`,
       telegram: `// Node.js Telegram Bot Example (telegraf) - Cross-Chain Swap Quote Preview
 bot.command('swapquote', async (ctx) => {
   const [from, to, amountHuman] = ctx.message.text.split(' ').slice(1);
@@ -1189,12 +1190,13 @@ bot.command('swapquote', async (ctx) => {
     toAsset: to.toUpperCase(),
     destinationChain: 'base',
     amount: atomic,
-    feeRecipient: '7vN24xV8y...SolanaPayoutAddress',
     totalFeeBps: '100',
     slippageBps: '100'
   });
 
-  const res = await fetch(\`https://zkpay.top/api/v1/swap/quote?\${query}\`);
+  const res = await fetch(\`https://zkpay.top/api/v1/swap/quote?\${query}\`, {
+    headers: { 'X-API-Key': process.env.ZKPAY_API_KEY }
+  });
   const data = await res.json();
 
   if (!data.success) return ctx.reply(\`❌ \${data.message || data.error}\`);
@@ -1202,10 +1204,10 @@ bot.command('swapquote', async (ctx) => {
   const q = data.quote;
   await ctx.reply(
     \`🔄 *Live Swap Rate Quote*\\n\\n\` +
-    \`• *Deposit:* \${q.amountInFormatted} \${from.toUpperCase()}\\n\` +
+    \`• *Deposit:* \${amountHuman} \${from.toUpperCase()}\\n\` +
     \`• *Estimated Output:* *\${q.amountOutFormatted} \${to.toUpperCase()}*\\n\` +
     \`• *Guaranteed Minimum:* \${q.minAmountOutFormatted} \${to.toUpperCase()}\\n\` +
-    \`• *Partner Fee Split:* \${q.feeBreakdown.split.partnerFeeBps} bps (settled upfront in \${from.toUpperCase()})\\n\` +
+    \`• *Partner Fee Split:* \${q.feeBreakdown.split.partnerFeeBps} bps (credited in USD on settlement)\\n\` +
     \`• *Est. Settlement Time:* ~\${q.timeEstimateSeconds}s\\n\` +
     \`• *Valid Until:* \${new Date(q.expiresAt).toLocaleTimeString()}\`,
     { parse_mode: 'Markdown' }
@@ -1221,14 +1223,14 @@ bot.command('swapquote', async (ctx) => {
     title: "Create Swap Order",
     category: "swap",
     rateLimit: "10 req/min (IP) · 60 req/min (API Key)",
-    description: "Commits a cross-chain crypto-to-crypto swap order and generates a single-use deposit address. Enables a seamless single-transfer experience: the user sends 100% of the deposit to this address. Supported crypto for 50% fee share is done upfront to Treasury/Partner, and the net amount is forwarded directly to solvers. Some crypto don't have fee share because of high transaction cost. For supported stablecoins (USDC/USDT), all fees and transfer costs are paid strictly out of the deposited token balance with zero native gas required.",
+    description: "Commits a cross-chain crypto-to-crypto swap order and generates a single-use deposit address. Authenticate with your X-API-Key header to automatically attribute the swap to your Partner account and activate the 50/50 fee split (no per-chain feeRecipient required). On fee-share chains (Base, Polygon, Arbitrum, BSC, Solana SOL, Litecoin LTC), 100% of fees are swept to ZkPay Treasury on-chain and 50% of the custom fee is converted to USD at the live CoinGecko rate and credited to your Partner Portal balance once the swap settles.",
     parameters: [
       {
         name: "fromAsset",
         type: "string",
         location: "body",
         required: true,
-        description: "Source token symbol (e.g. 'ETH', 'SOL', 'BTC'). Also accepts 'originAsset'.",
+        description: "Source token symbol (e.g. 'ETH', 'SOL', 'LTC', 'BTC'). Also accepts 'originAsset'.",
         example: "SOL"
       },
       {
@@ -1252,7 +1254,7 @@ bot.command('swapquote', async (ctx) => {
         type: "string",
         location: "body",
         required: false,
-        description: "Source blockchain (e.g. 'eth', 'sol', 'btc', 'tron', 'arb', 'base', 'bsc', 'ltc'). Also accepts 'originChain'.",
+        description: "Source blockchain (e.g. 'sol', 'base', 'polygon', 'ltc', 'arb', 'bsc', 'eth', 'btc', 'tron'). Also accepts 'originChain'.",
         example: "sol"
       },
       {
@@ -1268,7 +1270,7 @@ bot.command('swapquote', async (ctx) => {
         type: "string",
         location: "body",
         required: false,
-        description: "Target blockchain (e.g. 'sol', 'base', 'eth', 'btc', 'tron', 'arb', 'bsc', 'ltc'). Defaults to Base if omitted.",
+        description: "Target blockchain (e.g. 'sol', 'base', 'polygon', 'ltc', 'arb', 'bsc', 'eth', 'btc', 'tron'). Defaults to Base if omitted.",
         example: "base"
       },
       {
@@ -1280,19 +1282,11 @@ bot.command('swapquote', async (ctx) => {
         example: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf"
       },
       {
-        name: "feeRecipient",
-        type: "string",
-        location: "body",
-        required: false,
-        description: "Partner's payout address on the ORIGIN CHAIN. Supported crypto for 50% fee share is done upfront directly to this address ($0 threshold, instant payout). Some crypto don't have fee share because of high transaction cost.",
-        example: "7vN24xV8y...SolanaPartnerAddress"
-      },
-      {
         name: "totalFeeBps",
         type: "number",
         location: "body",
         required: false,
-        description: "Custom partner fee in basis points (range: 20 to 450 bps, e.g. 100 for 1.00%). Supported crypto for 50% fee share is done upfront with partner feeRecipient. Some crypto don't have fee share because of high transaction cost.",
+        description: "Custom partner fee in basis points (range: 20 to 450 bps, default 100 for 1.00%). Split 50/50 between Partner (credited in USD on settlement) and ZkPay Treasury.",
         example: "100"
       },
       {
@@ -1308,8 +1302,16 @@ bot.command('swapquote', async (ctx) => {
         type: "string",
         location: "header",
         required: true,
-        description: "Partner API key for order tracking and fee attribution.",
+        description: "Partner API key for order tracking and automatic 50/50 USD fee attribution. Also accepts 'Authorization: Bearer <key>'.",
         example: "zkpay_live_secret_key"
+      },
+      {
+        name: "feeRecipient",
+        type: "string",
+        location: "body",
+        required: false,
+        description: "Legacy/optional partner wallet identifier. Not needed when authenticating with X-API-Key.",
+        example: "0xPartnerAddress"
       }
     ],
     body: {
@@ -1320,7 +1322,6 @@ bot.command('swapquote', async (ctx) => {
       amount: "1000000000",
       recipient: "0xUserBaseRecipientAddress",
       refundTo: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
-      feeRecipient: "7vN24xV8y...SolanaPartnerAddress",
       totalFeeBps: 100,
       slippageBps: 100
     },
@@ -1329,10 +1330,15 @@ bot.command('swapquote', async (ctx) => {
       order: {
         swapId: "swp_1727382000000",
         status: "PENDING_DEPOSIT",
+        totalAmountIn: "1000000000",
+        netSwapAmount: "988800000",
+        feeAmount: "11200000",
+        partnerFeeAmount: "5000000",
+        zkpayFeeAmount: "6200000",
         deposit: {
-          address: "solver_deposit_address...",
+          address: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
           memo: null,
-          amount: "0.99",
+          amount: "1",
           deadline: "2026-10-01T15:15:00.000Z"
         },
         settlement: {
@@ -1346,28 +1352,32 @@ bot.command('swapquote', async (ctx) => {
           isDirectRoute: false,
           type: "UPFRONT_FEE_SPLIT",
           totalAmountIn: "1000000000",
-          netSwapAmount: "990000000",
-          feeAmount: "10000000",
+          netSwapAmount: "988800000",
+          feeAmount: "11200000",
+          partnerFeeAmount: "5000000",
+          zkpayFeeAmount: "6200000",
           feeAsset: "nep141:sol.omft.near",
           treasuryAddress: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
-          partnerFeeRecipient: "7vN24xV8y...SolanaPartnerAddress",
+          partnerFeeRecipient: null,
           depositAddress: "solver_deposit_address...",
           transfers: [
-            { purpose: "PLATFORM_FEE", recipient: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf", amount: "10000000" },
-            { purpose: "SWAP_DEPOSIT", recipient: "solver_deposit_address...", amount: "990000000" }
+            { purpose: "PLATFORM_FEE", recipient: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf", amount: "11200000" },
+            { purpose: "SWAP_DEPOSIT", recipient: "solver_deposit_address...", amount: "988800000" }
           ]
         },
         feeSplit: {
           isDirectRoute: false,
           totalCustomFeeBps: 100,
-          feeAmount: "10000000",
+          feeAmount: "11200000",
+          partnerFeeAmount: "5000000",
+          zkpayFeeAmount: "6200000",
           zkpayFeeBps: 50,
           partnerFeeBps: 50,
-          partnerFeeRecipient: "7vN24xV8y...SolanaPartnerAddress",
+          partnerFeeRecipient: null,
           networkProtocolFeeBps: 25,
           totalDeductionsBps: 125,
           treasuryAddress: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
-          feeSettlementNote: "Upfront fee settlement on origin chain (sol). Fee is transferred directly to treasury/partner address before or atomically with the swap. $0 minimum payout threshold."
+          feeSettlementNote: "100% of fees are swept to ZkPay Treasury on-chain (sol). Partner's 50% fee share is converted to USD at live market rates and credited to the Partner Portal upon swap settlement."
         }
       }
     },
@@ -1383,12 +1393,11 @@ bot.command('swapquote', async (ctx) => {
     "amount": "1000000000",
     "recipient": "0xUserBaseRecipientAddress",
     "refundTo": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
-    "feeRecipient": "7vN24xV8y...SolanaPartnerAddress",
     "totalFeeBps": 100,
     "slippageBps": 100
   }'`,
       js: `// Commit cross-chain swap order and obtain a single-use deposit address
-// NOTE: feeRecipient is your payout address on the originChain (e.g. Solana address for SOL source)
+// Pass X-API-Key to automatically earn 50% of the custom fee in USD upon settlement!
 const res = await fetch("https://zkpay.top/api/v1/swap/create", {
   method: "POST",
   headers: {
@@ -1403,14 +1412,13 @@ const res = await fetch("https://zkpay.top/api/v1/swap/create", {
     amount: "1000000000", // 1 SOL in lamports
     recipient: "0xUserBaseRecipientAddress",
     refundTo: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
-    feeRecipient: "7vN24xV8y...SolanaPartnerAddress",
     totalFeeBps: 100,
     slippageBps: 100
   })
 });
 const data = await res.json();
-console.log("Deposit to:", data.order.deposit.address);
-console.log("Execution Plan:", data.order.executionPlan);`,
+console.log("Deposit to:", data.order.deposit.address, "Amount:", data.order.deposit.amount);
+console.log("Partner Fee Share (atomic):", data.order.partnerFeeAmount);`,
       python: `import requests
 
 payload = {
@@ -1421,7 +1429,6 @@ payload = {
     "amount": "1000000000",
     "recipient": "0xUserBaseRecipientAddress",
     "refundTo": "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
-    "feeRecipient": "7vN24xV8y...SolanaPartnerAddress",
     "totalFeeBps": 100,
     "slippageBps": 100
 }
@@ -1432,7 +1439,7 @@ headers = {
 response = requests.post("https://zkpay.top/api/v1/swap/create", json=payload, headers=headers)
 data = response.json()
 print("Deposit Address:", data["order"]["deposit"]["address"])
-print("Execution Plan:", data["order"]["executionPlan"])`,
+print("Deposit Amount:", data["order"]["deposit"]["amount"])`,
       telegram: `// Node.js Telegram Bot Example (telegraf) - Initiate Live Swap Order
 bot.command('swap', async (ctx) => {
   const [from, to, amountHuman, recipient] = ctx.message.text.split(' ').slice(1);
@@ -1459,7 +1466,6 @@ bot.command('swap', async (ctx) => {
       destinationChain: 'base',
       amount: atomicAmount,
       recipient,
-      feeRecipient: process.env.PARTNER_PAYOUT_ADDRESS, // Origin-chain address
       totalFeeBps: 100,
       slippageBps: 100
     })
@@ -1471,7 +1477,7 @@ bot.command('swap', async (ctx) => {
   const ord = data.order;
   await ctx.reply(
     \`📥 *Swap Order Created*\\n\\n\` +
-    \`Deposit *\${amountHuman} \${from.toUpperCase()}* to this single-use deposit address:\\n\\n\` +
+    \`Deposit *\${ord.deposit.amount} \${from.toUpperCase()}* to this single-use deposit address:\\n\\n\` +
     \`\\\`\${ord.deposit.address}\\\`\\n\\n\` +
     \`• *Receiving Address:* \\\`\${ord.settlement.recipient}\\\`\\n\` +
     \`• *Estimated Output:* ~\${ord.settlement.estimatedAmountOut} \${to.toUpperCase()}\\n\` +

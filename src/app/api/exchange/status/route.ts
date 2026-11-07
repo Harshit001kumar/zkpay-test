@@ -40,8 +40,9 @@ export async function GET(req: Request) {
 
     // 1. Check if depositAddress is an ephemeral proxy address
     try {
-      const { getProxyOrderByAddress } = await import("@/lib/server/proxySwapStore");
+      const { getProxyOrderByAddress, updateProxySwapOrder } = await import("@/lib/server/proxySwapStore");
       const { checkAndForwardProxyDeposit } = await import("@/lib/server/proxyForwarder");
+      const { creditPartnerFeeOnSettlement } = await import("@/lib/server/partnerBalanceStore");
 
       const proxyOrder = await getProxyOrderByAddress(depositAddress);
       if (proxyOrder) {
@@ -75,6 +76,15 @@ export async function GET(req: Request) {
             const solverData = await solverRes.json();
             const swapDetails = solverData.swapDetails || {};
             const finalStatus = mapStatus(solverData.status);
+
+            if (finalStatus === "settled") {
+              if (currentOrder.status !== "SETTLED") {
+                currentOrder = (await updateProxySwapOrder(currentOrder.swapId, { status: "SETTLED" })) || currentOrder;
+              }
+              if (!currentOrder.feeCredited) {
+                creditPartnerFeeOnSettlement(currentOrder).catch(() => {});
+              }
+            }
 
             return NextResponse.json({
               status: finalStatus === "pending" ? "processing" : finalStatus,

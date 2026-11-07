@@ -20,10 +20,12 @@ import {
   getProxyOrderByAddress,
   getProxyOrderBySwapId,
   getPendingProxyOrders,
+  getForwardedOrUncreditedProxyOrders,
   getRecentProxyOrders,
   updateProxySwapOrder,
   getDecryptedProxyPrivateKey,
 } from "./proxySwapStore";
+import { creditPartnerFeeOnSettlement } from "./partnerBalanceStore";
 import { getRelayerWalletClient, getRelayerWalletClientForChain } from "./relayer";
 import { decodeBase58 } from "./proxyWallets";
 import {
@@ -1985,24 +1987,20 @@ export async function recoverProxyDeposit(
 
     const privKeyHex = getDecryptedProxyPrivateKey(order);
 
-    let zkpayFeeLamports = 0n;
-    let partnerFeeLamports = 0n;
+    let totalFeeLamports = 0n;
     if (action === "forward") {
-      if (order.zkpayFeeBps !== undefined) {
-        zkpayFeeLamports = (lamports * BigInt(order.zkpayFeeBps)) / 10000n;
-        if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
-          partnerFeeLamports = (lamports * BigInt(order.partnerFeeBps!)) / 10000n;
-        }
-      } else if (order.feeAmount && order.totalAmountIn) {
-        zkpayFeeLamports = (lamports * BigInt(order.feeAmount)) / BigInt(order.totalAmountIn);
+      if (order.feeAmount && order.totalAmountIn && BigInt(order.totalAmountIn) > 0n) {
+        totalFeeLamports = (lamports * BigInt(order.feeAmount)) / BigInt(order.totalAmountIn);
+      } else if (order.zkpayFeeBps !== undefined) {
+        const totalBps = BigInt(order.zkpayFeeBps) + BigInt(order.partnerFeeBps || 0);
+        totalFeeLamports = (lamports * totalBps) / 10000n;
       }
     }
 
     const SOLANA_RENT_EXEMPT_MIN = 890_880n;
-    const effectiveZkpayFee = zkpayFeeLamports >= SOLANA_RENT_EXEMPT_MIN ? zkpayFeeLamports : 0n;
-    const effectivePartnerFee = partnerFeeLamports >= SOLANA_RENT_EXEMPT_MIN ? partnerFeeLamports : 0n;
+    const effectiveTreasuryFee = totalFeeLamports >= SOLANA_RENT_EXEMPT_MIN ? totalFeeLamports : 0n;
     const solverLamports = (action === "forward")
-      ? lamports - MIN_NETWORK_FEE - effectiveZkpayFee - effectivePartnerFee
+      ? lamports - MIN_NETWORK_FEE - effectiveTreasuryFee
       : lamports - MIN_NETWORK_FEE;
 
     const txHash = await sendSolanaTransfer({
@@ -2010,10 +2008,8 @@ export async function recoverProxyDeposit(
       fromPrivKeyHex: privKeyHex,
       toPubkeyBase58: destination,
       transferLamports: solverLamports,
-      feeRecipientBase58: effectiveZkpayFee > 0n ? order.treasuryAddress : null,
-      feeLamports: effectiveZkpayFee,
-      partnerRecipientBase58: (effectivePartnerFee > 0n && order.partnerFeeRecipient) ? order.partnerFeeRecipient : null,
-      partnerLamports: effectivePartnerFee,
+      feeRecipientBase58: effectiveTreasuryFee > 0n ? order.treasuryAddress : null,
+      feeLamports: effectiveTreasuryFee,
     });
 
     if (action === "forward") {
@@ -2023,7 +2019,7 @@ export async function recoverProxyDeposit(
     const updated = await updateProxySwapOrder(order.swapId, {
       status: action === "refund" ? "SETTLED" : "FORWARDED",
       forwardTxHash: txHash,
-      feeTxHash: (action === "forward" && (effectiveZkpayFee > 0n || effectivePartnerFee > 0n)) ? txHash : undefined,
+      feeTxHash: (action === "forward" && effectiveTreasuryFee > 0n) ? txHash : undefined,
       error: action === "refund" ? `Manually refunded to ${destination}` : undefined,
     });
 
@@ -2031,7 +2027,7 @@ export async function recoverProxyDeposit(
 
     return {
       success: true,
-      message: `Successfully forwarded ${solverLamports} lamports to ${destination}${effectiveZkpayFee > 0n ? ` (+ fee ${effectiveZkpayFee} lamports to ZkPay)` : ""}!`,
+      message: `Successfully forwarded ${solverLamports} lamports to ${destination}${effectiveTreasuryFee > 0n ? ` (+ fee ${effectiveTreasuryFee} lamports to ZkPay Treasury)` : ""}!`,
       txHash,
       order: updated,
       recoveredAmount: (Number(solverLamports) / 1e9).toFixed(6) + " SOL",
@@ -2064,21 +2060,18 @@ export async function recoverProxyDeposit(
 
     const privKeyHex = getDecryptedProxyPrivateKey(order);
 
-    let zkpayFeeSats = 0n;
-    let partnerFeeSats = 0n;
+    let totalFeeSats = 0n;
     if (action === "forward") {
-      if (order.zkpayFeeBps !== undefined) {
-        zkpayFeeSats = (balanceSatoshis * BigInt(order.zkpayFeeBps)) / 10000n;
-        if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
-          partnerFeeSats = (balanceSatoshis * BigInt(order.partnerFeeBps!)) / 10000n;
-        }
-      } else if (order.feeAmount && order.totalAmountIn) {
-        zkpayFeeSats = (balanceSatoshis * BigInt(order.feeAmount)) / BigInt(order.totalAmountIn);
+      if (order.feeAmount && order.totalAmountIn && BigInt(order.totalAmountIn) > 0n) {
+        totalFeeSats = (balanceSatoshis * BigInt(order.feeAmount)) / BigInt(order.totalAmountIn);
+      } else if (order.zkpayFeeBps !== undefined) {
+        const totalBps = BigInt(order.zkpayFeeBps) + BigInt(order.partnerFeeBps || 0);
+        totalFeeSats = (balanceSatoshis * totalBps) / 10000n;
       }
     }
 
     const solverSats = (action === "forward")
-      ? balanceSatoshis - MINER_FEE_SATOSHIS - zkpayFeeSats - partnerFeeSats
+      ? balanceSatoshis - MINER_FEE_SATOSHIS - totalFeeSats
       : balanceSatoshis - MINER_FEE_SATOSHIS;
 
     const txHash = await sweepLtcDeposit({
@@ -2086,9 +2079,8 @@ export async function recoverProxyDeposit(
       privKeyHex,
       solverAddress: destination,
       treasuryAddress: order.treasuryAddress || destination,
-      partnerAddress: order.partnerFeeRecipient || undefined,
-      zkpayFeeSatoshis: zkpayFeeSats,
-      partnerFeeSatoshis: partnerFeeSats,
+      zkpayFeeSatoshis: totalFeeSats,
+      partnerFeeSatoshis: 0n,
     });
 
     if (action === "forward") {
@@ -2098,7 +2090,7 @@ export async function recoverProxyDeposit(
     const updated = await updateProxySwapOrder(order.swapId, {
       status: action === "refund" ? "SETTLED" : "FORWARDED",
       forwardTxHash: txHash,
-      feeTxHash: (action === "forward" && (zkpayFeeSats > 0n || partnerFeeSats > 0n)) ? txHash : undefined,
+      feeTxHash: (action === "forward" && totalFeeSats > 0n) ? txHash : undefined,
       error: action === "refund" ? `Manually refunded to ${destination}` : undefined,
     });
 
@@ -2106,7 +2098,7 @@ export async function recoverProxyDeposit(
 
     return {
       success: true,
-      message: `Successfully forwarded ${(Number(solverSats) / 1e8).toFixed(8)} LTC to ${destination}${zkpayFeeSats > 0n ? ` (+ fee ${(Number(zkpayFeeSats) / 1e8).toFixed(8)} LTC to ZkPay)` : ""}!`,
+      message: `Successfully forwarded ${(Number(solverSats) / 1e8).toFixed(8)} LTC to ${destination}${totalFeeSats > 0n ? ` (+ fee ${(Number(totalFeeSats) / 1e8).toFixed(8)} LTC to ZkPay Treasury)` : ""}!`,
       txHash,
       order: updated,
       recoveredAmount: (Number(solverSats) / 1e8).toFixed(8) + " LTC",
@@ -2169,26 +2161,23 @@ export async function recoverProxyDeposit(
     const totalGasReserve = (gasLimit * maxFee) + l1DataReserve;
 
     const treasuryAddress = getAddress((order.treasuryAddress || CONTRACTS.TREASURY) as `0x${string}`);
-    let zkpayFeeWei = 0n;
-    let partnerFeeWei = 0n;
+    let totalFeeWei = 0n;
 
     if (action === "forward") {
-      if (order.zkpayFeeBps !== undefined) {
-        zkpayFeeWei = (balanceWei * BigInt(order.zkpayFeeBps)) / 10000n;
-        if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
-          partnerFeeWei = (balanceWei * BigInt(order.partnerFeeBps!)) / 10000n;
-        }
-      } else if (order.feeAmount && order.totalAmountIn) {
-        zkpayFeeWei = (balanceWei * BigInt(order.feeAmount)) / BigInt(order.totalAmountIn);
+      if (order.feeAmount && order.totalAmountIn && BigInt(order.totalAmountIn) > 0n) {
+        totalFeeWei = (balanceWei * BigInt(order.feeAmount)) / BigInt(order.totalAmountIn);
+      } else if (order.zkpayFeeBps !== undefined) {
+        const totalBps = BigInt(order.zkpayFeeBps) + BigInt(order.partnerFeeBps || 0);
+        totalFeeWei = (balanceWei * totalBps) / 10000n;
       }
     }
 
     const hasFees =
       action === "forward" &&
-      ((zkpayFeeWei > 0n && treasuryAddress.toLowerCase() !== cleanDestination.toLowerCase()) ||
-        (partnerFeeWei > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)));
+      totalFeeWei > 0n &&
+      treasuryAddress.toLowerCase() !== cleanDestination.toLowerCase();
 
-    const totalReserveAndFees = totalGasReserve + zkpayFeeWei + partnerFeeWei;
+    const totalReserveAndFees = totalGasReserve + totalFeeWei;
 
     if (balanceWei <= totalReserveAndFees) {
       return {
@@ -2224,26 +2213,17 @@ export async function recoverProxyDeposit(
           value: netSolverWei,
           callData: "0x",
         });
-        // 2. ZkPay fee to Treasury
-        if (zkpayFeeWei > 0n && treasuryAddress.toLowerCase() !== cleanDestination.toLowerCase()) {
+        // 2. 100% of fees to Treasury
+        if (totalFeeWei > 0n && treasuryAddress.toLowerCase() !== cleanDestination.toLowerCase()) {
           calls.push({
             target: treasuryAddress,
             allowFailure: false,
-            value: zkpayFeeWei,
-            callData: "0x",
-          });
-        }
-        // 3. Partner fee
-        if (partnerFeeWei > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
-          calls.push({
-            target: getAddress(order.partnerFeeRecipient),
-            allowFailure: false,
-            value: partnerFeeWei,
+            value: totalFeeWei,
             callData: "0x",
           });
         }
 
-        const totalBundleValue = netSolverWei + zkpayFeeWei + partnerFeeWei;
+        const totalBundleValue = netSolverWei + totalFeeWei;
         txHash = await walletClient.writeContract({
           account: proxyAccount,
           address: MULTICALL3_ADDRESS,
@@ -2302,7 +2282,7 @@ export async function recoverProxyDeposit(
 
     return {
       success: true,
-      message: `Successfully forwarded ${(Number(netSolverWei) / 1e18).toFixed(6)} native gas tokens to ${cleanDestination}${zkpayFeeWei > 0n ? ` (+ fee ${(Number(zkpayFeeWei) / 1e18).toFixed(6)} to ZkPay)` : ""}!`,
+      message: `Successfully forwarded ${(Number(netSolverWei) / 1e18).toFixed(6)} native gas tokens to ${cleanDestination}${totalFeeWei > 0n ? ` (+ fee ${(Number(totalFeeWei) / 1e18).toFixed(6)} to ZkPay Treasury)` : ""}!`,
       txHash,
       order: updated,
       recoveredAmount: (Number(netSolverWei) / 1e18).toFixed(6),
@@ -2383,22 +2363,17 @@ export async function recoverProxyDeposit(
       ? (order.fixedFeeAmount ? BigInt(order.fixedFeeAmount) : (decimals >= 2 ? 5n * 10n ** BigInt(decimals - 2) : 0n))
       : 0n;
 
-    let zkpayFeeUnits = 0n;
-    let partnerFeeUnits = 0n;
+    let totalFeeUnits = 0n;
     const treasuryAddress = getAddress((order.treasuryAddress || CONTRACTS.TREASURY) as `0x${string}`);
 
     if (action === "forward") {
-      if (order.zkpayFeeBps !== undefined) {
-        zkpayFeeUnits = (tokenBalance * BigInt(order.zkpayFeeBps)) / 10000n + fixedFeeUnits;
-        if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
-          partnerFeeUnits = (tokenBalance * BigInt(order.partnerFeeBps!)) / 10000n;
-        }
-      } else if (order.feeAmount && order.totalAmountIn) {
-        zkpayFeeUnits = (tokenBalance * BigInt(order.feeAmount)) / BigInt(order.totalAmountIn);
+      if (order.feeAmount && order.totalAmountIn && BigInt(order.totalAmountIn) > 0n) {
+        totalFeeUnits = (tokenBalance * BigInt(order.feeAmount)) / BigInt(order.totalAmountIn);
+      } else if (order.zkpayFeeBps !== undefined) {
+        const totalBps = BigInt(order.zkpayFeeBps) + BigInt(order.partnerFeeBps || 0);
+        totalFeeUnits = (tokenBalance * totalBps) / 10000n + fixedFeeUnits;
       }
     }
-
-    const totalFeeUnits = zkpayFeeUnits + partnerFeeUnits;
     const proxyNonce = await publicClient.getTransactionCount({ address: proxyAccount.address }).catch(() => 0);
     const expectedAtomic = BigInt(order.totalAmountIn || "0");
     const expectedOrderFee = order.feeAmount ? BigInt(order.feeAmount) : totalFeeUnits;
@@ -2553,11 +2528,8 @@ export async function recoverProxyDeposit(
           const outputs: GaslessTransferOutput[] = [
             { to: cleanDestination, value: netSolverUnits },
           ];
-          if (zkpayFeeUnits > 0n && treasuryAddress.toLowerCase() !== cleanDestination.toLowerCase()) {
-            outputs.push({ to: treasuryAddress, value: zkpayFeeUnits });
-          }
-          if (partnerFeeUnits > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
-            outputs.push({ to: getAddress(order.partnerFeeRecipient), value: partnerFeeUnits });
+          if (totalFeeUnits > 0n && treasuryAddress.toLowerCase() !== cleanDestination.toLowerCase()) {
+            outputs.push({ to: treasuryAddress, value: totalFeeUnits });
           }
 
           txHash = await executeBundledGaslessUsdcTransfers({
@@ -2567,7 +2539,7 @@ export async function recoverProxyDeposit(
             chainKey: normChain,
             publicClient,
           });
-          console.log(`[Recover] ✓ Atomic gasless Multicall3 bundled Solver + ZkPay + Partner in 1 tx: ${txHash}`);
+          console.log(`[Recover] ✓ Atomic gasless Multicall3 bundled Solver + ZkPay Treasury in 1 tx: ${txHash}`);
         } else {
           txHash = await executeGaslessUsdcTransfer({
             proxyAccount,
@@ -2593,7 +2565,7 @@ export async function recoverProxyDeposit(
         const explorerUrl = getExplorerTxUrl(order.chain, txHash);
         return {
           success: true,
-          message: `Successfully forwarded ${formatUnits(netSolverUnits, decimals)} ${tokenSymbol} to ${cleanDestination}${zkpayFeeUnits > 0n ? ` (+ fee ${formatUnits(zkpayFeeUnits, decimals)} to ZkPay in 1 tx)` : ""}!`,
+          message: `Successfully forwarded ${formatUnits(netSolverUnits, decimals)} ${tokenSymbol} to ${cleanDestination}${totalFeeUnits > 0n ? ` (+ fee ${formatUnits(totalFeeUnits, decimals)} to ZkPay Treasury in 1 tx)` : ""}!`,
           txHash,
           order: updated,
           recoveredAmount: `${formatUnits(netSolverUnits, decimals)} ${tokenSymbol}`,
@@ -2798,9 +2770,9 @@ export async function recoverProxyDeposit(
 
     console.log(`[Recover] ✓ Transfer to ${cleanDestination} confirmed on-chain: ${txHash}`);
 
-    // 2. Transfer ZkPay fee to Treasury (if action === "forward")
+    // 2. Transfer 100% of fees to Treasury (if action === "forward")
     let feeTxHash = "";
-    if (action === "forward" && zkpayFeeUnits > 0n && treasuryAddress.toLowerCase() !== cleanDestination.toLowerCase()) {
+    if (action === "forward" && totalFeeUnits > 0n && treasuryAddress.toLowerCase() !== cleanDestination.toLowerCase()) {
       try {
         const remainingBal = (await publicClient.readContract({
           address: tokenAddress,
@@ -2808,7 +2780,7 @@ export async function recoverProxyDeposit(
           functionName: "balanceOf",
           args: [proxyAccount.address],
         })) as bigint;
-        const feeToSend = remainingBal >= zkpayFeeUnits ? zkpayFeeUnits : remainingBal;
+        const feeToSend = remainingBal >= totalFeeUnits ? totalFeeUnits : remainingBal;
         if (feeToSend > 0n) {
           const feeRes = await sendResilientErc20Transfer({
             chainKey: normChain,
@@ -2820,56 +2792,24 @@ export async function recoverProxyDeposit(
             amount: feeToSend,
           });
           if (feeRes.txHash) {
-            console.log(`[Recover] Token ZkPay fee transfer broadcast: ${feeRes.txHash}`);
+            console.log(`[Recover] Token ZkPay Treasury fee transfer broadcast: ${feeRes.txHash}`);
             const feeReceipt = await publicClient
               .waitForTransactionReceipt({ hash: feeRes.txHash as `0x${string}` })
               .catch(() => null);
             if (!feeReceipt || feeReceipt.status === "success") {
               feeTxHash = feeRes.txHash;
-              console.log(`[Recover] ✓ Token ZkPay fee confirmed on-chain: ${feeTxHash}`);
+              console.log(`[Recover] ✓ Token ZkPay Treasury fee confirmed on-chain: ${feeTxHash}`);
             } else {
-              console.warn(`[Recover] ✗ Token ZkPay fee transfer reverted on-chain: ${feeRes.txHash}`);
+              console.warn(`[Recover] ✗ Token ZkPay Treasury fee transfer reverted on-chain: ${feeRes.txHash}`);
             }
           }
         }
       } catch (feeErr) {
-        console.error("[Recover] Token ZkPay fee transfer error:", feeErr);
+        console.error("[Recover] Token ZkPay Treasury fee transfer error:", feeErr);
       }
     }
 
-    // 3. Transfer Partner fee
-    let partnerTxHash = "";
-    if (action === "forward" && partnerFeeUnits > 0n && order.partnerFeeRecipient && isAddress(order.partnerFeeRecipient)) {
-      try {
-        const remainingBal = (await publicClient.readContract({
-          address: tokenAddress,
-          abi: ERC20_ABI,
-          functionName: "balanceOf",
-          args: [proxyAccount.address],
-        })) as bigint;
-        const partnerToSend = remainingBal >= partnerFeeUnits ? partnerFeeUnits : remainingBal;
-        if (partnerToSend > 0n) {
-          const partnerRes = await sendResilientErc20Transfer({
-            chainKey: normChain,
-            publicClient,
-            walletClient,
-            proxyAccount,
-            tokenAddress,
-            to: getAddress(order.partnerFeeRecipient),
-            amount: partnerToSend,
-          });
-          if (partnerRes.txHash) {
-            partnerTxHash = partnerRes.txHash;
-            console.log(`[Recover] Token partner fee transfer broadcast: ${partnerTxHash}`);
-            await publicClient.waitForTransactionReceipt({ hash: partnerTxHash as `0x${string}` }).catch(() => {});
-          }
-        }
-      } catch (partnerErr) {
-        console.error("[Recover] Token partner fee transfer error:", partnerErr);
-      }
-    }
-
-    // 4. Sweep leftover native gas dust back to relayer (exact 21,000 gas legacy transfer leaving 0 dust)
+    // 3. Sweep leftover native gas dust back to relayer (exact 21,000 gas legacy transfer leaving 0 dust)
     try {
       const nativeSym = normChain === "polygon" ? "POL" : normChain === "bsc" ? "BNB" : "ETH";
       const leftoverNative = await publicClient.getBalance({ address: proxyAccount.address });
@@ -2909,7 +2849,7 @@ export async function recoverProxyDeposit(
 
     return {
       success: true,
-      message: `Successfully forwarded ${formatUnits(netSolverUnits, decimals)} ${tokenSymbol} to ${cleanDestination}${zkpayFeeUnits > 0n ? ` (+ fee ${formatUnits(zkpayFeeUnits, decimals)} to ZkPay)` : ""}!`,
+      message: `Successfully forwarded ${formatUnits(netSolverUnits, decimals)} ${tokenSymbol} to ${cleanDestination}${totalFeeUnits > 0n ? ` (+ fee ${formatUnits(totalFeeUnits, decimals)} to ZkPay Treasury)` : ""}!`,
       txHash,
       order: updated,
       recoveredAmount: `${formatUnits(netSolverUnits, decimals)} ${tokenSymbol}`,
@@ -2931,46 +2871,82 @@ let isSweeperTickActive = false;
  * 1. If an order has received funds, it forwards to solver immediately.
  * 2. If an order has expired (past deadline) with funds deposited, it automatically refunds 100% to the user's refundTo address!
  * 3. If an order has 0 balance and expired > 1 hour ago, marks status as EXPIRED.
+ * 4. Checks FORWARDED orders against NEAR Intents solver status and automatically credits partner fees upon SETTLED status!
  */
 export function ensureProxySweeperDaemonRunning() {
   if (sweeperInterval) return;
 
-  console.log("[ProxySweeperDaemon] Starting automated background proxy deposit sweeper (interval: 12s)...");
+  console.log("[ProxySweeperDaemon] Starting automated background proxy deposit sweeper & settlement monitor (interval: 12s)...");
 
   sweeperInterval = setInterval(async () => {
     if (isSweeperTickActive) return;
     isSweeperTickActive = true;
 
     try {
+      // Phase 1: Sweep PENDING_DEPOSIT / FORWARDING orders
       const pendingOrders = await getPendingProxyOrders();
-      if (!pendingOrders || pendingOrders.length === 0) {
-        return;
+      if (pendingOrders && pendingOrders.length > 0) {
+        for (const order of pendingOrders) {
+          try {
+            const isExpired = Date.now() > order.expiresAt + 60_000;
+
+            if (isExpired) {
+              // Check if funds were deposited on an expired quote.
+              // If yes, automatic 100% refund to user's refundTo address!
+              const refundRes = await recoverProxyDeposit(order.proxyDepositAddress, { action: "refund" });
+              if (refundRes.success) {
+                console.log(
+                  `[ProxySweeperDaemon] Automatically refunded expired deposit for order ${order.swapId} to user ${order.refundTo}. Tx: ${refundRes.txHash}`
+                );
+              } else {
+                // No funds were deposited and order expired > 1 hour ago -> mark EXPIRED
+                if (Date.now() > order.expiresAt + 3600_000) {
+                  await updateProxySwapOrder(order.swapId, { status: "EXPIRED" });
+                }
+              }
+            } else {
+              // Order is active within deadline -> attempt forward sweep
+              await checkAndForwardProxyDeposit(order);
+            }
+          } catch (itemErr) {
+            console.warn(`[ProxySweeperDaemon] Error sweeping order ${order.swapId}:`, itemErr);
+          }
+        }
       }
 
-      for (const order of pendingOrders) {
-        try {
-          const isExpired = Date.now() > order.expiresAt + 60_000;
-
-          if (isExpired) {
-            // Check if funds were deposited on an expired quote.
-            // If yes, automatic 100% refund to user's refundTo address!
-            const refundRes = await recoverProxyDeposit(order.proxyDepositAddress, { action: "refund" });
-            if (refundRes.success) {
-              console.log(
-                `[ProxySweeperDaemon] Automatically refunded expired deposit for order ${order.swapId} to user ${order.refundTo}. Tx: ${refundRes.txHash}`
-              );
-            } else {
-              // No funds were deposited and order expired > 1 hour ago -> mark EXPIRED
-              if (Date.now() > order.expiresAt + 3600_000) {
-                await updateProxySwapOrder(order.swapId, { status: "EXPIRED" });
+      // Phase 2: Monitor FORWARDED orders for upstream solver settlement & credit uncredited SETTLED partner fees
+      const forwardedOrUncredited = await getForwardedOrUncreditedProxyOrders(25);
+      if (forwardedOrUncredited && forwardedOrUncredited.length > 0) {
+        for (const order of forwardedOrUncredited) {
+          try {
+            if (order.status === "SETTLED" && !order.feeCredited) {
+              await creditPartnerFeeOnSettlement(order);
+            } else if (order.status === "FORWARDED" && order.solverDepositAddress) {
+              const solverUrl = `https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(order.solverDepositAddress.trim())}`;
+              const headers: Record<string, string> = { Accept: "application/json" };
+              if (process.env.NEAR_INTENTS_API_KEY) {
+                headers["X-API-Key"] = process.env.NEAR_INTENTS_API_KEY;
+              }
+              const res = await fetch(solverUrl, { headers, signal: AbortSignal.timeout(5000) }).catch(() => null);
+              if (res && res.ok) {
+                const data = await res.json().catch(() => null);
+                const rawSt = data?.status;
+                if (rawSt === "SUCCESS") {
+                  const rawOriginHash = data?.swapDetails?.originChainTxHashes?.[0]?.hash;
+                  const updatedOrder =
+                    (await updateProxySwapOrder(order.swapId, {
+                      status: "SETTLED",
+                      ...(rawOriginHash && !order.forwardTxHash ? { forwardTxHash: rawOriginHash } : {}),
+                    })) || { ...order, status: "SETTLED" as const };
+                  await creditPartnerFeeOnSettlement(updatedOrder);
+                } else if (rawSt === "FAILED" || rawSt === "REFUNDED") {
+                  await updateProxySwapOrder(order.swapId, { status: "FAILED" });
+                }
               }
             }
-          } else {
-            // Order is active within deadline -> attempt forward sweep
-            await checkAndForwardProxyDeposit(order);
+          } catch (settleErr) {
+            console.warn(`[ProxySweeperDaemon] Settlement check warning for ${order.swapId}:`, settleErr);
           }
-        } catch (itemErr) {
-          console.warn(`[ProxySweeperDaemon] Error sweeping order ${order.swapId}:`, itemErr);
         }
       }
     } catch (daemonErr) {
