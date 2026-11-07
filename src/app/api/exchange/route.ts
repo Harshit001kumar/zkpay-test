@@ -20,6 +20,7 @@ import {
   getQuoteDeadline,
   calculateFeeSplit,
   computeUpfrontFees,
+  getOriginTokenMeta,
 } from "@/lib/server/swapRouter";
 import { enforceRateLimit } from "@/lib/server/rateLimit";
 
@@ -124,7 +125,15 @@ export async function POST(req: Request) {
             encryptedPrivateKey: proxyWallet.encryptedPrivateKey,
             chain: originChain,
             originAssetId,
-            fromAsset: originAssetId.split(":")[1]?.split(".")[0]?.toUpperCase() || "CRYPTO",
+            fromAsset:
+              getOriginTokenMeta(originAssetId)?.symbol ||
+              (originChain === "base" || originChain === "arb"
+                ? "ETH"
+                : originChain === "bsc"
+                ? "BNB"
+                : originChain === "polygon"
+                ? "POL"
+                : originAssetId.split(":")[1]?.split(".")[0]?.toUpperCase() || "CRYPTO"),
             toAsset: "USDC",
             destinationChain: "base",
             recipient: settleAddress,

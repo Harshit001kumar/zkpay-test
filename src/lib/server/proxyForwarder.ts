@@ -629,14 +629,33 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     (order.treasuryAddress || CONTRACTS.TREASURY) as `0x${string}`
   );
 
-  const upperSymbol = order.fromAsset.toUpperCase();
+  const { chain, key: chainKey } = getChainConfig(order.chain);
+
+  // Normalize order.fromAsset if it was stored as a chain prefix (e.g. "BASE", "ARB", "BSC", "V2_1")
+  let upperSymbol = (order.fromAsset || "").toUpperCase();
+  const allowedMatch = SWAP_ALLOWED_TOKENS.find(
+    (t) => t.assetId.toLowerCase() === (order.originAssetId || "").toLowerCase()
+  );
+  if (allowedMatch) {
+    upperSymbol = allowedMatch.symbol.toUpperCase();
+  } else if (upperSymbol === "BASE" || upperSymbol === "ARB") {
+    upperSymbol = "ETH";
+  } else if (upperSymbol === "BSC") {
+    upperSymbol = "BNB";
+  } else if (upperSymbol === "POLYGON") {
+    upperSymbol = "POL";
+  }
+
+  if (upperSymbol && order.fromAsset !== upperSymbol) {
+    order.fromAsset = upperSymbol;
+    updateProxySwapOrder(order.swapId, { fromAsset: upperSymbol }).catch(() => {});
+  }
+
   const isNative =
     upperSymbol === "ETH" ||
     upperSymbol === "BNB" ||
     upperSymbol === "POL" ||
     upperSymbol === "MATIC";
-
-  const { chain, key: chainKey } = getChainConfig(order.chain);
 
   if (isNative) {
     // ─── CASE A: Native Gas Token (ETH, BNB, POL) ───
@@ -664,7 +683,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     if (order.zkpayFeeBps !== undefined) {
       zkpayFeeWei = (balanceWei * BigInt(order.zkpayFeeBps)) / 10000n;
-      if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
+      if ((order.partnerFeeBps ?? 0) > 0) {
         partnerFeeWei = (balanceWei * BigInt(order.partnerFeeBps!)) / 10000n;
       }
     } else {
@@ -760,6 +779,11 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: "FORWARDED",
+      totalAmountIn: balanceWei.toString(),
+      netSwapAmount: netWei.toString(),
+      feeAmount: (hasFees ? totalFeeWei : 0n).toString(),
+      zkpayFeeAmount: (hasFees ? zkpayFeeWei : 0n).toString(),
+      partnerFeeAmount: (hasFees ? partnerFeeWei : 0n).toString(),
       depositTxHash: feeTxHash || forwardTxHash,
       feeTxHash: feeTxHash || forwardTxHash,
       forwardTxHash,
@@ -912,7 +936,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     if (order.zkpayFeeBps !== undefined) {
       zkpayFeeUnits = (tokenBalance * BigInt(order.zkpayFeeBps)) / 10000n + fixedFeeUnits;
-      if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
+      if ((order.partnerFeeBps ?? 0) > 0) {
         partnerFeeUnits = (tokenBalance * BigInt(order.partnerFeeBps!)) / 10000n;
       }
     } else {
@@ -958,6 +982,11 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
       const updated = await updateProxySwapOrder(order.swapId, {
         status: "FORWARDED",
+        totalAmountIn: tokenBalance.toString(),
+        netSwapAmount: netTokenUnits.toString(),
+        feeAmount: totalFeeUnits.toString(),
+        zkpayFeeAmount: zkpayFeeUnits.toString(),
+        partnerFeeAmount: partnerFeeUnits.toString(),
         depositTxHash: bundleTxHash,
         feeTxHash: bundleTxHash,
         forwardTxHash: bundleTxHash,
@@ -1207,6 +1236,11 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: "FORWARDED",
+      totalAmountIn: tokenBalance.toString(),
+      netSwapAmount: netTokenUnits.toString(),
+      feeAmount: (feeTxHash ? totalFeeUnits : 0n).toString(),
+      zkpayFeeAmount: (feeTxHash ? zkpayFeeUnits : 0n).toString(),
+      partnerFeeAmount: (feeTxHash ? partnerFeeUnits : 0n).toString(),
       depositTxHash: feeTxHash || forwardTxHash,
       feeTxHash,
       forwardTxHash,
@@ -1463,7 +1497,7 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
 
     if (order.zkpayFeeBps !== undefined) {
       zkpayFeeLamports = (lamports * BigInt(order.zkpayFeeBps)) / 10000n;
-      if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
+      if ((order.partnerFeeBps ?? 0) > 0) {
         partnerFeeLamports = (lamports * BigInt(order.partnerFeeBps!)) / 10000n;
       }
     } else if (order.feeAmount && expectedAtomic > 0n) {
@@ -1548,6 +1582,11 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: "FORWARDED",
+      totalAmountIn: lamports.toString(),
+      netSwapAmount: solverLamports.toString(),
+      feeAmount: effectiveZkpayFee.toString(),
+      zkpayFeeAmount: (effectiveZkpayFee > 0n ? zkpayFeeLamports : 0n).toString(),
+      partnerFeeAmount: (effectiveZkpayFee > 0n ? partnerFeeLamports : 0n).toString(),
       depositTxHash: txHash,
       feeTxHash: (effectiveZkpayFee > 0n || effectivePartnerFee > 0n) ? txHash : undefined,
       forwardTxHash: txHash,
@@ -1611,7 +1650,7 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     if (order.zkpayFeeBps !== undefined) {
       zkpayFeeSats = (balanceSatoshis * BigInt(order.zkpayFeeBps)) / 10000n;
-      if (order.partnerFeeRecipient && (order.partnerFeeBps ?? 0) > 0) {
+      if ((order.partnerFeeBps ?? 0) > 0) {
         partnerFeeSats = (balanceSatoshis * BigInt(order.partnerFeeBps!)) / 10000n;
       }
     } else if (order.feeAmount && expectedAtomic > 0n) {
@@ -1637,6 +1676,10 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: "FORWARDED",
+      totalAmountIn: balanceSatoshis.toString(),
+      feeAmount: (hasFeeOutput ? totalFeeSats : 0n).toString(),
+      zkpayFeeAmount: (hasFeeOutput ? zkpayFeeSats : 0n).toString(),
+      partnerFeeAmount: (hasFeeOutput ? partnerFeeSats : 0n).toString(),
       depositTxHash: txHash,
       feeTxHash: hasFeeOutput ? txHash : undefined,
       forwardTxHash: txHash,
