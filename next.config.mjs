@@ -30,6 +30,7 @@ const nextConfig = {
     config.resolve.fallback = {
       ...config.resolve.fallback,
       "accounts": false,
+      "ox": false,
       "porto": false,
       "porto/internal": false,
       "@metamask/connect-evm": false,
