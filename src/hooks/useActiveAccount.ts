@@ -42,7 +42,7 @@ export function useActiveAccount() {
     address,
     eoaAddress,
     smartAccountAddress,
-    smartClient: null,
+    smartClient: null as any,
     isSmartWallet: !!smartAccountAddress,
     user,
     wallets,
