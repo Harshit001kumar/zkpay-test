@@ -14,7 +14,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, arbitrum, polygon, bsc } from "viem/chains";
-import { CONTRACTS, normalizeChain, SWAP_ALLOWED_TOKENS } from "@/lib/constants";
+import { CONTRACTS, normalizeChain, SWAP_ALLOWED_TOKENS, getTreasuryAddressForChain } from "@/lib/constants";
 import {
   ProxySwapOrder,
   getProxyOrderByAddress,
@@ -1527,19 +1527,20 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
     const totalFeeLamports = zkpayFeeLamports + partnerFeeLamports;
     let effectiveZkpayFee = 0n;
     const effectivePartnerFee = 0n;
+    const solTreasury = order.treasuryAddress || getTreasuryAddressForChain("sol");
 
     if (
-      order.treasuryAddress &&
-      isSolanaAddr(order.treasuryAddress) &&
-      order.treasuryAddress.trim() !== order.proxyDepositAddress.trim() &&
-      order.treasuryAddress.trim() !== order.solverDepositAddress.trim() &&
+      solTreasury &&
+      isSolanaAddr(solTreasury) &&
+      solTreasury.trim() !== order.proxyDepositAddress.trim() &&
+      solTreasury.trim() !== order.solverDepositAddress.trim() &&
       totalFeeLamports > 0n
     ) {
       if (totalFeeLamports >= SOLANA_RENT_EXEMPT_MIN) {
         effectiveZkpayFee = totalFeeLamports;
       } else {
         try {
-          const treasuryBalRes = await fetchSolanaRpc("getBalance", [order.treasuryAddress.trim()]);
+          const treasuryBalRes = await fetchSolanaRpc("getBalance", [solTreasury.trim()]);
           const treasuryBal = BigInt(treasuryBalRes?.value || 0);
           if (treasuryBal >= SOLANA_RENT_EXEMPT_MIN) {
             effectiveZkpayFee = totalFeeLamports;
@@ -1564,7 +1565,7 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
     }
 
     console.log(
-      `[ProxyForwarder] Sweeping SOL: ${solverLamports} -> Solver (${order.solverDepositAddress}), ${effectiveZkpayFee} -> Treasury (${order.treasuryAddress}), 5000 fee. Residual balance = 0 lamports.`
+      `[ProxyForwarder] Sweeping SOL: ${solverLamports} -> Solver (${order.solverDepositAddress}), ${effectiveZkpayFee} -> Treasury (${solTreasury}), 5000 fee. Residual balance = 0 lamports.`
     );
 
     const txHash = await sendSolanaTransfer({
@@ -1572,7 +1573,7 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
       fromPrivKeyHex: privKeyHex,
       toPubkeyBase58: order.solverDepositAddress,
       transferLamports: solverLamports,
-      feeRecipientBase58: effectiveZkpayFee > 0n ? order.treasuryAddress : null,
+      feeRecipientBase58: effectiveZkpayFee > 0n ? solTreasury : null,
       feeLamports: effectiveZkpayFee,
       partnerRecipientBase58: null,
       partnerLamports: 0n,
@@ -1670,7 +1671,7 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       proxyAddress: order.proxyDepositAddress,
       privKeyHex,
       solverAddress: order.solverDepositAddress,
-      treasuryAddress: order.treasuryAddress,
+      treasuryAddress: order.treasuryAddress || getTreasuryAddressForChain("ltc"),
       partnerAddress: undefined,
       zkpayFeeSatoshis: totalFeeSats,
       partnerFeeSatoshis: 0n,
@@ -2058,7 +2059,7 @@ export async function recoverProxyDeposit(
       fromPrivKeyHex: privKeyHex,
       toPubkeyBase58: destination,
       transferLamports: solverLamports,
-      feeRecipientBase58: effectiveTreasuryFee > 0n ? order.treasuryAddress : null,
+      feeRecipientBase58: effectiveTreasuryFee > 0n ? (order.treasuryAddress || getTreasuryAddressForChain("sol")) : null,
       feeLamports: effectiveTreasuryFee,
     });
 
@@ -2144,7 +2145,7 @@ export async function recoverProxyDeposit(
       proxyAddress: order.proxyDepositAddress,
       privKeyHex,
       solverAddress: destination,
-      treasuryAddress: order.treasuryAddress || destination,
+      treasuryAddress: order.treasuryAddress || getTreasuryAddressForChain("ltc"),
       zkpayFeeSatoshis: effectiveFeeSats,
       partnerFeeSatoshis: 0n,
     });
