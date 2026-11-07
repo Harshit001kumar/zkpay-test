@@ -1,5 +1,19 @@
-import { getPrivyClient } from "./privyEarn";
+import { PrivyClient } from "@privy-io/node";
 import { fetchPrivyUser } from "./privyUsers";
+
+let _privy: InstanceType<typeof PrivyClient> | null = null;
+
+export function getPrivyClient() {
+  if (!_privy) {
+    const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+    const appSecret = process.env.PRIVY_APP_SECRET;
+    if (!appId || !appSecret) {
+      throw new Error("Privy credentials not configured. Please set NEXT_PUBLIC_PRIVY_APP_ID and PRIVY_APP_SECRET.");
+    }
+    _privy = new PrivyClient({ appId, appSecret });
+  }
+  return _privy;
+}
 
 export interface UserAuthResult {
   authorized: boolean;

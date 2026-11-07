@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { usePrivy } from "@privy-io/react-auth";
-import { useCurrency } from "@/context/CurrencyContext";
 import {
   Copy,
   Check,
@@ -55,7 +54,6 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
   const router = useRouter();
   const { logout, address, isSmartWallet } = useActiveAccount();
   const { getAccessToken, exportWallet } = usePrivy();
-  const { currencyMeta, setIsSelectorOpen } = useCurrency();
 
   const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Not connected";
   const [copied, setCopied] = useState(false);
@@ -1010,27 +1008,26 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
             </h3>
           </div>
           <div className="space-y-2.5">
-            <button
-              type="button"
-              onClick={() => setIsSelectorOpen(true)}
+            <Link
+              href="/partner"
               className="w-full bg-surface-container p-4 rounded-2xl flex items-center justify-between group cursor-pointer border border-primary/20 hover:border-primary/50 transition-colors text-left whitespace-nowrap"
             >
               <div className="flex items-center gap-3.5">
                 <DollarSign className="w-4 h-4 text-on-surface-variant group-hover:text-primary transition-colors" />
                 <div>
-                  <span className="text-on-surface font-semibold text-sm block">Default Global Rail</span>
+                  <span className="text-on-surface font-semibold text-sm block">Partner Fee Settlement</span>
                   <span className="text-xs text-on-surface-variant">
-                    {currencyMeta.name} / {currencyMeta.rail}
+                    50/50 USD Revenue Share · Crypto Withdrawals
                   </span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs text-secondary font-bold">
-                  {currencyMeta.code} ({currencyMeta.symbol})
+                  USD Ledger
                 </span>
                 <ChevronRight className="w-4 h-4 text-on-surface-variant group-hover:translate-x-0.5 transition-transform" />
               </div>
-            </button>
+            </Link>
 
             <div className="bg-surface-container p-4 rounded-2xl flex items-center justify-between border border-primary/20">
               <div className="flex items-center gap-3.5">

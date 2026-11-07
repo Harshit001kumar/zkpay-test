@@ -9,7 +9,6 @@ import { base } from "viem/chains";
 import { useReadContract, useBalance } from "wagmi";
 import { CONTRACTS, CHAIN } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
-import { parseP2PError, getPublicClient } from "@/lib/p2pkit";
 import { floorTo2Decimals } from "@/lib/format";
 
 import { 
@@ -179,8 +178,7 @@ export default function WalletAddressPage() {
     } catch (err: any) {
       console.error("[WalletPage] Transfer failed:", err);
       setIsSending(false);
-      const parsed = await parseP2PError(err);
-      setSendError(parsed.message || "Transaction rejected or failed.");
+      setSendError(err?.shortMessage || err?.message || "Transaction rejected or failed.");
     }
   };
 

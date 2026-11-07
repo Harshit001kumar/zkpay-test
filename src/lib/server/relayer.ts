@@ -1,8 +1,11 @@
 import { createWalletClient, fallback, parseEther, formatEther, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { CONTRACTS, RELAY_GAS_FEE_USDC } from "@/lib/constants";
-import { getResilientPublicClient } from "@/lib/server/p2pRates";
-import { getEvmRpcConfig } from "@/lib/server/rpcConfig";
+import { getEvmRpcConfig, getResilientPublicClientForChain } from "@/lib/server/rpcConfig";
+
+function getResilientPublicClient() {
+  return getResilientPublicClientForChain("base");
+}
 
 // ─────────────────────────────────────────────────────
 // Enterprise-Grade Backend Gas Relayer ("Gas Tank")

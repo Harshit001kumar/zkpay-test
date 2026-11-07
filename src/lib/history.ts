@@ -1,16 +1,23 @@
 "use client";
 
-// ─── Transaction History Service (localStorage) ───
+// ─── Cross-Chain Swap History Service (localStorage) ───
 
 export interface TransactionRecord {
-  hash: string;
-  type: "payment" | "cashout" | "deposit";
+  hash: string; // swapId or depositAddress or txHash
+  type: "swap" | "payment" | "cashout" | "deposit";
   title: string;
+  fromAsset?: string;
+  toAsset?: string;
+  fromChain?: string;
+  toChain?: string;
+  amountIn?: string;
+  amountOut?: string;
+  depositAddress?: string;
   amountINR: number;
   amountUSDC: number;
   fee: number;
   protocolFee?: number;
-  recipient: string; // UPI ID or wallet address
+  recipient: string;
   merchantName?: string;
   orderId?: string;
   network: string;
@@ -34,17 +41,42 @@ export function getTransactions(): TransactionRecord[] {
 
 /** Save a new transaction to history */
 export function saveTransaction(tx: TransactionRecord): void {
-  const existing = getTransactions();
-  existing.unshift(tx); // newest first
-  // Keep only the last 50 transactions
-  const trimmed = existing.slice(0, 50);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+  if (typeof window === "undefined") return;
+  try {
+    const existing = getTransactions().filter((item) => item.hash !== tx.hash);
+    existing.unshift(tx);
+    const trimmed = existing.slice(0, 50);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+  } catch {}
 }
 
-/** Retrieve a single transaction by hash */
+/** Update an existing transaction's status */
+export function updateTransactionStatus(
+  hashOrDeposit: string,
+  status: "pending" | "settled" | "failed",
+  amountOut?: string
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    const existing = getTransactions();
+    let updated = false;
+    for (const item of existing) {
+      if (item.hash === hashOrDeposit || item.depositAddress === hashOrDeposit) {
+        item.status = status;
+        if (amountOut) item.amountOut = amountOut;
+        updated = true;
+      }
+    }
+    if (updated) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
+    }
+  } catch {}
+}
+
+/** Retrieve a single transaction by hash or deposit address */
 export function getTransactionByHash(hash: string): TransactionRecord | null {
   const all = getTransactions();
-  return all.find((tx) => tx.hash === hash) || null;
+  return all.find((tx) => tx.hash === hash || tx.depositAddress === hash) || null;
 }
 
 /** Get relative time string (e.g. "2 hours ago") */
@@ -58,8 +90,5 @@ export function timeAgo(timestamp: number): string {
   const days = Math.floor(hours / 24);
   if (days === 1) return "Yesterday";
   if (days < 7) return `${days}d ago`;
-  return new Date(timestamp).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-  });
+  return new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }

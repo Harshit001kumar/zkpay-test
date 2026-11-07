@@ -1,11 +1,10 @@
 import { getMongoDb } from "./mongodb";
-import { PayInSession, PayLink, listPayLinks, listAllPayInSessions } from "./payStore";
 import { ProxySwapOrder } from "./proxySwapStore";
 import { DirectSwapOrder } from "./directSwapStore";
 
 export type AdminTxChannel = "app" | "api" | "checkout";
 export type AdminTxCategory = "payment" | "swap";
-export type AdminTxSubtype = "scan_pay" | "cashout" | "pay_link" | "disburse" | "proxy_swap" | "direct_swap";
+export type AdminTxSubtype = "proxy_swap" | "direct_swap";
 export type AdminTxStatus = "COMPLETED" | "PENDING" | "FAILED" | "EXPIRED" | "REFUNDED";
 
 export interface AdminSystemTransaction {
@@ -139,48 +138,6 @@ function formatAtomicToHuman(atomic: string | undefined, decimals: number): stri
   }
 }
 
-function normalizePayInStatus(raw: string): AdminTxStatus {
-  switch (raw) {
-    case "SETTLED":
-    case "PAID":
-    case "COMPLETED":
-      return "COMPLETED";
-    case "REFUNDED_TO_USER":
-    case "STORED_IN_REFUND_WALLET":
-    case "CANCELLED_AND_REFUNDED":
-    case "FAILED_AND_REFUNDED":
-      return "REFUNDED";
-    case "AWAITING_PAYMENT":
-    case "DETECTED":
-    case "PROCESSING":
-    case "ORDER_PLACED":
-    case "DELIVERING_HANDSHAKE":
-    case "AWAITING_FIAT_PAYMENT":
-      return "PENDING";
-    case "EXPIRED":
-      return "EXPIRED";
-    default:
-      return "FAILED";
-  }
-}
-
-function normalizePayLinkStatus(raw: string): AdminTxStatus {
-  switch (raw) {
-    case "PAID":
-      return "COMPLETED";
-    case "REFUNDED":
-      return "REFUNDED";
-    case "ACTIVE":
-    case "AWAITING_FUNDING":
-    case "CLAIMING":
-      return "PENDING";
-    case "EXPIRED":
-      return "EXPIRED";
-    default:
-      return "FAILED";
-  }
-}
-
 function normalizeProxySwapStatus(raw: string): AdminTxStatus {
   switch (raw) {
     case "SETTLED":
@@ -236,7 +193,7 @@ function mapProxySwapToAdminTx(
   const decimals = getDecimalsForAsset(o.originAssetId, o.fromAsset);
   const amountNumber = parseFloat(o.totalAmountFormatted) || (Number(o.totalAmountIn) / Math.pow(10, decimals));
   const isUsdPegged = (o.fromAsset || "").toUpperCase().includes("USD");
-  const amountUsdEstimate = isUsdPegged ? amountNumber : amountNumber; // Near 1Click normalized
+  const amountUsdEstimate = isUsdPegged ? amountNumber : amountNumber;
 
   const zkpayFee = o.zkpayFeeAmount ? Number(formatAtomicToHuman(o.zkpayFeeAmount, decimals)) : 0;
   const partnerFee = o.partnerFeeAmount ? Number(formatAtomicToHuman(o.partnerFeeAmount, decimals)) : 0;
@@ -329,110 +286,6 @@ function mapDirectSwapToAdminTx(
   };
 }
 
-function mapPayInSessionToAdminTx(
-  s: PayInSession,
-  keyMap: Map<string, { label: string; prefix: string; last4: string }>
-): AdminSystemTransaction {
-  const status = normalizePayInStatus(s.status);
-  const keyInfo = s.apiKeyId ? keyMap.get(s.apiKeyId) : undefined;
-  const channel: AdminTxChannel = s.source === "api" || s.apiKeyId ? "api" : s.source === "checkout" || s.parentLinkId ? "checkout" : "app";
-
-  const amountUsd = parseFloat(s.expectedUsdc) || (s.amountINR ? s.amountINR / (s.rate || 90) : 0);
-  const feeUsd = parseFloat(s.feeUsdc) || 0;
-  const primaryTxHash = s.completedTxHash || s.txHash || s.refundTxHash || null;
-
-  return {
-    id: s.id,
-    category: "payment",
-    subtype: "scan_pay",
-    channel,
-    title: s.parentLinkId ? "PayLink Checkout" : "Scan & Pay / Fiat Offramp",
-    status,
-    rawStatus: s.status,
-    amountHuman: s.expectedUsdc ? `${s.expectedUsdc} USDC` : `${s.amountINR} INR`,
-    amountUsdEstimate: Math.round(amountUsd * 100) / 100,
-    fiatAmount: s.amountINR,
-    fiatCurrency: "INR",
-    fromAsset: "USDC",
-    toAsset: "INR",
-    exchangeRate: s.rate,
-    zkpayFeeUsdEstimate: Math.round(feeUsd * 100) / 100,
-    partnerFeeUsdEstimate: 0,
-    totalFeeUsdEstimate: Math.round(feeUsd * 100) / 100,
-    chain: "base",
-    destinationChain: "base",
-    depositAddress: s.payinAddress,
-    recipient: s.recipientUpi,
-    senderAddress: s.creatorWalletAddress || s.detectedSenderAddress || null,
-    apiKeyId: s.apiKeyId || null,
-    apiKeyLabel: keyInfo?.label || (s.apiKeyId ? "Merchant API" : null),
-    creatorUserId: s.creatorUserId || null,
-    txHash: primaryTxHash,
-    explorerUrl: getExplorerTxUrl("base", primaryTxHash),
-    createdAt: s.createdAt,
-    expiresAt: s.expiresAt,
-    details: {
-      p2pOrderId: s.p2pOrderId,
-      recipientUpi: s.recipientUpi,
-      rate: s.rate,
-      parentLinkId: s.parentLinkId,
-      refundStatus: s.refundStatus,
-      refundTxHash: s.refundTxHash,
-    },
-  };
-}
-
-function mapPayLinkToAdminTx(
-  l: PayLink,
-  keyMap: Map<string, { label: string; prefix: string; last4: string }>
-): AdminSystemTransaction {
-  const status = normalizePayLinkStatus(l.status);
-  const keyInfo = l.apiKeyId ? keyMap.get(l.apiKeyId) : undefined;
-  const channel: AdminTxChannel = l.apiKeyId ? "api" : "app";
-
-  const amountUsd = parseFloat(l.estimatedUsdc) || (l.amountINR ? l.amountINR / (l.rate || 90) : 0);
-
-  return {
-    id: l.id,
-    category: "payment",
-    subtype: l.mode === "disburse" ? "disburse" : "pay_link",
-    channel,
-    title: l.mode === "disburse" ? `Escrow Claim: ${l.title || "Disbursement"}` : `PayLink: ${l.title || "Invoice"}`,
-    status,
-    rawStatus: l.status,
-    amountHuman: l.estimatedUsdc ? `${l.estimatedUsdc} USDC` : `${l.amountINR} INR`,
-    amountUsdEstimate: Math.round(amountUsd * 100) / 100,
-    fiatAmount: l.amountINR,
-    fiatCurrency: "INR",
-    fromAsset: "USDC",
-    toAsset: "INR",
-    exchangeRate: l.rate,
-    zkpayFeeUsdEstimate: 0,
-    partnerFeeUsdEstimate: 0,
-    totalFeeUsdEstimate: 0,
-    chain: "base",
-    destinationChain: "base",
-    depositAddress: l.escrowAddress || null,
-    recipient: l.recipientUpi || l.claimantUpi || null,
-    senderAddress: l.creatorWalletAddress || null,
-    apiKeyId: l.apiKeyId || null,
-    apiKeyLabel: keyInfo?.label || (l.apiKeyId ? "Merchant API" : null),
-    creatorUserId: l.creatorUserId || null,
-    txHash: l.txHash || null,
-    explorerUrl: getExplorerTxUrl("base", l.txHash),
-    createdAt: l.createdAt,
-    expiresAt: l.expiresAt,
-    settledAt: l.paidAt || l.claimedAt,
-    details: {
-      mode: l.mode,
-      title: l.title,
-      totalPaidCount: l.totalPaidCount,
-      totalVolumeINR: l.totalVolumeINR,
-      rate: l.rate,
-    },
-  };
-}
-
 export async function getAdminSystemTransactions(
   options: GetAdminTransactionsOptions = {}
 ): Promise<AdminTransactionsResult> {
@@ -459,34 +312,19 @@ export async function getAdminSystemTransactions(
   const db = await getMongoDb();
   if (db) {
     const timeFilter = sinceMs > 0 ? { createdAt: { $gte: sinceMs } } : {};
-    const [proxySwaps, directSwaps, payins, paylinks] = await Promise.all([
+    const [proxySwaps, directSwaps] = await Promise.all([
       db.collection<ProxySwapOrder>("proxy_swap_orders").find(timeFilter).sort({ createdAt: -1 }).limit(2000).toArray().catch(() => []),
       db.collection<DirectSwapOrder>("direct_swap_orders").find(timeFilter).sort({ createdAt: -1 }).limit(2000).toArray().catch(() => []),
-      db.collection<PayInSession>("payin_sessions").find(timeFilter).sort({ createdAt: -1 }).limit(2000).toArray().catch(() => []),
-      db.collection<PayLink>("pay_links").find(timeFilter).sort({ createdAt: -1 }).limit(2000).toArray().catch(() => []),
     ]);
 
     rawList = [
       ...proxySwaps.map((o) => mapProxySwapToAdminTx(o, keyMap)),
       ...directSwaps.map((o) => mapDirectSwapToAdminTx(o, keyMap)),
-      ...payins.map((s) => mapPayInSessionToAdminTx(s, keyMap)),
-      ...paylinks.map((l) => mapPayLinkToAdminTx(l, keyMap)),
-    ];
-  } else {
-    // In-memory fallback
-    const payins = listAllPayInSessions().filter((s) => sinceMs === 0 || s.createdAt >= sinceMs);
-    const paylinks = listPayLinks().filter((l) => sinceMs === 0 || l.createdAt >= sinceMs);
-
-    rawList = [
-      ...payins.map((s) => mapPayInSessionToAdminTx(s, keyMap)),
-      ...paylinks.map((l) => mapPayLinkToAdminTx(l, keyMap)),
     ];
   }
 
-  // Sort overall newest first
   rawList.sort((a, b) => b.createdAt - a.createdAt);
 
-  // 1. Calculate Holistic Metrics over the time window BEFORE filtering (for total KPI fidelity)
   let totalVolumeUsd = 0;
   let successfulTransactions = 0;
   let pendingTransactions = 0;
@@ -497,15 +335,11 @@ export async function getAdminSystemTransactions(
   let appUsd = 0;
   let apiUsd = 0;
   let checkoutUsd = 0;
-
-  let paymentsUsd = 0;
   let swapsUsd = 0;
 
   let appCount = 0;
   let apiCount = 0;
   let checkoutCount = 0;
-
-  let paymentsCount = 0;
   let swapsCount = 0;
 
   const chainBreakdown: Record<string, { count: number; volumeUsd: number }> = {};
@@ -530,13 +364,8 @@ export async function getAdminSystemTransactions(
       checkoutCount++;
     }
 
-    if (tx.category === "payment") {
-      paymentsUsd += tx.amountUsdEstimate;
-      paymentsCount++;
-    } else {
-      swapsUsd += tx.amountUsdEstimate;
-      swapsCount++;
-    }
+    swapsUsd += tx.amountUsdEstimate;
+    swapsCount++;
 
     const c = (tx.chain || "base").toLowerCase();
     if (!chainBreakdown[c]) chainBreakdown[c] = { count: 0, volumeUsd: 0 };
@@ -561,15 +390,14 @@ export async function getAdminSystemTransactions(
       checkoutUsd: Math.round(checkoutUsd * 100) / 100,
     },
     volumeByCategory: {
-      paymentsUsd: Math.round(paymentsUsd * 100) / 100,
+      paymentsUsd: 0,
       swapsUsd: Math.round(swapsUsd * 100) / 100,
     },
     countsByChannel: { appCount, apiCount, checkoutCount },
-    countsByCategory: { paymentsCount, swapsCount },
+    countsByCategory: { paymentsCount: 0, swapsCount },
     chainBreakdown,
   };
 
-  // 2. Apply Search & Active Tab Filters
   let filtered = rawList;
 
   if (channel !== "all") {
@@ -633,9 +461,6 @@ export async function exportAdminTransactionsCsv(options: GetAdminTransactionsOp
     "Status",
     "Amount",
     "USD Estimate",
-    "Fiat Amount",
-    "Fiat Currency",
-    "Exchange Rate",
     "ZkPay Fee USD",
     "Origin Chain",
     "Destination Chain",
@@ -656,9 +481,6 @@ export async function exportAdminTransactionsCsv(options: GetAdminTransactionsOp
     t.status,
     `"${t.amountHuman.replace(/"/g, '""')}"`,
     t.amountUsdEstimate,
-    t.fiatAmount || "",
-    t.fiatCurrency || "",
-    t.exchangeRate || "",
     t.zkpayFeeUsdEstimate,
     t.chain,
     t.destinationChain,

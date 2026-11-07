@@ -1,81 +1,106 @@
-export type SupportedCurrency = "INR" | "BRL" | "USD";
-export type PaymentRailType = "upi" | "pix" | "paypal" | "eth";
+export type SupportedChainId =
+  | "base"
+  | "sol"
+  | "eth"
+  | "btc"
+  | "polygon"
+  | "arb"
+  | "bsc"
+  | "tron"
+  | "ltc";
 
-export interface CurrencyMeta {
-  code: SupportedCurrency;
+export interface SwapTokenItem {
   symbol: string;
   name: string;
-  flag: string;
-  country: string;
-  provider: "p2pkit" | "peer";
-  rail: "UPI" | "Pix" | "PayPal";
-  railDescription: string;
-  placeholder: string;
-  inputLabel: string;
-  presets: number[];
-  minOrderUsdc: number;
-  maxOrderFloorUsdc: number;
+  assetId: string;
+  blockchain: SupportedChainId | string;
+  decimals: number;
 }
 
-export interface MerchantData {
-  type: PaymentRailType;
-  raw: string; // The raw scanned string
-  currency?: SupportedCurrency;
-  upiId?: string; // e.g. merchant@upi (UPI)
-  pixKey?: string; // e.g. CPF, email, phone, or random key (Pix)
-  paypalId?: string; // e.g. email or username (PayPal)
-  paymentId?: string; // Unified identifier for payment delivery
-  name?: string; // Merchant or recipient display name
-  defaultAmount?: string; // e.g. 100 or 50.00
-  address?: string; // e.g. 0x123... for eth
-  pixCity?: string; // Optional Pix city extracted from EMVCo
-  pixTxId?: string; // Optional Pix reference txId
+export interface ChainInfo {
+  id: SupportedChainId;
+  name: string;
+  shortName: string;
+  badgeColor: string;
+  addressPlaceholder: string;
+  finalityLabel: string;
+  zeroFee?: boolean;
 }
 
-export const CURRENCY_CONFIGS: Record<SupportedCurrency, CurrencyMeta> = {
-  INR: {
-    code: "INR",
-    symbol: "₹",
-    name: "Indian Rupee",
-    flag: "🇮🇳",
-    country: "India",
-    provider: "p2pkit",
-    rail: "UPI",
-    railDescription: "Google Pay, PhonePe, Paytm, BHIM",
-    placeholder: "merchant@okhdfcbank",
-    inputLabel: "UPI ID / VPA",
-    presets: [100, 250, 500, 1000, 2000],
-    minOrderUsdc: 1,
-    maxOrderFloorUsdc: 100,
+export const CHAIN_METADATA: Record<SupportedChainId, ChainInfo> = {
+  base: {
+    id: "base",
+    name: "Base",
+    shortName: "BASE",
+    badgeColor: "text-blue-400 border-blue-500/30 bg-blue-500/10",
+    addressPlaceholder: "0x... (Base EVM Address)",
+    finalityLabel: "~2s",
   },
-  BRL: {
-    code: "BRL",
-    symbol: "R$",
-    name: "Brazilian Real",
-    flag: "🇧🇷",
-    country: "Brazil",
-    provider: "p2pkit",
-    rail: "Pix",
-    railDescription: "Nubank, Itaú, Inter, Mercado Pago",
-    placeholder: "CPF, phone (+55), email, or Pix key",
-    inputLabel: "Pix Key / Chave Pix",
-    presets: [10, 25, 50, 100, 250],
-    minOrderUsdc: 1,
-    maxOrderFloorUsdc: 200,
+  sol: {
+    id: "sol",
+    name: "Solana",
+    shortName: "SOL",
+    badgeColor: "text-purple-400 border-purple-500/30 bg-purple-500/10",
+    addressPlaceholder: "Base58 Solana Address (e.g. 7vN2...)",
+    finalityLabel: "~1s",
   },
-  USD: {
-    code: "USD",
-    symbol: "$",
-    name: "US Dollar",
-    flag: "🇺🇸",
-    country: "United States / Global",
-    provider: "peer",
-    rail: "PayPal",
-    railDescription: "PayPal balance, Venmo, US Banks",
-    placeholder: "username@paypal.com or @handle",
-    inputLabel: "PayPal Email / Handle",
-    presets: [5, 10, 25, 50, 100],
-    minOrderUsdc: 1,
-    maxOrderFloorUsdc: 500,
+  polygon: {
+    id: "polygon",
+    name: "Polygon",
+    shortName: "POL",
+    badgeColor: "text-violet-400 border-violet-500/30 bg-violet-500/10",
+    addressPlaceholder: "0x... (Polygon EVM Address)",
+    finalityLabel: "~3s",
+  },
+  arb: {
+    id: "arb",
+    name: "Arbitrum",
+    shortName: "ARB",
+    badgeColor: "text-sky-400 border-sky-500/30 bg-sky-500/10",
+    addressPlaceholder: "0x... (Arbitrum EVM Address)",
+    finalityLabel: "~2s",
+  },
+  bsc: {
+    id: "bsc",
+    name: "BNB Chain",
+    shortName: "BSC",
+    badgeColor: "text-amber-400 border-amber-500/30 bg-amber-500/10",
+    addressPlaceholder: "0x... (BSC EVM Address)",
+    finalityLabel: "~3s",
+  },
+  eth: {
+    id: "eth",
+    name: "Ethereum",
+    shortName: "ETH",
+    badgeColor: "text-slate-300 border-slate-400/30 bg-slate-500/10",
+    addressPlaceholder: "0x... (Ethereum Mainnet Address)",
+    finalityLabel: "~15s",
+    zeroFee: true,
+  },
+  btc: {
+    id: "btc",
+    name: "Bitcoin",
+    shortName: "BTC",
+    badgeColor: "text-orange-400 border-orange-500/30 bg-orange-500/10",
+    addressPlaceholder: "bc1... or 1... / 3... (Bitcoin Address)",
+    finalityLabel: "~10m",
+    zeroFee: true,
+  },
+  ltc: {
+    id: "ltc",
+    name: "Litecoin",
+    shortName: "LTC",
+    badgeColor: "text-zinc-300 border-zinc-400/30 bg-zinc-500/10",
+    addressPlaceholder: "ltc1... or L... / M... (Litecoin Address)",
+    finalityLabel: "~2.5m",
+  },
+  tron: {
+    id: "tron",
+    name: "Tron",
+    shortName: "TRX",
+    badgeColor: "text-red-400 border-red-500/30 bg-red-500/10",
+    addressPlaceholder: "T... (Tron TRC20 Address)",
+    finalityLabel: "~3s",
+    zeroFee: true,
   },
 };

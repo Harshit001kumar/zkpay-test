@@ -1,119 +1,24 @@
-# ZkPay — Crypto to Fiat Scan & Pay
+# ZkPay — Instant Cross-Chain Swap Engine & Developer API
 
-A premium mobile-first web app that lets users pay merchants with local fiat (UPI, bank transfer, etc.), settled instantly in USDC on the **Base** network via [P2PKit](https://p2pkit.com).
+A mobile-first cross-chain crypto swap platform and B2B developer API that powers instant non-custodial token swaps across **9 blockchains** (`BTC`, `ETH`, `SOL`, `Base`, `Polygon`, `Arbitrum`, `BSC`, `Tron`, `LTC`) with an automated **50/50 USD Partner Revenue Share**.
 
-## Architecture
+## Key Features
 
-```
-┌─────────────────────────────────────────────┐
-│                  Frontend                   │
-│  Next.js + @p2pdotme/widgets + Privy Auth   │
-│  Deployed on Render (free tier)             │
-└──────────────────┬──────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────┐
-│           ZkPayIntegrator.sol               │
-│  IP2PIntegrator on Base (Sepolia → Mainnet) │
-│  • validateOrder (limits)                   │
-│  • onOrderComplete (1% fee → treasury)      │
-│  • onOrderCancel (refund slots)             │
-└──────────────────┬──────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────┐
-│           P2P Diamond (P2PKit)              │
-│  Merchant network settles fiat off-chain    │
-│  On-chain: USDC on Base                     │
-└─────────────────────────────────────────────┘
-```
+- **Cross-Chain Web Swap (`SwapWidget.tsx`)**: Swap 17 curated tokens across 9 blockchains with single-use deposit addresses, QR codes, and real-time 4-stage status tracking.
+- **Developer Swap API (`/api/v1/swap/*`)**:
+  - `GET /api/v1/swap/tokens` — Discover supported tokens across all 9 chains
+  - `GET /api/v1/swap/quote` — Dry-run quote & 50/50 partner fee split preview
+  - `POST /api/v1/swap/create` — Generate single-use deposit address & lock quote
+  - `GET /api/v1/swap/status` — Poll real-time swap execution status
+- **Automated 50/50 USD Partner Ledger (`/partner`)**:
+  - Pass `X-API-Key` on swap requests to earn 50% of custom swap fees (20–450 bps) credited in USD upon settlement.
+  - Withdraw anytime starting at **$1.00 USD** in **USDC (Base)**, **USDT (Polygon)**, **SOL**, or **LTC**.
 
 ## Quick Start
-
-### 1. Clone & configure
-
-```bash
-git clone https://github.com/YOUR_USERNAME/zk-pay.git
-cd zk-pay
-cp .env.example .env
-# Edit .env with your Privy App ID
-```
-
-### 2. Install & run locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) on your phone or browser.
-
-### 3. Deploy to Render (free)
-
-1. Push this repo to GitHub
-2. Go to [render.com](https://render.com) → New Web Service
-3. Connect your GitHub repo
-4. Render auto-detects `render.yaml` — just add your env vars
-5. Deploy!
-
-## Project Structure
-
-```
-zk_pay/
-├── contracts/
-│   └── integrators/zk_pay/
-│       └── ZkPayIntegrator.sol     # On-chain integrator (Base)
-├── src/
-│   ├── app/
-│   │   ├── globals.css             # Ocean Obsidian design system
-│   │   ├── layout.tsx              # Root layout + SEO
-│   │   └── page.tsx                # Main dashboard
-│   ├── components/
-│   │   ├── BottomNav.tsx           # Bottom navigation bar
-│   │   ├── CashoutFlow.tsx         # USDC → Fiat offramp
-│   │   ├── CheckoutFlow.tsx        # Fiat → USDC onramp
-│   │   ├── PaymentHistory.tsx      # Transaction history
-│   │   ├── Scanner.tsx             # QR code scanner
-│   │   └── WalletConnect.tsx       # Wallet connection UI
-│   └── lib/
-│       ├── constants.ts            # Contract addresses & config
-│       └── p2pkit.ts               # P2PKit SDK helpers
-├── render.yaml                     # Render deployment config
-├── tailwind.config.ts              # Ocean Obsidian tokens
-└── package.json
-```
-
-## Smart Contract
-
-The `ZkPayIntegrator` implements `IP2PIntegrator` with:
-
-| Parameter | Default | Description |
-|---|---|---|
-| `baseTxLimit` | 20 USDC | Max per transaction |
-| `dailyTxCountLimit` | 5 | Max transactions per user per day |
-| `platformFeeBps` | 100 (1%) | Platform fee sent to treasury |
-
-### Deploy to Base Sepolia
-
-```bash
-npx hardhat run scripts/deploy.ts --network base-sepolia
-```
-
-## Revenue Model
-
-Every completed payment routes through `onOrderComplete`, which:
-1. Calculates 1% fee
-2. Sends fee to your treasury wallet
-3. Sends remainder to the merchant
-
-## Tech Stack
-
-- **Frontend**: Next.js 14, React 18, Tailwind CSS
-- **Blockchain**: Base (L2), USDC, Solidity
-- **Payments**: P2PKit (`@p2pdotme/widgets`)
-- **Auth**: Privy (embedded wallets + sponsored gas)
-- **Deploy**: Render (free tier)
-
-## License
-
-MIT
+Open [http://localhost:3000](http://localhost:3000) to use the Web Swap or visit `/docs` and `/partner` for Developer API integration.

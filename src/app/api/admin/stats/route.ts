@@ -1,16 +1,11 @@
 import { NextResponse } from "next/server";
 import { verifyAdminRequest } from "@/lib/server/adminAuth";
-import { CONTRACTS, CHAIN, EARN_CONFIG } from "@/lib/constants";
+import { CONTRACTS, CHAIN } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
-import { createPrices } from "@p2pdotme/sdk/prices";
 import { getRelayerAddress, getRelayerBalance } from "@/lib/server/relayer";
-import { listPayLinks, getActivePayInSessions } from "@/lib/server/payStore";
-import { formatEther } from "viem";
-import { getLiveFiatRate } from "@/lib/server/p2pRates";
+import { getResilientPublicClientForChain } from "@/lib/server/rpcConfig";
 
 export const dynamic = "force-dynamic";
-
-import { getResilientPublicClientForChain } from "@/lib/server/rpcConfig";
 
 function getServerPublicClient() {
   return getResilientPublicClientForChain("base");
@@ -42,31 +37,7 @@ export async function GET(req: Request) {
       console.warn("[Admin Stats] Failed to read Treasury USDC balance:", err);
     }
 
-    // 2. Fetch Protocol Diamond USDC Liquidity
-    let diamondUsdcRaw = 0n;
-    try {
-      diamondUsdcRaw = (await publicClient.readContract({
-        address: CONTRACTS.USDC,
-        abi: ERC20_ABI,
-        functionName: "balanceOf",
-        args: [CONTRACTS.DIAMOND],
-      })) as bigint;
-    } catch (err) {
-      console.warn("[Admin Stats] Failed to read Diamond USDC balance:", err);
-    }
-
-    // 3. Fetch Live INR/USDC P2P Price Feed Rate
-    let inrSellPrice = "N/A";
-    try {
-      const rate = await getLiveFiatRate("INR");
-      if (rate && rate > 0) {
-        inrSellPrice = rate.toFixed(2);
-      }
-    } catch (err) {
-      console.warn("[Admin Stats] Failed to read P2P INR price feed:", err);
-    }
-
-    // 4. Gas Sponsorship Telemetry (Pimlico ERC-4337 Paymaster)
+    // 2. Gas Sponsorship Telemetry
     const gasSponsorship = {
       provider: "Pimlico ERC-4337",
       mode: "Paymaster Gas Sponsorship",
@@ -75,7 +46,7 @@ export async function GET(req: Request) {
       policy: "100% Gas Sponsored for Smart Accounts",
     };
 
-    // 5. Backend Sweeper Wallet Telemetry (For gasless payin sweeps to Treasury)
+    // 3. Backend Relayer / Sweeper Wallet Telemetry
     let sweeperStats = {
       configured: false,
       address: null as string | null,
@@ -90,7 +61,7 @@ export async function GET(req: Request) {
         configured: true,
         address: sweeperAddr,
         balanceEth: (Number(sweeperBal) / 1e18).toFixed(4),
-        healthy: sweeperBal > 500000000000000n, // > 0.0005 ETH
+        healthy: sweeperBal > 500000000000000n,
         error: undefined,
       };
     } catch (err: any) {
@@ -99,11 +70,10 @@ export async function GET(req: Request) {
         address: null,
         balanceEth: "0.0000",
         healthy: false,
-        error: err.message || "Sweeper private key not set",
+        error: err.message || "Relayer private key not set",
       };
     }
 
-    // Backward-compatible relayer telemetry
     const relayerStats = {
       address: sweeperStats.address || "Pimlico Paymaster (ERC-4337)",
       balanceEth: sweeperStats.configured ? `${sweeperStats.balanceEth} ETH` : "Active",
@@ -111,59 +81,7 @@ export async function GET(req: Request) {
       error: sweeperStats.error,
     };
 
-    // 5. Privy Earn Vault Telemetry
-    const VAULT_ID = process.env.PRIVY_EARN_VAULT_ID;
-    let earnVaultStats: any = {
-      configured: true,
-      vaultId: VAULT_ID || "on-chain",
-      address: (VAULT_ID?.startsWith("0x") && VAULT_ID.toLowerCase() !== "0xbeef0e0834849acc03f0089f01f4f1eeb06873c9") ? VAULT_ID : CONTRACTS.EARN_VAULT,
-      name: EARN_CONFIG.VAULT_NAME,
-      provider: EARN_CONFIG.VAULT_PROVIDER,
-      apy: EARN_CONFIG.BENCHMARK_APY,
-      tvlUsd: 435000000,
-      healthy: true,
-    };
-
-    if (VAULT_ID && !VAULT_ID.startsWith("0x")) {
-      try {
-        const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
-        const appSecret = process.env.PRIVY_APP_SECRET;
-        if (appId && appSecret) {
-          const basicAuth = Buffer.from(`${appId}:${appSecret}`).toString("base64");
-          const vaultRes = await fetch(
-            `https://api.privy.io/api/v1/earn/ethereum/vaults/${VAULT_ID}`,
-            {
-              headers: {
-                "privy-app-id": appId,
-                Authorization: `Basic ${basicAuth}`,
-              },
-            }
-          );
-          if (vaultRes.ok) {
-            const vData = await vaultRes.json();
-            earnVaultStats = {
-              configured: true,
-              vaultId: VAULT_ID,
-              address: vData?.vault_address || vData?.address || vData?.contract_address || null,
-              name: vData?.name || EARN_CONFIG.VAULT_NAME,
-              provider: vData?.provider || EARN_CONFIG.VAULT_PROVIDER,
-              apy: vData?.user_apy ? (vData.user_apy / 100).toFixed(2) : EARN_CONFIG.BENCHMARK_APY,
-              tvlUsd: vData?.tvl_usd ?? 435000000,
-              healthy: true,
-            };
-          }
-        }
-      } catch (err) {
-        console.warn("[Admin Stats] Failed to query Earn vault:", err);
-      }
-    }
-
-    // 6. Fetch PayLinks and Sessions summary
-    const payLinks = listPayLinks();
-    const activeSessions = getActivePayInSessions();
-
     const treasuryUsdc = (Number(treasuryUsdcRaw) / 1_000_000).toFixed(2);
-    const diamondUsdc = (Number(diamondUsdcRaw) / 1_000_000).toFixed(2);
 
     return NextResponse.json({
       success: true,
@@ -174,31 +92,15 @@ export async function GET(req: Request) {
         explorer: CHAIN.blockExplorer,
       },
       contracts: {
-        diamond: CONTRACTS.DIAMOND,
         usdc: CONTRACTS.USDC,
         treasury: CONTRACTS.TREASURY,
-        vault: earnVaultStats.address,
       },
       relayer: relayerStats,
       sweeper: sweeperStats,
       gasSponsorship,
-      earnVault: earnVaultStats,
-      paylinksSummary: {
-        total: payLinks.length,
-        paid: payLinks.filter((p) => p.status === "PAID").length,
-        active: payLinks.filter((p) => p.status === "ACTIVE").length,
-      },
-      payinSessionsSummary: {
-        activeCount: activeSessions.length,
-      },
       telemetry: {
         treasuryUsdcBalance: treasuryUsdc,
-        diamondUsdcLiquidity: diamondUsdc,
-        inrPerUsdcRate: inrSellPrice,
-        platformFeeBps: 100, // 1%
-        fixedFeeThresholdUsdc: 10,
-        fixedFeeUsdc: 0.10,
-        noKycLimitUsdc: 100, // $100 baseline floor
+        platformFeeBps: 100,
       },
     });
   } catch (error: any) {

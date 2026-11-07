@@ -28,14 +28,14 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: `${APP_NAME} - ${APP_DESCRIPTION}`,
+  title: `${APP_NAME} — ${APP_DESCRIPTION}`,
   description:
-    "Pay merchants with local fiat, settled instantly in USDC on Base. Scan a QR code, pay with UPI or bank transfer, and go.",
-  keywords: ["crypto", "fiat", "payments", "USDC", "Base", "scan to pay", "P2P"],
+    "Instant non-custodial cross-chain crypto swaps across 9 blockchains (BTC, ETH, SOL, Base, Polygon, Arbitrum, BSC, Tron, Litecoin) and Developer Swap API with 50/50 USD revenue share.",
+  keywords: ["crypto swap", "cross-chain swap", "swap api", "telegram bot swap api", "near intents", "bitcoin swap", "solana swap", "base swap", "zkpay"],
   openGraph: {
-    title: `${APP_NAME} - ${APP_DESCRIPTION}`,
+    title: `${APP_NAME} — ${APP_DESCRIPTION}`,
     description:
-      "Pay merchants with local fiat, settled instantly in USDC on Base.",
+      "Instant cross-chain swaps across 9 blockchains. Integrate our Swap API into your app or bot in 5 minutes and earn 50% revenue share.",
     type: "website",
   },
 };
@@ -52,7 +52,7 @@ export default function RootLayout({
     "url": "https://zkpay.top",
     "applicationCategory": "FinanceApplication",
     "operatingSystem": "All",
-    "description": "Pay merchants with local fiat, settled instantly in USDC on Base.",
+    "description": "Instant cross-chain crypto swap provider and developer API with 50/50 USD partner revenue share.",
     "offers": {
       "@type": "Offer",
       "price": "0",

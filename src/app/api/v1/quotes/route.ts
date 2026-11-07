@@ -1,97 +1,21 @@
 import { corsJson, corsOptions } from "@/lib/server/cors";
-import { getLiveFiatRate } from "@/lib/server/p2pRates";
-import { enforceRateLimit } from "@/lib/server/rateLimit";
 
 export const dynamic = "force-dynamic";
 
-const PLATFORM_FEE_BPS = 100; // 1%
+export async function POST() {
+  return corsJson(
+    {
+      success: false,
+      error: "ENDPOINT_DEPRECATED",
+      message: "Fiat quotes have been retired. Use GET or POST /api/v1/swap/quote for cross-chain crypto swap quotes.",
+      swapApi: "https://zkpay.top/api/v1/swap/quote",
+    },
+    { status: 410 }
+  );
+}
 
-/**
- * POST /api/v1/quotes
- * 
- * Computes exact payout breakdown: USDC principal, 1% ZkPay fee, total USDC needed,
- * fiat payout amount, and on-chain rate directly from the P2P Diamond contract.
- */
-export async function POST(req: Request) {
-  const { response: rateLimitResp } = enforceRateLimit(req, "quote");
-  if (rateLimitResp) return rateLimitResp;
-
-  try {
-    const body = await req.json();
-    const amount = Number(body.amount);
-    const currency = (body.currency || "INR").toUpperCase();
-
-    if (!amount || amount <= 0) {
-      return corsJson(
-        { error: "Invalid amount. Must be a positive number." },
-        { status: 400 }
-      );
-    }
-
-    if (amount > 10000) {
-      return corsJson(
-        { error: "Amount exceeds maximum single transaction limit of 10,000 fiat units." },
-        { status: 400 }
-      );
-    }
-
-    // Fetch live rate directly with multi-RPC failover and TTL caching
-    const sellPrice = await getLiveFiatRate(currency);
-
-    if (!sellPrice || sellPrice <= 0) {
-      return corsJson(
-        { error: `Currency "${currency}" rate is not available on the P2P Diamond contract.` },
-        { status: 404 }
-      );
-    }
-
-    // Calculate USDC amounts
-    const usdcPrincipal = amount / sellPrice;
-    const feeUsdc = usdcPrincipal * (PLATFORM_FEE_BPS / 10000);
-    const isSmallOrder = usdcPrincipal > 0 && usdcPrincipal <= 10;
-    const protocolFeeUsdc = isSmallOrder ? 0.10 : 0;
-    const totalUsdc = usdcPrincipal + feeUsdc + protocolFeeUsdc;
-
-    // Check against no-KYC limit (100 USDC for INR, 200 for others)
-    const noKycLimit = currency === "INR" ? 100 : 200;
-    const withinLimit = usdcPrincipal <= noKycLimit;
-
-    // Currency symbol map
-    const symbolMap: Record<string, string> = {
-      INR: "₹",
-      USD: "$",
-      EUR: "€",
-      GBP: "£",
-    };
-    const sym = symbolMap[currency] || "";
-
-    // Quote valid for 5 minutes
-    const expiresAt = Date.now() + 5 * 60 * 1000;
-
-    return corsJson({
-      success: true,
-      fiatAmount: `${sym} ${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      fiatAmountRaw: amount,
-      usdcPrincipal: usdcPrincipal.toFixed(2),
-      feeUsdc: feeUsdc.toFixed(2),
-      protocolFeeUsdc: protocolFeeUsdc.toFixed(2),
-      isSmallOrder,
-      totalUsdc: totalUsdc.toFixed(2),
-      gasSponsorship: "Sponsored by ZkPay (Pimlico Paymaster)",
-      rate: sellPrice.toFixed(2),
-      feeBps: PLATFORM_FEE_BPS,
-      currency,
-      withinNoKycLimit: withinLimit,
-      noKycLimitUsdc: noKycLimit,
-      expiresAt,
-    });
-  } catch (err: any) {
-    console.error("[Quotes] Error:", err);
-    return corsJson(
-      { error: err.message || "Failed to generate on-chain quote" },
-      { status: 500 }
-    );
-  }
+export async function GET() {
+  return POST();
 }
 
 export async function OPTIONS() {

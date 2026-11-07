@@ -3,22 +3,35 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useSmartWallets } from "@privy-io/react-auth/smart-wallets";
-import { encodeFunctionData, maxUint256 } from "viem";
-import { CONTRACTS } from "@/lib/constants";
+import { createPublicClient, encodeFunctionData, fallback, http, maxUint256 } from "viem";
+import { base } from "viem/chains";
+import { BASE_RPC_URLS, CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
-import { getPublicClient } from "@/lib/p2pkit";
+
+let _basePublicClient: ReturnType<typeof createPublicClient> | null = null;
+
+export function getBasePublicClient() {
+  if (!_basePublicClient) {
+    _basePublicClient = createPublicClient({
+      chain: base,
+      transport: fallback(
+        BASE_RPC_URLS.map((url) => http(url, { timeout: 10_000, retryCount: 2 })),
+        { rank: false }
+      ),
+    });
+  }
+  return _basePublicClient;
+}
 
 export function useActiveAccount() {
   const { user, ready, authenticated, login, logout } = usePrivy();
   const { wallets } = useWallets();
   const { client } = useSmartWallets();
 
-  // Find smart wallet account if available in linkedAccounts
   const smartAccount = user?.linkedAccounts?.find(
     (acc: any) => acc.type === "smart_wallet"
   ) as any;
 
-  // Find embedded or linked wallet account in linkedAccounts
   const linkedWallet = user?.linkedAccounts?.find(
     (acc: any) => acc.type === "wallet"
   ) as any;
@@ -26,9 +39,7 @@ export function useActiveAccount() {
   const smartAccountAddress = (client?.account?.address || smartAccount?.address || null) as `0x${string}` | null;
   const eoaAddress = (user?.wallet?.address || wallets?.[0]?.address || linkedWallet?.address || null) as `0x${string}` | null;
 
-  // Active address priority: Smart Account first (1-click batched txs & gas sponsorship), then EOA fallback
   const address = (smartAccountAddress || eoaAddress || null) as `0x${string}` | null;
-
   const primaryWallet = wallets?.[0] || null;
 
   const [isPaymasterApproved, setIsPaymasterApproved] = useState(false);
@@ -42,7 +53,7 @@ export function useActiveAccount() {
     let active = true;
     (async () => {
       try {
-        const publicClient = getPublicClient();
+        const publicClient = getBasePublicClient();
         const allowance = (await publicClient.readContract({
           address: CONTRACTS.USDC,
           abi: ERC20_ABI,
@@ -63,8 +74,6 @@ export function useActiveAccount() {
     };
   }, [smartAccountAddress]);
 
-  // Wrap smartClient to ensure Pimlico ERC-20 paymaster has sufficient USDC allowance
-  // This prevents `AA50 postOp reverted: TRANSFER_FROM_FAILED` when paying gas in USDC
   const wrappedClient = useMemo(() => {
     if (!client) return null;
 
@@ -81,7 +90,6 @@ export function useActiveAccount() {
               });
             }
 
-            // Check if approval for Pimlico ERC-20 paymaster is already in the batch
             const hasPaymasterApproval = rawCalls.some((c: any) => {
               if (!c?.to || c.to.toLowerCase() !== CONTRACTS.USDC.toLowerCase()) return false;
               const data = (c?.data || "").toLowerCase();
@@ -91,7 +99,6 @@ export function useActiveAccount() {
               );
             });
 
-            // If not already approved on-chain and not in current batch, prepend approval
             if (!isPaymasterApproved && !hasPaymasterApproval) {
               const approveCall = {
                 to: CONTRACTS.USDC as `0x${string}`,

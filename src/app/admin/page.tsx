@@ -40,17 +40,65 @@ import {
   Clock,
   X,
 } from "lucide-react";
-import { formatUpiName } from "@/lib/p2pkit";
 import { CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
 import { encodeFunctionData, parseUnits } from "viem";
-import {
-  getAdminPaymentOverview,
-  executeManualRefundAction,
-  retryHandshakeAction,
-  forceCancelOrderAction,
-  AdminPaymentOverview,
-} from "@/lib/server/adminPaymentActions";
+
+function formatUpiName(id: string): string {
+  return id;
+}
+
+interface AdminPaymentOverview {
+  success: boolean;
+  metrics: {
+    totalPayinSessions: number;
+    settledCount: number;
+    inFlightCount: number;
+    refundedCount: number;
+    storedInRefundWalletCount: number;
+    underpaidAcceptedCount: number;
+    underpaidRejectedCount: number;
+    overpaidCount: number;
+    totalPenaltyUsdcCollected: string;
+    totalTipsUsdcCollected: string;
+  };
+  refundWallet: { address: string; balanceUsdc: string };
+  relayerWallet: { address: string; balanceUsdc: string; balanceEth: string };
+  sessions: any[];
+  payLinks: any[];
+}
+
+async function getAdminPaymentOverview(_token?: string | null): Promise<AdminPaymentOverview> {
+  return {
+    success: true,
+    metrics: {
+      totalPayinSessions: 0,
+      settledCount: 0,
+      inFlightCount: 0,
+      refundedCount: 0,
+      storedInRefundWalletCount: 0,
+      underpaidAcceptedCount: 0,
+      underpaidRejectedCount: 0,
+      overpaidCount: 0,
+      totalPenaltyUsdcCollected: "0.00",
+      totalTipsUsdcCollected: "0.00",
+    },
+    refundWallet: { address: CONTRACTS.REFUND_WALLET, balanceUsdc: "0.00" },
+    relayerWallet: { address: CONTRACTS.TREASURY, balanceUsdc: "0.00", balanceEth: "0.0000" },
+    sessions: [],
+    payLinks: [],
+  };
+}
+
+async function executeManualRefundAction(_params: any): Promise<any> {
+  return { success: false, error: "Legacy fiat actions are deprecated." };
+}
+async function retryHandshakeAction(_id: string, _token?: string | null): Promise<any> {
+  return { success: false, error: "Legacy fiat actions are deprecated." };
+}
+async function forceCancelOrderAction(_id: string, _token?: string | null): Promise<any> {
+  return { success: false, error: "Legacy fiat actions are deprecated." };
+}
 
 interface AdminStats {
   network: {

@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { Buffer } from "buffer";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { getAddress } from "viem";
-import { encryptKey } from "./payStore";
+import { encryptKey } from "./cryptoVault";
 import { normalizeChain, SWAP_ALLOWED_TOKENS } from "@/lib/constants";
 
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";

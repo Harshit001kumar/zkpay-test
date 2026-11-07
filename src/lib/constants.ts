@@ -3,13 +3,13 @@ const USDC = process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32
 const TREASURY = process.env.NEXT_PUBLIC_TREASURY_ADDRESS || "0xb856b24fb054135deba5e0309edd31ed6a8afbe2";
 
 export const CONTRACTS = {
-  // The P2P Diamond — the core protocol contract
+  // Legacy reference kept for ABI compatibility
   DIAMOND: DIAMOND as `0x${string}`,
 
   // Native USDC on Base Mainnet
   USDC: USDC as `0x${string}`,
 
-  // ZkPay Treasury (receives 1% platform fee)
+  // ZkPay Treasury (receives platform swap fees)
   TREASURY: TREASURY as `0x${string}`,
 
   // ZkPay Refund Wallet (holds unclaimed user refunds)
@@ -17,26 +17,9 @@ export const CONTRACTS = {
     process.env.ZKPAY_REFUND_WALLET ||
     TREASURY) as `0x${string}`,
 
-  // Default Base Mainnet ERC-4626 Vault (Steakhouse Prime Instant USDC on Morpho Blue on Base)
-  EARN_VAULT: (process.env.NEXT_PUBLIC_EARN_VAULT_ADDRESS || "0xbeef0e0834849aCC03f0089F01f4F1Eeb06873C9") as `0x${string}`,
-
   // Pimlico ERC-20 Paymaster contracts on Base Mainnet
   PIMLICO_PAYMASTER_V6: "0x6666666666667849c56f2850848cE1C4da65c68b" as `0x${string}`,
   PIMLICO_PAYMASTER_V7: "0x777777777777AeC03fd955926DbF81597e66834C" as `0x${string}`,
-} as const;
-
-export const EARN_VAULT_CANDIDATES: `0x${string}`[] = [
-  "0xbeef0e0834849aCC03f0089F01f4F1Eeb06873C9",
-  "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183",
-];
-
-export const EARN_CONFIG = {
-  VAULT_ADDRESS: CONTRACTS.EARN_VAULT,
-  VAULT_NAME: "Steakhouse Prime Instant USDC",
-  VAULT_PROVIDER: "Steakhouse / Morpho Blue",
-  BENCHMARK_APY: "5.51",
-  // 10% platform performance fee on harvested yield (1000 bps)
-  PERFORMANCE_FEE_BPS: 1000,
 } as const;
 
 const INFURA_KEY =
@@ -71,38 +54,14 @@ export const CHAIN = {
   blockExplorer: "https://basescan.org",
 } as const;
 
-export const SUBGRAPH_URL =
-  process.env.NEXT_PUBLIC_SUBGRAPH_URL ||
-  "https://api.goldsky.com/api/public/project_cmq7kbyqt81p501xi7h0wdeuh/subgraphs/p2pme-subgraph/prod/gn";
-
-// Supported fiat currencies
-export const CURRENCIES = [
-  { symbol: "INR", flag: "🇮🇳", paymentMethod: "UPI" },
-  { symbol: "USD", flag: "🇺🇸", paymentMethod: "Bank Transfer" },
-  { symbol: "EUR", flag: "🇪🇺", paymentMethod: "SEPA" },
-  { symbol: "GBP", flag: "🇬🇧", paymentMethod: "Faster Payments" },
-] as const;
-
-// Platform fee (1% take rate on transactions)
+// Platform fee (1% default take rate on swaps, split 50/50 with partners)
 export const PLATFORM_FEE_BPS = 100; // 100 basis points = 1%
 
-// Standard minimum payment amount required to process offramp (in USDC)
-export const MIN_PAYMENT_USDC = 1.00;
-
-// Tolerance buffer (0.05 USDC) allowing amounts down to $0.95 without penalty
-export const PAYMENT_TOLERANCE_USDC = 0.05;
-
-// Absolute minimum processable threshold (1.00 - 0.05 = 0.95 USDC)
-export const MIN_PROCESSABLE_USDC = MIN_PAYMENT_USDC - PAYMENT_TOLERANCE_USDC;
-
-// Underpayment penalty fee deducted to ZkPay Treasury if deposit is < $0.95 (in USDC)
-export const UNDERPAID_PENALTY_USDC = 0.15;
-
-// Standard gas relay fee in USDC (deducted if transaction fails or is cancelled to reimburse relayer)
+// Standard gas relay fee in USDC
 export const RELAY_GAS_FEE_USDC = 0.05;
 
 export const APP_NAME = "ZkPay";
-export const APP_DESCRIPTION = "Crypto to Fiat - Scan and Pay";
+export const APP_DESCRIPTION = "Instant Cross-Chain Swap Engine & Developer API";
 
 // ─── SWAP API: Curated Token Allowlist ───
 // assetId values sourced from GET https://1click.chaindefuser.com/v0/tokens
@@ -134,7 +93,6 @@ export const SWAP_ALLOWED_TOKENS = [
   { symbol: "LTC", name: "Litecoin", assetId: "nep141:ltc.omft.near", blockchain: "ltc", decimals: 8 },
 ] as const;
 
-// Legacy alias — some existing code references DEPOSIT_ASSETS
 export const DEPOSIT_ASSETS = SWAP_ALLOWED_TOKENS;
 
 // Chains ZkPay officially supports for swaps
@@ -149,12 +107,7 @@ export const TARGET_ASSET = {
 };
 
 // ─── SWAP FEE RECIPIENT & DESTINATION FALLBACKS ───
-// In 1Click API (NEAR Intents), appFees settle internally on the intents.near ledger.
-// The recipient MUST be an EVM address (0x...) or a named NEAR account (*.near).
-// Native non-EVM addresses (BTC, LTC, SOL, TRON) MUST NOT be used as fee recipients,
-// because 1Click does NOT bridge fees to external blockchains per swap.
 export const DESTINATION_FALLBACK_ADDRESSES: Record<string, string> = {
-  // EVM chains (all use the same 0x address)
   eth: process.env.TREASURY_ETH || TREASURY,
   base: process.env.TREASURY_BASE || TREASURY,
   arb: process.env.TREASURY_ARB || TREASURY,
@@ -162,7 +115,6 @@ export const DESTINATION_FALLBACK_ADDRESSES: Record<string, string> = {
   polygon: process.env.TREASURY_POLYGON || TREASURY,
   pol: process.env.TREASURY_POLYGON || TREASURY,
   matic: process.env.TREASURY_POLYGON || TREASURY,
-  // Fallbacks used ONLY when previewing dry-run quotes without a destination address
   sol: process.env.TREASURY_SOL || "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
   btc: process.env.TREASURY_BTC || "bc1qg52t5l20hfhmk7nkwe62s4xt3qr2fedwqmu6up",
   tron: process.env.TREASURY_TRON || "TSsMeYZRBVp2oSocHbbZJJPSWLFKaAy28j",
@@ -170,20 +122,16 @@ export const DESTINATION_FALLBACK_ADDRESSES: Record<string, string> = {
   near: process.env.TREASURY_NEAR || "",
 };
 
-// Legacy alias
 export const TREASURY_ADDRESSES = DESTINATION_FALLBACK_ADDRESSES;
 
 /**
  * Extracts the blockchain identifier from a NEAR Intents assetId.
- * e.g. "nep141:sol.omft.near" -> "sol", "nep141:btc.omft.near" -> "btc"
  */
 export function resolveChainFromAssetId(assetId: string): string | null {
   if (!assetId) return null;
-  // Check curated allowlist first
   const match = SWAP_ALLOWED_TOKENS.find((t) => t.assetId === assetId);
   if (match) return match.blockchain;
 
-  // Fallback pattern matching on assetId prefixes/tags
   const lower = assetId.toLowerCase();
   if (lower.includes(":base")) return "base";
   if (lower.includes(":eth")) return "eth";
@@ -219,21 +167,12 @@ export function normalizeChain(chain?: string | null): string | undefined {
 // Chains routed directly with 0% platform fee to protect users from high L1 network gas
 export const ZERO_FEE_CHAINS = new Set(["eth", "ethereum", "btc", "bitcoin"]);
 
-/**
- * Checks whether a chain is configured for zero-fee direct routing (e.g. Ethereum L1, Bitcoin)
- * to avoid burdening the user with high L1 network gas fees.
- */
 export function isZeroFeeChain(chain?: string | null): boolean {
   if (!chain) return false;
   const c = normalizeChain(chain);
   return c ? ZERO_FEE_CHAINS.has(c) : false;
 }
 
-/**
- * Returns the fee recipient address for NEAR Intents appFees.
- * 1Click API credits fees to the recipient's internal account on intents.near.
- * Always returns an EVM (0x...) address or a configured NEAR (*.near) account.
- */
 export function getFeeRecipientAddress(): string {
   if (process.env.TREASURY_NEAR && process.env.TREASURY_NEAR.trim() !== "") {
     return process.env.TREASURY_NEAR.trim();
@@ -245,13 +184,6 @@ export function getFeeRecipientAddress(): string {
   );
 }
 
-/**
- * Resolves the treasury address for upfront fee collection based on the origin chain.
- * - Solana -> Solana Treasury
- * - Litecoin -> Litecoin Treasury
- * - Tron -> Tron Treasury
- * - EVMs (Base, Arbitrum, Polygon, BSC) -> Base/EVM Treasury
- */
 export function getTreasuryAddressForChain(chain?: string | null): string {
   if (!chain) return getFeeRecipientAddress();
   const c = normalizeChain(chain);
@@ -259,9 +191,6 @@ export function getTreasuryAddressForChain(chain?: string | null): string {
   return DESTINATION_FALLBACK_ADDRESSES[c] || getFeeRecipientAddress();
 }
 
-/**
- * Fallback destination address when testing dry quotes without a user recipient.
- */
 export function getFallbackDestinationAddress(chain?: string | null): string {
   if (!chain) return TREASURY;
   const c = normalizeChain(chain);
@@ -269,12 +198,5 @@ export function getFallbackDestinationAddress(chain?: string | null): string {
   return DESTINATION_FALLBACK_ADDRESSES[c] || TREASURY;
 }
 
-// Cross-chain deposit fee (1.75% = 175 bps — charged via NEAR Intents appFees)
-// Without an API key, 1Click adds 25 bps on top → 2.0% total for users
 export const DEPOSIT_FEE_BPS = 175;
-
-// Fee recipient for NEAR Intents appFees (defaults to Treasury EVM address)
 export const DEPOSIT_FEE_RECIPIENT = process.env.NEXT_PUBLIC_DEPOSIT_FEE_RECIPIENT || TREASURY;
-
-
-
