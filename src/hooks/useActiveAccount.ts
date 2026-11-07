@@ -5,7 +5,7 @@ import { createPublicClient, fallback, http } from "viem";
 import { base } from "viem/chains";
 import { BASE_RPC_URLS } from "@/lib/constants";
 
-let _basePublicClient: ReturnType<typeof createPublicClient> | null = null;
+let _basePublicClient: any = null;
 
 export function getBasePublicClient() {
   if (!_basePublicClient) {
