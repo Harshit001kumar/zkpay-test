@@ -11,7 +11,7 @@ interface BottomNavProps {
 }
 
 const itemBase =
-  "flex flex-col items-center justify-center gap-1 min-h-[52px] rounded-xl transition-colors cursor-pointer active:scale-95";
+  "flex flex-col items-center justify-center gap-1 min-h-[52px] rounded-xl transition-colors cursor-pointer active:scale-95 focus-visible:ring-2 focus-visible:ring-secondary focus-visible:outline-none disabled:opacity-50 disabled:cursor-not-allowed";
 
 function Indicator({ active }: { active: boolean }) {
   return (
@@ -31,7 +31,7 @@ export default function BottomNav({ activeTab, setActiveTab }: BottomNavProps) {
           type="button"
           onClick={() => setActiveTab("swap")}
           aria-current={activeTab === "swap" ? "page" : undefined}
-          className={`relative ${itemBase} ${activeTab === "swap" ? "text-on-surface" : "text-on-surface-variant"}`}
+          className={`relative ${itemBase} ${activeTab === "swap" ? "text-on-surface font-semibold" : "text-on-surface-variant"}`}
         >
           <Indicator active={activeTab === "swap"} />
           <ArrowRightLeft className="w-5 h-5" />
@@ -54,7 +54,7 @@ export default function BottomNav({ activeTab, setActiveTab }: BottomNavProps) {
           type="button"
           onClick={() => setActiveTab("profile")}
           aria-current={activeTab === "profile" ? "page" : undefined}
-          className={`relative ${itemBase} ${activeTab === "profile" ? "text-on-surface" : "text-on-surface-variant"}`}
+          className={`relative ${itemBase} ${activeTab === "profile" ? "text-on-surface font-semibold" : "text-on-surface-variant"}`}
         >
           <Indicator active={activeTab === "profile"} />
           <User className="w-5 h-5" />

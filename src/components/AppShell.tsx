@@ -30,32 +30,44 @@ export default function AppShell() {
   }
 
   const navItem = (active: boolean) =>
-    `h-9 px-3.5 rounded-lg text-sm font-medium inline-flex items-center transition-colors cursor-pointer ${
-      active ? "bg-surface-container-high text-on-surface" : "text-on-surface-variant hover:text-on-surface"
+    `h-8 px-3.5 rounded-full text-xs font-semibold inline-flex items-center transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${
+      active
+        ? "bg-surface-container text-on-surface"
+        : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low"
     }`;
 
   return (
-    <div className="relative min-h-[100dvh] flex flex-col bg-surface text-on-surface overflow-x-hidden">
+    <div className="relative min-h-[100dvh] flex flex-col bg-surface text-on-surface overflow-x-hidden selection:bg-secondary selection:text-on-secondary">
+      {/* 3D Multi-Chain Spatial Universe Background */}
       <SpatialMultiChain3D />
-      {/* Sticky Top Header */}
-      <header className="sticky top-0 z-40 w-full bg-surface/85 border-b border-outline-variant backdrop-blur-xl">
-        <div className="max-w-6xl mx-auto h-14 sm:h-16 px-4 sm:px-6 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-6">
+
+      {/* Floating Island Glass Header */}
+      <header className="fixed top-3 sm:top-5 inset-x-0 z-50 px-3 sm:px-6 pointer-events-none">
+        <div className="max-w-5xl mx-auto h-14 sm:h-16 px-4 sm:px-6 rounded-full bg-surface-container-low/85 backdrop-blur-2xl border border-outline-variant shadow-elevated flex items-center justify-between gap-3 pointer-events-auto">
+          <div className="flex items-center gap-4 sm:gap-6">
             <button
               type="button"
               onClick={() => setActiveTab("swap")}
-              className="flex items-center gap-2 h-10 cursor-pointer active:scale-[0.98] transition-transform"
+              className="flex items-center gap-2.5 h-10 active:scale-95 transition-transform cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none rounded-lg"
               aria-label="ZkPay home"
             >
-              <span className="w-7 h-7 rounded-lg bg-on-surface text-surface flex items-center justify-center font-bold text-sm">
+              <span className="w-8 h-8 rounded-xl bg-primary text-on-primary flex items-center justify-center font-extrabold text-sm">
                 Z
               </span>
-              <span className="font-semibold text-base tracking-tight text-on-surface">ZkPay</span>
+              <span className="font-bold text-base tracking-tight text-on-surface">ZkPay</span>
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-secondary/10 border border-secondary/30 text-[10px] text-secondary font-bold">
+                <span className="w-1.5 h-1.5 rounded-full bg-secondary motion-safe:animate-pulse" />
+                <span>9 chains</span>
+              </span>
             </button>
 
-            {/* Desktop Navigation */}
+            {/* Desktop Navigation Tabs */}
             <nav aria-label="Primary" className="hidden md:flex items-center gap-1">
-              <button type="button" onClick={() => setActiveTab("swap")} className={navItem(activeTab === "swap")}>
+              <button
+                type="button"
+                onClick={() => setActiveTab("swap")}
+                className={navItem(activeTab === "swap")}
+              >
                 Swap
               </button>
               <Link href="/partner" className={navItem(false)}>
@@ -64,7 +76,11 @@ export default function AppShell() {
               <Link href="/docs" className={navItem(false)}>
                 Docs
               </Link>
-              <button type="button" onClick={() => setActiveTab("profile")} className={navItem(activeTab === "profile")}>
+              <button
+                type="button"
+                onClick={() => setActiveTab("profile")}
+                className={navItem(activeTab === "profile")}
+              >
                 Account
               </button>
             </nav>
@@ -74,8 +90,8 @@ export default function AppShell() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 w-full max-w-6xl mx-auto px-3 sm:px-6 pt-4 sm:pt-6 pb-safe-nav md:pb-12">
+      {/* Main Content Workspace */}
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 pt-24 sm:pt-28 pb-safe-nav md:pb-16 relative z-10">
         {activeTab === "swap" && <Dashboard />}
         {activeTab === "profile" && <Profile onBack={() => setActiveTab("swap")} />}
       </main>
