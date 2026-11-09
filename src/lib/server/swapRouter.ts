@@ -52,9 +52,11 @@ export const MAX_CUSTOM_FEE_BPS = 450;            // 4.50% max custom fee (leave
 // Covers relayer-sponsored gas. Always goes 100% to the ZkPay treasury (never split with partners).
 export const FIXED_STABLE_FEE_CENTS = 5n; // 0.05 = 5 cents
 
-// The solver is quoted this much BELOW the real net amount. Because the quote is FLEX_INPUT,
-// the solver swaps 100% of what actually arrives, so a slightly larger deposit never fails or refunds.
-export const FLEX_INPUT_BUFFER_BPS = 100; // 1%
+// The solver is quoted this much BELOW the real net amount on wet-run orders. Because the quote is FLEX_INPUT,
+// the solver swaps 100% of what actually arrives. A 3.5% buffer (350 bps) allows the user to deposit
+// 2-3% less (and absorbs miner fees, gas reserves, and wallet send variances) without the solver
+// ever rejecting the deposit as INCOMPLETE_DEPOSIT.
+export const FLEX_INPUT_BUFFER_BPS = 350; // 3.5% (tolerates 2-3% deposit shortfall + miner fees)
 
 // Default EVM treasury address (used when origin chain isn't specified or is EVM)
 export const ZKPAY_TREASURY_ADDRESS =
@@ -751,7 +753,7 @@ export async function getSwapQuote(params: SwapQuoteParams) {
     depositType: "ORIGIN_CHAIN",
     destinationAsset: destinationAssetId,
     recipientType: "DESTINATION_CHAIN",
-    amount: fees.solverQuoteAmount.toString(), // Quoted 1% below net; FLEX_INPUT swaps the full forwarded amount
+    amount: netSwapAmount, // Dry-run displays real output estimate for 100% net deposit
     recipient: effectiveRecipient,
     refundTo: effectiveRefundTo,
     refundType: "ORIGIN_CHAIN",
@@ -916,7 +918,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
     depositType: "ORIGIN_CHAIN",
     destinationAsset: destinationAssetId,
     recipientType: "DESTINATION_CHAIN",
-    amount: fees.solverQuoteAmount.toString(), // Quoted 1% below net; FLEX_INPUT swaps the full forwarded amount
+    amount: fees.solverQuoteAmount.toString(), // Wet run quoted with 3.5% buffer so shortfalls/miner fees never trigger INCOMPLETE_DEPOSIT
     recipient: recipient.trim(),
     refundTo: effectiveRefundTo,
     refundType: "ORIGIN_CHAIN",
