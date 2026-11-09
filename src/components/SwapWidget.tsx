@@ -295,7 +295,7 @@ export default function SwapWidget({ compact = false, onSwapCreated }: SwapWidge
 
       const depAddress = order.deposit?.address || order.quote?.depositAddress || "";
       saveTransaction({
-        hash: depAddress || order.orderId,
+        hash: depAddress || order.orderId || order.swapId || `swap_${Date.now()}`,
         type: "swap",
         title: `Swap ${fromToken.symbol} → ${toToken.symbol}`,
         fromAsset: fromToken.symbol,

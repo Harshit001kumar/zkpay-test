@@ -1,7 +1,8 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { ArrowLeft, Shield, Lock, EyeOff, Server, CheckCircle2 } from "lucide-react";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Privacy Policy | ZkPay",
   description: "Privacy Policy for ZkPay - Non-custodial, Zero-Knowledge Cross-Chain Swap & B2B API Interface.",
 };

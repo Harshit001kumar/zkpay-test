@@ -34,7 +34,7 @@ type TabType = "receive" | "send";
 export default function WalletAddressPage() {
   const params = useParams();
   const router = useRouter();
-  const rawAddressParam = params?.address as string | undefined;
+  const rawAddressParam = typeof params?.address === "string" ? params.address : Array.isArray(params?.address) ? params.address[0] : undefined;
 
   const { address, smartClient, primaryWallet: connectedWallet } = useActiveAccount();
   const connectedAddress = (address || undefined) as `0x${string}` | undefined;

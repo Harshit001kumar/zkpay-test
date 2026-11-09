@@ -1,7 +1,8 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { ArrowLeft, Scale, AlertTriangle, Coins, RefreshCw, CheckCircle2 } from "lucide-react";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Terms of Service | ZkPay",
   description: "Terms of Service for ZkPay - Decentralized, Non-Custodial Cross-Chain Swap & B2B API Interface.",
 };

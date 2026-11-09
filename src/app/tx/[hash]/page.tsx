@@ -21,7 +21,8 @@ function chainName(id: string): string {
 export default function SwapReceiptPage() {
   const params = useParams();
   const router = useRouter();
-  const rawHash = decodeURIComponent((params.hash as string) || "");
+  const rawHashParam = typeof params?.hash === "string" ? params.hash : Array.isArray(params?.hash) ? params.hash[0] : "";
+  const rawHash = decodeURIComponent(rawHashParam || "");
   const [tx, setTx] = useState<TransactionRecord | null>(null);
   const [liveStatus, setLiveStatus] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);

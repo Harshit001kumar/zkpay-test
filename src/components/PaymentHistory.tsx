@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { getTransactions, TransactionRecord, timeAgo } from "@/lib/history";
 import { ArrowRightLeft, ChevronRight } from "lucide-react";
 
-function StatusDot({ status }: { status: string }) {
-  const settled = status === "settled";
-  const failed = status === "failed";
+function StatusDot({ status }: { status?: string | null }) {
+  const s = status || "pending";
+  const settled = s === "settled";
+  const failed = s === "failed";
   return (
     <span
       className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${
@@ -83,7 +84,7 @@ export default function PaymentHistory() {
                     </span>
                   ) : (
                     <span className="block font-mono text-sm text-on-surface tabular-nums">
-                      ${tx.amountUSDC?.toFixed(2)}
+                      ${typeof tx.amountUSDC === "number" ? tx.amountUSDC.toFixed(2) : "0.00"}
                     </span>
                   )}
                   {tx.amountOut && tx.toAsset && (
