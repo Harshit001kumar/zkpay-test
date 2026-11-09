@@ -11,6 +11,7 @@ import { floorTo2Decimals } from "@/lib/format";
 import { ArrowUpRight, Copy, Check, ChevronRight } from "lucide-react";
 import SwapWidget from "./SwapWidget";
 import PaymentHistory from "./PaymentHistory";
+import { Tilt3DMonolith, DepthLayer } from "@/components/ui/Tilt3DMonolith";
 
 export default function Dashboard() {
   const { address } = useActiveAccount();
@@ -66,7 +67,9 @@ export default function Dashboard() {
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-start">
       {/* Main column: swap + history (mobile order: swap → history → side cards) */}
       <div className="lg:col-span-7 space-y-4 lg:space-y-6 max-w-xl w-full mx-auto lg:max-w-none">
-        <SwapWidget onSwapCreated={() => setHistoryRefreshKey((k) => k + 1)} />
+        <Tilt3DMonolith maxTilt={6} className="w-full">
+          <SwapWidget onSwapCreated={() => setHistoryRefreshKey((k) => k + 1)} />
+        </Tilt3DMonolith>
 
         <section aria-labelledby="recent-swaps" className="space-y-3">
           <h2 id="recent-swaps" className="px-1 text-sm font-semibold text-on-surface">

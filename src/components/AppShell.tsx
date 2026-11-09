@@ -8,6 +8,7 @@ import LandingPage from "./LandingPage";
 import Dashboard from "./Dashboard";
 import BottomNav from "./BottomNav";
 import Profile from "./Profile";
+import { QuantumMesh3D } from "@/components/ui/QuantumMesh3D";
 
 export type NavTab = "swap" | "profile";
 
@@ -34,7 +35,8 @@ export default function AppShell() {
     }`;
 
   return (
-    <div className="min-h-[100dvh] flex flex-col bg-surface text-on-surface overflow-x-hidden">
+    <div className="relative min-h-[100dvh] flex flex-col bg-surface text-on-surface overflow-x-hidden">
+      <QuantumMesh3D />
       {/* Sticky Top Header */}
       <header className="sticky top-0 z-40 w-full bg-surface/85 border-b border-outline-variant backdrop-blur-xl">
         <div className="max-w-6xl mx-auto h-14 sm:h-16 px-4 sm:px-6 flex items-center justify-between gap-3">
