@@ -21,7 +21,7 @@ const Providers = nextDynamic(() => import("@/components/Providers"), { ssr: fal
 export const dynamic = "force-dynamic";
 
 export const viewport: Viewport = {
-  themeColor: "#090A0E",
+  themeColor: "#050608",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
