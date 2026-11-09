@@ -255,11 +255,18 @@ export async function sweepLtcDeposit(params: {
     );
   }
 
-  // Dynamically import bitcoinjs-lib and ecpair
+  // Dynamically import bitcoinjs-lib, ecpair, and pureSecp256k1
   const bitcoin = await import("bitcoinjs-lib");
   const { ECPairFactory } = await import("ecpair");
-  const ecc = await import("tiny-secp256k1");
-  const ECPair = ECPairFactory(ecc);
+  const { pureSecp256k1 } = await import("./pureSecp256k1");
+
+  try {
+    if (typeof (bitcoin as any).initEccLib === "function") {
+      (bitcoin as any).initEccLib(pureSecp256k1);
+    }
+  } catch {}
+
+  const ECPair = ECPairFactory(pureSecp256k1 as any);
 
   const cleanHex = privKeyHex.replace(/^0x/, "");
   const keyPair = ECPair.fromPrivateKey(Buffer.from(cleanHex, "hex"), { network: LITECOIN_NETWORK });
@@ -347,7 +354,7 @@ export async function sweepLtcDeposit(params: {
   for (let i = 0; i < utxos.length; i++) {
     psbt.signInput(i, keyPair);
     psbt.validateSignaturesOfInput(i, (pubkey, msghash, signature) =>
-      ecc.verify(msghash, pubkey, signature)
+      pureSecp256k1.verify(msghash, pubkey, signature)
     );
   }
 

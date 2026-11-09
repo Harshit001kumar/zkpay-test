@@ -1700,6 +1700,7 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     await updateProxySwapOrder(order.swapId, {
       status: "PENDING_DEPOSIT",
       error: `LTC sweep error: ${err?.message || err}`,
+      lastAttemptAt: Date.now(),
     }).catch(() => {});
   }
 
@@ -2005,11 +2006,17 @@ export async function recoverProxyDeposit(
   const lockKey = `${normChain}:${order.proxyDepositAddress.toLowerCase()}`;
 
   if (sweepLocks.has(lockKey)) {
-    return {
-      success: false,
-      message: `A sweep or recovery operation is already actively processing for proxy address ${order.proxyDepositAddress}. Please wait a few seconds and try again.`,
-      order,
-    };
+    // Wait up to 3 seconds if an active background check is finishing
+    for (let waitIdx = 0; waitIdx < 15; waitIdx++) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      if (!sweepLocks.has(lockKey)) break;
+    }
+  }
+
+  // If still locked (stale or stuck background check), override lock for manual admin recovery
+  if (sweepLocks.has(lockKey)) {
+    console.warn(`[ProxyRecovery] Overriding active/stale sweep lock for ${lockKey} to allow recovery.`);
+    sweepLocks.delete(lockKey);
   }
 
   sweepLocks.add(lockKey);

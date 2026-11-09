@@ -72,14 +72,14 @@ export const SWAP_ALLOWED_TOKENS = [
   // ── ETH ──
   { symbol: "ETH", name: "Ethereum", assetId: "nep141:eth.omft.near", blockchain: "eth", decimals: 18 },
   { symbol: "ETH", name: "Ethereum (Base)", assetId: "nep141:base.omft.near", blockchain: "base", decimals: 18 },
-  { symbol: "ETH", name: "Ethereum (Arbitrum)", assetId: "nep141:arb.omft.near", blockchain: "arb", decimals: 18 },
+  // { symbol: "ETH", name: "Ethereum (Arbitrum)", assetId: "nep141:arb.omft.near", blockchain: "arb", decimals: 18 }, // TEMPORARILY DISABLED (Relayer out of gas on Arb)
   // ── SOL ──
   { symbol: "SOL", name: "Solana", assetId: "nep141:sol.omft.near", blockchain: "sol", decimals: 9 },
   // ── Stablecoins: USDC ──
   { symbol: "USDC", name: "USDC (Base)", assetId: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near", blockchain: "base", decimals: 6 },
   { symbol: "USDC", name: "USDC (Ethereum)", assetId: "nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near", blockchain: "eth", decimals: 6 },
   { symbol: "USDC", name: "USDC (Solana)", assetId: "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near", blockchain: "sol", decimals: 6 },
-  { symbol: "USDC", name: "USDC (Arbitrum)", assetId: "nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near", blockchain: "arb", decimals: 6 },
+  // { symbol: "USDC", name: "USDC (Arbitrum)", assetId: "nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near", blockchain: "arb", decimals: 6 }, // TEMPORARILY DISABLED (Relayer out of gas on Arb)
   { symbol: "USDC", name: "USDC (Polygon)", assetId: "nep245:v2_1.omni.hot.tg:137_qiStmoQJDQPTebaPjgx5VBxZv6L", blockchain: "polygon", decimals: 6 },
   // ── Stablecoins: USDT ──
   { symbol: "USDT", name: "Tether (Ethereum)", assetId: "nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near", blockchain: "eth", decimals: 6 },
@@ -88,15 +88,16 @@ export const SWAP_ALLOWED_TOKENS = [
   { symbol: "USDT", name: "Tether (Polygon)", assetId: "nep245:v2_1.omni.hot.tg:137_3hpYoaLtt8MP1Z2GH1U473DMRKgr", blockchain: "polygon", decimals: 6 },
   // ── Other majors ──
   { symbol: "BNB", name: "BNB (BSC)", assetId: "nep245:v2_1.omni.hot.tg:56_11111111111111111111", blockchain: "bsc", decimals: 18 },
-  { symbol: "ARB", name: "Arbitrum", assetId: "nep141:arb-0x912ce59144191c1204e64559fe8253a0e49e6548.omft.near", blockchain: "arb", decimals: 18 },
+  // { symbol: "ARB", name: "Arbitrum", assetId: "nep141:arb-0x912ce59144191c1204e64559fe8253a0e49e6548.omft.near", blockchain: "arb", decimals: 18 }, // TEMPORARILY DISABLED (Relayer out of gas on Arb)
   { symbol: "TRX", name: "Tron", assetId: "nep141:tron.omft.near", blockchain: "tron", decimals: 6 },
   { symbol: "LTC", name: "Litecoin", assetId: "nep141:ltc.omft.near", blockchain: "ltc", decimals: 8 },
 ] as const;
 
 export const DEPOSIT_ASSETS = SWAP_ALLOWED_TOKENS;
 
-// Chains ZkPay officially supports for swaps
-export const SWAP_ALLOWED_CHAINS = new Set(["btc", "eth", "base", "sol", "arb", "bsc", "tron", "ltc", "polygon"]);
+// Chains ZkPay officially supports for swaps ("arb" temporarily disabled while relayer gas is replenished)
+export const SWAP_ALLOWED_CHAINS = new Set(["btc", "eth", "base", "sol", "bsc", "tron", "ltc", "polygon"]);
+export const TEMPORARILY_DISABLED_CHAINS = new Set(["arb", "arbitrum"]);
 
 // Base USDC — default destination asset when toAsset is omitted
 export const TARGET_ASSET = {

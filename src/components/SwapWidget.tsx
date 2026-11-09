@@ -677,7 +677,7 @@ export default function SwapWidget({ compact = false, onSwapCreated }: SwapWidge
 
             {/* Chain filter pills */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-              {["all", "base", "sol", "eth", "btc", "polygon", "arb", "bsc", "tron", "ltc"].map((c) => (
+              {["all", "base", "sol", "eth", "btc", "polygon", "bsc", "tron", "ltc"].map((c) => (
                 <button
                   key={c}
                   type="button"

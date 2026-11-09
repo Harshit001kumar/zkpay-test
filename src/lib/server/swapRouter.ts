@@ -16,6 +16,7 @@
 import {
   SWAP_ALLOWED_TOKENS,
   SWAP_ALLOWED_CHAINS,
+  TEMPORARILY_DISABLED_CHAINS,
   TARGET_ASSET,
   CONTRACTS,
   DESTINATION_FALLBACK_ADDRESSES,
@@ -712,6 +713,15 @@ export async function getSwapQuote(params: SwapQuoteParams) {
   const resolvedOriginChain = params.originChain || params.chain || resolveChainFromAssetId(originAssetId) || "base";
   const resolvedDestChain = params.destinationChain || resolveChainFromAssetId(destinationAssetId) || "base";
 
+  if (TEMPORARILY_DISABLED_CHAINS.has(resolvedOriginChain) || TEMPORARILY_DISABLED_CHAINS.has(resolvedDestChain)) {
+    const err: any = new Error(
+      "Arbitrum (arb) swaps are temporarily disabled while relayer gas is replenished. Please select Base, Polygon, Solana, BSC, or Ethereum."
+    );
+    err.code = "CHAIN_TEMPORARILY_DISABLED";
+    err.statusCode = 503;
+    throw err;
+  }
+
   // Validate atomic units and minimum volume threshold
   validateSwapAmount(amount, originAssetId);
 
@@ -872,6 +882,15 @@ export async function createSwapOrder(params: CreateSwapParams) {
   // Resolve chains for origin (fee routing) and destination (settlement)
   const resolvedOriginChain = params.originChain || params.chain || resolveChainFromAssetId(originAssetId) || "base";
   const resolvedDestChain = params.destinationChain || resolveChainFromAssetId(destinationAssetId) || "base";
+
+  if (TEMPORARILY_DISABLED_CHAINS.has(resolvedOriginChain) || TEMPORARILY_DISABLED_CHAINS.has(resolvedDestChain)) {
+    const err: any = new Error(
+      "Arbitrum (arb) swaps are temporarily disabled while relayer gas is replenished. Please select Base, Polygon, Solana, BSC, or Ethereum."
+    );
+    err.code = "CHAIN_TEMPORARILY_DISABLED";
+    err.statusCode = 503;
+    throw err;
+  }
 
   // Validate atomic units and minimum volume threshold
   validateSwapAmount(amount, originAssetId);

@@ -187,9 +187,12 @@ export function isProxySupportedChain(chain?: string | null, fromAsset?: string 
   }
 
   // 5. Arbitrum: Native ETH, USDC, USDT
+  // TEMPORARILY DISABLED: Relayer wallet does not have ETH for gas on Arbitrum
+  /*
   if (c === "arb") {
     return true;
   }
+  */
 
   // 6. BSC: Native BNB, USDT, USDC
   if (c === "bsc") {
