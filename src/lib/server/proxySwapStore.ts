@@ -43,6 +43,7 @@ export interface ProxySwapOrder {
   feeCreditedAt?: number; // Timestamp of fee crediting
   partnerFeeUsd?: number; // USD value credited to partner
   source?: "api" | "app" | "checkout";
+  swapType?: "FLEX_INPUT";
   createdAt: number;
   expiresAt: number;
 }

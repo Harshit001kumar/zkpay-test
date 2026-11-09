@@ -3,18 +3,20 @@
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { getTransactionByHash, TransactionRecord, updateTransactionStatus } from "@/lib/history";
+import { CHAIN_METADATA, SupportedChainId } from "@/lib/types";
 import {
   ArrowLeft,
   ExternalLink,
   Copy,
   Check,
-  Share2,
-  ShieldCheck,
   CheckCircle2,
   Clock,
-  ArrowRight,
-  RefreshCw,
+  AlertCircle,
 } from "lucide-react";
+
+function chainName(id: string): string {
+  return CHAIN_METADATA[id.toLowerCase() as SupportedChainId]?.name || id.toUpperCase();
+}
 
 export default function SwapReceiptPage() {
   const params = useParams();
@@ -74,10 +76,10 @@ export default function SwapReceiptPage() {
 
   if (loading && !tx && !liveStatus) {
     return (
-      <main className="min-h-screen bg-surface text-on-surface flex items-center justify-center p-6">
+      <main className="min-h-[100dvh] bg-surface text-on-surface flex items-center justify-center p-6">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-7 h-7 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs text-on-surface-variant font-mono">Loading swap receipt…</span>
+          <div className="w-6 h-6 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-on-surface-variant">Loading receipt…</span>
         </div>
       </main>
     );
@@ -85,107 +87,111 @@ export default function SwapReceiptPage() {
 
   const statusStr = (liveStatus?.status || tx?.status || "pending").toLowerCase();
   const isSettled = statusStr === "settled" || statusStr === "success" || statusStr === "completed";
+  const isFailed = statusStr === "failed" || statusStr === "refunded" || statusStr === "expired";
   const fromAsset = tx?.fromAsset || liveStatus?.fromAsset || "Token";
   const toAsset = tx?.toAsset || liveStatus?.toAsset || "USDC";
-  const fromChain = (tx?.fromChain || liveStatus?.chain || "origin").toUpperCase();
-  const toChain = (tx?.toChain || liveStatus?.destinationChain || "base").toUpperCase();
+  const fromChain = tx?.fromChain || liveStatus?.chain || "origin";
+  const toChain = tx?.toChain || liveStatus?.destinationChain || "base";
   const amountIn = tx?.amountIn || liveStatus?.swapDetails?.amountInFormatted || "—";
   const amountOut = liveStatus?.swapDetails?.amountOutFormatted || tx?.amountOut || "—";
   const depositAddress = tx?.depositAddress || liveStatus?.depositAddress || rawHash;
   const recipient = tx?.recipient || liveStatus?.recipient || "—";
+  const destExplorer: string | null = liveStatus?.destinationExplorerUrl || null;
+  const destTxHash: string | null = liveStatus?.destinationTxHash || null;
+  const originTxHash: string | null = liveStatus?.originTxHash || null;
+
+  const statusLabel = isSettled ? "Complete" : isFailed ? (statusStr === "refunded" ? "Refunded" : "Failed") : "In progress";
+
+  const Row = ({ label, value, copyKey }: { label: string; value: string; copyKey?: string }) => (
+    <div className="flex items-center justify-between gap-3 min-h-[44px]">
+      <span className="text-sm text-on-surface-variant">{label}</span>
+      {copyKey ? (
+        <button
+          type="button"
+          onClick={() => copyToClipboard(value, copyKey)}
+          className="h-9 -mr-2 px-2 rounded-lg inline-flex items-center gap-1.5 font-mono text-sm text-on-surface hover:bg-surface-container-high transition-colors cursor-pointer"
+        >
+          <span>{value.length > 16 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value}</span>
+          {copiedKey === copyKey ? <Check className="w-3.5 h-3.5 text-secondary" /> : <Copy className="w-3.5 h-3.5 text-on-surface-variant" />}
+        </button>
+      ) : (
+        <span className="text-sm text-on-surface text-right">{value}</span>
+      )}
+    </div>
+  );
 
   return (
-    <main className="min-h-screen bg-surface text-on-surface px-4 py-8 sm:py-12">
-      <div className="max-w-lg mx-auto space-y-6">
+    <main className="min-h-[100dvh] bg-surface text-on-surface px-3 sm:px-4 py-4 sm:py-10 pb-safe">
+      <div className="max-w-lg mx-auto space-y-4">
         <button
           type="button"
           onClick={() => router.push("/")}
-          className="inline-flex items-center gap-2 text-xs font-semibold text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
+          className="h-10 -ml-2 px-2 rounded-xl inline-flex items-center gap-2 text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Back to Swap</span>
+          <span>Back</span>
         </button>
 
-        <div className="rounded-3xl bg-surface-container border border-outline-variant/20 p-6 sm:p-8 space-y-6">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-secondary/15 border border-secondary/30 flex items-center justify-center text-secondary">
-                {isSettled ? <CheckCircle2 className="w-5 h-5" /> : <Clock className="w-5 h-5 animate-pulse" />}
-              </div>
-              <div>
-                <h1 className="text-base font-bold text-on-surface">Cross-Chain Swap Receipt</h1>
-                <p className="text-xs text-on-surface-variant">
-                  {isSettled ? "Completed & Settled On-Chain" : `Status: ${statusStr.toUpperCase()}`}
-                </p>
-              </div>
-            </div>
-
-            <span
-              className={`px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${
-                isSettled
-                  ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                  : "bg-amber-500/15 text-amber-300 border border-amber-500/30"
+        <div className="rounded-2xl bg-surface-container border border-outline-variant p-5 sm:p-6 space-y-5">
+          {/* Status hero */}
+          <div className="flex flex-col items-center text-center gap-3 pt-2">
+            <div
+              className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                isSettled ? "bg-secondary/15 text-secondary" : isFailed ? "bg-error/15 text-error" : "bg-warning/15 text-warning"
               }`}
             >
-              {isSettled ? "Settled" : statusStr}
-            </span>
+              {isSettled ? <CheckCircle2 className="w-6 h-6" /> : isFailed ? <AlertCircle className="w-6 h-6" /> : <Clock className="w-6 h-6 animate-pulse" />}
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold text-on-surface">Swap {statusLabel.toLowerCase()}</h1>
+              <p className="text-sm text-on-surface-variant mt-0.5">
+                {isSettled
+                  ? `${toAsset} delivered on ${chainName(toChain)}`
+                  : isFailed
+                  ? "This swap did not complete"
+                  : "This page updates automatically"}
+              </p>
+            </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-surface-container-low border border-outline-variant/15 flex items-center justify-between gap-4">
-            <div>
-              <span className="text-[11px] text-on-surface-variant block">Sent ({fromChain})</span>
-              <span className="text-lg font-mono font-bold text-on-surface">
+          {/* Amounts */}
+          <div className="grid grid-cols-2 gap-px rounded-xl overflow-hidden bg-outline-variant border border-outline-variant">
+            <div className="bg-surface-container-low p-3.5 min-w-0">
+              <span className="text-xs text-on-surface-variant block">Sent</span>
+              <span className="font-mono text-base font-semibold text-on-surface block truncate tabular-nums">
                 {amountIn} {fromAsset}
               </span>
+              <span className="text-[11px] text-on-surface-variant">{chainName(fromChain)}</span>
             </div>
-            <ArrowRight className="w-5 h-5 text-on-surface-variant shrink-0" />
-            <div className="text-right">
-              <span className="text-[11px] text-on-surface-variant block">Received ({toChain})</span>
-              <span className="text-lg font-mono font-bold text-secondary">
+            <div className="bg-surface-container-low p-3.5 min-w-0">
+              <span className="text-xs text-on-surface-variant block">{isSettled ? "Received" : "Expected"}</span>
+              <span className="font-mono text-base font-semibold text-secondary block truncate tabular-nums">
                 {amountOut} {toAsset}
               </span>
+              <span className="text-[11px] text-on-surface-variant">{chainName(toChain)}</span>
             </div>
           </div>
 
-          <div className="space-y-3 text-xs border-t border-outline-variant/15 pt-4">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-on-surface-variant">Deposit Address</span>
-              <button
-                type="button"
-                onClick={() => copyToClipboard(depositAddress, "deposit")}
-                className="inline-flex items-center gap-1.5 font-mono text-on-surface hover:text-secondary transition-colors cursor-pointer"
-              >
-                <span>
-                  {depositAddress.slice(0, 8)}…{depositAddress.slice(-6)}
-                </span>
-                {copiedKey === "deposit" ? <Check className="w-3.5 h-3.5 text-secondary" /> : <Copy className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-
-            {recipient && recipient !== "—" && (
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-on-surface-variant">Recipient</span>
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(recipient, "recipient")}
-                  className="inline-flex items-center gap-1.5 font-mono text-on-surface hover:text-secondary transition-colors cursor-pointer"
-                >
-                  <span>
-                    {recipient.slice(0, 8)}…{recipient.slice(-6)}
-                  </span>
-                  {copiedKey === "recipient" ? <Check className="w-3.5 h-3.5 text-secondary" /> : <Copy className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-on-surface-variant">Execution Engine</span>
-              <span className="font-medium text-on-surface inline-flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-secondary" />
-                ZkPay Solver Network
-              </span>
-            </div>
+          {/* Details */}
+          <div className="divide-y divide-outline-variant">
+            <Row label="Status" value={statusLabel} />
+            <Row label="Deposit address" value={depositAddress} copyKey="deposit" />
+            {recipient && recipient !== "—" && <Row label="Recipient" value={recipient} copyKey="recipient" />}
+            {originTxHash && <Row label="Deposit tx" value={originTxHash} copyKey="origin" />}
+            {destTxHash && <Row label="Delivery tx" value={destTxHash} copyKey="dest" />}
           </div>
+
+          {destExplorer && (
+            <a
+              href={destExplorer}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="h-12 w-full rounded-xl bg-surface-container-high border border-outline-variant text-sm font-medium text-on-surface inline-flex items-center justify-center gap-2 hover:border-outline transition-colors"
+            >
+              <span>View on explorer</span>
+              <ExternalLink className="w-4 h-4" />
+            </a>
+          )}
         </div>
       </div>
     </main>

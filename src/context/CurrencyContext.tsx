@@ -8,7 +8,7 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
 export function useCurrency() {
   return {
     currency: "USD",
-    currencyMeta: { code: "USD", symbol: "$", name: "US Dollar", flag: "🇺🇸", rail: "Crypto" },
+    currencyMeta: { code: "USD", symbol: "$", name: "US Dollar", flag: "US", rail: "Crypto" },
     setCurrency: () => {},
     isSelectorOpen: false,
     setIsSelectorOpen: () => {},

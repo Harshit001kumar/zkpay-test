@@ -202,6 +202,42 @@ input[type=number] {
   animation: shimmer 2s ease-in-out infinite;
 }
 
+/* ─── Mobile Bottom Sheet ─── */
+@keyframes sheetUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes backdropIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-sheet-up {
+  animation: sheetUp 320ms var(--ease-out) both;
+}
+
+.animate-backdrop-in {
+  animation: backdropIn 200ms ease-out both;
+}
+
+/* ─── Safe-area helpers (iOS home indicator / Android gesture bar) ─── */
+.pb-safe {
+  padding-bottom: max(var(--space-xs), env(safe-area-inset-bottom));
+}
+
+.pb-safe-nav {
+  padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
 /* ─── Scanner Overlay ─── */
 .scanner-overlay {
   position: fixed;

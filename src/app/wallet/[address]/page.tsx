@@ -28,7 +28,6 @@ import {
   CheckCircle2,
   Share2
 } from "lucide-react";
-import { SpotlightCard } from "@/components/ui/SpotlightCard";
 
 type TabType = "receive" | "send";
 
@@ -216,8 +215,8 @@ export default function WalletAddressPage() {
       {/* Main Content Area */}
       <main className="max-w-2xl mx-auto px-5 py-8 md:py-12 space-y-6">
         
-        {/* Profile / Account Monolith Header */}
-        <SpotlightCard className="p-6 md:p-8 bg-surface-container-low border border-white/15 rounded-3xl shadow-elevated">
+        {/* Profile / Account Card */}
+        <div className="p-6 md:p-8 bg-surface-container border border-outline-variant rounded-2xl">
           <div className="flex items-center justify-between pb-5 border-b border-white/10 mb-6">
             <div className="flex items-center gap-3.5">
               <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/30 flex items-center justify-center text-primary">
@@ -479,7 +478,7 @@ export default function WalletAddressPage() {
             </form>
           )}
 
-        </SpotlightCard>
+        </div>
       </main>
     </div>
   );

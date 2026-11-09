@@ -38,7 +38,6 @@ import {
   Sliders,
   Lock,
 } from "lucide-react";
-import { Tilt3DMonolith, DepthLayer } from "@/components/ui/Tilt3DMonolith";
 
 interface ApiKeyItem {
   id: string;
@@ -803,65 +802,58 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
   return (
     <div className="text-on-surface font-sans selection:bg-primary/30 w-full pb-28">
       <main className="w-full max-w-2xl mx-auto space-y-6">
-        {/* 3D Identity Vault Monolith */}
-        <Tilt3DMonolith
-          maxTilt={8}
-          className="w-full"
-          innerClassName="p-6 sm:p-8 flex flex-col items-center text-center bg-gradient-to-br from-surface-container-low via-surface-container to-surface"
-        >
-          <DepthLayer z={24} className="mb-4">
-            <div className="w-20 h-20 rounded-2xl border border-primary/30 bg-surface-container flex items-center justify-center">
-              <UserCheck className="w-9 h-9 text-secondary" />
-            </div>
-          </DepthLayer>
+        {/* Identity Vault Card */}
+        <div className="w-full rounded-2xl border border-outline-variant bg-surface-container p-6 sm:p-8 flex flex-col items-center text-center">
+          <div className="w-16 h-16 rounded-2xl border border-outline-variant bg-surface-container-high flex items-center justify-center mb-3">
+            <UserCheck className="w-8 h-8 text-secondary" />
+          </div>
 
-          <DepthLayer z={28}>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-on-surface mb-1 tracking-tight">
-              {address ? "ZkPay Vault Signer" : "Guest Session"}
-            </h2>
-            <p className="text-xs font-semibold text-secondary mb-4">
-              {isSmartWallet ? "ERC-4337 smart account" : "Non-custodial signer"}
-            </p>
-          </DepthLayer>
+          <h2 className="text-xl sm:text-2xl font-semibold text-on-surface mb-1 tracking-tight">
+            {address ? "ZkPay Vault Signer" : "Guest Session"}
+          </h2>
+          <p className="text-xs text-secondary font-medium mb-4">
+            {isSmartWallet ? "ERC-4337 smart account" : "Non-custodial signer"}
+          </p>
 
-          <DepthLayer z={20} className="w-full flex flex-col items-center">
+          <div className="w-full flex flex-col items-center">
             <div
               onClick={() => {
                 if (address) router.push(`/wallet/${address}`);
                 else router.push("/wallet");
               }}
-              className="inline-flex items-center gap-3 bg-surface-container hover:bg-surface-container-high px-5 py-2.5 rounded-full border border-primary/30 hover:border-primary/60 mb-6 cursor-pointer transition-colors active:scale-95 group"
+              className="inline-flex items-center gap-3 bg-surface-container-low hover:bg-surface-container-high px-4 py-2 rounded-xl border border-outline-variant mb-5 cursor-pointer transition-colors active:scale-95 group"
               title="Open Base USDC deposit & wallet telemetry"
             >
               <span className="w-2 h-2 rounded-full bg-secondary" />
-              <span className="font-mono text-xs text-primary tabular-nums group-hover:text-on-surface transition-colors">
+              <span className="font-mono text-xs text-on-surface tabular-nums">
                 {shortAddress}
               </span>
               <button
+                type="button"
                 onClick={handleCopy}
-                className="hover:text-on-surface text-on-surface-variant transition-colors flex items-center justify-center p-1 rounded-md hover:bg-surface-container-low"
+                className="hover:text-on-surface text-on-surface-variant transition-colors flex items-center justify-center p-1 rounded-md"
                 title="Copy Address"
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-secondary" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 w-full pt-4 border-t border-primary/15">
-              <div className="p-3 rounded-xl bg-surface-container/90 border border-primary/25 flex items-center justify-between">
-                <span className="text-xs text-primary font-bold">
+            <div className="grid grid-cols-2 gap-2.5 w-full pt-4 border-t border-outline-variant">
+              <div className="p-3 rounded-xl bg-surface-container-low border border-outline-variant flex items-center justify-between">
+                <span className="text-xs text-on-surface font-medium">
                   Platinum tier
                 </span>
-                <Shield className="w-4 h-4 text-primary" />
+                <Shield className="w-4 h-4 text-secondary" />
               </div>
-              <div className="p-3 rounded-xl bg-surface-container/90 border border-secondary/25 flex items-center justify-between">
-                <span className="text-xs text-secondary font-bold">
+              <div className="p-3 rounded-xl bg-surface-container-low border border-outline-variant flex items-center justify-between">
+                <span className="text-xs text-on-surface font-medium">
                   Gasless paymaster
                 </span>
                 <Zap className="w-4 h-4 text-secondary" />
               </div>
             </div>
-          </DepthLayer>
-        </Tilt3DMonolith>
+          </div>
+        </div>
 
         {/* Refer & Earn & Monthly Cashback Module */}
         <section className="rounded-3xl p-6 sm:p-7 bg-surface-container-low border border-primary/25 shadow-elevated">
@@ -1022,7 +1014,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-mono text-xs text-secondary font-bold">
+                <span className="text-xs text-secondary font-bold">
                   USD Ledger
                 </span>
                 <ChevronRight className="w-4 h-4 text-on-surface-variant group-hover:translate-x-0.5 transition-transform" />

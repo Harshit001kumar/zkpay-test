@@ -174,7 +174,7 @@ If you provided a webhookUrl, you'll receive these events with HMAC SHA-256 sign
                 Cross-Chain <span className="text-primary">Swap API</span>
               </h1>
               <p className="text-sm md:text-base text-on-surface-variant max-w-2xl font-body-lg mb-8">
-                Power instant non-custodial token swaps across 9 blockchains inside your Telegram bot, Discord bot, wallet, or DApp — and earn an automated 50/50 USD revenue split on every settled swap.
+                Power instant non-custodial token swaps across 9 blockchains inside your Telegram bot, Discord bot, wallet, or DApp, and earn an automated 50/50 USD revenue split on every settled swap.
               </p>
 
               {/* Status Chips */}
@@ -217,7 +217,7 @@ If you provided a webhookUrl, you'll receive these events with HMAC SHA-256 sign
               Getting Your Partner API Key
             </h2>
             <p className="text-sm text-on-surface-variant max-w-2xl mb-6">
-              Pass your API key via the <code className="text-primary bg-white/5 px-1.5 py-0.5 rounded">X-API-Key</code> header or <code className="text-primary bg-white/5 px-1.5 py-0.5 rounded">Authorization: Bearer</code> header on <code className="text-primary bg-white/5 px-1.5 py-0.5 rounded">/api/v1/swap/quote</code> and <code className="text-primary bg-white/5 px-1.5 py-0.5 rounded">/api/v1/swap/create</code> to unlock higher rate limits and automatic 50/50 partner revenue attribution.
+              Pass your API key via the <code className="text-primary bg-white/5 px-1.5 py-0.5 rounded">X-API-Key</code> header or <code className="text-primary bg-white/5 px-1.5 py-0.5 rounded">Authorization: Bearer</code> header on <code className="text-primary bg-white/5 px-1.5 py-0.5 rounded">/api/v1/swap/quote</code> and <code className="text-primary bg-white/5 px-1.5 py-0.5 rounded">/api/v1/swap/create</code> to enable higher rate limits and automatic 50/50 partner revenue attribution.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -287,7 +287,7 @@ If you provided a webhookUrl, you'll receive these events with HMAC SHA-256 sign
                   </div>
                   <div>
                     <h3 className="text-sm font-medium text-on-surface">Cross-Chain Swap API Master Prompt</h3>
-                    <p className="text-[11px] text-outline font-sans tabular-nums">9 blockchains · 17 tokens · 50/50 USD Partner Ledger · Atomic Units Reference</p>
+                    <p className="text-[11px] text-outline font-sans tabular-nums">9 blockchains, 17 tokens, 50/50 USD partner ledger, atomic units reference</p>
                   </div>
                 </div>
 
@@ -328,7 +328,7 @@ If you provided a webhookUrl, you'll receive these events with HMAC SHA-256 sign
           <div className="bg-white/5 border border-white/15 rounded-xl p-8 md:p-10 shadow-elevated">
             <div className="flex items-center gap-3 mb-6">
               <span className="font-label-caps text-primary text-[10px] tracking-normal font-bold">
-                SWAP API — 50/50 USD PARTNER REVENUE SHARE
+                SWAP API: 50/50 USD PARTNER REVENUE SHARE
               </span>
               <div className="h-px w-8 bg-white/20" />
               <span className="text-[9px] font-label-caps text-success tracking-normal bg-success/10 px-2.5 py-1 rounded-md border border-success/20">
@@ -401,7 +401,7 @@ If you provided a webhookUrl, you'll receive these events with HMAC SHA-256 sign
                     <td className="py-3 pr-4 font-sans tabular-nums text-success">0</td>
                     <td className="py-3 pr-4 text-success">0.00%</td>
                     <td className="py-3 pr-4 font-sans tabular-nums text-success">$0.00</td>
-                    <td className="py-3 text-success">0% fee — Routes directly to solvers to save user gas</td>
+                    <td className="py-3 text-success">0% fee: Routes directly to solvers to save user gas</td>
                   </tr>
                 </tbody>
               </table>
@@ -439,6 +439,9 @@ If you provided a webhookUrl, you'll receive these events with HMAC SHA-256 sign
             </p>
             <p className="text-xs text-on-surface-variant leading-relaxed">
               <strong className="text-white">2. Multi-Chain Disambiguation:</strong> Tokens like <code className="text-primary font-sans tabular-nums">USDC</code> and <code className="text-primary font-sans tabular-nums">USDT</code> exist across multiple blockchains. Pass both <code className="text-primary font-sans tabular-nums">chain</code> and <code className="text-primary font-sans tabular-nums">destinationChain</code> (e.g. <code className="text-white font-sans tabular-nums">chain: &quot;sol&quot;</code>, <code className="text-white font-sans tabular-nums">destinationChain: &quot;base&quot;</code>) to specify exact networks.
+            </p>
+            <p className="text-xs text-on-surface-variant leading-relaxed">
+              <strong className="text-white">3. Flexible Inputs (FLEX_INPUT):</strong> All swaps execute with <code className="text-primary font-sans tabular-nums">swapType: &quot;FLEX_INPUT&quot;</code> by default. Users can send any amount equal to or greater than the solver minimum to the deposit address, and the solver fulfills the trade proportionally based on the amount actually received.
             </p>
 
             <div className="overflow-x-auto pt-2">

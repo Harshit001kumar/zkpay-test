@@ -85,6 +85,7 @@ export async function POST(req: Request) {
       apiKeyId,
       partnerUserId,
       source,
+      swapType: "FLEX_INPUT",
     });
 
     return corsJson(

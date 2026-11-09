@@ -79,10 +79,10 @@ interface PartnerSwapTx {
 }
 
 const PAYOUT_OPTIONS = [
-  { id: "usdc-base", asset: "USDC", chain: "Base", icon: "🔵", placeholder: "0x..." },
-  { id: "usdt-polygon", asset: "USDT", chain: "Polygon", icon: "🟣", placeholder: "0x..." },
-  { id: "sol", asset: "SOL", chain: "Solana", icon: "🟣", placeholder: "Base58 address (e.g. 7vN2...)" },
-  { id: "ltc", asset: "LTC", chain: "Litecoin", icon: "⚪", placeholder: "Litecoin address (L..., M..., ltc1...)" },
+  { id: "usdc-base", asset: "USDC", chain: "Base", code: "USDC", placeholder: "0x..." },
+  { id: "usdt-polygon", asset: "USDT", chain: "Polygon", code: "USDT", placeholder: "0x..." },
+  { id: "sol", asset: "SOL", chain: "Solana", code: "SOL", placeholder: "Base58 address (e.g. 7vN2...)" },
+  { id: "ltc", asset: "LTC", chain: "Litecoin", code: "LTC", placeholder: "Litecoin address (L..., M..., ltc1...)" },
 ] as const;
 
 export default function PartnerDashboard() {
@@ -229,23 +229,24 @@ export default function PartnerDashboard() {
   // Not authenticated screen
   if (!ready || (ready && !authenticated)) {
     return (
-      <div className="min-h-screen bg-black text-white flex flex-col justify-center items-center px-4">
-        <div className="w-full max-w-sm border border-neutral-800 rounded-2xl p-6 text-center bg-neutral-950/60 backdrop-blur-md">
-          <div className="w-12 h-12 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center mx-auto mb-4 text-emerald-400">
+      <div className="min-h-screen bg-surface text-on-surface flex flex-col justify-center items-center px-4">
+        <div className="w-full max-w-sm border border-outline-variant rounded-2xl p-6 text-center bg-surface-container">
+          <div className="w-12 h-12 rounded-xl bg-surface-container-high border border-outline-variant flex items-center justify-center mx-auto mb-4 text-secondary">
             <Coins className="w-6 h-6" />
           </div>
           <h1 className="text-xl font-medium tracking-tight mb-1">ZkPay Partner Portal</h1>
-          <p className="text-neutral-400 text-xs mb-6 leading-relaxed">
+          <p className="text-on-surface-variant text-xs mb-6 leading-relaxed">
             Connect your partner wallet to view settled swap earnings and request fee payouts.
           </p>
           <button
+            type="button"
             onClick={login}
-            className="w-full py-2.5 px-4 rounded-xl bg-white text-black font-medium text-sm hover:bg-neutral-200 transition-colors shadow-sm"
+            className="w-full py-2.5 px-4 rounded-xl bg-on-surface text-surface font-semibold text-sm hover:bg-white transition-colors"
           >
             Connect Partner Wallet
           </button>
           <div className="mt-4">
-            <Link href="/" className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors inline-flex items-center gap-1">
+            <Link href="/" className="text-xs text-on-surface-variant hover:text-on-surface transition-colors inline-flex items-center gap-1">
               <ArrowLeft className="w-3 h-3" /> Back to Home
             </Link>
           </div>
@@ -255,19 +256,19 @@ export default function PartnerDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-neutral-100 flex flex-col items-center">
+    <div className="min-h-screen bg-surface text-on-surface flex flex-col items-center">
       {/* Top Navbar */}
-      <header className="w-full max-w-lg border-b border-neutral-900/80 px-4 py-3 flex items-center justify-between sticky top-0 bg-black/80 backdrop-blur-md z-30">
+      <header className="w-full max-w-lg border-b border-outline-variant px-4 py-3 flex items-center justify-between sticky top-0 bg-surface z-30">
         <div className="flex items-center gap-3">
           <Link
             href="/"
-            className="p-1.5 rounded-lg border border-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-900 transition-colors"
+            className="p-1.5 rounded-lg border border-outline-variant text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
           </Link>
           <div>
-            <h1 className="text-sm font-semibold text-white tracking-tight">Partner Portal</h1>
-            <p className="text-[10px] text-neutral-400 font-mono">
+            <h1 className="text-sm font-semibold text-on-surface tracking-tight">Partner Portal</h1>
+            <p className="text-xs text-on-surface-variant font-mono">
               {user?.wallet?.address ? `${user.wallet.address.slice(0, 6)}...${user.wallet.address.slice(-4)}` : "Connected"}
             </p>
           </div>
@@ -286,15 +287,15 @@ export default function PartnerDashboard() {
       {/* Main Container (Strictly Mobile-First, max-w-lg) */}
       <main className="w-full max-w-lg px-4 py-4 space-y-4 pb-20">
         {/* Available Balance Hero Card */}
-        <div className="border border-neutral-800/80 rounded-2xl p-5 bg-gradient-to-b from-neutral-950 to-neutral-950/40 relative overflow-hidden">
+        <div className="border border-outline-variant rounded-2xl p-5 bg-surface-container relative overflow-hidden">
           <div className="flex items-start justify-between">
             <div>
-              <span className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider block mb-1">
-                Available Payout Balance
+              <span className="text-xs font-medium text-on-surface-variant block mb-1">
+                Available payout balance
               </span>
-              <div className="text-3xl font-semibold tracking-tight text-white flex items-baseline gap-1.5">
+              <div className="text-3xl font-semibold tracking-tight text-on-surface flex items-baseline gap-1.5">
                 ${balance ? balance.availableBalanceUsd.toFixed(2) : "0.00"}
-                <span className="text-xs font-normal text-neutral-500">USD</span>
+                <span className="text-xs font-normal text-on-surface-variant">USD</span>
               </div>
             </div>
 
@@ -305,7 +306,7 @@ export default function PartnerDashboard() {
                 setIsModalOpen(true);
               }}
               disabled={!balance || balance.availableBalanceUsd < 1.0}
-              className="py-2 px-3.5 rounded-xl bg-white text-black text-xs font-medium hover:bg-neutral-200 transition-all shadow-sm flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="py-2 px-3.5 rounded-xl bg-on-surface text-surface text-xs font-semibold hover:bg-white transition-colors flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <span>Withdraw</span>
               <ArrowUpRight className="w-3.5 h-3.5" />
@@ -314,29 +315,29 @@ export default function PartnerDashboard() {
 
           {/* Pending Payout Pill if exists */}
           {balance && balance.pendingPayoutUsd > 0 && (
-            <div className="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[11px]">
+            <div className="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
               <Clock className="w-3 h-3" />
               <span>${balance.pendingPayoutUsd.toFixed(2)} USD in pending payout</span>
             </div>
           )}
 
           {/* Quick Stats Grid */}
-          <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-neutral-900">
+          <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-outline-variant">
             <div>
-              <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">Total Earned</span>
-              <span className="text-xs font-medium text-neutral-200 font-mono">
+              <span className="text-xs text-on-surface-variant block">Total earned</span>
+              <span className="text-xs font-medium text-on-surface font-mono">
                 ${balance ? balance.totalEarnedUsd.toFixed(2) : "0.00"}
               </span>
             </div>
             <div>
-              <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">Withdrawn</span>
-              <span className="text-xs font-medium text-neutral-200 font-mono">
+              <span className="text-xs text-on-surface-variant block">Withdrawn</span>
+              <span className="text-xs font-medium text-on-surface font-mono">
                 ${balance ? balance.totalWithdrawnUsd.toFixed(2) : "0.00"}
               </span>
             </div>
             <div>
-              <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">Settled Swaps</span>
-              <span className="text-xs font-medium text-emerald-400 font-mono">
+              <span className="text-xs text-on-surface-variant block">Settled swaps</span>
+              <span className="text-xs font-medium text-secondary font-mono">
                 {balance ? balance.settledSwapsCount : 0}
               </span>
             </div>
@@ -344,7 +345,7 @@ export default function PartnerDashboard() {
         </div>
 
         {/* Tab Controls */}
-        <div className="flex border-b border-neutral-900 text-xs font-medium">
+        <div className="flex border-b border-outline-variant text-xs font-medium">
           <button
             onClick={() => setActiveTab("payouts")}
             className={`flex-1 pb-2.5 text-center transition-colors relative ${
@@ -426,7 +427,7 @@ export default function PartnerDashboard() {
 
                           {/* Status Badge */}
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider inline-flex items-center gap-1 ${
+                            className={`px-2 py-0.5 rounded-full text-xs font-medium inline-flex items-center gap-1 ${
                               p.status === "COMPLETED"
                                 ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
                                 : p.status === "REJECTED"
@@ -437,7 +438,7 @@ export default function PartnerDashboard() {
                             {p.status === "COMPLETED" && <CheckCircle2 className="w-2.5 h-2.5" />}
                             {p.status === "REJECTED" && <XCircle className="w-2.5 h-2.5" />}
                             {p.status === "PENDING" && <Clock className="w-2.5 h-2.5" />}
-                            {p.status}
+                            {p.status.toLowerCase()}
                           </span>
                         </div>
 
@@ -493,15 +494,15 @@ export default function PartnerDashboard() {
                     >
                       <div>
                         <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="font-semibold text-emerald-400 font-mono">
-                            +${c.feeUsd.toFixed(4)} USD
+                          <span className="font-semibold text-secondary">
+                            <span className="font-mono tabular-nums">+${c.feeUsd.toFixed(4)}</span> USD
                           </span>
                           <span className="text-[10px] text-neutral-400">
                             ({c.humanTokenAmount} {c.fromAsset})
                           </span>
                         </div>
-                        <div className="text-[10px] text-neutral-500 font-mono">
-                          Swap {c.swapId.slice(0, 12)}... • 1 {c.fromAsset} = ${c.usdRate.toFixed(2)}
+                        <div className="text-[10px] text-neutral-500">
+                          Swap <span className="font-mono">{c.swapId.slice(0, 12)}…</span> · 1 {c.fromAsset} = <span className="font-mono">${c.usdRate.toFixed(2)}</span>
                         </div>
                       </div>
 
@@ -540,7 +541,7 @@ export default function PartnerDashboard() {
                           </span>
                         </div>
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider inline-flex items-center gap-1 ${
+                          className={`px-2 py-0.5 rounded-full text-xs font-medium inline-flex items-center gap-1 ${
                             s.rawStatus === "SETTLED"
                               ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
                               : s.rawStatus === "FORWARDED"
@@ -550,14 +551,14 @@ export default function PartnerDashboard() {
                               : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
                           }`}
                         >
-                          {s.rawStatus}
+                          {s.rawStatus.toLowerCase()}
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between text-[10px] text-neutral-500 font-mono">
+                      <div className="flex items-center justify-between text-xs text-on-surface-variant">
                         <span>
-                          {s.id.slice(0, 14)}... • Partner Fee:{" "}
-                          <span className="text-emerald-400">
+                          <span className="font-mono">{s.id.slice(0, 14)}…</span> · Partner Fee:{" "}
+                          <span className="text-secondary font-mono">
                             {s.partnerFeeUsdEstimate > 0
                               ? `$${s.partnerFeeUsdEstimate.toFixed(4)} USD`
                               : s.partnerFeeAmount
@@ -615,8 +616,8 @@ export default function PartnerDashboard() {
                         <div className="font-medium text-white mb-0.5">{k.label}</div>
                         <div className="text-[11px] font-mono text-neutral-400">{k.maskedKey}</div>
                       </div>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase font-medium">
-                        {k.status}
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                        {k.status.toLowerCase()}
                       </span>
                     </div>
                   ))
@@ -629,16 +630,18 @@ export default function PartnerDashboard() {
 
       {/* REQUEST PAYOUT MODAL (Mobile-friendly bottom sheet / dialog) */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-sm bg-neutral-950 border border-neutral-800 rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-900 mb-4">
+        <div className="fixed inset-0 z-50 bg-black/75 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="w-full max-w-sm bg-surface-container border border-outline-variant rounded-t-2xl sm:rounded-2xl p-5 relative pb-safe">
+            <div className="w-10 h-1 rounded-full bg-outline-variant mx-auto mb-3 sm:hidden" />
+            <div className="flex items-center justify-between pb-3 border-b border-outline-variant mb-4">
               <div className="flex items-center gap-2">
-                <Coins className="w-4 h-4 text-emerald-400" />
-                <h3 className="text-sm font-semibold text-white">Request Fee Payout</h3>
+                <Coins className="w-4 h-4 text-secondary" />
+                <h3 className="text-sm font-semibold text-on-surface">Request Fee Payout</h3>
               </div>
               <button
+                type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-900"
+                className="p-1 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -647,8 +650,8 @@ export default function PartnerDashboard() {
             <form onSubmit={handleRequestPayout} className="space-y-4">
               {/* Asset / Option Selection */}
               <div>
-                <label className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider block mb-1.5">
-                  Payout Asset & Network
+                <label className="text-xs font-medium text-on-surface-variant block mb-1.5">
+                  Payout asset and network
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   {PAYOUT_OPTIONS.map((opt) => (
@@ -656,16 +659,18 @@ export default function PartnerDashboard() {
                       type="button"
                       key={opt.id}
                       onClick={() => setPayoutOption(opt.id)}
-                      className={`p-2.5 rounded-xl border text-left transition-all text-xs flex items-center gap-2 ${
+                      className={`p-2.5 rounded-xl border text-left transition-colors text-xs flex items-center gap-2.5 cursor-pointer ${
                         payoutOption === opt.id
-                          ? "border-white bg-neutral-900 text-white shadow-sm"
-                          : "border-neutral-800/80 bg-neutral-950 text-neutral-400 hover:border-neutral-700"
+                          ? "border-secondary bg-surface-container text-on-surface shadow-sm"
+                          : "border-outline-variant bg-surface-container-low text-on-surface-variant hover:border-outline"
                       }`}
                     >
-                      <span className="text-base">{opt.icon}</span>
+                      <span className="w-8 h-8 rounded-lg bg-surface-container-high border border-outline-variant flex items-center justify-center font-bold text-[10px] text-on-surface">
+                        {opt.code}
+                      </span>
                       <div>
-                        <div className="font-semibold text-white leading-tight">{opt.asset}</div>
-                        <div className="text-[10px] text-neutral-400 leading-tight">{opt.chain}</div>
+                        <div className="font-semibold text-on-surface leading-tight">{opt.asset}</div>
+                        <div className="text-[10px] text-on-surface-variant leading-tight">{opt.chain}</div>
                       </div>
                     </button>
                   ))}
@@ -675,15 +680,15 @@ export default function PartnerDashboard() {
               {/* Amount Input */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider">
+                  <label className="text-xs font-medium text-on-surface-variant">
                     Amount (USD)
                   </label>
-                  <span className="text-[11px] text-neutral-400 font-mono">
-                    Avail: ${balance ? balance.availableBalanceUsd.toFixed(4).replace(/\.?0+$/, "") || "0.00" : "0.00"}
+                  <span className="text-xs text-on-surface-variant">
+                    Available: <span className="font-mono text-on-surface">${balance ? balance.availableBalanceUsd.toFixed(2) : "0.00"}</span>
                   </span>
                 </div>
                 <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-neutral-500 text-xs">$</span>
+                  <span className="absolute left-3 top-2.5 text-on-surface-variant text-xs">$</span>
                   <input
                     type="number"
                     step="any"
@@ -693,14 +698,14 @@ export default function PartnerDashboard() {
                     onChange={(e) => setPayoutAmount(e.target.value)}
                     placeholder="1.00"
                     required
-                    className="w-full pl-7 pr-16 py-2.5 bg-neutral-900 border border-neutral-800 rounded-xl text-white text-sm font-mono focus:outline-none focus:border-white transition-colors"
+                    className="w-full pl-7 pr-16 py-2.5 bg-surface border border-outline-variant rounded-xl text-on-surface text-sm font-mono focus:outline-none focus:border-secondary transition-colors"
                   />
                   <button
                     type="button"
                     onClick={() => {
                       if (balance) setPayoutAmount(balance.availableBalanceUsd.toString());
                     }}
-                    className="absolute right-2 top-2 px-2 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-md text-[10px] font-medium"
+                    className="absolute right-2 top-2 px-2 py-1 bg-surface-container-high hover:bg-surface border border-outline-variant text-on-surface-variant hover:text-on-surface rounded-md text-[10px] font-medium"
                   >
                     MAX
                   </button>
@@ -709,8 +714,8 @@ export default function PartnerDashboard() {
 
               {/* Destination Address */}
               <div>
-                <label className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider block mb-1.5">
-                  Destination {PAYOUT_OPTIONS.find((o) => o.id === payoutOption)?.asset} Address
+                <label className="text-xs font-medium text-on-surface-variant block mb-1.5">
+                  Destination {PAYOUT_OPTIONS.find((o) => o.id === payoutOption)?.asset} address
                 </label>
                 <input
                   type="text"
@@ -718,14 +723,14 @@ export default function PartnerDashboard() {
                   onChange={(e) => setPayoutAddress(e.target.value)}
                   placeholder={PAYOUT_OPTIONS.find((o) => o.id === payoutOption)?.placeholder}
                   required
-                  className="w-full px-3 py-2.5 bg-neutral-900 border border-neutral-800 rounded-xl text-white text-xs font-mono focus:outline-none focus:border-white transition-colors"
+                  className="w-full px-3 py-2.5 bg-surface border border-outline-variant rounded-xl text-on-surface text-xs font-mono focus:outline-none focus:border-secondary transition-colors"
                 />
               </div>
 
               {/* Error Message */}
               {payoutError && (
-                <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <div className="p-2.5 rounded-xl bg-error-container/40 border border-error/25 text-on-error-container text-xs flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-error" />
                   <span>{payoutError}</span>
                 </div>
               )}
@@ -742,15 +747,15 @@ export default function PartnerDashboard() {
               <button
                 type="submit"
                 disabled={submittingPayout || !balance || balance.availableBalanceUsd < 1.0}
-                className="w-full py-2.5 px-4 rounded-xl bg-white text-black font-semibold text-xs hover:bg-neutral-200 transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full py-2.5 px-4 rounded-xl bg-on-surface text-surface font-semibold text-xs hover:bg-white transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
               >
                 {submittingPayout ? (
                   <>
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Submitting Request...</span>
+                    <span>Submitting request…</span>
                   </>
                 ) : (
-                  <span>Submit Payout Request</span>
+                  <span>Submit payout request</span>
                 )}
               </button>
             </form>

@@ -8,18 +8,7 @@ import { CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { floorTo2Decimals } from "@/lib/format";
-import {
-  Key,
-  Code2,
-  ArrowUpRight,
-  Copy,
-  Check,
-  Coins,
-  Terminal,
-  Sparkles,
-  Wallet,
-  ShieldCheck,
-} from "lucide-react";
+import { ArrowUpRight, Copy, Check, ChevronRight } from "lucide-react";
 import SwapWidget from "./SwapWidget";
 import PaymentHistory from "./PaymentHistory";
 
@@ -74,114 +63,71 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-      {/* LEFT / MAIN COLUMN (7 COLS): INSTANT CROSS-CHAIN SWAP WIDGET */}
-      <div className="lg:col-span-7 space-y-6">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-start">
+      {/* Main column: swap + history (mobile order: swap → history → side cards) */}
+      <div className="lg:col-span-7 space-y-4 lg:space-y-6 max-w-xl w-full mx-auto lg:max-w-none">
         <SwapWidget onSwapCreated={() => setHistoryRefreshKey((k) => k + 1)} />
 
-        {/* Recent Swaps History */}
-        <div className="rounded-3xl bg-surface-container border border-outline-variant/20 p-5 sm:p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-on-surface">Recent Cross-Chain Swaps</h2>
-              <p className="text-xs text-on-surface-variant">Live execution & settlement tracker</p>
-            </div>
-          </div>
+        <section aria-labelledby="recent-swaps" className="space-y-3">
+          <h2 id="recent-swaps" className="px-1 text-sm font-semibold text-on-surface">
+            Recent swaps
+          </h2>
           <PaymentHistory key={historyRefreshKey} />
-        </div>
+        </section>
       </div>
 
-      {/* RIGHT COLUMN (5 COLS): DEVELOPER API HUB & WALLET TELEMETRY */}
-      <div className="lg:col-span-5 space-y-5">
-        {/* Developer Swap API & 50/50 Revenue Card */}
-        <div className="rounded-3xl bg-gradient-to-br from-surface-container-high via-surface-container to-surface-container-low border border-secondary/30 p-5 sm:p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-secondary/15 border border-secondary/30 text-[11px] font-bold text-secondary">
-              <Terminal className="w-3.5 h-3.5" />
-              Developer B2B Swap Engine
-            </span>
-            <span className="text-xs font-mono font-bold text-emerald-400">50/50 Rev Share</span>
-          </div>
-
-          <div className="space-y-1.5">
-            <h3 className="text-base sm:text-lg font-extrabold tracking-tight text-on-surface">
-              Power Swaps in Your Bot or App
-            </h3>
-            <p className="text-xs text-on-surface-variant leading-relaxed">
-              Integrate instant cross-chain swaps across 9 blockchains into your Telegram bot, Discord bot, or Web3 frontend with a single REST API. Earn 50% of every swap fee in USD.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 pt-1">
-            <div className="p-2.5 rounded-2xl bg-surface/60 border border-outline-variant/15">
-              <span className="text-[10px] text-on-surface-variant block">Chains</span>
-              <span className="font-mono text-sm font-extrabold text-on-surface">9 Networks</span>
-            </div>
-            <div className="p-2.5 rounded-2xl bg-surface/60 border border-outline-variant/15">
-              <span className="text-[10px] text-on-surface-variant block">Partner Split</span>
-              <span className="font-mono text-sm font-extrabold text-secondary">50% USD</span>
-            </div>
-            <div className="p-2.5 rounded-2xl bg-surface/60 border border-outline-variant/15">
-              <span className="text-[10px] text-on-surface-variant block">Min Payout</span>
-              <span className="font-mono text-sm font-extrabold text-on-surface">$1.00</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-            <Link
-              href="/partner"
-              className="py-2.5 px-4 rounded-xl bg-secondary text-on-secondary font-bold text-xs flex items-center justify-center gap-1.5 hover:opacity-90 transition-opacity"
-            >
-              <Key className="w-3.5 h-3.5" />
-              <span>Partner Portal & Keys</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
-
-            <Link
-              href="/docs"
-              className="py-2.5 px-4 rounded-xl bg-surface-container-high hover:bg-surface border border-outline-variant/25 text-on-surface font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <Code2 className="w-3.5 h-3.5 text-secondary" />
-              <span>API Docs & Snippets</span>
-            </Link>
-          </div>
-        </div>
-
-        {/* Connected Base Wallet Card */}
-        <div className="rounded-3xl bg-surface-container border border-outline-variant/20 p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-secondary" />
-              <span className="text-xs font-bold text-on-surface">Connected Base Wallet</span>
-            </div>
+      {/* Side column */}
+      <div className="lg:col-span-5 space-y-4 max-w-xl w-full mx-auto lg:max-w-none">
+        {/* Wallet */}
+        <div className="rounded-2xl bg-surface-container border border-outline-variant p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-on-surface-variant">Base USDC balance</span>
             {address && (
               <button
                 type="button"
                 onClick={handleCopyAddress}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container-low border border-outline-variant/20 font-mono text-[11px] text-on-surface-variant hover:text-on-surface cursor-pointer"
+                className="h-8 -my-1 px-2 rounded-lg inline-flex items-center gap-1.5 font-mono text-xs text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high cursor-pointer"
+                aria-label="Copy wallet address"
               >
                 <span>{shortAddr}</span>
-                {copiedAddr ? <Check className="w-3 h-3 text-secondary" /> : <Copy className="w-3 h-3" />}
+                {copiedAddr ? <Check className="w-3.5 h-3.5 text-secondary" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
             )}
           </div>
-
-          <div className="flex items-baseline justify-between pt-1">
-            <div>
-              <span className="text-[11px] text-on-surface-variant block">Base USDC Balance</span>
-              <span className="font-mono text-2xl font-extrabold text-on-surface tabular-nums">
-                ${formattedBal.toFixed(2)} <span className="text-xs font-semibold text-on-surface-variant">USDC</span>
-              </span>
-            </div>
+          <div className="flex items-end justify-between gap-3 mt-2">
+            <span className="font-mono text-2xl font-semibold text-on-surface tabular-nums">
+              ${formattedBal.toFixed(2)}
+            </span>
             <Link
               href="/wallet"
-              className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container-high border border-outline-variant/20 text-xs font-semibold text-on-surface inline-flex items-center gap-1 transition-colors"
+              className="h-10 px-3 rounded-xl inline-flex items-center gap-1 text-sm font-medium text-on-surface hover:bg-surface-container-high transition-colors"
             >
-              <span>Manage Wallet</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
+              <span>Wallet</span>
+              <ChevronRight className="w-4 h-4" />
             </Link>
           </div>
         </div>
+
+        {/* Developer API — quiet, single CTA */}
+        <Link
+          href="/partner"
+          className="group block rounded-2xl bg-surface-container border border-outline-variant p-4 sm:p-5 hover:border-outline transition-colors"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold text-on-surface">Build with the Swap API</h3>
+              <p className="text-sm text-on-surface-variant leading-relaxed">
+                Add cross-chain swaps to your bot or app and keep 50% of every fee, paid in USD.
+              </p>
+            </div>
+            <ArrowUpRight className="w-5 h-5 shrink-0 text-on-surface-variant group-hover:text-secondary transition-colors" />
+          </div>
+          <div className="flex items-center gap-4 mt-4 pt-3 border-t border-outline-variant text-xs text-on-surface-variant">
+            <span><span className="font-mono text-on-surface">9</span> chains</span>
+            <span><span className="font-mono text-on-surface">50%</span> rev share</span>
+            <span><span className="font-mono text-on-surface">$1</span> min payout</span>
+          </div>
+        </Link>
       </div>
     </div>
   );

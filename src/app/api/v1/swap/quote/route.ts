@@ -26,6 +26,7 @@ async function extractQuoteParams(req: Request): Promise<SwapQuoteParams> {
       slippageBps: typeof body.slippageBps === "number" ? body.slippageBps : undefined,
       recipientAddress: body.recipient || body.recipientAddress,
       refundTo: body.refundTo,
+      swapType: "FLEX_INPUT",
     };
   }
 
@@ -60,6 +61,7 @@ async function extractQuoteParams(req: Request): Promise<SwapQuoteParams> {
     slippageBps: searchParams.get("slippageBps") ? Number(searchParams.get("slippageBps")) : undefined,
     recipientAddress: searchParams.get("recipient") || searchParams.get("recipientAddress") || undefined,
     refundTo: searchParams.get("refundTo") || undefined,
+    swapType: "FLEX_INPUT",
   };
 }
 

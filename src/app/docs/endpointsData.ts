@@ -205,6 +205,7 @@ bot.command('tokens', async (ctx) => {
       success: true,
       quote: {
         quoteId: "q_1727382000000",
+        swapType: "FLEX_INPUT",
         originAsset: "nep141:sol.omft.near",
         destinationAsset: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
         totalAmountIn: "1000000000",
@@ -404,11 +405,13 @@ bot.command('swapquote', async (ctx) => {
       refundTo: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
       totalFeeBps: 100,
       slippageBps: 100,
+      swapType: "FLEX_INPUT",
     },
     response: {
       success: true,
       order: {
         swapId: "swp_1727382000000",
+        swapType: "FLEX_INPUT",
         status: "PENDING_DEPOSIT",
         totalAmountIn: "1000000000",
         netSwapAmount: "988800000",
@@ -419,6 +422,7 @@ bot.command('swapquote', async (ctx) => {
           address: "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf",
           memo: null,
           amount: "1",
+          swapType: "FLEX_INPUT",
           deadline: "2026-10-01T15:15:00.000Z",
         },
         settlement: {

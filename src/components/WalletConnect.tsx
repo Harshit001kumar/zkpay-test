@@ -30,11 +30,11 @@ export default function WalletConnect() {
         <button
           type="button"
           onClick={handleNavigateToWallet}
-          className="group h-9 px-3 rounded-xl bg-surface-container hover:bg-surface-container-high border border-outline-variant/20 hover:border-primary/40 flex items-center gap-2 text-xs font-medium text-on-surface transition-colors active:scale-95 cursor-pointer whitespace-nowrap"
+          className="group h-9 px-3 rounded-xl bg-surface-container hover:bg-surface-container-high border border-outline-variant hover:border-secondary/50 flex items-center gap-2 text-xs font-medium text-on-surface transition-colors active:scale-95 cursor-pointer whitespace-nowrap"
           title="Open Base USDC deposit & wallet page"
         >
           <span className="w-2 h-2 rounded-full bg-secondary shrink-0" />
-          <Wallet className="w-3.5 h-3.5 text-on-surface-variant group-hover:text-primary transition-colors hidden sm:block" />
+          <Wallet className="w-3.5 h-3.5 text-on-surface-variant group-hover:text-secondary transition-colors hidden sm:block" />
           <span className="font-mono text-xs tabular-nums tracking-tight">
             {shortAddress}
           </span>
@@ -43,7 +43,7 @@ export default function WalletConnect() {
         <button
           type="button"
           onClick={logout}
-          className="h-9 w-9 rounded-xl bg-surface-container/60 hover:bg-error/15 border border-outline-variant/15 hover:border-error/30 flex items-center justify-center transition-colors text-on-surface-variant hover:text-error cursor-pointer"
+          className="h-9 w-9 rounded-xl bg-surface-container hover:bg-error/15 border border-outline-variant hover:border-error/30 flex items-center justify-center transition-colors text-on-surface-variant hover:text-error cursor-pointer"
           aria-label="Disconnect wallet"
           title="Disconnect wallet"
         >
@@ -65,7 +65,7 @@ export default function WalletConnect() {
     <button
       type="button"
       onClick={login}
-      className="h-9 px-4 rounded-xl bg-secondary text-on-secondary text-xs font-bold flex items-center gap-1.5 transition-colors hover:bg-secondary-container cursor-pointer whitespace-nowrap"
+      className="h-9 px-4 rounded-xl bg-secondary text-on-secondary text-xs font-semibold flex items-center gap-1.5 transition-colors hover:brightness-110 active:scale-[0.98] cursor-pointer whitespace-nowrap"
     >
       <span>Sign in</span>
     </button>

@@ -23,6 +23,7 @@ export interface DirectSwapOrder {
   apiKeyId?: string | null;
   partnerUserId?: string | null;
   source?: "api" | "app";
+  swapType?: "FLEX_INPUT";
   lastKnownStatus?: string;
   createdAt: number;
   expiresAt: number;

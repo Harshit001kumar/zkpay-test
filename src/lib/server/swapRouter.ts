@@ -697,6 +697,7 @@ export interface SwapQuoteParams {
   refundTo?: string | null;
   apiKeyId?: string | null;
   partnerUserId?: string | null;
+  swapType?: "FLEX_INPUT";
 }
 
 /**
@@ -810,6 +811,7 @@ export async function getSwapQuote(params: SwapQuoteParams) {
 
   return {
     quoteId: data.correlationId || `q_${Date.now()}`,
+    swapType: "FLEX_INPUT",
     originAsset: originAssetId,
     destinationAsset: destinationAssetId,
     totalAmountIn: amount.trim(),
@@ -861,6 +863,7 @@ export interface CreateSwapParams {
   apiKeyId?: string | null;
   partnerUserId?: string | null;
   source?: "api" | "app";
+  swapType?: "FLEX_INPUT";
 }
 
 /**
@@ -986,6 +989,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
         apiKeyId: params.apiKeyId || undefined,
         partnerUserId: params.partnerUserId || undefined,
         source: params.source || (params.apiKeyId ? "api" : "app"),
+        swapType: "FLEX_INPUT",
       };
 
       await saveProxySwapOrder(proxyOrder);
@@ -1019,6 +1023,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
         apiKeyId: params.apiKeyId || undefined,
         partnerUserId: params.partnerUserId || undefined,
         source: params.source || (params.apiKeyId ? "api" : "app"),
+        swapType: "FLEX_INPUT",
       });
       console.log(`[SwapRouter] Direct swap order recorded: ${data.correlationId || "direct"}`);
     } catch (directErr) {
@@ -1060,11 +1065,13 @@ export async function createSwapOrder(params: CreateSwapParams) {
 
   return {
     swapId: data.correlationId || `swp_${Date.now()}`,
+    swapType: "FLEX_INPUT",
     status: "PENDING_DEPOSIT",
     deposit: {
       address: finalDepositAddress,
       memo: quote.depositMemo || null,
       amount: finalDepositAmount,
+      swapType: "FLEX_INPUT",
       deadline: quote.deadline || deadline,
     },
     settlement: {
