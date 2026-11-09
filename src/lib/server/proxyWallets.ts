@@ -171,7 +171,7 @@ export function isProxySupportedChain(chain?: string | null, fromAsset?: string 
     return sym === "SOL" || sym.includes("SOL");
   }
 
-  // 2. Litecoin: Native LTC
+  // 2. Litecoin: Native LTC (Single-transfer proxy deposit with fee split)
   if (c === "ltc") {
     return true;
   }

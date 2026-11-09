@@ -237,12 +237,16 @@ export const pureSecp256k1: TinySecp256k1Interface = {
 
   signSchnorr(h: Uint8Array, d: Uint8Array, e?: Uint8Array): Uint8Array {
     try {
-      const sig = schnorr.sign(h, d, e);
+      const aux = e && e.length === 32 ? e : undefined;
+      const sig = schnorr.sign(h, d, aux);
       return Buffer.from(sig);
     } catch {
-      // In case h is 32 bytes and schnorr expects message
-      const sig = (schnorr as any).sign(h, d, e ? { auxRand: e } : undefined);
-      return Buffer.from(sig);
+      try {
+        const sig = (schnorr as any).sign(h, d, e ? { auxRand: e } : undefined);
+        return Buffer.from(sig);
+      } catch (err: any) {
+        throw new Error(`signSchnorr failed: ${err?.message || err}`);
+      }
     }
   },
 

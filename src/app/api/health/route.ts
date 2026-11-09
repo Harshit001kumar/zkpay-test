@@ -1,21 +1,21 @@
 import { NextResponse } from "next/server";
-import { ensureProxySweeperDaemonRunning } from "@/lib/server/proxyForwarder";
+import { ensureProxySweeperDaemonRunning, runProxySweeperTick } from "@/lib/server/proxyForwarder";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/health
  * 
- * Health-check endpoint. Also ensures the sweeper daemon is running
- * (idempotent — the function is a no-op if already started).
+ * Health-check endpoint. Ensures the sweeper daemon is running and executes
+ * a sweeper tick across any pending proxy swap deposits.
  * 
- * Configure Render to ping this URL every 5 minutes to keep the
- * server warm and the sweeper daemon alive.
+ * Perfect for Vercel Cron, Render pings, or external uptime monitors (UptimeRobot).
  */
 export async function GET() {
-  // Re-ensure daemon is running (no-op if already active)
+  let tickResult = { checked: 0, processed: 0 };
   try {
     ensureProxySweeperDaemonRunning();
+    tickResult = await runProxySweeperTick();
   } catch (e) {
     // Non-fatal
   }
@@ -25,5 +25,6 @@ export async function GET() {
     timestamp: Date.now(),
     uptime: process.uptime(),
     sweeper: "active",
+    tick: tickResult,
   });
 }

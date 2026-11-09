@@ -3014,87 +3014,106 @@ let isSweeperTickActive = false;
  * 3. If an order has 0 balance and expired > 1 hour ago, marks status as EXPIRED.
  * 4. Checks FORWARDED orders against NEAR Intents solver status and automatically credits partner fees upon SETTLED status!
  */
+/**
+ * Executes a single sweep and settlement cycle across all active proxy swap orders.
+ * Returns the count of checked orders and processed operations.
+ */
+export async function runProxySweeperTick(): Promise<{ checked: number; processed: number }> {
+  if (isSweeperTickActive) return { checked: 0, processed: 0 };
+  isSweeperTickActive = true;
+  let checked = 0;
+  let processed = 0;
+
+  try {
+    // Phase 1: Sweep PENDING_DEPOSIT / FORWARDING orders
+    const pendingOrders = await getPendingProxyOrders();
+    if (pendingOrders && pendingOrders.length > 0) {
+      checked += pendingOrders.length;
+      for (const order of pendingOrders) {
+        try {
+          const isExpired = Date.now() > order.expiresAt + 60_000;
+
+          if (isExpired) {
+            // Check if funds were deposited on an expired quote.
+            // If yes, automatic 100% refund to user's refundTo address!
+            const refundRes = await recoverProxyDeposit(order.proxyDepositAddress, { action: "refund" });
+            if (refundRes.success) {
+              console.log(
+                `[ProxySweeperDaemon] Automatically refunded expired deposit for order ${order.swapId} to user ${order.refundTo}. Tx: ${refundRes.txHash}`
+              );
+              processed++;
+            } else {
+              // No funds were deposited and order expired > 1 hour ago -> mark EXPIRED
+              if (Date.now() > order.expiresAt + 3600_000) {
+                await updateProxySwapOrder(order.swapId, { status: "EXPIRED" });
+              }
+            }
+          } else {
+            // Order is active within deadline -> attempt forward sweep
+            const res = await checkAndForwardProxyDeposit(order);
+            if (res.status === "FORWARDED") processed++;
+          }
+        } catch (itemErr) {
+          console.warn(`[ProxySweeperDaemon] Error sweeping order ${order.swapId}:`, itemErr);
+        }
+      }
+    }
+
+    // Phase 2: Monitor FORWARDED orders for upstream solver settlement & credit uncredited SETTLED partner fees
+    const forwardedOrUncredited = await getForwardedOrUncreditedProxyOrders(25);
+    if (forwardedOrUncredited && forwardedOrUncredited.length > 0) {
+      checked += forwardedOrUncredited.length;
+      for (const order of forwardedOrUncredited) {
+        try {
+          if (order.status === "SETTLED" && !order.feeCredited) {
+            await creditPartnerFeeOnSettlement(order);
+            processed++;
+          } else if (order.status === "FORWARDED" && order.solverDepositAddress) {
+            const solverUrl = `https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(order.solverDepositAddress.trim())}`;
+            const headers: Record<string, string> = { Accept: "application/json" };
+            if (process.env.NEAR_INTENTS_API_KEY) {
+              headers["X-API-Key"] = process.env.NEAR_INTENTS_API_KEY;
+            }
+            const res = await fetch(solverUrl, { headers, signal: AbortSignal.timeout(5000) }).catch(() => null);
+            if (res && res.ok) {
+              const data = await res.json().catch(() => null);
+              const rawSt = data?.status;
+              if (rawSt === "SUCCESS") {
+                const rawOriginHash = data?.swapDetails?.originChainTxHashes?.[0]?.hash;
+                const updatedOrder =
+                  (await updateProxySwapOrder(order.swapId, {
+                    status: "SETTLED",
+                    ...(rawOriginHash && !order.forwardTxHash ? { forwardTxHash: rawOriginHash } : {}),
+                  })) || { ...order, status: "SETTLED" as const };
+                await creditPartnerFeeOnSettlement(updatedOrder);
+                processed++;
+              } else if (rawSt === "FAILED" || rawSt === "REFUNDED") {
+                await updateProxySwapOrder(order.swapId, { status: "FAILED" });
+                processed++;
+              }
+            }
+          }
+        } catch (settleErr) {
+          console.warn(`[ProxySweeperDaemon] Settlement check warning for ${order.swapId}:`, settleErr);
+        }
+      }
+    }
+  } catch (daemonErr) {
+    console.warn("[ProxySweeperDaemon] Sweeper tick error:", daemonErr);
+  } finally {
+    isSweeperTickActive = false;
+  }
+
+  return { checked, processed };
+}
+
 export function ensureProxySweeperDaemonRunning() {
   if (sweeperInterval) return;
 
   console.log("[ProxySweeperDaemon] Starting automated background proxy deposit sweeper & settlement monitor (interval: 12s)...");
 
   sweeperInterval = setInterval(async () => {
-    if (isSweeperTickActive) return;
-    isSweeperTickActive = true;
-
-    try {
-      // Phase 1: Sweep PENDING_DEPOSIT / FORWARDING orders
-      const pendingOrders = await getPendingProxyOrders();
-      if (pendingOrders && pendingOrders.length > 0) {
-        for (const order of pendingOrders) {
-          try {
-            const isExpired = Date.now() > order.expiresAt + 60_000;
-
-            if (isExpired) {
-              // Check if funds were deposited on an expired quote.
-              // If yes, automatic 100% refund to user's refundTo address!
-              const refundRes = await recoverProxyDeposit(order.proxyDepositAddress, { action: "refund" });
-              if (refundRes.success) {
-                console.log(
-                  `[ProxySweeperDaemon] Automatically refunded expired deposit for order ${order.swapId} to user ${order.refundTo}. Tx: ${refundRes.txHash}`
-                );
-              } else {
-                // No funds were deposited and order expired > 1 hour ago -> mark EXPIRED
-                if (Date.now() > order.expiresAt + 3600_000) {
-                  await updateProxySwapOrder(order.swapId, { status: "EXPIRED" });
-                }
-              }
-            } else {
-              // Order is active within deadline -> attempt forward sweep
-              await checkAndForwardProxyDeposit(order);
-            }
-          } catch (itemErr) {
-            console.warn(`[ProxySweeperDaemon] Error sweeping order ${order.swapId}:`, itemErr);
-          }
-        }
-      }
-
-      // Phase 2: Monitor FORWARDED orders for upstream solver settlement & credit uncredited SETTLED partner fees
-      const forwardedOrUncredited = await getForwardedOrUncreditedProxyOrders(25);
-      if (forwardedOrUncredited && forwardedOrUncredited.length > 0) {
-        for (const order of forwardedOrUncredited) {
-          try {
-            if (order.status === "SETTLED" && !order.feeCredited) {
-              await creditPartnerFeeOnSettlement(order);
-            } else if (order.status === "FORWARDED" && order.solverDepositAddress) {
-              const solverUrl = `https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(order.solverDepositAddress.trim())}`;
-              const headers: Record<string, string> = { Accept: "application/json" };
-              if (process.env.NEAR_INTENTS_API_KEY) {
-                headers["X-API-Key"] = process.env.NEAR_INTENTS_API_KEY;
-              }
-              const res = await fetch(solverUrl, { headers, signal: AbortSignal.timeout(5000) }).catch(() => null);
-              if (res && res.ok) {
-                const data = await res.json().catch(() => null);
-                const rawSt = data?.status;
-                if (rawSt === "SUCCESS") {
-                  const rawOriginHash = data?.swapDetails?.originChainTxHashes?.[0]?.hash;
-                  const updatedOrder =
-                    (await updateProxySwapOrder(order.swapId, {
-                      status: "SETTLED",
-                      ...(rawOriginHash && !order.forwardTxHash ? { forwardTxHash: rawOriginHash } : {}),
-                    })) || { ...order, status: "SETTLED" as const };
-                  await creditPartnerFeeOnSettlement(updatedOrder);
-                } else if (rawSt === "FAILED" || rawSt === "REFUNDED") {
-                  await updateProxySwapOrder(order.swapId, { status: "FAILED" });
-                }
-              }
-            }
-          } catch (settleErr) {
-            console.warn(`[ProxySweeperDaemon] Settlement check warning for ${order.swapId}:`, settleErr);
-          }
-        }
-      }
-    } catch (daemonErr) {
-      console.warn("[ProxySweeperDaemon] Sweeper tick error:", daemonErr);
-    } finally {
-      isSweeperTickActive = false;
-    }
+    await runProxySweeperTick();
   }, 12_000);
 
   if (sweeperInterval && typeof (sweeperInterval as any).unref === "function") {
