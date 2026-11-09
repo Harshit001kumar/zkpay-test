@@ -12,7 +12,6 @@ import {
   Globe2,
   Layers,
   ShieldCheck,
-  ChevronRight,
 } from "lucide-react";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { SpatialMultiChain3D } from "@/components/ui/SpatialMultiChain3D";

@@ -3,7 +3,7 @@
 import React, { useRef, useState, useCallback } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import SwapWidget from "@/components/SwapWidget";
-import { ShieldCheck, Zap } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 
 export function SwapHeroStage() {
   const containerRef = useRef<HTMLDivElement | null>(null);

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { ArrowRight, Zap, Shield, CheckCircle2 } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 interface ChainInfo {
   id: string;
