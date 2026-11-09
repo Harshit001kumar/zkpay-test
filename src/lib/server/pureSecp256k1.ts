@@ -1,4 +1,4 @@
-import { secp256k1 } from "@noble/curves/secp256k1";
+import { secp256k1, schnorr } from "@noble/curves/secp256k1";
 import { Buffer } from "buffer";
 
 /**
@@ -236,11 +236,14 @@ export const pureSecp256k1: TinySecp256k1Interface = {
   },
 
   signSchnorr(h: Uint8Array, d: Uint8Array, e?: Uint8Array): Uint8Array {
-    if (typeof (secp256k1 as any).schnorr?.sign === "function") {
-      const sig = (secp256k1 as any).schnorr.sign(h, d, e ? { auxRand: e } : undefined);
+    try {
+      const sig = schnorr.sign(h, d, e);
+      return Buffer.from(sig);
+    } catch {
+      // In case h is 32 bytes and schnorr expects message
+      const sig = (schnorr as any).sign(h, d, e ? { auxRand: e } : undefined);
       return Buffer.from(sig);
     }
-    throw new Error("signSchnorr not supported");
   },
 
   verify(h: Uint8Array, Q: Uint8Array, signature: Uint8Array, strict?: boolean): boolean {
@@ -262,10 +265,8 @@ export const pureSecp256k1: TinySecp256k1Interface = {
 
   verifySchnorr(h: Uint8Array, Q: Uint8Array, signature: Uint8Array): boolean {
     try {
-      if (typeof (secp256k1 as any).schnorr?.verify === "function") {
-        return (secp256k1 as any).schnorr.verify(signature, h, Q);
-      }
-      return false;
+      const q = Q.length === 33 ? Q.slice(1, 33) : Q;
+      return schnorr.verify(signature, h, q);
     } catch {
       return false;
     }
