@@ -94,7 +94,10 @@ export function isValidFeeRecipient(address?: string | null, chain?: string | nu
  * Looks up symbol + decimals for a curated origin asset.
  */
 export function getOriginTokenMeta(originAssetId: string): { symbol: string; decimals: number } | null {
-  const t = SWAP_ALLOWED_TOKENS.find((x) => x.assetId === originAssetId);
+  const lower = (originAssetId || "").toLowerCase();
+  const t = SWAP_ALLOWED_TOKENS.find(
+    (x) => x.assetId === originAssetId || x.assetId.toLowerCase() === lower
+  );
   return t ? { symbol: t.symbol, decimals: t.decimals } : null;
 }
 
@@ -510,81 +513,128 @@ export async function resolveAssetId(symbolOrAssetId: string, chainHint?: string
 }
 
 /**
- * Validates that the amount is provided in valid atomic units (positive integer string)
- * and meets the minimum solver volume threshold (~$0.05 USD).
+ * Normalizes and validates swap amount.
+ * - Handles both atomic units (e.g. 50000000 for 50 USDC, 10000000000000000 for 0.01 ETH)
+ *   and human decimal units (e.g. "0.01", "50.0", "1.5"), automatically converting human
+ *   floats into atomic units.
+ * - Accurately resolves token metadata (symbol + decimals) so multi-chain stablecoins on Ethereum
+ *   (USDC/USDT, 6 decimals) are NEVER incorrectly evaluated against 18-decimal ETH wei thresholds.
+ * - Enforces minimum solver trade volume threshold (~$0.05 USD).
  */
-export function validateSwapAmount(amountStr: string, originAssetId: string): void {
-  const clean = (amountStr || "").trim();
-
-  // Guard against human decimal floats (e.g. "1.5" or "0.5")
-  if (clean.includes(".")) {
-    const err: any = new Error(
-      "Amount is below minimum trade threshold (~$0.05 USD) or provided in human units instead of atomic units (e.g. lamports/wei). Expected atomic units as an integer string (e.g. '1000000000' for 1 SOL, '50000' for 0.05 USDC)."
-    );
-    err.code = "AMOUNT_BELOW_MINIMUM";
+export function normalizeAndValidateSwapAmount(amountStr: string, originAssetId: string): string {
+  let clean = (amountStr || "").trim();
+  if (!clean) {
+    const err: any = new Error("Amount must be a positive non-zero number in atomic or decimal units.");
+    err.code = "INVALID_AMOUNT";
     err.statusCode = 400;
     throw err;
   }
 
-  if (!clean || !/^\d+$/.test(clean) || clean === "0") {
+  const meta = getOriginTokenMeta(originAssetId);
+  const decimals = meta?.decimals ?? 18;
+  const symbol = (meta?.symbol || "").toUpperCase();
+
+  // If provided in human decimal units (e.g. "0.01", "1.5"), cleanly convert to atomic units
+  if (clean.includes(".")) {
+    const [whole = "0", frac = ""] = clean.split(".");
+    const paddedFrac = frac.slice(0, decimals).padEnd(decimals, "0");
+    const combined = `${whole}${paddedFrac}`.replace(/^0+/, "") || "0";
+    clean = combined;
+  }
+
+  if (!/^\d+$/.test(clean) || clean === "0") {
     const err: any = new Error("Amount must be a positive non-zero integer string in atomic units.");
     err.code = "INVALID_AMOUNT";
     err.statusCode = 400;
     throw err;
   }
 
-  // Pre-flight check against tiny human-unit inputs (e.g. "1" or "10" passed instead of lamports/wei)
-  const val = BigInt(clean);
-  const assetLower = originAssetId.toLowerCase();
+  let val = BigInt(clean);
 
-  // SOL (9 decimals): 1 SOL = 1e9 (~$150). $0.05 USD is ~250,000 lamports
-  if (assetLower.includes("sol") && val < 200_000n) {
-    const err: any = new Error(
-      "Amount is below minimum trade threshold (~$0.05 USD) or provided in human units instead of atomic units (e.g. lamports/wei). Expected atomic units as an integer string (e.g. '1000000000' for 1 SOL, '250000' for ~0.00025 SOL)."
-    );
-    err.code = "AMOUNT_BELOW_MINIMUM";
-    err.statusCode = 400;
-    throw err;
+  // If a user passed a tiny integer (e.g. "1" or "2" for ETH or SOL) intended as human units:
+  if (decimals >= 9 && val > 0n && val <= 1000n) {
+    val = val * (10n ** BigInt(decimals));
+    clean = val.toString();
   }
 
-  // ETH (18 decimals): 1 ETH = 1e18 (~$2,500). $0.05 USD is ~2e13 wei
-  if (assetLower.includes("eth") && !assetLower.includes("usdc") && !assetLower.includes("usdt") && val < 10_000_000_000_000n) {
-    const err: any = new Error(
-      "Amount is below minimum trade threshold (~$0.05 USD) or provided in human units instead of atomic units (e.g. wei). Expected atomic units as an integer string (e.g. '10000000000000000' for 0.01 ETH, '20000000000000' for ~0.00002 ETH)."
-    );
-    err.code = "AMOUNT_BELOW_MINIMUM";
-    err.statusCode = 400;
-    throw err;
+  // Check minimum solver trade threshold (~$0.05 USD) per token type:
+  if (symbol === "USDC" || symbol === "USDT") {
+    // 6 decimals: 1 USD = 1,000,000 atomic units. $0.05 is 50,000 atomic units
+    if (val < 50_000n) {
+      const err: any = new Error(
+        `Amount is below minimum trade threshold ($0.05 USD). Expected at least 50000 atomic units (0.05 ${symbol}).`
+      );
+      err.code = "AMOUNT_BELOW_MINIMUM";
+      err.statusCode = 400;
+      throw err;
+    }
+  } else if (symbol === "ETH") {
+    // 18 decimals: 1 ETH = 1e18 wei (~$2,500). $0.05 USD is ~2e13 wei.
+    if (val < 10_000_000_000_000n) {
+      const err: any = new Error(
+        "Amount is below minimum trade threshold (~$0.05 USD) or provided in human units instead of atomic units (e.g. wei). Expected atomic units as an integer string (e.g. '10000000000000000' for 0.01 ETH, '20000000000000' for ~0.00002 ETH)."
+      );
+      err.code = "AMOUNT_BELOW_MINIMUM";
+      err.statusCode = 400;
+      throw err;
+    }
+  } else if (symbol === "SOL") {
+    // 9 decimals: 1 SOL = 1e9 lamports. $0.05 is ~200,000 lamports
+    if (val < 200_000n) {
+      const err: any = new Error(
+        "Amount is below minimum trade threshold (~$0.05 USD) or provided in human units instead of atomic units (e.g. lamports). Expected atomic units as an integer string (e.g. '1000000000' for 1 SOL, '250000' for ~0.00025 SOL)."
+      );
+      err.code = "AMOUNT_BELOW_MINIMUM";
+      err.statusCode = 400;
+      throw err;
+    }
+  } else if (symbol === "BTC") {
+    // 8 decimals: 1 BTC = 1e8 satoshis. $0.05 is ~50 satoshis
+    if (val < 50n) {
+      const err: any = new Error(
+        "Amount is below minimum trade threshold (~$0.05 USD) or provided in human units instead of atomic units (e.g. satoshis). Expected atomic units as an integer string (e.g. '100000' for 0.001 BTC, '50' for ~0.0000005 BTC)."
+      );
+      err.code = "AMOUNT_BELOW_MINIMUM";
+      err.statusCode = 400;
+      throw err;
+    }
+  } else if (symbol === "BNB") {
+    // 18 decimals: 1 BNB = 1e18 (~$600). $0.05 is ~5e13
+    if (val < 50_000_000_000_000n) {
+      const err: any = new Error(
+        "Amount is below minimum trade threshold (~$0.05 USD). Expected at least 50000000000000 atomic units (~0.0001 BNB)."
+      );
+      err.code = "AMOUNT_BELOW_MINIMUM";
+      err.statusCode = 400;
+      throw err;
+    }
+  } else if (symbol === "TRX") {
+    // 6 decimals: 1 TRX = 1e6 sun (~$0.20). $0.05 is ~200,000 sun
+    if (val < 100_000n) {
+      const err: any = new Error(
+        "Amount is below minimum trade threshold (~$0.05 USD). Expected at least 100000 atomic units (~0.1 TRX)."
+      );
+      err.code = "AMOUNT_BELOW_MINIMUM";
+      err.statusCode = 400;
+      throw err;
+    }
+  } else if (symbol === "LTC") {
+    // 8 decimals: 1 LTC = 1e8 litoshis (~$80). $0.05 is ~50,000 litoshis
+    if (val < 50_000n) {
+      const err: any = new Error(
+        "Amount is below minimum trade threshold (~$0.05 USD). Expected at least 50000 atomic units (~0.0005 LTC)."
+      );
+      err.code = "AMOUNT_BELOW_MINIMUM";
+      err.statusCode = 400;
+      throw err;
+    }
   }
 
-  // BTC (8 decimals): 1 BTC = 1e8 (~$65,000). $0.05 USD is ~50-80 satoshis
-  if (assetLower.includes("btc") && val < 50n) {
-    const err: any = new Error(
-      "Amount is below minimum trade threshold (~$0.05 USD) or provided in human units instead of atomic units (e.g. satoshis). Expected atomic units as an integer string (e.g. '100000' for 0.001 BTC, '50' for ~0.0000005 BTC)."
-    );
-    err.code = "AMOUNT_BELOW_MINIMUM";
-    err.statusCode = 400;
-    throw err;
-  }
+  return clean;
+}
 
-  // USDC / USDT (6 decimals): 1 USDC/USDT = 1e6 ($1.00). $0.05 USD is 50,000 atomic units
-  const isUsdStable =
-    assetLower.includes("usdc") ||
-    assetLower.includes("usdt") ||
-    assetLower.includes("137_3hpyoaltt8mp1z2gh1u473dmrkgr") ||
-    assetLower.includes("137_qistmoqjdqptebapjgx5vbxzv6l") ||
-    SWAP_ALLOWED_TOKENS.some(
-      (t) => t.assetId.toLowerCase() === assetLower && (t.symbol === "USDC" || t.symbol === "USDT")
-    );
-
-  if (isUsdStable && val < 50_000n) {
-    const err: any = new Error(
-      "Amount is below minimum trade threshold ($0.05 USD) or provided in human units instead of atomic units (6 decimals). Expected atomic units as an integer string (e.g. '50000' for 0.05 USDC/USDT)."
-    );
-    err.code = "AMOUNT_BELOW_MINIMUM";
-    err.statusCode = 400;
-    throw err;
-  }
+export function validateSwapAmount(amountStr: string, originAssetId: string): void {
+  normalizeAndValidateSwapAmount(amountStr, originAssetId);
 }
 
 function buildSolverHeaders(): Record<string, string> {
@@ -725,8 +775,8 @@ export async function getSwapQuote(params: SwapQuoteParams) {
     throw err;
   }
 
-  // Validate atomic units and minimum volume threshold
-  validateSwapAmount(amount, originAssetId);
+  // Validate and normalize swap amount (handles atomic units or human decimals)
+  const normalizedAmount = normalizeAndValidateSwapAmount(amount, originAssetId);
 
   // Fee split is resolved per ORIGIN chain
   const originSymbol = getOriginTokenMeta(originAssetId)?.symbol || fromAsset;
@@ -734,7 +784,7 @@ export async function getSwapQuote(params: SwapQuoteParams) {
   const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain, originSymbol, hasPartnerAttribution);
 
   // Compute upfront fee deduction (single source of truth)
-  const fees = computeUpfrontFees(BigInt(amount.trim()), feeSplit, originAssetId);
+  const fees = computeUpfrontFees(BigInt(normalizedAmount), feeSplit, originAssetId);
   const netSwapAmount = fees.netSwapAmount.toString();
   const feeAmount = fees.totalFee.toString();
 
@@ -897,8 +947,8 @@ export async function createSwapOrder(params: CreateSwapParams) {
     throw err;
   }
 
-  // Validate atomic units and minimum volume threshold
-  validateSwapAmount(amount, originAssetId);
+  // Validate and normalize swap amount (handles atomic units or human decimals)
+  const normalizedAmount = normalizeAndValidateSwapAmount(amount, originAssetId);
 
   // Fee split is resolved per ORIGIN chain
   const originSymbol = getOriginTokenMeta(originAssetId)?.symbol || fromAsset;
@@ -906,7 +956,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
   const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain, originSymbol, hasPartnerAttribution);
 
   // Compute upfront fee deduction (single source of truth)
-  const fees = computeUpfrontFees(BigInt(amount.trim()), feeSplit, originAssetId);
+  const fees = computeUpfrontFees(BigInt(normalizedAmount), feeSplit, originAssetId);
   const netSwapAmount = fees.netSwapAmount.toString();
   const feeAmount = fees.totalFee.toString();
 
@@ -955,7 +1005,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
     try {
       const proxyWallet = generateProxyDepositWallet(resolvedOriginChain);
       finalDepositAddress = proxyWallet.depositAddress;
-      finalDepositAmount = formatHumanAmount(amount.trim(), originAssetId);
+      finalDepositAmount = formatHumanAmount(normalizedAmount, originAssetId);
 
       const proxyOrder: ProxySwapOrder = {
         swapId: data.correlationId || `swp_${Date.now()}`,
@@ -969,7 +1019,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
         destinationChain: resolvedDestChain,
         recipient: recipient.trim(),
         refundTo: effectiveRefundTo,
-        totalAmountIn: amount.trim(),
+        totalAmountIn: normalizedAmount,
         totalAmountFormatted: finalDepositAmount,
         netSwapAmount,
         feeAmount,
@@ -1014,8 +1064,8 @@ export async function createSwapOrder(params: CreateSwapParams) {
         destinationChain: resolvedDestChain,
         recipient: recipient.trim(),
         refundTo: effectiveRefundTo,
-        totalAmountIn: amount.trim(),
-        totalAmountFormatted: formatHumanAmount(amount.trim(), originAssetId),
+        totalAmountIn: normalizedAmount,
+        totalAmountFormatted: formatHumanAmount(normalizedAmount, originAssetId),
         estimatedAmountOut: quote.amountOutFormatted || quote.amountOut,
         lastKnownStatus: "PENDING_DEPOSIT",
         createdAt: Date.now(),

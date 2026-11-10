@@ -48,8 +48,12 @@ export async function POST(req: Request) {
       slippageBps,
     } = body;
 
-    const sourceAsset = fromAsset || originAsset;
-    const targetAsset = toAsset || destinationAsset;
+    const sourceAsset = (originAsset && typeof originAsset === "string" && originAsset.startsWith("nep"))
+      ? originAsset
+      : (fromAsset || originAsset);
+    const targetAsset = (destinationAsset && typeof destinationAsset === "string" && destinationAsset.startsWith("nep"))
+      ? destinationAsset
+      : (toAsset || destinationAsset);
     const resolvedChain = originChain || fromChain || chain || srcChain || body.origin_chain || undefined;
     const resolvedDestinationChain = destinationChain || toChain || destChain || targetChain || body.destination_chain || body.to_chain || body.dstChain || undefined;
     const resolvedFeeRecipient = rawFeeRecipient || partnerAddress || partnerFeeRecipient;

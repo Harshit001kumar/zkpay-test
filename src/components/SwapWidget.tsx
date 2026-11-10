@@ -208,8 +208,10 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
       try {
         const params = new URLSearchParams({
           fromAsset: fromToken.symbol,
+          originAsset: fromToken.assetId,
           chain: fromToken.blockchain,
           toAsset: toToken.symbol,
+          destinationAsset: toToken.assetId,
           destinationChain: toToken.blockchain,
           amount: atomic,
           slippageBps: String(slippageBps),
@@ -321,8 +323,10 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
     try {
       const payload: Record<string, any> = {
         fromAsset: fromToken.symbol,
+        originAsset: fromToken.assetId,
         chain: fromToken.blockchain,
         toAsset: toToken.symbol,
+        destinationAsset: toToken.assetId,
         destinationChain: toToken.blockchain,
         amount: atomic,
         recipient: cleanRecipient,
@@ -1199,6 +1203,7 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
                       onClick={() => {
                         if (selectorSide === "from") {
                           setFromToken(token);
+                          setAmountInHuman(presetsFor(token)[1] || "1");
                         } else {
                           setToToken(token);
                         }

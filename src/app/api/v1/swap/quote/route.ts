@@ -14,9 +14,16 @@ async function extractQuoteParams(req: Request): Promise<SwapQuoteParams> {
     const resolvedOriginChain = body.originChain || body.fromChain || body.chain || body.origin_chain || body.srcChain || undefined;
     const resolvedDestChain = body.destinationChain || body.toChain || body.destChain || body.targetChain || body.destination_chain || body.to_chain || body.dstChain || undefined;
 
+    const sourceAsset = (body.originAsset && typeof body.originAsset === "string" && body.originAsset.startsWith("nep"))
+      ? body.originAsset
+      : (body.fromAsset || body.originAsset);
+    const targetAsset = (body.destinationAsset && typeof body.destinationAsset === "string" && body.destinationAsset.startsWith("nep"))
+      ? body.destinationAsset
+      : (body.toAsset || body.destinationAsset);
+
     return {
-      fromAsset: body.fromAsset || body.originAsset,
-      toAsset: body.toAsset || body.destinationAsset,
+      fromAsset: sourceAsset,
+      toAsset: targetAsset,
       chain: resolvedOriginChain,
       originChain: resolvedOriginChain,
       destinationChain: resolvedDestChain,
@@ -49,9 +56,17 @@ async function extractQuoteParams(req: Request): Promise<SwapQuoteParams> {
     searchParams.get("dstChain") ||
     undefined;
 
+  const qOrigin = searchParams.get("originAsset") || "";
+  const qFrom = searchParams.get("fromAsset") || "";
+  const sourceAsset = (qOrigin && qOrigin.startsWith("nep")) ? qOrigin : (qFrom || qOrigin);
+
+  const qDest = searchParams.get("destinationAsset") || "";
+  const qTo = searchParams.get("toAsset") || "";
+  const targetAsset = (qDest && qDest.startsWith("nep")) ? qDest : (qTo || qDest || undefined);
+
   return {
-    fromAsset: searchParams.get("fromAsset") || searchParams.get("originAsset") || "",
-    toAsset: searchParams.get("toAsset") || searchParams.get("destinationAsset") || undefined,
+    fromAsset: sourceAsset,
+    toAsset: targetAsset,
     chain: resolvedOriginChain,
     originChain: resolvedOriginChain,
     destinationChain: resolvedDestChain,
