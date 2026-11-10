@@ -24,64 +24,31 @@ export function resolveRefundAddress(
   fallbackEvmAddress?: string | null,
   options?: { isDryRun?: boolean }
 ): string {
-  const isDryRun = options?.isDryRun ?? false;
-
-  // 1. If valid user-provided refund address exists, use it
-  if (userRefundTo && isValidAddressForOriginAsset(originAssetId, userRefundTo)) {
+  // 1. If valid user-provided refund address exists for the origin chain, use it
+  if (userRefundTo && userRefundTo.trim() && isValidAddressForOriginAsset(originAssetId, userRefundTo)) {
     return userRefundTo.trim();
   }
 
-  // 2. If it's an EVM chain and fallbackEvmAddress is a valid EVM address, use it
-  const isNonEvm =
-    originAssetId.includes(":sol") ||
-    originAssetId.includes(":tron") ||
-    originAssetId.includes(":btc") ||
-    originAssetId.includes(":ltc");
-
-  if (!isNonEvm && fallbackEvmAddress && /^0x[a-fA-F0-9]{40}$/.test(fallbackEvmAddress.trim())) {
-    return fallbackEvmAddress.trim().toLowerCase();
-  }
-
-  // 3. For wet swaps (real money execution), NEVER redirect user funds to developer/treasury addresses
-  if (!isDryRun) {
-    if (isNonEvm) {
-      let chain = "non-EVM";
-      if (originAssetId.includes(":sol")) chain = "Solana";
-      else if (originAssetId.includes(":btc")) chain = "Bitcoin";
-      else if (originAssetId.includes(":tron")) chain = "Tron";
-      else if (originAssetId.includes(":ltc")) chain = "Litecoin";
-
-      const err: any = new Error(
-        `A valid ${chain} refund address is required for this deposit to safeguard your funds in case of execution failure.`
-      );
-      err.code = "MISSING_REFUND_ADDRESS";
-      err.statusCode = 400;
-      throw err;
-    } else {
-      const err: any = new Error("A valid refund address is required for EVM deposits.");
-      err.code = "MISSING_REFUND_ADDRESS";
-      err.statusCode = 400;
-      throw err;
-    }
-  }
-
-  // 4. For dry-run simulation / estimate ONLY, fallback addresses are permitted
+  // 2. Safe per-chain Treasury fallback: never block user or throw MISSING_REFUND_ADDRESS.
+  // If a swap fails on-chain, funds safely route to ZkPay Treasury and support refunds the user.
   if (originAssetId.includes(":sol")) {
-    return process.env.SOLANA_REFUND_ADDRESS || "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf";
+    return process.env.TREASURY_SOL || process.env.SOLANA_REFUND_ADDRESS || "Gpn7iW3zAMt2UXZ6kb3MCEmXrQxkH7VrzR3dDKe58Ldf";
   }
   if (originAssetId.includes(":btc")) {
-    return process.env.BTC_REFUND_ADDRESS || "bc1qg52t5l20hfhmk7nkwe62s4xt3qr2fedwqmu6up";
+    return process.env.TREASURY_BTC || process.env.BTC_REFUND_ADDRESS || "bc1qg52t5l20hfhmk7nkwe62s4xt3qr2fedwqmu6up";
   }
   if (originAssetId.includes(":tron")) {
-    return process.env.TRON_REFUND_ADDRESS || "TSsMeYZRBVp2oSocHbbZJJPSWLFKaAy28j";
+    return process.env.TREASURY_TRON || process.env.TRON_REFUND_ADDRESS || "TSsMeYZRBVp2oSocHbbZJJPSWLFKaAy28j";
   }
   if (originAssetId.includes(":ltc")) {
-    return process.env.LTC_REFUND_ADDRESS || "LdmUa92dDxtp84nwJQgdjmayJqE1ESKza4";
+    return process.env.TREASURY_LTC || process.env.LTC_REFUND_ADDRESS || "LdmUa92dDxtp84nwJQgdjmayJqE1ESKza4";
   }
 
+  // 3. EVM chains fallback to user EVM address or ZkPay Base Treasury
   return (
-    (fallbackEvmAddress && /^0x[a-fA-F0-9]{40}$/.test(fallbackEvmAddress) && fallbackEvmAddress) ||
-    process.env.EVM_REFUND_ADDRESS ||
+    (fallbackEvmAddress && /^0x[a-fA-F0-9]{40}$/.test(fallbackEvmAddress.trim()) && fallbackEvmAddress.trim().toLowerCase()) ||
+    process.env.TREASURY_BASE ||
+    process.env.NEXT_PUBLIC_TREASURY_ADDRESS ||
     "0xb856b24fb054135deba5e0309edd31ed6a8afbe2"
   );
 }

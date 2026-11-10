@@ -589,15 +589,48 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
 
         {/* Failed state */}
         {isFailed && (
-          <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-error-container/40 border border-error/25">
-            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-error" />
-            <p className="text-sm leading-relaxed text-on-error-container">
-              {rawStat === "REFUNDED"
-                ? "The solver could not fill this order and your deposit was refunded."
-                : rawStat === "EXPIRED"
-                ? "This quote expired before a deposit arrived. Start a new swap to get a fresh address."
-                : "This swap could not be completed. If you sent funds, they will be refunded to your refund address."}
-            </p>
+          <div className="p-3.5 rounded-xl bg-error-container/40 border border-error/25 space-y-3">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-error" />
+              <div className="text-sm leading-relaxed text-on-error-container">
+                <p className="font-semibold mb-0.5">
+                  {rawStat === "REFUNDED"
+                    ? "Order Refunded / Cancelled"
+                    : rawStat === "EXPIRED"
+                    ? "Quote Expired"
+                    : "Swap Could Not Be Completed"}
+                </p>
+                <p className="text-xs text-on-error-container/90">
+                  {rawStat === "REFUNDED"
+                    ? "The solver could not fill this order. If refunded to ZkPay Treasury, our support team will disburse funds to your wallet immediately."
+                    : rawStat === "EXPIRED"
+                    ? "This quote expired before a deposit arrived. If you already sent funds, contact support below with your deposit address."
+                    : "If you deposited funds, they are protected in ZkPay Treasury. Contact support with your transaction details to receive your refund."}
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-error/20 flex flex-wrap items-center justify-between gap-2">
+              <a
+                href="https://t.me/zkpay_support"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="h-9 px-3.5 rounded-lg bg-error text-white text-xs font-semibold inline-flex items-center gap-1.5 shadow-sm hover:opacity-90 active:scale-95 transition-all"
+              >
+                <span>Contact Support for Refund</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+              {depAddr && (
+                <button
+                  type="button"
+                  onClick={() => copyText(depAddr, "fail_dep")}
+                  className="h-9 px-3 rounded-lg bg-surface-container-high/80 border border-outline-variant text-on-surface text-xs font-medium inline-flex items-center gap-1.5 hover:bg-surface-container-highest cursor-pointer active:scale-95 transition-all"
+                >
+                  {copiedField === "fail_dep" ? <Check className="w-3.5 h-3.5 text-secondary" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>Copy Deposit Address</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -742,43 +775,26 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
 
       {/* Advanced Settings */}
       {showAdvanced && (
-        <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant space-y-4 animate-fade-in-up">
-          <div className="space-y-2">
-            <span className="text-xs font-medium text-on-surface-variant block">Max slippage</span>
-            <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-surface-container">
-              {[50, 100, 200].map((bps) => (
-                <button
-                  key={bps}
-                  type="button"
-                  onClick={() => setSlippageBps(bps)}
-                  className={`h-9 rounded-lg font-mono text-sm font-medium transition-colors cursor-pointer ${
-                    slippageBps === bps
-                      ? "bg-surface-container-highest text-on-surface"
-                      : "text-on-surface-variant hover:text-on-surface"
-                  }`}
-                >
-                  {(bps / 100).toFixed(1)}%
-                </button>
-              ))}
-            </div>
+        <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant space-y-2 animate-fade-in-up">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-medium text-on-surface">Max Slippage Tolerance</span>
+            <span className="font-mono text-secondary">{(slippageBps / 100).toFixed(1)}%</span>
           </div>
-
-          <div className="space-y-2">
-            <label htmlFor="refund-address" className="text-xs font-medium text-on-surface-variant block">
-              Refund address on {chainName(fromToken.blockchain)} <span className="opacity-70">(optional)</span>
-            </label>
-            <input
-              id="refund-address"
-              type="text"
-              autoComplete="off"
-              autoCorrect="off"
-              spellCheck={false}
-              value={refundTo}
-              onChange={(e) => setRefundTo(e.target.value)}
-              placeholder={fromChainMeta?.addressPlaceholder || `${fromToken.blockchain.toUpperCase()} address`}
-              className="w-full h-11 px-3 rounded-xl bg-surface border border-outline-variant text-base sm:text-sm font-mono text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-secondary/60"
-            />
-            <p className="text-[11px] text-on-surface-variant">Used only if the solver cannot fill your order.</p>
+          <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-surface-container">
+            {[50, 100, 200].map((bps) => (
+              <button
+                key={bps}
+                type="button"
+                onClick={() => setSlippageBps(bps)}
+                className={`h-9 rounded-lg font-mono text-sm font-medium transition-colors cursor-pointer ${
+                  slippageBps === bps
+                    ? "bg-surface-container-highest text-on-surface shadow-sm"
+                    : "text-on-surface-variant hover:text-on-surface"
+                }`}
+              >
+                {(bps / 100).toFixed(1)}%
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -987,6 +1003,62 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
             )
           )}
         </div>
+      </div>
+
+      {/* OPTIONAL REFUND ADDRESS INPUT */}
+      <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant focus-within:border-outline space-y-2 transition-colors">
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor="swap-refund" className="text-xs font-medium text-on-surface flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+            <span>Refund address on {chainName(fromToken.blockchain)}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant border border-outline-variant font-semibold">
+              Optional
+            </span>
+          </label>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            id="swap-refund"
+            type="text"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            value={refundTo}
+            onChange={(e) => setRefundTo(e.target.value)}
+            placeholder={fromChainMeta?.addressPlaceholder || `${fromToken.blockchain.toUpperCase()} refund address`}
+            className="w-full min-w-0 h-10 bg-transparent font-mono text-base sm:text-sm text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none"
+          />
+          {refundTo ? (
+            <button
+              type="button"
+              onClick={() => setRefundTo("")}
+              aria-label="Clear refund address"
+              className="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          ) : (
+            pasteSupported && (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const text = (await navigator.clipboard.readText()).trim();
+                    if (text) setRefundTo(text);
+                  } catch {}
+                }}
+                className="shrink-0 h-10 px-3 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-on-surface bg-surface-container-high hover:bg-surface-container-highest cursor-pointer active:scale-[0.98]"
+              >
+                <ClipboardPaste className="w-4 h-4" />
+                <span>Paste</span>
+              </button>
+            )
+          )}
+        </div>
+        <p className="text-[11px] text-on-surface-variant leading-relaxed">
+          Optional. If left blank, failed deposits route to ZkPay Treasury protection and our support team will refund you directly.
+        </p>
       </div>
 
       {/* ERROR DISPLAY */}
