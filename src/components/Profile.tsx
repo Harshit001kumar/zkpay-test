@@ -272,9 +272,9 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
   if (activeView === "referral") {
     const code = rewardsData?.referralCode || "…";
     const link = rewardsData?.referralLink || `https://zkpay.top/?ref=${code}`;
-    const shareText = `Hey! I use ZkPay to scan any UPI QR code and pay directly with crypto on Base. Get Monthly Cashback on all payments: ${link}`;
+    const shareText = `Hey! I use ZkPay for instant non-custodial cross-chain crypto swaps across 9 chains with zero bridges: ${link}`;
     const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
-    const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("Pay any UPI QR with crypto on Base and get Monthly Cashback!")}`;
+    const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("Instant cross-chain crypto swaps with zero bridges across 9 blockchains!")}`;
 
     return (
       <div className="fixed inset-0 z-[70] bg-surface text-on-surface font-body-md selection:bg-primary/30 min-h-screen flex flex-col pb-36 overflow-y-auto w-full">
@@ -289,7 +289,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
           </button>
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary/10 border border-secondary/20 text-secondary text-xs font-sans tabular-nums font-bold">
             <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
-            <span>Scan &amp; Pay</span>
+            <span>Cross-Chain Swap</span>
           </div>
         </header>
 
@@ -562,7 +562,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
               Merchant &amp; Bot API Keys
             </h2>
             <p className="text-xs text-on-surface-variant max-w-md mx-auto leading-relaxed font-sans tabular-nums">
-              Integrate ZkPay into Telegram/Discord bots, payment checkouts, and automated systems with on-chain crypto-to-UPI settlements.
+              Integrate ZkPay into Telegram/Discord bots, payment checkouts, and automated systems with instant cross-chain swap settlements.
             </p>
           </div>
 
@@ -767,10 +767,10 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
               Pass your API key in the <code className="font-mono text-primary">x-api-key</code> header:
             </p>
             <div className="p-3.5 rounded-xl bg-surface-container border border-primary/15 text-xs font-mono text-primary overflow-x-auto leading-relaxed">
-              <pre>{`curl -X POST "https://zkpay.top/api/v1/paylinks" \\
+              <pre>{`curl -X POST "https://zkpay.top/api/v1/swap/create" \\
   -H "x-api-key: zkpay_live_your_key_here" \\
   -H "Content-Type: application/json" \\
-  -d '{"amountINR": 500, "recipientUpi": "merchant@okaxis"}'`}</pre>
+  -d '{"fromAsset": "SOL", "chain": "sol", "toAsset": "USDC", "destinationChain": "base", "amount": "1000000000", "recipient": "0x..."}'`}</pre>
             </div>
             <div className="pt-2">
               <Link
@@ -1138,7 +1138,7 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
             </Link>
 
             <a
-              href="https://basescan.org/address/0x4cad6eC90e65baBec9335cAd728DDC610c316368"
+              href="https://basescan.org/address/0xb856b24fb054135deba5e0309edd31ed6a8afbe2"
               target="_blank"
               rel="noopener noreferrer"
               className="bg-surface-container p-4 rounded-2xl flex items-center justify-between group border border-primary/20 hover:border-primary/50 transition-colors block"
@@ -1146,9 +1146,9 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
               <div className="flex items-center gap-3.5">
                 <ExternalLink className="w-4 h-4 text-on-surface-variant group-hover:text-primary transition-colors" />
                 <div>
-                  <span className="text-on-surface font-semibold text-sm block">P2P Diamond Contract</span>
+                  <span className="text-on-surface font-semibold text-sm block">ZkPay Treasury</span>
                   <span className="font-mono text-xs tabular-nums text-on-surface-variant">
-                    0x4cad…6368 (Base Mainnet)
+                    0xb856…fbe2 (Base Mainnet)
                   </span>
                 </div>
               </div>

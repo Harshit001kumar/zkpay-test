@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
+import { motion } from "framer-motion";
 import { SWAP_ALLOWED_TOKENS } from "@/lib/constants";
 import { CHAIN_METADATA, SupportedChainId, SwapTokenItem } from "@/lib/types";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { saveTransaction, updateTransactionStatus } from "@/lib/history";
+import { chainVisual, tokenColor, POPULAR_PAIRS, type PopularPair } from "@/lib/chainVisuals";
 import {
   ArrowDownUp,
   Copy,
@@ -22,11 +25,20 @@ import {
   X,
   ExternalLink,
   AlertTriangle,
+  Timer,
+  Zap,
 } from "lucide-react";
 
 interface SwapWidgetProps {
   compact?: boolean;
   onSwapCreated?: () => void;
+  /** Prefill a route, e.g. { from: "SOL:sol", to: "USDC:base" } */
+  pair?: PopularPair | null;
+}
+
+function findToken(key: string): SwapTokenItem | undefined {
+  const [symbol, chain] = key.split(":");
+  return SWAP_ALLOWED_TOKENS.find((t) => t.symbol === symbol && t.blockchain === chain);
 }
 
 const EVM_CHAINS = new Set(["base", "eth", "arb", "polygon", "bsc"]);
@@ -63,20 +75,59 @@ function shortAddr(a: string, head = 6, tail = 4): string {
   return a.length > head + tail + 1 ? `${a.slice(0, head)}…${a.slice(-tail)}` : a;
 }
 
-/** Minimal monogram mark for a token (no remote images → no layout shift, no broken icons). */
-function TokenMark({ symbol, size = "md" }: { symbol: string; size?: "sm" | "md" }) {
-  const dim = size === "sm" ? "w-7 h-7 text-[10px]" : "w-9 h-9 text-[11px]";
+/** Brand-tinted token mark with a chain badge (no remote images, no layout shift). */
+function TokenMark({ symbol, chain, size = "md" }: { symbol: string; chain?: string; size?: "sm" | "md" }) {
+  const dim = size === "sm" ? "w-7 h-7 text-[9px]" : "w-10 h-10 text-[10px]";
+  const color = tokenColor(symbol, chain);
+  const cv = chain ? chainVisual(chain) : null;
   return (
-    <span
-      className={`${dim} shrink-0 rounded-full bg-surface-container-highest border border-outline-variant text-on-surface font-bold flex items-center justify-center tracking-tight`}
-      aria-hidden="true"
-    >
-      {symbol.slice(0, 4)}
+    <span className="relative shrink-0" aria-hidden="true">
+      <span
+        className={`${dim} rounded-full font-bold flex items-center justify-center tracking-tight`}
+        style={{
+          background: `radial-gradient(circle at 30% 25%, ${color}55, ${color}1f 60%, transparent 100%), #111622`,
+          boxShadow: `inset 0 0 0 1px ${color}66`,
+          color: "#F4F7FB",
+        }}
+      >
+        {symbol.slice(0, 4)}
+      </span>
+      {cv && cv.code !== symbol && (
+        <span
+          className={`absolute -bottom-0.5 -right-0.5 ${size === "sm" ? "w-3 h-3" : "w-4 h-4"} rounded-full border-2 border-surface-container`}
+          style={{ backgroundColor: cv.color }}
+          title={cv.name}
+        />
+      )}
     </span>
   );
 }
 
-export default function SwapWidget({ compact = false, onSwapCreated }: SwapWidgetProps) {
+function useCountdown(deadline?: string | number | null) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!deadline) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [deadline]);
+  if (!deadline) return null;
+  const end = typeof deadline === "number" ? deadline : new Date(deadline).getTime();
+  if (!Number.isFinite(end)) return null;
+  return Math.max(0, Math.floor((end - now) / 1000));
+}
+
+function formatCountdown(sec: number) {
+  if (sec >= 3600) {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    return `${h}h ${String(m).padStart(2, "0")}m`;
+  }
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+export default function SwapWidget({ compact = false, onSwapCreated, pair = null }: SwapWidgetProps) {
   const { address } = useActiveAccount();
 
   // Default: SOL (Solana) -> USDC (Base)
@@ -115,10 +166,29 @@ export default function SwapWidget({ compact = false, onSwapCreated }: SwapWidge
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [showQr, setShowQr] = useState<boolean>(false);
   const [pasteSupported, setPasteSupported] = useState<boolean>(false);
+  const [flipTurns, setFlipTurns] = useState<number>(0);
+  const [mounted, setMounted] = useState<boolean>(false);
+
+  const secondsLeft = useCountdown(activeOrder?.deposit?.deadline || null);
 
   useEffect(() => {
+    setMounted(true);
     setPasteSupported(typeof navigator !== "undefined" && !!navigator.clipboard?.readText);
   }, []);
+
+  // Apply an externally requested route (landing page quick routes)
+  useEffect(() => {
+    if (!pair || activeOrder) return;
+    const f = findToken(pair.from);
+    const t = findToken(pair.to);
+    if (f) setFromToken(f);
+    if (t) {
+      setToToken(t);
+      setRecipient("");
+    }
+    if (f) setAmountInHuman(presetsFor(f)[1] || "1");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pair]);
 
   // Auto-fill connected EVM wallet when destination chain is EVM and recipient is empty
   useEffect(() => {
@@ -241,6 +311,8 @@ export default function SwapWidget({ compact = false, onSwapCreated }: SwapWidge
     const prevTo = toToken;
     setFromToken(prevTo);
     setToToken(prevFrom);
+    setFlipTurns((n) => n + 1);
+    if (prevFrom.blockchain !== prevTo.blockchain) setRecipient("");
     if (quoteData?.amountOutFormatted) {
       setAmountInHuman(String(quoteData.amountOutFormatted));
     }
@@ -451,6 +523,21 @@ export default function SwapWidget({ compact = false, onSwapCreated }: SwapWidge
         {/* Deposit instructions — address first, QR on demand */}
         {stepIndex === 0 && !isFailed && (
           <div className="space-y-3">
+            {secondsLeft !== null && (
+              <div
+                className={`flex items-center justify-between h-10 px-3 rounded-xl border text-xs ${
+                  secondsLeft < 120
+                    ? "border-error/30 bg-error-container/30 text-on-error-container"
+                    : "border-outline-variant bg-surface-container-low text-on-surface-variant"
+                }`}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <Timer className="w-3.5 h-3.5" />
+                  <span>{secondsLeft === 0 ? "Quote expired" : "Deposit window"}</span>
+                </span>
+                <span className="font-mono tabular-nums text-on-surface">{formatCountdown(secondsLeft)}</span>
+              </div>
+            )}
             <div className="flex items-start gap-2.5 p-3 rounded-xl bg-warning/10 border border-warning/25">
               <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-warning" />
               <p className="text-xs leading-relaxed text-on-surface">
@@ -643,7 +730,15 @@ export default function SwapWidget({ compact = false, onSwapCreated }: SwapWidge
     <div className="rounded-2xl bg-surface-container border border-outline-variant p-3 sm:p-5 space-y-2 relative">
       {/* Header Row */}
       <div className="flex items-center justify-between px-1 pb-1">
-        <h2 className="text-base font-semibold text-on-surface">Swap</h2>
+        <div className="flex items-center gap-2 min-w-0">
+          <h2 className="text-base font-semibold text-on-surface">Swap</h2>
+          <span className="hidden min-[380px]:inline-flex items-center gap-1 h-6 px-2 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-medium text-on-primary-container whitespace-nowrap">
+            <Zap className="w-3 h-3" />
+            <span>
+              {chainVisual(fromToken.blockchain).code} to {chainVisual(toToken.blockchain).code}
+            </span>
+          </span>
+        </div>
         <button
           type="button"
           onClick={() => setShowAdvanced(!showAdvanced)}
@@ -728,10 +823,14 @@ export default function SwapWidget({ compact = false, onSwapCreated }: SwapWidge
           <button
             type="button"
             onClick={() => openSelector("from")}
-            className="shrink-0 h-11 pl-1.5 pr-2.5 rounded-full bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant flex items-center gap-2 transition-colors cursor-pointer active:scale-[0.98]"
+            aria-label={`Change token to pay, currently ${fromToken.symbol} on ${chainName(fromToken.blockchain)}`}
+            className="shrink-0 h-12 pl-1.5 pr-2.5 rounded-full bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant flex items-center gap-2 transition-colors cursor-pointer active:scale-[0.98]"
           >
-            <TokenMark symbol={fromToken.symbol} size="sm" />
-            <span className="text-sm font-semibold text-on-surface">{fromToken.symbol}</span>
+            <TokenMark symbol={fromToken.symbol} chain={fromToken.blockchain} size="sm" />
+            <span className="flex flex-col items-start leading-none">
+              <span className="text-sm font-semibold text-on-surface">{fromToken.symbol}</span>
+              <span className="text-[10px] text-on-surface-variant mt-0.5">{chainName(fromToken.blockchain)}</span>
+            </span>
             <ChevronDown className="w-4 h-4 text-on-surface-variant" />
           </button>
         </div>
@@ -756,14 +855,17 @@ export default function SwapWidget({ compact = false, onSwapCreated }: SwapWidge
 
       {/* FLIP BUTTON */}
       <div className="flex justify-center -my-4 relative z-10">
-        <button
+        <motion.button
           type="button"
           onClick={handleFlipTokens}
-          className="w-11 h-11 rounded-full bg-surface-container-high hover:bg-surface-container-highest border-4 border-surface-container flex items-center justify-center text-on-surface transition-transform duration-300 cursor-pointer active:scale-90 hover:rotate-180"
+          animate={{ rotate: flipTurns * 180 }}
+          whileTap={{ scale: 0.88 }}
+          transition={{ type: "spring", stiffness: 320, damping: 20 }}
+          className="w-11 h-11 rounded-full bg-surface-container-high hover:bg-primary hover:text-on-primary border-4 border-surface-container flex items-center justify-center text-on-surface transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-secondary focus-visible:outline-none"
           aria-label="Switch tokens"
         >
           <ArrowDownUp className="w-4 h-4" />
-        </button>
+        </motion.button>
       </div>
 
       {/* TO BOX */}
@@ -787,10 +889,14 @@ export default function SwapWidget({ compact = false, onSwapCreated }: SwapWidge
           <button
             type="button"
             onClick={() => openSelector("to")}
-            className="shrink-0 h-11 pl-1.5 pr-2.5 rounded-full bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant flex items-center gap-2 transition-colors cursor-pointer active:scale-[0.98]"
+            aria-label={`Change token to receive, currently ${toToken.symbol} on ${chainName(toToken.blockchain)}`}
+            className="shrink-0 h-12 pl-1.5 pr-2.5 rounded-full bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant flex items-center gap-2 transition-colors cursor-pointer active:scale-[0.98]"
           >
-            <TokenMark symbol={toToken.symbol} size="sm" />
-            <span className="text-sm font-semibold text-on-surface">{toToken.symbol}</span>
+            <TokenMark symbol={toToken.symbol} chain={toToken.blockchain} size="sm" />
+            <span className="flex flex-col items-start leading-none">
+              <span className="text-sm font-semibold text-on-surface">{toToken.symbol}</span>
+              <span className="text-[10px] text-on-surface-variant mt-0.5">{chainName(toToken.blockchain)}</span>
+            </span>
             <ChevronDown className="w-4 h-4 text-on-surface-variant" />
           </button>
         </div>
@@ -917,16 +1023,17 @@ export default function SwapWidget({ compact = false, onSwapCreated }: SwapWidge
         <span>{ctaLabel}</span>
       </button>
 
-      {/* TOKEN SELECTOR — bottom sheet on mobile, centered dialog on desktop */}
-      {selectorSide && (
+      {/* TOKEN SELECTOR — bottom sheet on mobile, centered dialog on desktop.
+          Portaled to <body> so 3D-transformed ancestors cannot trap position: fixed. */}
+      {selectorSide && mounted && createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+          className="fixed inset-0 z-[400] flex items-end sm:items-center justify-center"
           role="dialog"
           aria-modal="true"
           aria-label={`Select ${selectorSide === "from" ? "token to pay" : "token to receive"}`}
         >
           <div
-            className="absolute inset-0 bg-black/70 animate-backdrop-in"
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm animate-backdrop-in"
             onClick={() => setSelectorSide(null)}
           />
           <div className="relative w-full sm:max-w-md h-[85dvh] sm:h-[min(640px,85dvh)] rounded-t-2xl sm:rounded-2xl bg-surface-container border border-outline-variant flex flex-col animate-sheet-up pb-safe">
@@ -979,6 +1086,41 @@ export default function SwapWidget({ compact = false, onSwapCreated }: SwapWidge
                   </button>
                 ))}
               </div>
+
+              {!searchQuery.trim() && chainFilter === "all" && (
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-medium text-on-surface-variant">Popular routes</span>
+                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
+                    {POPULAR_PAIRS.map((p) => {
+                      const f = findToken(p.from);
+                      const t = findToken(p.to);
+                      if (!f || !t) return null;
+                      return (
+                        <button
+                          key={p.label}
+                          type="button"
+                          onClick={() => {
+                            setFromToken(f);
+                            setToToken(t);
+                            setRecipient("");
+                            setSelectorSide(null);
+                          }}
+                          className="h-9 pl-1 pr-3 rounded-full border border-outline-variant bg-surface-container-low hover:border-secondary/40 inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors"
+                        >
+                          <span className="flex -space-x-1.5">
+                            <TokenMark symbol={f.symbol} size="sm" />
+                            <TokenMark symbol={t.symbol} size="sm" />
+                          </span>
+                          <span className="text-xs font-medium text-on-surface">
+                            {f.symbol} to {t.symbol}
+                          </span>
+                          <span className="text-[10px] text-on-surface-variant">{chainVisual(t.blockchain).code}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="overflow-y-auto flex-1 px-2 pt-2 pb-2 mt-1 border-t border-outline-variant overscroll-contain">
@@ -1008,7 +1150,7 @@ export default function SwapWidget({ compact = false, onSwapCreated }: SwapWidge
                         isSelected ? "bg-secondary/10" : "hover:bg-surface-container-high active:bg-surface-container-high"
                       }`}
                     >
-                      <TokenMark symbol={token.symbol} />
+                      <TokenMark symbol={token.symbol} chain={token.blockchain} />
                       <div className="min-w-0 flex-1">
                         <span className="block text-sm font-semibold text-on-surface">{token.symbol}</span>
                         <span className="block text-xs text-on-surface-variant truncate">
@@ -1022,7 +1164,8 @@ export default function SwapWidget({ compact = false, onSwapCreated }: SwapWidge
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -106,6 +106,24 @@ function SpatialMultiChain3DComponent({ scrollProgress }: SpatialMultiChain3DPro
       { ringIndex: 2, angle: 3.9, speed: 0.005, radius: 1.84, tiltX: 0.95, tiltZ: 0.16, code: "BTC → BASE", isAccent: true },
     ];
 
+    // Hub to hub cross-chain swap arcs (comet particles travelling along lifted bezier curves)
+    const swapArcs = [
+      { from: "SOL", to: "BASE", t: 0.0, speed: 0.0055, accent: true },
+      { from: "BTC", to: "ETH", t: 0.35, speed: 0.0042, accent: false },
+      { from: "TRX", to: "BASE", t: 0.62, speed: 0.005, accent: true },
+      { from: "LTC", to: "POL", t: 0.18, speed: 0.0047, accent: false },
+      { from: "ETH", to: "SOL", t: 0.8, speed: 0.0051, accent: false },
+      { from: "BSC", to: "ARB", t: 0.5, speed: 0.0045, accent: true },
+    ];
+
+    // Deep parallax starfield
+    const stars = Array.from({ length: isMobile ? 70 : 140 }, () => ({
+      x: Math.random(),
+      y: Math.random(),
+      depth: 0.2 + Math.random() * 0.8,
+      twinkle: Math.random() * Math.PI * 2,
+    }));
+
     // Pointer tracking with inertia
     const pointer = { x: 0, y: 0, targetX: 0, targetY: 0 };
     const handlePointerMove = (e: MouseEvent | TouchEvent) => {
@@ -114,8 +132,17 @@ function SpatialMultiChain3DComponent({ scrollProgress }: SpatialMultiChain3DPro
       pointer.targetX = (clientX / Math.max(width, 1) - 0.5) * 2;
       pointer.targetY = (clientY / Math.max(height, 1) - 0.5) * 2;
     };
+    // Mobile gyro tilt (Android and permission-granted iOS)
+    const handleOrientation = (e: DeviceOrientationEvent) => {
+      if (e.gamma == null || e.beta == null) return;
+      pointer.targetX = Math.max(-1, Math.min(1, e.gamma / 30));
+      pointer.targetY = Math.max(-1, Math.min(1, (e.beta - 45) / 30));
+    };
     window.addEventListener("mousemove", handlePointerMove, { passive: true });
     window.addEventListener("touchmove", handlePointerMove, { passive: true });
+    if (!shouldReduceMotion) {
+      window.addEventListener("deviceorientation", handleOrientation, { passive: true });
+    }
 
     // IntersectionObserver to sleep when canvas is not visible
     const observer = new IntersectionObserver(([entry]) => {
@@ -213,6 +240,19 @@ function SpatialMultiChain3DComponent({ scrollProgress }: SpatialMultiChain3DPro
       const rotY = baseRotationY + s * Math.PI * 2.4 + pointer.x * 0.35;
       const rotX = 0.24 + Math.sin(s * Math.PI * 1.6) * 0.38 + pointer.y * 0.25;
       const rotZ = Math.cos(s * Math.PI) * 0.15;
+
+      // 0. Parallax starfield
+      const timeNow = performance.now() * 0.001;
+      for (let i = 0; i < stars.length; i++) {
+        const st = stars[i];
+        const sx = ((st.x + 1 + pointer.x * 0.015 * st.depth) % 1) * width;
+        const sy = ((st.y + 2 - ((s * 0.25 * st.depth) % 1) + pointer.y * 0.015 * st.depth) % 1) * height;
+        const tw = shouldReduceMotion ? 0.6 : 0.45 + Math.sin(timeNow * 1.4 + st.twinkle) * 0.3;
+        ctx.globalAlpha = tw * st.depth * 0.55;
+        ctx.fillStyle = st.depth > 0.85 ? "#CCFF00" : "#9EC0FF";
+        ctx.fillRect(sx, sy, st.depth * 1.4, st.depth * 1.4);
+      }
+      ctx.globalAlpha = 1;
 
       // 1. Ambient Volumetric Atmospheric Core Glow (Electric Blue + Acid Lime)
       const coreGlow = ctx.createRadialGradient(
@@ -327,6 +367,56 @@ function SpatialMultiChain3DComponent({ scrollProgress }: SpatialMultiChain3DPro
       });
       ctx.globalAlpha = 1;
 
+      // 5b. Hub to hub swap arcs with comet trails
+      const hubMap: Record<string, (typeof projected)[number]> = {};
+      projected.forEach((p) => {
+        if (p.isHub && p.label) hubMap[p.label] = p;
+      });
+      swapArcs.forEach((arc) => {
+        const a = hubMap[arc.from];
+        const b = hubMap[arc.to];
+        if (!a || !b) return;
+        if (!shouldReduceMotion) {
+          arc.t += arc.speed;
+          if (arc.t > 1) arc.t = 0;
+        }
+        const visibility = Math.min(1, Math.max(0, (Math.min(a.z, b.z) + 0.35) * 1.6));
+        if (visibility <= 0.02) return;
+
+        // Control point lifted outward from the globe center
+        const mx = (a.sx + b.sx) / 2;
+        const my = (a.sy + b.sy) / 2;
+        const cx = centerX + (mx - centerX) * 1.9;
+        const cy = centerY + (my - centerY) * 1.9 - baseRadius * 0.15;
+
+        // Faint arc path
+        ctx.beginPath();
+        ctx.moveTo(a.sx, a.sy);
+        ctx.quadraticCurveTo(cx, cy, b.sx, b.sy);
+        ctx.strokeStyle = arc.accent
+          ? `rgba(204, 255, 0, ${(0.16 * visibility).toFixed(3)})`
+          : `rgba(41, 112, 255, ${(0.22 * visibility).toFixed(3)})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Comet head and fading tail
+        const tailSteps = mobile ? 6 : 10;
+        for (let k = 0; k < tailSteps; k++) {
+          const tt = arc.t - k * 0.018;
+          if (tt < 0) break;
+          const inv = 1 - tt;
+          const px = inv * inv * a.sx + 2 * inv * tt * cx + tt * tt * b.sx;
+          const py = inv * inv * a.sy + 2 * inv * tt * cy + tt * tt * b.sy;
+          const fade = 1 - k / tailSteps;
+          ctx.globalAlpha = fade * visibility * 0.9;
+          ctx.fillStyle = arc.accent ? "#CCFF00" : "#528BFF";
+          ctx.beginPath();
+          ctx.arc(px, py, (k === 0 ? 2.6 : 1.8) * fade + 0.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      });
+
       // 6. Traveling Multi-Chain Orbital Intent Packets
       packets.forEach((pkt) => {
         if (!shouldReduceMotion) {
@@ -381,6 +471,7 @@ function SpatialMultiChain3DComponent({ scrollProgress }: SpatialMultiChain3DPro
       window.removeEventListener("resize", resize);
       window.removeEventListener("mousemove", handlePointerMove);
       window.removeEventListener("touchmove", handlePointerMove);
+      window.removeEventListener("deviceorientation", handleOrientation);
     };
   }, [scrollProgress, shouldReduceMotion]);
 

@@ -330,6 +330,88 @@ input[type=number] {
   background-color: var(--color-paper);
 }
 
+/* ─── 3D Stage Rim Light (rotating conic highlight on the swap stage bezel) ─── */
+@property --rim-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.stage-rim {
+  padding: 1px;
+  background: conic-gradient(
+    from var(--rim-angle),
+    transparent 0deg,
+    rgba(41, 112, 255, 0.55) 60deg,
+    transparent 120deg,
+    transparent 200deg,
+    rgba(204, 255, 0, 0.45) 250deg,
+    transparent 300deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: rim-spin 7s linear infinite;
+}
+
+@keyframes rim-spin {
+  to { --rim-angle: 360deg; }
+}
+
+/* ─── Infinite Marquee (live route ticker) ─── */
+@keyframes marquee-x {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  animation: marquee-x 38s linear infinite;
+}
+
+.marquee-mask {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+/* ─── CSS 3D Chain Orbit Ring ─── */
+@keyframes orbit-spin {
+  from { transform: rotateX(68deg) rotateZ(0deg); }
+  to { transform: rotateX(68deg) rotateZ(360deg); }
+}
+
+@keyframes orbit-counter {
+  from { transform: rotateZ(0deg) rotateX(-68deg); }
+  to { transform: rotateZ(-360deg) rotateX(-68deg); }
+}
+
+.orbit-ring {
+  transform-style: preserve-3d;
+  animation: orbit-spin 28s linear infinite;
+}
+
+.orbit-billboard {
+  animation: orbit-counter 28s linear infinite;
+}
+
+@keyframes float-y {
+  0%, 100% { transform: translateY(-6px); }
+  50% { transform: translateY(6px); }
+}
+
+.animate-float {
+  animation: float-y 6s ease-in-out infinite;
+}
+
+/* Subtle engineered grid backdrop */
+.grid-backdrop {
+  background-image:
+    linear-gradient(rgba(41, 112, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(41, 112, 255, 0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 20%, transparent 75%);
+  mask-image: radial-gradient(ellipse at center, #000 20%, transparent 75%);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -340,7 +422,12 @@ input[type=number] {
     scroll-behavior: auto !important;
   }
 
-  .scanner-laser {
+  .scanner-laser,
+  .stage-rim,
+  .animate-marquee,
+  .orbit-ring,
+  .orbit-billboard,
+  .animate-float {
     animation: none !important;
   }
 }

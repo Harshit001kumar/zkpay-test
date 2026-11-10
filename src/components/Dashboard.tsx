@@ -116,7 +116,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between pb-3 border-b border-outline-variant">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-primary motion-safe:animate-pulse" />
-                <span className="text-xs font-semibold text-on-surface">Base USDC Vault</span>
+                <span className="text-xs font-semibold text-on-surface">Connected Wallet</span>
               </div>
               {address && (
                 <button
