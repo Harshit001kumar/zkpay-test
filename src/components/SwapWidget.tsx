@@ -28,6 +28,7 @@ import {
   AlertTriangle,
   Timer,
   Zap,
+  ShieldCheck,
 } from "lucide-react";
 
 interface SwapWidgetProps {
