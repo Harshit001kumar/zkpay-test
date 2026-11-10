@@ -8,6 +8,7 @@ import { CHAIN_METADATA, SupportedChainId, SwapTokenItem } from "@/lib/types";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { saveTransaction, updateTransactionStatus } from "@/lib/history";
 import { chainVisual, tokenColor, POPULAR_PAIRS, type PopularPair } from "@/lib/chainVisuals";
+import { CryptoIcon } from "@/components/ui/CryptoIcon";
 import {
   ArrowDownUp,
   Copy,
@@ -75,31 +76,15 @@ function shortAddr(a: string, head = 6, tail = 4): string {
   return a.length > head + tail + 1 ? `${a.slice(0, head)}…${a.slice(-tail)}` : a;
 }
 
-/** Brand-tinted token mark with a chain badge (no remote images, no layout shift). */
+/** Crisp vector crypto logo with optional chain indicator badge. */
 function TokenMark({ symbol, chain, size = "md" }: { symbol: string; chain?: string; size?: "sm" | "md" }) {
-  const dim = size === "sm" ? "w-7 h-7 text-[9px]" : "w-10 h-10 text-[10px]";
-  const color = tokenColor(symbol, chain);
-  const cv = chain ? chainVisual(chain) : null;
   return (
-    <span className="relative shrink-0" aria-hidden="true">
-      <span
-        className={`${dim} rounded-full font-bold flex items-center justify-center tracking-tight`}
-        style={{
-          background: `radial-gradient(circle at 30% 25%, ${color}55, ${color}1f 60%, transparent 100%), #111622`,
-          boxShadow: `inset 0 0 0 1px ${color}66`,
-          color: "#F4F7FB",
-        }}
-      >
-        {symbol.slice(0, 4)}
-      </span>
-      {cv && cv.code !== symbol && (
-        <span
-          className={`absolute -bottom-0.5 -right-0.5 ${size === "sm" ? "w-3 h-3" : "w-4 h-4"} rounded-full border-2 border-surface-container`}
-          style={{ backgroundColor: cv.color }}
-          title={cv.name}
-        />
-      )}
-    </span>
+    <CryptoIcon
+      symbol={symbol}
+      chain={chain}
+      size={size === "sm" ? "sm" : "lg"}
+      withChainBadge={!!chain}
+    />
   );
 }
 

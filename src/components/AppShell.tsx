@@ -8,9 +8,11 @@ import LandingPage from "./LandingPage";
 import Dashboard from "./Dashboard";
 import BottomNav from "./BottomNav";
 import Profile from "./Profile";
+import { InAppActivity } from "./inapp/InAppActivity";
+import { InAppPartner } from "./inapp/InAppPartner";
 import { SpatialMultiChain3D } from "@/components/ui/SpatialMultiChain3D";
 
-export type NavTab = "swap" | "profile";
+export type NavTab = "swap" | "activity" | "partner" | "account";
 
 export default function AppShell() {
   const { ready, authenticated, login } = useActiveAccount();
@@ -29,12 +31,23 @@ export default function AppShell() {
     return <LandingPage login={login} />;
   }
 
-  const navItem = (active: boolean) =>
-    `h-8 px-3.5 rounded-full text-xs font-semibold inline-flex items-center transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${
-      active
-        ? "bg-surface-container text-on-surface"
-        : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low"
-    }`;
+  const navItem = (tab: NavTab, label: string) => {
+    const isAct = activeTab === tab;
+    return (
+      <button
+        key={tab}
+        type="button"
+        onClick={() => setActiveTab(tab)}
+        className={`h-8 px-3.5 rounded-full text-xs font-semibold inline-flex items-center transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
+          isAct
+            ? "bg-surface-container text-on-surface shadow-sm border border-outline-variant"
+            : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low"
+        }`}
+      >
+        {label}
+      </button>
+    );
+  };
 
   return (
     <div className="relative min-h-[100dvh] flex flex-col bg-surface text-on-surface overflow-x-hidden selection:bg-secondary selection:text-on-secondary">
@@ -63,26 +76,16 @@ export default function AppShell() {
 
             {/* Desktop Navigation Tabs */}
             <nav aria-label="Primary" className="hidden md:flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setActiveTab("swap")}
-                className={navItem(activeTab === "swap")}
+              {navItem("swap", "Swap")}
+              {navItem("activity", "Activity")}
+              {navItem("partner", "Partner")}
+              {navItem("account", "Account")}
+              <Link
+                href="/docs"
+                className="h-8 px-3 rounded-full text-xs font-semibold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low inline-flex items-center transition-colors"
               >
-                Swap
-              </button>
-              <Link href="/partner" className={navItem(false)}>
-                Partner
-              </Link>
-              <Link href="/docs" className={navItem(false)}>
                 Docs
               </Link>
-              <button
-                type="button"
-                onClick={() => setActiveTab("profile")}
-                className={navItem(activeTab === "profile")}
-              >
-                Account
-              </button>
             </nav>
           </div>
 
@@ -92,8 +95,10 @@ export default function AppShell() {
 
       {/* Main Content Workspace */}
       <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 pt-24 sm:pt-28 pb-safe-nav md:pb-16 relative z-10">
-        {activeTab === "swap" && <Dashboard />}
-        {activeTab === "profile" && <Profile onBack={() => setActiveTab("swap")} />}
+        {activeTab === "swap" && <Dashboard onSelectTab={setActiveTab} />}
+        {activeTab === "activity" && <InAppActivity onNewSwap={() => setActiveTab("swap")} />}
+        {activeTab === "partner" && <InAppPartner />}
+        {activeTab === "account" && <Profile onBack={() => setActiveTab("swap")} />}
       </main>
 
       <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />

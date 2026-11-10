@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { getTransactions, TransactionRecord, timeAgo } from "@/lib/history";
 import { ArrowRightLeft, ChevronRight, CheckCircle2, Clock, AlertCircle } from "lucide-react";
+import { CryptoIcon } from "@/components/ui/CryptoIcon";
 
 function StatusDot({ status }: { status?: string | null }) {
   const s = status || "pending";
@@ -103,12 +104,25 @@ export default function PaymentHistory() {
                 onClick={() => router.push(`/tx/${encodeURIComponent(tx.depositAddress || tx.hash)}`)}
                 className="w-full min-h-[64px] px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-surface-container active:bg-surface-container-high transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <div className="min-w-0 space-y-1">
-                  <span className="block text-sm font-semibold text-on-surface truncate">{title}</span>
-                  <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-                    <StatusDot status={tx.status} />
-                    <span className="w-1 h-1 rounded-full bg-outline-variant" />
-                    <span>{timeAgo(tx.timestamp)}</span>
+                <div className="flex items-center gap-3 min-w-0">
+                  {tx.fromAsset && tx.toAsset ? (
+                    <div className="flex items-center -space-x-1.5 shrink-0">
+                      <CryptoIcon symbol={tx.fromAsset} chain={tx.fromChain} size="sm" />
+                      <CryptoIcon symbol={tx.toAsset} chain={tx.toChain} size="sm" />
+                    </div>
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center text-primary shrink-0">
+                      <ArrowRightLeft className="w-4 h-4" />
+                    </div>
+                  )}
+
+                  <div className="min-w-0 space-y-0.5">
+                    <span className="block text-sm font-semibold text-on-surface truncate">{title}</span>
+                    <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                      <StatusDot status={tx.status} />
+                      <span className="w-1 h-1 rounded-full bg-outline-variant" />
+                      <span>{timeAgo(tx.timestamp)}</span>
+                    </div>
                   </div>
                 </div>
 
