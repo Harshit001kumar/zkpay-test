@@ -34,15 +34,17 @@ export function useActiveAccount() {
 
   const smartAccountAddress = (smartAccount?.address || null) as `0x${string}` | null;
   const eoaAddress = (user?.wallet?.address || wallets?.[0]?.address || linkedWallet?.address || null) as `0x${string}` | null;
-
-  const address = (smartAccountAddress || eoaAddress || null) as `0x${string}` | null;
   const primaryWallet = wallets?.[0] || null;
+  const smartClient: any = null;
+
+  // When smartClient is null, return connectedWallet / EOA address so EOA fallback signers match
+  const address = (smartClient ? smartAccountAddress : (primaryWallet?.address || eoaAddress || smartAccountAddress || null)) as `0x${string}` | null;
 
   return {
     address,
     eoaAddress,
     smartAccountAddress,
-    smartClient: null as any,
+    smartClient,
     isSmartWallet: !!smartAccountAddress,
     user,
     wallets,

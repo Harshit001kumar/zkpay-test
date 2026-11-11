@@ -104,8 +104,8 @@ export async function POST(req: Request) {
 /**
  * GET /api/v1/swap/recover?depositAddress=...
  * 
- * Inspect on-chain balances across native gas and ERC-20 tokens,
- * or trigger an automatic forward if ?trigger=true.
+ * Inspect on-chain balances across native gas and ERC-20 tokens.
+ * State-mutating recovery execution requires POST to prevent CSRF / unintended execution.
  * Protected by administrator authentication.
  */
 export async function GET(req: Request) {
@@ -123,7 +123,6 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const depositAddress = searchParams.get("depositAddress") || searchParams.get("address") || searchParams.get("swapId");
-    const shouldTrigger = searchParams.get("trigger") === "true" || searchParams.get("action") === "forward";
     const customToken = searchParams.get("customToken") || undefined;
 
     if (!depositAddress) {
@@ -133,17 +132,11 @@ export async function GET(req: Request) {
       );
     }
 
-    if (shouldTrigger) {
-      const result = await recoverProxyDeposit(depositAddress.trim(), { action: "forward" });
-      return corsJson({
-        success: result.success,
-        message: result.message,
-        txHash: result.txHash || null,
-        explorerUrl: result.explorerUrl || null,
-        recoveredAmount: result.recoveredAmount || null,
-        destination: result.destination || null,
-        order: sanitizeProxyOrder(result.order),
-      });
+    if (searchParams.get("trigger") === "true" || searchParams.get("action") === "forward") {
+      return corsJson(
+        { success: false, error: "State-mutating recovery execution requires a POST request." },
+        { status: 405 }
+      );
     }
 
     // Default inspection behavior

@@ -69,10 +69,10 @@ function loadFromFile() {
   }
 }
 
-function saveToFile() {
+async function saveToFile() {
   try {
     ensureDir();
-    fs.writeFileSync(
+    await fs.promises.writeFile(
       DATA_FILE,
       JSON.stringify({ items: Array.from(apiKeys.values()) }, null, 2),
       "utf-8"
@@ -118,12 +118,12 @@ async function hydrate() {
 }
 
 async function persistRecord(record: ApiKeyRecord) {
-  saveToFile();
+  saveToFile().catch(() => {});
   try {
     const db = await getMongoDb();
     if (!db) return;
     await db.collection("api_keys").updateOne(
-      { _id: record.id as any },
+      { id: record.id },
       { $set: record },
       { upsert: true }
     );
@@ -138,6 +138,13 @@ export async function issueApiKey(params: {
   label?: string;
 }): Promise<{ record: ApiKeyRecord; plaintextKey: string }> {
   await hydrate();
+
+  const userKeys = await listApiKeysForUser(params.userId);
+  const activeKeys = userKeys.filter((k) => k.status === "ACTIVE");
+  if (activeKeys.length >= 5) {
+    throw new Error("Maximum limit of 5 active API keys reached per user.");
+  }
+
   const plaintextKey = `zkpay_live_${crypto.randomBytes(24).toString("hex")}`;
   const id = makeId();
   const keyPrefix = plaintextKey.slice(0, 14);
@@ -162,6 +169,32 @@ export async function issueApiKey(params: {
 
 export async function listApiKeysForUser(userId: string): Promise<ApiKeyRecord[]> {
   await hydrate();
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const docs = await db.collection("api_keys").find({ userId }).toArray();
+      for (const doc of docs) {
+        if (doc?.id && doc?.userId && doc?.keyHash) {
+          apiKeys.set(doc.id, {
+            id: doc.id,
+            userId: doc.userId,
+            walletAddress: doc.walletAddress,
+            label: doc.label || "Default",
+            keyPrefix: doc.keyPrefix,
+            keyLast4: doc.keyLast4,
+            keyHash: doc.keyHash,
+            status: doc.status === "REVOKED" ? "REVOKED" : "ACTIVE",
+            createdAt: Number(doc.createdAt || now()),
+            lastUsedAt: doc.lastUsedAt ? Number(doc.lastUsedAt) : undefined,
+            revokedAt: doc.revokedAt ? Number(doc.revokedAt) : undefined,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[ApiKeysStore] Mongo listApiKeysForUser warning:", err);
+  }
+
   return Array.from(apiKeys.values())
     .filter((r) => r.userId === userId)
     .sort((a, b) => b.createdAt - a.createdAt);
@@ -174,7 +207,36 @@ export async function listAllApiKeys(): Promise<ApiKeyRecord[]> {
 
 export async function getApiKeyById(keyId: string): Promise<ApiKeyRecord | null> {
   await hydrate();
-  return apiKeys.get(keyId) || null;
+  const inMemory = apiKeys.get(keyId);
+  if (inMemory) return inMemory;
+
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const doc = await db.collection("api_keys").findOne({ id: keyId });
+      if (doc && doc.id && doc.userId) {
+        const record: ApiKeyRecord = {
+          id: doc.id,
+          userId: doc.userId,
+          walletAddress: doc.walletAddress,
+          label: doc.label || "Default",
+          keyPrefix: doc.keyPrefix,
+          keyLast4: doc.keyLast4,
+          keyHash: doc.keyHash,
+          status: doc.status === "REVOKED" ? "REVOKED" : "ACTIVE",
+          createdAt: Number(doc.createdAt || now()),
+          lastUsedAt: doc.lastUsedAt ? Number(doc.lastUsedAt) : undefined,
+          revokedAt: doc.revokedAt ? Number(doc.revokedAt) : undefined,
+        };
+        apiKeys.set(record.id, record);
+        return record;
+      }
+    }
+  } catch (err) {
+    console.warn("[ApiKeysStore] Mongo getApiKeyById warning:", err);
+  }
+
+  return null;
 }
 
 export async function findUserIdByWalletAddress(walletAddress: string): Promise<string | null> {
@@ -191,7 +253,10 @@ export async function findUserIdByWalletAddress(walletAddress: string): Promise<
 
 export async function revokeApiKeyForUser(userId: string, keyId: string): Promise<boolean> {
   await hydrate();
-  const rec = apiKeys.get(keyId);
+  let rec = apiKeys.get(keyId);
+  if (!rec) {
+    rec = (await getApiKeyById(keyId)) || undefined;
+  }
   if (!rec || rec.userId !== userId || rec.status !== "ACTIVE") return false;
   rec.status = "REVOKED";
   rec.revokedAt = now();
@@ -205,6 +270,8 @@ export async function findActiveApiKey(rawKey: string): Promise<ApiKeyRecord | n
   const clean = rawKey.trim();
   const keyHash = hashApiKey(clean);
   const legacyHash = hashApiKeyUnsalted(clean);
+
+  // Check in-memory first
   for (const rec of apiKeys.values()) {
     if (
       rec.status === "ACTIVE" &&
@@ -213,6 +280,37 @@ export async function findActiveApiKey(rawKey: string): Promise<ApiKeyRecord | n
       return rec;
     }
   }
+
+  // Check MongoDB directly when key is not found in memory (prevents multi-instance desync)
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const doc = await db.collection("api_keys").findOne({
+        keyHash: { $in: [keyHash, legacyHash] },
+        status: "ACTIVE",
+      });
+      if (doc && doc.id && doc.userId) {
+        const record: ApiKeyRecord = {
+          id: doc.id,
+          userId: doc.userId,
+          walletAddress: doc.walletAddress,
+          label: doc.label || "Default",
+          keyPrefix: doc.keyPrefix,
+          keyLast4: doc.keyLast4,
+          keyHash: doc.keyHash,
+          status: "ACTIVE",
+          createdAt: Number(doc.createdAt || now()),
+          lastUsedAt: doc.lastUsedAt ? Number(doc.lastUsedAt) : undefined,
+          revokedAt: doc.revokedAt ? Number(doc.revokedAt) : undefined,
+        };
+        apiKeys.set(record.id, record);
+        return record;
+      }
+    }
+  } catch (err) {
+    console.warn("[ApiKeysStore] Mongo findActiveApiKey warning:", err);
+  }
+
   return null;
 }
 

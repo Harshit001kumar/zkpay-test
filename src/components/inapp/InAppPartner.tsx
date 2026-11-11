@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
+import { usePrivy } from "@privy-io/react-auth";
 import {
   DollarSign,
   Key,
@@ -28,6 +29,7 @@ interface ApiKeyItem {
 
 export function InAppPartner() {
   const { address } = useActiveAccount();
+  const { getAccessToken } = usePrivy();
   const [balanceUsd, setBalanceUsd] = useState<number>(0);
   const [totalEarnedUsd, setTotalEarnedUsd] = useState<number>(0);
   const [swapsCount, setSwapsCount] = useState<number>(0);
@@ -44,23 +46,28 @@ export function InAppPartner() {
     if (!address) return;
     setLoading(true);
     try {
+      const token = await getAccessToken().catch(() => null);
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
       // 1. Fetch balance
-      const bRes = await fetch("/api/partner/balance");
+      const bRes = await fetch("/api/partner/balance", { headers });
       if (bRes.ok) {
         const bData = await bRes.json();
         if (bData.success) {
-          setBalanceUsd(bData.availableBalanceUsd || 0);
-          setTotalEarnedUsd(bData.totalEarnedUsd || 0);
-          setSwapsCount(bData.settledSwapsCount || 0);
+          const bal = bData.balance || bData;
+          setBalanceUsd(bal.availableBalanceUsd || 0);
+          setTotalEarnedUsd(bal.totalEarnedUsd || 0);
+          setSwapsCount(bal.settledSwapsCount || 0);
         }
       }
 
       // 2. Fetch API keys
-      const kRes = await fetch("/api/profile/api-keys");
+      const kRes = await fetch("/api/profile/api-keys", { headers });
       if (kRes.ok) {
         const kData = await kRes.json();
-        if (kData.success && Array.isArray(kData.apiKeys)) {
-          setApiKeys(kData.apiKeys);
+        const keysList = kData.keys || kData.apiKeys;
+        if (kData.success && Array.isArray(keysList)) {
+          setApiKeys(keysList);
         }
       }
     } catch {
@@ -68,7 +75,7 @@ export function InAppPartner() {
     } finally {
       setLoading(false);
     }
-  }, [address]);
+  }, [address, getAccessToken]);
 
   useEffect(() => {
     loadData();
@@ -88,16 +95,22 @@ export function InAppPartner() {
     setCreatedKey(null);
 
     try {
+      const token = await getAccessToken().catch(() => null);
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
+
       const res = await fetch("/api/profile/api-keys", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ label: newKeyLabel.trim() }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.message || data.error || "Failed to generate key");
       }
-      setCreatedKey(data.apiKey);
+      setCreatedKey(data.plaintextKey || data.apiKey);
       setNewKeyLabel("");
       loadData();
     } catch (err: any) {

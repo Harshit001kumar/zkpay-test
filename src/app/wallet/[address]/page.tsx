@@ -157,7 +157,7 @@ export default function WalletAddressPage() {
         // Fallback to standard EOA writeContract
         const provider = await connectedWallet.getEthereumProvider();
         const client = createWalletClient({
-          account: connectedAddress!,
+          account: ((connectedWallet as any)?.address || connectedAddress!) as `0x${string}`,
           chain: base,
           transport: custom(provider),
         });

@@ -82,11 +82,12 @@ export interface SolanaEndpoint {
 export function getSolanaRpcEndpoints(): SolanaEndpoint[] {
   const endpoints: SolanaEndpoint[] = [];
 
-  // 1. Custom Solana RPC from environment
+  // 1. Custom Solana RPC from environment (server-only env vars prioritized)
   const custom =
     cleanEnvString(process.env.SOLANA_RPC_URL) ||
     cleanEnvString(process.env.SOL_RPC_URL) ||
-    cleanEnvString(process.env.SOLANA_RPC);
+    cleanEnvString(process.env.SOLANA_RPC) ||
+    cleanEnvString(process.env.NEXT_PUBLIC_SOLANA_RPC_URL);
   if (custom) {
     endpoints.push({ url: custom, name: "Custom Solana RPC" });
   }
@@ -265,7 +266,8 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
       const custom =
         cleanEnvString(process.env.POLYGON_RPC_URL) ||
         cleanEnvString(process.env.POL_RPC_URL) ||
-        cleanEnvString(process.env.MATIC_RPC_URL);
+        cleanEnvString(process.env.MATIC_RPC_URL) ||
+        cleanEnvString(process.env.NEXT_PUBLIC_POLYGON_RPC_URL);
       if (custom) customUrls.push(custom);
 
       // Put high-availability public Polygon Bor RPCs ahead of generic multi-chain keys
@@ -301,7 +303,8 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
 
       const custom =
         cleanEnvString(process.env.ARBITRUM_RPC_URL) ||
-        cleanEnvString(process.env.ARB_RPC_URL);
+        cleanEnvString(process.env.ARB_RPC_URL) ||
+        cleanEnvString(process.env.NEXT_PUBLIC_ARBITRUM_RPC_URL);
       if (custom) customUrls.push(custom);
 
       if (infuraKey) {
@@ -334,7 +337,8 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
 
       const custom =
         cleanEnvString(process.env.BSC_RPC_URL) ||
-        cleanEnvString(process.env.BNB_RPC_URL);
+        cleanEnvString(process.env.BNB_RPC_URL) ||
+        cleanEnvString(process.env.NEXT_PUBLIC_BSC_RPC_URL);
       if (custom) customUrls.push(custom);
 
       if (infuraKey) {
@@ -364,6 +368,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
 
       const custom =
         cleanEnvString(process.env.BASE_RPC_URL) ||
+        cleanEnvString(process.env.NEXT_PUBLIC_BASE_RPC_URL) ||
         cleanEnvString(process.env.NEXT_PUBLIC_RPC_URL);
       if (custom) customUrls.push(custom);
 

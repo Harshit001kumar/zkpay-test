@@ -249,9 +249,9 @@ export async function sweepLtcDeposit(params: {
   const totalFeeSatoshis = effectiveZkpayFee + effectivePartnerFee;
   const netSolverSatoshis = balanceSatoshis - totalFeeSatoshis - MINER_FEE_SATOSHIS;
 
-  if (netSolverSatoshis <= 0n) {
+  if (netSolverSatoshis < LTC_DUST_THRESHOLD_SATOSHIS) {
     throw new Error(
-      `LTC deposit balance (${balanceSatoshis} sats) too low to cover fee (${totalFeeSatoshis} sats) and miner fee (${MINER_FEE_SATOSHIS} sats).`
+      `LTC solver output (${netSolverSatoshis} sats) is below the dust threshold (${LTC_DUST_THRESHOLD_SATOSHIS} sats). Deposit balance: ${balanceSatoshis} sats.`
     );
   }
 
@@ -299,7 +299,7 @@ export async function sweepLtcDeposit(params: {
     }
 
     if (!nonWitnessUtxo) {
-      // Fallback: fetch raw hex from LitecoinSpace
+      // Fallback 1: fetch raw hex from LitecoinSpace
       try {
         const rawRes = await fetch(`https://litecoinspace.org/api/tx/${utxo.txid}/hex`);
         if (rawRes.ok) {
@@ -309,23 +309,28 @@ export async function sweepLtcDeposit(params: {
       } catch {}
     }
 
-    if (nonWitnessUtxo) {
-      psbt.addInput({
-        hash: utxo.txid,
-        index: utxo.vout,
-        nonWitnessUtxo,
-      });
-    } else {
-      // Fallback for psbt input
-      psbt.addInput({
-        hash: utxo.txid,
-        index: utxo.vout,
-        witnessUtxo: {
-          script: p2pkh.output!,
-          value: Number(utxo.value),
-        },
-      });
+    if (!nonWitnessUtxo) {
+      // Fallback 2: fetch raw hex from BlockCypher
+      try {
+        const bcRes = await fetch(`https://api.blockcypher.com/v1/ltc/main/txs/${utxo.txid}?includeHex=true`);
+        if (bcRes.ok) {
+          const d = await bcRes.json();
+          if (d?.hex) nonWitnessUtxo = Buffer.from(d.hex, "hex");
+        }
+      } catch {}
     }
+
+    if (!nonWitnessUtxo) {
+      throw new Error(
+        `Unable to fetch raw transaction for UTXO ${utxo.txid}. Cannot safely sign legacy P2PKH input without nonWitnessUtxo.`
+      );
+    }
+
+    psbt.addInput({
+      hash: utxo.txid,
+      index: utxo.vout,
+      nonWitnessUtxo,
+    });
   }
 
   // Output 1: Solver transfer

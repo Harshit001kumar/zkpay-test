@@ -46,9 +46,10 @@ export async function verifyAdminToken(rawToken?: string | null): Promise<AdminA
 
     const privy = getPrivyClient();
     if (!privy) {
+      console.warn("[AdminAuth] Privy server authentication is not configured on the backend (missing PRIVY_APP_SECRET).");
       return {
         authorized: false,
-        error: "Privy server authentication is not configured on the backend (missing PRIVY_APP_SECRET).",
+        error: "Server authentication is not configured.",
         status: 500,
       };
     }
@@ -112,7 +113,7 @@ export async function verifyAdminToken(rawToken?: string | null): Promise<AdminA
       console.warn("[AdminAuth] Security alert: Neither ADMIN_PRIVY_DIDS nor ADMIN_WALLETS configured in environment.");
       return {
         authorized: false,
-        error: "Administrator whitelist is not configured on this server (ADMIN_WALLETS or ADMIN_PRIVY_DIDS is empty in Render environment variables).",
+        error: "Administrator whitelist is not configured on this server.",
         status: 403,
       };
     }
@@ -124,7 +125,7 @@ export async function verifyAdminToken(rawToken?: string | null): Promise<AdminA
       console.warn(`[AdminAuth] Unauthorized access attempt by DID: ${userId}, Wallets: ${linkedWallets.join(", ")}`);
       return {
         authorized: false,
-        error: `Access Denied: Account (DID: ${userId}) is not on the administrator whitelist.`,
+        error: "Access Denied: Account is not on the administrator whitelist.",
         status: 403,
       };
     }

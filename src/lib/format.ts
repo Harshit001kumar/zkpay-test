@@ -10,12 +10,15 @@ import { formatUnits } from "viem";
  *  - 1.1   -> "1.10"
  *  - 0     -> "0.00"
  */
-export function truncateTo2Decimals(val: number | string | bigint | undefined | null): string {
+export function truncateTo2Decimals(
+  val: number | string | bigint | undefined | null,
+  decimals: number = 6
+): string {
   if (val === undefined || val === null) return "0.00";
 
   let str = "";
   if (typeof val === "bigint") {
-    str = formatUnits(val, 6);
+    str = formatUnits(val, decimals);
   } else if (typeof val === "number") {
     if (isNaN(val) || val <= 0) return "0.00";
     str = val.toString();
@@ -29,7 +32,7 @@ export function truncateTo2Decimals(val: number | string | bigint | undefined | 
   if (str.includes("e") || str.includes("E")) {
     const num = Number(str);
     if (isNaN(num) || num <= 0) return "0.00";
-    str = num.toFixed(6);
+    str = num.toFixed(Math.min(Math.max(decimals, 2), 20));
   }
 
   const parts = str.split(".");
@@ -49,6 +52,9 @@ export function truncateTo2Decimals(val: number | string | bigint | undefined | 
  *  - 1.116 -> 1.11
  *  - 1116000n -> 1.11
  */
-export function floorTo2Decimals(val: number | string | bigint | undefined | null): number {
-  return parseFloat(truncateTo2Decimals(val));
+export function floorTo2Decimals(
+  val: number | string | bigint | undefined | null,
+  decimals: number = 6
+): number {
+  return parseFloat(truncateTo2Decimals(val, decimals));
 }

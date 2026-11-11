@@ -24,9 +24,16 @@ export function resolveRefundAddress(
   fallbackEvmAddress?: string | null,
   options?: { isDryRun?: boolean }
 ): string {
-  // 1. If valid user-provided refund address exists for the origin chain, use it
-  if (userRefundTo && userRefundTo.trim() && isValidAddressForOriginAsset(originAssetId, userRefundTo)) {
-    return userRefundTo.trim();
+  // 1. If user-provided refund address is given, validate it; if invalid, throw 400
+  if (userRefundTo && userRefundTo.trim() !== "") {
+    const trimmed = userRefundTo.trim();
+    if (isValidAddressForOriginAsset(originAssetId, trimmed)) {
+      return trimmed;
+    }
+    const err = new Error(`Origin refund address '${trimmed}' is invalid for the source blockchain.`) as any;
+    err.code = "INVALID_REFUND_ADDRESS";
+    err.statusCode = 400;
+    throw err;
   }
 
   // 2. Safe per-chain Treasury fallback: never block user or throw MISSING_REFUND_ADDRESS.

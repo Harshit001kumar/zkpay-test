@@ -216,6 +216,10 @@ export async function getPartnerMetrics(
 ): Promise<PartnerMetrics> {
   const { userKeys, keyIds, keyMap } = await getPartnerKeysContext(userId);
 
+  if (filterKeyId && !keyIds.includes(filterKeyId)) {
+    throw new Error("Forbidden: API key does not belong to partner");
+  }
+
   let sinceMs = 0;
   const now = Date.now();
   if (timeRange === "24h") sinceMs = now - 24 * 3600 * 1000;
@@ -320,6 +324,11 @@ export async function getPartnerTransactions(params: {
 }): Promise<{ transactions: PartnerTransaction[]; totalCount: number }> {
   const { userId, apiKeyId, status = "all", search = "", limit = 20, offset = 0 } = params;
   const { userKeys, keyIds, keyMap } = await getPartnerKeysContext(userId);
+
+  if (apiKeyId && !keyIds.includes(apiKeyId)) {
+    throw new Error("Forbidden: API key does not belong to partner");
+  }
+
   const validKeyIds = apiKeyId ? [apiKeyId] : keyIds;
 
   let allTx: PartnerTransaction[] = [];

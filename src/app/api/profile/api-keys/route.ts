@@ -36,6 +36,15 @@ export async function POST(req: Request) {
   }
 
   try {
+    const existingKeys = await listApiKeysForUser(auth.userId);
+    const activeKeys = existingKeys.filter((k) => k.status === "ACTIVE");
+    if (activeKeys.length >= 5) {
+      return NextResponse.json(
+        { error: "Maximum limit of 5 active API keys reached. Please revoke an existing key first." },
+        { status: 400 }
+      );
+    }
+
     const body = await req.json().catch(() => ({}));
     const label = typeof body?.label === "string" ? body.label : "Default";
 

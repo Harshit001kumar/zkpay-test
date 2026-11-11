@@ -29,7 +29,7 @@ export interface ProxySwapOrder {
   zkpayFeeBps?: number; // ZkPay share of % fee
   partnerFeeBps?: number; // Partner share of % fee
   fixedFeeAmount?: string; // Fixed 0.05 USDC/USDT in atomic units (ZkPay only)
-  status: "PENDING_DEPOSIT" | "DETECTED" | "FORWARDING" | "FORWARDED" | "SETTLED" | "FAILED" | "EXPIRED";
+  status: "PENDING_DEPOSIT" | "DETECTED" | "FORWARDING" | "FORWARDED" | "SETTLED" | "FAILED" | "EXPIRED" | "REFUND_PENDING";
   depositTxHash?: string;
   feeTxHash?: string;
   forwardTxHash?: string;
@@ -253,7 +253,7 @@ export async function getPendingProxyOrders(): Promise<ProxySwapOrder[]> {
     if (db) {
       const collection = db.collection<ProxySwapOrder>("proxy_swap_orders");
       const list = await collection
-        .find({ status: { $in: ["PENDING_DEPOSIT", "FORWARDING"] } })
+        .find({ status: { $in: ["PENDING_DEPOSIT", "FORWARDING", "REFUND_PENDING"] } })
         .sort({ createdAt: -1 })
         .limit(50)
         .toArray();
@@ -266,7 +266,7 @@ export async function getPendingProxyOrders(): Promise<ProxySwapOrder[]> {
   }
 
   return Array.from(ordersBySwapId.values()).filter(
-    (o) => o.status === "PENDING_DEPOSIT" || o.status === "FORWARDING"
+    (o) => o.status === "PENDING_DEPOSIT" || o.status === "FORWARDING" || o.status === "REFUND_PENDING"
   );
 }
 
@@ -360,26 +360,57 @@ export async function getForwardedOrUncreditedProxyOrders(limit = 30): Promise<P
 
 /**
  * Updates an existing proxy swap order with partial changes.
+ * Uses atomic $set in MongoDB to prevent stale in-memory cache overwriting the database.
  */
 export async function updateProxySwapOrder(
   swapId: string,
   updates: Partial<ProxySwapOrder>
 ): Promise<ProxySwapOrder | null> {
-  await hydrateCache();
-  let existing = ordersBySwapId.get(swapId);
-  if (!existing) {
-    existing = (await getProxyOrderBySwapId(swapId)) || undefined;
+  const clean = swapId.trim();
+  const { _id, ...cleanUpdates } = updates as any;
+
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const collection = db.collection<ProxySwapOrder>("proxy_swap_orders");
+      const res = await collection.findOneAndUpdate(
+        { $or: [{ swapId: clean }, { proxyDepositAddress: clean }, { proxyDepositAddress: clean.toLowerCase() }] } as any,
+        { $set: cleanUpdates },
+        { returnDocument: "after" }
+      );
+      const updatedDoc = (res && typeof res === "object" && "value" in res ? (res as any).value : res) as ProxySwapOrder | null;
+      if (updatedDoc) {
+        // Invalidate stale in-memory cached entries and set the fresh atomic document
+        ordersBySwapId.set(updatedDoc.swapId, updatedDoc);
+        ordersByAddress.set(updatedDoc.proxyDepositAddress.toLowerCase(), updatedDoc);
+        ordersByAddress.set(updatedDoc.proxyDepositAddress, updatedDoc);
+        return updatedDoc;
+      }
+    }
+  } catch (err) {
+    console.warn("[ProxySwapStore] MongoDB atomic update error:", err);
   }
+
+  // Fallback to in-memory store if DB is offline
+  await hydrateCache();
+  let existing =
+    ordersBySwapId.get(clean) ||
+    ordersByAddress.get(clean.toLowerCase()) ||
+    ordersByAddress.get(clean);
   if (!existing) return null;
 
-  const updated: ProxySwapOrder = { ...existing, ...updates };
+  const updated: ProxySwapOrder = { ...existing, ...cleanUpdates };
   ordersByAddress.set(updated.proxyDepositAddress.toLowerCase(), updated);
   ordersByAddress.set(updated.proxyDepositAddress, updated);
   ordersBySwapId.set(updated.swapId, updated);
 
-  persistOrder(updated).catch((err) =>
-    console.warn("[ProxySwapStore] Async persist update error:", err)
-  );
+  try {
+    ensureDataDir();
+    const all = Array.from(ordersBySwapId.values());
+    fs.writeFileSync(FALLBACK_FILE, JSON.stringify(all, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("[ProxySwapStore] Local file persist error:", err);
+  }
 
   return updated;
 }

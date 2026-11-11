@@ -124,10 +124,10 @@ export async function GET(request: Request) {
       },
     });
   } catch (error: any) {
+    console.error("[Prefund] Relayer initialization error:", error);
     return NextResponse.json(
       {
         error: "Relayer not configured",
-        hint: "Add RELAYER_PRIVATE_KEY to Render environment variables and fund with ~$3-$5 of ETH on Base",
       },
       { status: 500 }
     );

@@ -124,8 +124,53 @@ export async function getMongoClient(): Promise<MongoClient | null> {
   }
 }
 
+let indexesInitialized = false;
+
+/**
+ * Idempotently initializes performance and constraint indexes across core collections.
+ */
+export async function initMongoIndexes(db: Db): Promise<void> {
+  if (indexesInitialized) return;
+  try {
+    // proxy_swaps & proxy_swap_orders (swapId unique, proxyDepositAddress, createdAt)
+    const proxyCollections = ["proxy_swap_orders", "proxy_swaps"];
+    for (const name of proxyCollections) {
+      const coll = db.collection(name);
+      await coll.createIndex({ swapId: 1 }, { unique: true, sparse: true }).catch(() => {});
+      await coll.createIndex({ proxyDepositAddress: 1 }).catch(() => {});
+      await coll.createIndex({ createdAt: -1 }).catch(() => {});
+      await coll.createIndex({ apiKeyId: 1, createdAt: -1 }).catch(() => {});
+    }
+
+    // direct_swaps & direct_swap_orders (swapId unique, depositAddress)
+    const directCollections = ["direct_swap_orders", "direct_swaps"];
+    for (const name of directCollections) {
+      const coll = db.collection(name);
+      await coll.createIndex({ swapId: 1 }, { unique: true, sparse: true }).catch(() => {});
+      await coll.createIndex({ depositAddress: 1 }).catch(() => {});
+    }
+
+    // api_keys (keyHash unique, userId)
+    const apiKeys = db.collection("api_keys");
+    await apiKeys.createIndex({ keyHash: 1 }, { unique: true, sparse: true }).catch(() => {});
+    await apiKeys.createIndex({ userId: 1 }).catch(() => {});
+
+    // partner_balances (partnerUserId unique)
+    const partnerBalances = db.collection("partner_balances");
+    await partnerBalances.createIndex({ partnerUserId: 1 }, { unique: true, sparse: true }).catch(() => {});
+
+    indexesInitialized = true;
+  } catch (err: any) {
+    console.warn("[MongoDB] Index initialization warning:", err?.message || err);
+  }
+}
+
 export async function getMongoDb(): Promise<Db | null> {
   const c = await getMongoClient();
   if (!c) return null;
-  return c.db(dbName);
+  const db = c.db(dbName);
+  if (!indexesInitialized) {
+    initMongoIndexes(db).catch(() => {});
+  }
+  return db;
 }

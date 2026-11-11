@@ -44,15 +44,14 @@ let hourlyGlobalDispatched: { timestamp: number; amount: bigint }[] = [];
 
 function getRelayerPrivateKey(): `0x${string}` {
   const raw =
-    process.env.SWEEPER_PRIVATE_KEY ||
     process.env.RELAYER_PRIVATE_KEY ||
     process.env.GAS_RELAYER_PRIVATE_KEY ||
-    process.env.GAS_TANK_PRIVATE_KEY;
+    process.env.GAS_TANK_PRIVATE_KEY ||
+    process.env.SWEEPER_PRIVATE_KEY;
 
   if (!raw) {
-    throw new Error(
-      "RELAYER_PRIVATE_KEY is not configured. Please add a funded EOA private key to your Render environment variables."
-    );
+    console.warn("[Relayer] RELAYER_PRIVATE_KEY is not configured in environment.");
+    throw new Error("Relayer private key is not configured.");
   }
 
   let key = raw.trim();

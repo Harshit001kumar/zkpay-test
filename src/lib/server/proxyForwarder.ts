@@ -705,7 +705,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     const feeData = await publicClient.estimateFeesPerGas().catch(() => null);
     const maxFee = feeData?.maxFeePerGas || (await publicClient.getGasPrice());
     const l1Buffer = (chainKey === "base" || chainKey === "arb") ? 600_000_000_000n : 10_000_000_000n;
-    const gasLimit = hasFees ? 60000n : 30000n;
+    const gasLimit = hasFees ? 150_000n : 120_000n;
     const gasReserve = gasLimit * maxFee + l1Buffer;
 
     if (balanceWei <= gasReserve + totalFeeWei) {
@@ -761,6 +761,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
           account: proxyAccount,
           to: solverAddress,
           value: netWei,
+          gas: 120_000n,
         });
         notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
 
@@ -768,6 +769,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
           account: proxyAccount,
           to: treasuryAddress,
           value: totalFeeWei,
+          gas: 120_000n,
         }).catch(() => "");
       }
     } else {
@@ -776,13 +778,27 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
         account: proxyAccount,
         to: solverAddress,
         value: netWei,
-        gas: 30000n,
+        gas: 120_000n,
       });
       console.log(`[ProxyForwarder] Direct solver forward broadcast: ${forwardTxHash}`);
     }
 
     notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
-    await publicClient.waitForTransactionReceipt({ hash: forwardTxHash as `0x${string}` }).catch(() => {});
+
+    let receipt: any = null;
+    try {
+      receipt = await publicClient.waitForTransactionReceipt({ hash: forwardTxHash as `0x${string}` });
+    } catch (rcptErr: any) {
+      console.warn(`[ProxyForwarder] Waiting for receipt failed for tx ${forwardTxHash}:`, rcptErr?.message || rcptErr);
+    }
+
+    const isSuccess = receipt && (receipt.status === "success" || receipt.status === 1 || receipt.status === "0x1");
+    if (!isSuccess) {
+      console.error(
+        `[ProxyForwarder] Native EVM transfer reverted or unconfirmed for order ${order.swapId}, tx: ${forwardTxHash}, receipt status: ${receipt?.status}`
+      );
+      return order;
+    }
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: "FORWARDED",
@@ -1477,6 +1493,15 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
       return order; // Awaiting deposit
     }
 
+    // Prevent Solana Dust Premature Sweep: ensure lamports >= (expectedAtomic - 10000n) before triggering forwarding.
+    // If lamports < (expectedAtomic - 10000n), return order so it keeps awaiting the real deposit.
+    if (expectedAtomic > 0n) {
+      const minRequiredLamports = expectedAtomic > 10000n ? expectedAtomic - 10000n : expectedAtomic;
+      if (lamports < minRequiredLamports) {
+        return order; // Awaiting real deposit
+      }
+    }
+
     // On Solana, an uninitialized recipient (such as Near Intents single-use solver address)
     // CANNOT receive less than 890,880 lamports (~$0.13) without failing simulation with InsufficientFundsForRent.
     if (lamports < SOLANA_RENT_EXEMPT_MIN + SOLANA_NETWORK_FEE) {
@@ -2047,8 +2072,13 @@ export async function recoverProxyDeposit(
 
     let totalFeeLamports = 0n;
     if (action === "forward") {
-      if (order.feeAmount && order.totalAmountIn && BigInt(order.totalAmountIn) > 0n) {
-        totalFeeLamports = (lamports * BigInt(order.feeAmount)) / BigInt(order.totalAmountIn);
+      let parsedTotal = 0n;
+      try {
+        const clean = (order.totalAmountIn || "0").trim();
+        parsedTotal = clean.includes(".") ? parseUnits(clean, 9) : BigInt(clean);
+      } catch {}
+      if (order.feeAmount && parsedTotal > 0n) {
+        totalFeeLamports = (lamports * BigInt(order.feeAmount)) / parsedTotal;
       } else if (order.zkpayFeeBps !== undefined) {
         const totalBps = BigInt(order.zkpayFeeBps) + BigInt(order.partnerFeeBps || 0);
         totalFeeLamports = (lamports * totalBps) / 10000n;
@@ -2135,8 +2165,13 @@ export async function recoverProxyDeposit(
 
     let totalFeeSats = 0n;
     if (action === "forward") {
-      if (order.feeAmount && order.totalAmountIn && BigInt(order.totalAmountIn) > 0n) {
-        totalFeeSats = (balanceSatoshis * BigInt(order.feeAmount)) / BigInt(order.totalAmountIn);
+      let parsedTotal = 0n;
+      try {
+        const clean = (order.totalAmountIn || "0").trim();
+        parsedTotal = clean.includes(".") ? parseUnits(clean, 8) : BigInt(clean);
+      } catch {}
+      if (order.feeAmount && parsedTotal > 0n) {
+        totalFeeSats = (balanceSatoshis * BigInt(order.feeAmount)) / parsedTotal;
       } else if (order.zkpayFeeBps !== undefined) {
         const totalBps = BigInt(order.zkpayFeeBps) + BigInt(order.partnerFeeBps || 0);
         totalFeeSats = (balanceSatoshis * totalBps) / 10000n;
@@ -2253,8 +2288,13 @@ export async function recoverProxyDeposit(
     let totalFeeWei = 0n;
 
     if (action === "forward") {
-      if (order.feeAmount && order.totalAmountIn && BigInt(order.totalAmountIn) > 0n) {
-        totalFeeWei = (balanceWei * BigInt(order.feeAmount)) / BigInt(order.totalAmountIn);
+      let parsedTotal = 0n;
+      try {
+        const clean = (order.totalAmountIn || "0").trim();
+        parsedTotal = clean.includes(".") ? parseUnits(clean, 18) : BigInt(clean);
+      } catch {}
+      if (order.feeAmount && parsedTotal > 0n) {
+        totalFeeWei = (balanceWei * BigInt(order.feeAmount)) / parsedTotal;
       } else if (order.zkpayFeeBps !== undefined) {
         const totalBps = BigInt(order.zkpayFeeBps) + BigInt(order.partnerFeeBps || 0);
         totalFeeWei = (balanceWei * totalBps) / 10000n;
@@ -2469,15 +2509,24 @@ export async function recoverProxyDeposit(
     const treasuryAddress = getAddress((order.treasuryAddress || CONTRACTS.TREASURY) as `0x${string}`);
 
     if (action === "forward") {
-      if (order.feeAmount && order.totalAmountIn && BigInt(order.totalAmountIn) > 0n) {
-        totalFeeUnits = (tokenBalance * BigInt(order.feeAmount)) / BigInt(order.totalAmountIn);
+      let parsedTotal = 0n;
+      try {
+        const clean = (order.totalAmountIn || "0").trim();
+        parsedTotal = clean.includes(".") ? parseUnits(clean, decimals) : BigInt(clean);
+      } catch {}
+      if (order.feeAmount && parsedTotal > 0n) {
+        totalFeeUnits = (tokenBalance * BigInt(order.feeAmount)) / parsedTotal;
       } else if (order.zkpayFeeBps !== undefined) {
         const totalBps = BigInt(order.zkpayFeeBps) + BigInt(order.partnerFeeBps || 0);
         totalFeeUnits = (tokenBalance * totalBps) / 10000n + fixedFeeUnits;
       }
     }
     const proxyNonce = await publicClient.getTransactionCount({ address: proxyAccount.address }).catch(() => 0);
-    const expectedAtomic = BigInt(order.totalAmountIn || "0");
+    let expectedAtomic = 0n;
+    try {
+      const clean = (order.totalAmountIn || "0").trim();
+      expectedAtomic = clean.includes(".") ? parseUnits(clean, decimals) : BigInt(clean);
+    } catch {}
     const expectedOrderFee = order.feeAmount ? BigInt(order.feeAmount) : totalFeeUnits;
     const maxFeeCeiling = expectedOrderFee > 0n ? expectedOrderFee * 2n : totalFeeUnits * 2n;
 
@@ -3015,6 +3064,60 @@ let isSweeperTickActive = false;
  * 4. Checks FORWARDED orders against NEAR Intents solver status and automatically credits partner fees upon SETTLED status!
  */
 /**
+ * Checks whether an expired proxy account currently holds deposited funds.
+ */
+async function hasProxyDepositFunds(order: ProxySwapOrder): Promise<boolean> {
+  const normChain = normalizeChain(order.chain) || order.chain.toLowerCase();
+  try {
+    if (normChain === "sol") {
+      const balanceRes = await fetchSolanaRpc("getBalance", [order.proxyDepositAddress]);
+      const lamports = BigInt(balanceRes?.value || 0);
+      return lamports > 5000n;
+    } else if (normChain === "ltc") {
+      const { getLtcBalanceAndUtxos } = await import("./ltcClient");
+      const { balanceSatoshis } = await getLtcBalanceAndUtxos(order.proxyDepositAddress);
+      return balanceSatoshis > 3000n;
+    } else {
+      const publicClient = getPublicClientForChain(order.chain);
+      if (!isAddress(order.proxyDepositAddress)) return false;
+      const cleanAddress = getAddress(order.proxyDepositAddress as `0x${string}`);
+      const nativeBal = await publicClient.getBalance({ address: cleanAddress }).catch(() => 0n);
+      if (nativeBal > 100_000_000_000_000n) {
+        return true;
+      }
+      const upperSymbol = normalizeOrderFromAsset(order);
+      const isNative =
+        upperSymbol === "ETH" ||
+        upperSymbol === "BNB" ||
+        upperSymbol === "POL" ||
+        upperSymbol === "MATIC";
+      if (!isNative) {
+        const tokenMap = CHAIN_TOKENS[normChain] || {};
+        let tokenAddress: `0x${string}` | null = tokenMap[upperSymbol] || null;
+        if (!tokenAddress && order.originAssetId?.includes("0x")) {
+          const match = order.originAssetId.match(/0x[a-fA-F0-9]{40}/);
+          if (match) tokenAddress = getAddress(match[0] as `0x${string}`);
+        }
+        if (tokenAddress) {
+          const tokenBal = (await publicClient
+            .readContract({
+              address: tokenAddress,
+              abi: ERC20_ABI,
+              functionName: "balanceOf",
+              args: [cleanAddress],
+            })
+            .catch(() => 0n)) as bigint;
+          if (tokenBal > 0n) return true;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn(`[ProxySweeperDaemon] Error checking balance for expired order ${order.swapId}:`, e);
+  }
+  return false;
+}
+
+/**
  * Executes a single sweep and settlement cycle across all active proxy swap orders.
  * Returns the count of checked orders and processed operations.
  */
@@ -3043,8 +3146,19 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
               );
               processed++;
             } else {
-              // No funds were deposited and order expired > 1 hour ago -> mark EXPIRED
-              if (Date.now() > order.expiresAt + 3600_000) {
+              // Before marking order EXPIRED, check if proxy balance has deposited funds.
+              // If funds exist, do not discard; transition to REFUND_PENDING or attempt emergency refund.
+              const hasFunds = await hasProxyDepositFunds(order);
+              if (hasFunds) {
+                console.warn(
+                  `[ProxySweeperDaemon] Order ${order.swapId} expired but proxy still holds deposited funds! Transitioning to REFUND_PENDING.`
+                );
+                await updateProxySwapOrder(order.swapId, {
+                  status: "REFUND_PENDING",
+                  error: refundRes.message || "Proxy holds deposited funds requiring refund",
+                });
+              } else if (Date.now() > order.expiresAt + 3600_000) {
+                // No funds were deposited and order expired > 1 hour ago -> mark EXPIRED
                 await updateProxySwapOrder(order.swapId, { status: "EXPIRED" });
               }
             }

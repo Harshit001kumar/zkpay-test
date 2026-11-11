@@ -47,9 +47,12 @@ const EVM_CHAINS = new Set(["base", "eth", "arb", "polygon", "bsc"]);
 const STABLES = new Set(["USDC", "USDT", "DAI"]);
 
 function toAtomicUnits(humanAmount: string, decimals: number): string | null {
-  const clean = humanAmount.trim();
+  let clean = humanAmount.trim();
   if (!clean || isNaN(Number(clean)) || Number(clean) <= 0) return null;
   try {
+    if (/[eE]/.test(clean)) {
+      clean = Number(clean).toFixed(Math.min(Math.max(decimals, 0), 100));
+    }
     const [whole = "0", frac = ""] = clean.split(".");
     const paddedFrac = frac.slice(0, decimals).padEnd(decimals, "0");
     const combined = `${whole}${paddedFrac}`.replace(/^0+/, "") || "0";
@@ -58,6 +61,51 @@ function toAtomicUnits(humanAmount: string, decimals: number): string | null {
   } catch {
     return null;
   }
+}
+
+function validateDestinationAddress(chain: string, address: string): { valid: boolean; error?: string } {
+  const clean = address.trim();
+  if (!clean) return { valid: false, error: "Recipient address cannot be empty." };
+
+  if (EVM_CHAINS.has(chain)) {
+    if (!/^0x[a-fA-F0-9]{40}$/.test(clean)) {
+      return { valid: false, error: "Please enter a valid 42-character EVM address (0x...)." };
+    }
+    return { valid: true };
+  }
+
+  if (chain === "sol") {
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(clean)) {
+      return { valid: false, error: "Please enter a valid Solana Base58 address (32-44 characters)." };
+    }
+    return { valid: true };
+  }
+
+  if (chain === "btc") {
+    if (!/^(bc1[a-zA-HJ-NP-Z0-9]{25,90}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/i.test(clean)) {
+      return { valid: false, error: "Please enter a valid Bitcoin address (starts with bc1, 1, or 3)." };
+    }
+    return { valid: true };
+  }
+
+  if (chain === "ltc") {
+    if (!/^(ltc1[a-zA-HJ-NP-Z0-9]{25,90}|[LM][a-km-zA-HJ-NP-Z1-9]{25,34})$/i.test(clean)) {
+      return { valid: false, error: "Please enter a valid Litecoin address (starts with ltc1, L, or M)." };
+    }
+    return { valid: true };
+  }
+
+  if (chain === "tron") {
+    if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(clean)) {
+      return { valid: false, error: "Please enter a valid Tron address (starts with T, 34 characters)." };
+    }
+    return { valid: true };
+  }
+
+  if (clean.length < 20) {
+    return { valid: false, error: "Please enter a valid destination recipient address." };
+  }
+  return { valid: true };
 }
 
 /** Token-aware quick amount presets (a 0.1 USDC preset is useless; a 50 BTC preset is absurd). */
@@ -316,6 +364,12 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
     const cleanRecipient = recipient.trim();
     if (!cleanRecipient) {
       setCreateError(`Please enter a valid ${CHAIN_METADATA[toToken.blockchain as SupportedChainId]?.name || toToken.blockchain.toUpperCase()} recipient address.`);
+      return;
+    }
+
+    const addrValidation = validateDestinationAddress(toToken.blockchain, cleanRecipient);
+    if (!addrValidation.valid) {
+      setCreateError(addrValidation.error || "Invalid destination recipient address.");
       return;
     }
 
@@ -1205,6 +1259,9 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
                           setFromToken(token);
                           setAmountInHuman(presetsFor(token)[1] || "1");
                         } else {
+                          if (token.blockchain !== toToken.blockchain) {
+                            setRecipient("");
+                          }
                           setToToken(token);
                         }
                         setSelectorSide(null);
