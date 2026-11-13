@@ -40,7 +40,7 @@ export async function GET() {
       mechanism: "TREASURY_SWEEP_WITH_USD_PARTNER_CREDIT",
       note: "100% of fees are swept to ZkPay Treasury on-chain. Upon swap settlement, 50% of the fee is converted to USD at the live CoinGecko rate and credited to the Partner Portal balance.",
       partnerGuidance: "Authenticate with your x-api-key header. Settled fees accrue in USD and can be withdrawn ($1.00 minimum) in LTC, SOL, USDT (Polygon), or USDC (Base) from the Partner Portal.",
-      defaultFeeBps: 100,
+      defaultFeeBps: 200,
       feeSplitModel: "50/50 between ZkPay Treasury and Partner",
     },
     documentation: "https://zkpay.top/docs",

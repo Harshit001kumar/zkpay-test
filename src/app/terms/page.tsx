@@ -54,7 +54,7 @@ export default function TermsOfServicePage() {
             </div>
             <h3 className="font-bold text-on-surface text-base">Transparent Fees</h3>
             <p className="text-xs text-on-surface-variant leading-relaxed">
-              ZkPay assesses a clear 100 basis point (1.00%) fee on supported L2 and alt-chain swaps with a 50/50 developer revenue split. Zero hidden markups.
+              ZkPay assesses a clear 200 basis point (2.00%) fee on supported L2 and alt-chain swaps with a 50/50 developer revenue split. Zero hidden markups.
             </p>
           </div>
 

@@ -180,8 +180,8 @@ bot.command('tokens', async (ctx) => {
         location: "query",
         required: false,
         description:
-          "Custom partner fee in basis points (range: 20 to 450 bps, default 100 for 1.00%). Split 50/50 between Partner (credited in USD on settlement) and ZkPay Treasury.",
-        example: "100",
+          "Custom partner fee in basis points (range: 20 to 450 bps, default 200 for 2.00%). Split 50/50 between Partner (credited in USD on settlement) and ZkPay Treasury.",
+        example: "200",
       },
       {
         name: "slippageBps",
@@ -374,8 +374,8 @@ bot.command('swapquote', async (ctx) => {
         location: "body",
         required: false,
         description:
-          "Custom partner fee in basis points (range: 20 to 450 bps, default 100 for 1.00%). Split 50/50 between Partner (credited in USD on settlement) and ZkPay Treasury.",
-        example: "100",
+          "Custom partner fee in basis points (range: 20 to 450 bps, default 200 for 2.00%). Split 50/50 between Partner (credited in USD on settlement) and ZkPay Treasury.",
+        example: "200",
       },
       {
         name: "slippageBps",

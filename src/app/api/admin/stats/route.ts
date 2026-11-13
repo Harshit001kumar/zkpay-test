@@ -100,7 +100,7 @@ export async function GET(req: Request) {
       gasSponsorship,
       telemetry: {
         treasuryUsdcBalance: treasuryUsdc,
-        platformFeeBps: 100,
+        platformFeeBps: 200,
       },
     });
   } catch (error: any) {

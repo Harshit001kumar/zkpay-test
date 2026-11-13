@@ -63,7 +63,7 @@ Query params:
 - amount (required): Integer string in ATOMIC UNITS (see conversion table below)
 - chain (optional): Source chain e.g. "sol", "base", "polygon", "ltc", "arb", "bsc", "eth", "btc"
 - destinationChain (optional): Target chain e.g. "base", "sol", "polygon". Defaults to Base if omitted.
-- totalFeeBps (optional): Total custom fee in bps (range: 20–450 bps, default 100 = 1.00%, split 50/50 between Partner and ZkPay).
+- totalFeeBps (optional): Total custom fee in bps (range: 20–450 bps, default 200 = 2.00%, split 50/50 between Partner and ZkPay).
 - slippageBps (optional): Slippage tolerance in bps (range: 10–500 bps, default 100 = 1.00%).
 
 ### 3. POST /api/v1/swap/create
@@ -79,7 +79,7 @@ Request body:
   "amount": "1000000000",
   "recipient": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
   "refundTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
-  "totalFeeBps": 100,
+  "totalFeeBps": 200,
   "slippageBps": 100
 }
 
@@ -421,7 +421,7 @@ If you provided a webhookUrl, you'll receive these events with HMAC SHA-256 sign
               <div className="bg-black/30 rounded-xl p-5 border border-white/5 space-y-2">
                 <span className="font-label-caps text-[9px] text-primary tracking-normal font-bold">CUSTOMIZABLE BPS</span>
                 <p className="text-sm font-medium text-on-surface">20 to 450 bps (0.20% – 4.50%)</p>
-                <p className="text-xs text-outline">Default 100 bps (1.00%), split 50/50 with partner</p>
+                <p className="text-xs text-outline">Default 200 bps (2.00%), split 50/50 with partner</p>
               </div>
             </div>
           </div>

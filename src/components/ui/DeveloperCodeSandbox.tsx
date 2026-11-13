@@ -23,7 +23,7 @@ const res = await fetch("https://zkpay.top/api/v1/swap/create", {
     amount: "1000000000", // 1.0 SOL in lamports
     recipient: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
     swapType: "FLEX_INPUT", // Send any amount over minimum
-    totalFeeBps: 100,       // 1.00% fee (50/50 split with partner)
+    totalFeeBps: 200,       // 2.00% fee (50/50 split with partner)
   }),
 });
 
@@ -51,7 +51,7 @@ response = requests.post(
         "amount": "5000000",  # 0.05 BTC in satoshis
         "recipient": "TXYZopUR9qZnbM7qNkS5fQyH56d78a9b",
         "swapType": "FLEX_INPUT",
-        "totalFeeBps": 100,
+        "totalFeeBps": 200,
     },
 )
 
@@ -77,7 +77,7 @@ print(f"Deposit Address: {order['deposit']['address']}")`,
       amount: atomic,
       recipient,
       swapType: "FLEX_INPUT",
-      totalFeeBps: 100,
+      totalFeeBps: 200,
     }),
   });
 
@@ -104,7 +104,7 @@ print(f"Deposit Address: {order['deposit']['address']}")`,
     "amount": "1000000000",
     "recipient": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
     "swapType": "FLEX_INPUT",
-    "totalFeeBps": 100
+    "totalFeeBps": 200
   }'`,
   },
 };

@@ -6,7 +6,7 @@ import { ArrowUpRight, TrendingUp, CheckCircle2 } from "lucide-react";
 
 export function PartnerRevenueCalculator() {
   const [monthlyVolume, setMonthlyVolume] = useState<number>(250000);
-  const [feeBps, setFeeBps] = useState<number>(100); // 1.00% default
+  const [feeBps, setFeeBps] = useState<number>(200); // 2.00% default
 
   const totalFeeCollected = monthlyVolume * (feeBps / 10000);
   const partnerMonthlyShare = totalFeeCollected * 0.5;

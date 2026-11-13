@@ -7,8 +7,8 @@ import { ArrowUpRight, TrendingUp, ShieldCheck } from "lucide-react";
 export function RevenueSimulator3D() {
   const [volume, setVolume] = useState(250000); // $250k monthly default
 
-  // 1% custom fee = 100 bps; 50% split = 50 bps (0.5%)
-  const monthlyShare = volume * 0.005;
+  // 2% custom fee = 200 bps; 50% split = 100 bps (1.0%)
+  const monthlyShare = volume * 0.01;
   const annualShare = monthlyShare * 12;
 
   return (
@@ -63,7 +63,7 @@ export function RevenueSimulator3D() {
             <div className="font-mono text-2xl sm:text-3xl font-extrabold text-secondary tracking-tight">
               ${monthlyShare.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <span className="text-[11px] text-on-surface-variant">50% of 100 bps custom fee</span>
+            <span className="text-[11px] text-on-surface-variant">50% of 200 bps custom fee</span>
           </div>
 
           <div className="p-4 rounded-xl bg-surface-container border border-outline-variant/60 space-y-1">

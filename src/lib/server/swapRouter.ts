@@ -44,7 +44,7 @@ const ONECLICK_API = "https://1click.chaindefuser.com/v0";
 
 // Protocol constants
 export const NEAR_INTENTS_PROTOCOL_FEE_BPS = 25; // 0.25% fixed protocol overhead
-export const DEFAULT_CUSTOM_FEE_BPS = 100;        // 1.00% default
+export const DEFAULT_CUSTOM_FEE_BPS = 200;        // 2.00% default
 export const MIN_CUSTOM_FEE_BPS = 20;             // 0.20% minimum custom fee
 export const MAX_CUSTOM_FEE_BPS = 450;            // 4.50% max custom fee (leaves headroom for 25 bps overhead < 500 bps cap)
 

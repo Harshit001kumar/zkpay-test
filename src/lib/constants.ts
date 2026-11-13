@@ -54,8 +54,8 @@ export const CHAIN = {
   blockExplorer: "https://basescan.org",
 } as const;
 
-// Platform fee (1% default take rate on swaps, split 50/50 with partners)
-export const PLATFORM_FEE_BPS = 100; // 100 basis points = 1%
+// Platform fee (2% default take rate on swaps, split 50/50 with partners)
+export const PLATFORM_FEE_BPS = 200; // 200 basis points = 2%
 
 // Standard gas relay fee in USDC
 export const RELAY_GAS_FEE_USDC = 0.05;
