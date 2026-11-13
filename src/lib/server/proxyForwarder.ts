@@ -693,7 +693,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       const priorReceipt = await publicClient
         .getTransactionReceipt({ hash: order.forwardTxHash as `0x${string}` })
         .catch(() => null);
-      if (priorReceipt && (priorReceipt.status === "success" || priorReceipt.status === 1 || priorReceipt.status === "0x1")) {
+      if (priorReceipt?.status === "success") {
         const reconciled = await updateProxySwapOrder(order.swapId, {
           status: "FORWARDED",
           depositTxHash: order.feeTxHash || order.forwardTxHash,
@@ -852,7 +852,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
         console.warn(`[ProxyForwarder] Waiting for receipt failed for tx ${forwardTxHash}:`, rcptErr?.message || rcptErr);
       }
 
-      const isSuccess = receipt && (receipt.status === "success" || receipt.status === 1 || receipt.status === "0x1");
+      const isSuccess = receipt?.status === "success";
       if (!isSuccess) {
         if (receipt) {
           // Confirmed revert on-chain -> clear forwardTxHash and revert status so retry/expiry logic works safely
