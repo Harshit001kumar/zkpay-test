@@ -1,5 +1,5 @@
-import { http, fallback, createPublicClient, Transport, Chain } from "viem";
-import { base, arbitrum, polygon, bsc } from "viem/chains";
+import { http, fallback, createPublicClient, type Transport, type Chain } from "viem";
+import { mainnet, base, arbitrum, polygon, bsc } from "viem/chains";
 import { normalizeChain } from "@/lib/constants";
 
 /**
@@ -357,6 +357,42 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
         "https://1rpc.io/bnb",
         "https://bsc.drpc.org",
         "https://binance.meowrpc.com"
+      );
+      break;
+    }
+
+    case "eth":
+    case "ethereum":
+    case "mainnet": {
+      targetChain = mainnet;
+      key = "eth";
+
+      const custom =
+        cleanEnvString(process.env.ETH_RPC_URL) ||
+        cleanEnvString(process.env.ETHEREUM_RPC_URL) ||
+        cleanEnvString(process.env.NEXT_PUBLIC_ETH_RPC_URL) ||
+        cleanEnvString(process.env.NEXT_PUBLIC_ETHEREUM_RPC_URL);
+      if (custom) customUrls.push(custom);
+
+      if (infuraKey) {
+        premiumUrls.push({ url: `https://mainnet.infura.io/v3/${infuraKey}` });
+      }
+      if (nowNodesKey) {
+        premiumUrls.push({
+          url: "https://eth.nownodes.io",
+          headers: { "api-key": nowNodesKey },
+        });
+      }
+      if (alchemyKey) {
+        premiumUrls.push({ url: `https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}` });
+      }
+
+      publicUrls.push(
+        "https://ethereum-rpc.publicnode.com",
+        "https://eth.drpc.org",
+        "https://1rpc.io/eth",
+        "https://eth.llamarpc.com",
+        "https://eth.meowrpc.com"
       );
       break;
     }

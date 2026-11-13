@@ -7,7 +7,7 @@ import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { createWalletClient, custom, parseUnits, formatUnits, isAddress, encodeFunctionData } from "viem";
 import { base } from "viem/chains";
 import { useReadContract, useBalance } from "wagmi";
-import { CONTRACTS, CHAIN } from "@/lib/constants";
+import { CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
 import { floorTo2Decimals } from "@/lib/format";
 
@@ -121,7 +121,7 @@ export default function WalletAddressPage() {
       return;
     }
 
-    if (smartClient && numAmount > (usdcBalance - 0.01)) {
+    if (smartClient && numAmount > Number((usdcBalance - 0.02).toFixed(2))) {
       setSendError(`Please leave at least $0.02 USDC to cover the network gas fee.`);
       return;
     }
@@ -373,7 +373,7 @@ export default function WalletAddressPage() {
 
               {/* Cross Chain Bridge Link */}
               <button
-                onClick={() => router.push("/#deposit")}
+                onClick={() => router.push("/")}
                 className="w-full py-4 px-5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-label-caps tracking-normal text-white font-bold flex items-center justify-center gap-2.5 transition-colors group"
               >
                 <ArrowRightLeft className="w-4 h-4 text-primary group-hover:rotate-180 transition-transform duration-500" />

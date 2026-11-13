@@ -48,8 +48,21 @@ export default function SwapReceiptPage() {
         const data = await res.json();
         if (active && data.success) {
           setLiveStatus(data);
-          if (data.status === "settled" || data.status === "SUCCESS") {
-            updateTransactionStatus(rawHash, "settled", data.swapDetails?.amountOutFormatted);
+          const s = (data.status || "").toLowerCase();
+          const raw = (data.rawStatus || "").toUpperCase();
+          const settledOut = data.settledAmount || data.swapDetails?.amountOutFormatted;
+          if (s === "settled" || s === "success" || s === "completed" || raw === "SUCCESS" || raw === "SETTLED") {
+            updateTransactionStatus(rawHash, "settled", settledOut);
+          } else if (
+            s === "failed" ||
+            s === "refunded" ||
+            s === "expired" ||
+            raw === "FAILED" ||
+            raw === "REFUNDED" ||
+            raw === "EXPIRED" ||
+            raw === "INCOMPLETE_DEPOSIT"
+          ) {
+            updateTransactionStatus(rawHash, "failed");
           }
         }
       } catch {
@@ -89,19 +102,30 @@ export default function SwapReceiptPage() {
   const statusStr = (liveStatus?.status || tx?.status || "pending").toLowerCase();
   const isSettled = statusStr === "settled" || statusStr === "success" || statusStr === "completed";
   const isFailed = statusStr === "failed" || statusStr === "refunded" || statusStr === "expired";
-  const fromAsset = tx?.fromAsset || liveStatus?.fromAsset || "Token";
-  const toAsset = tx?.toAsset || liveStatus?.toAsset || "USDC";
-  const fromChain = tx?.fromChain || liveStatus?.chain || "origin";
-  const toChain = tx?.toChain || liveStatus?.destinationChain || "base";
-  const amountIn = tx?.amountIn || liveStatus?.swapDetails?.amountInFormatted || "—";
-  const amountOut = liveStatus?.swapDetails?.amountOutFormatted || tx?.amountOut || "—";
+  const fromAsset = tx?.fromAsset || liveStatus?.fromAsset || null;
+  const toAsset = tx?.toAsset || liveStatus?.toAsset || null;
+  const fromChain = tx?.fromChain || liveStatus?.chain || null;
+  const toChain = tx?.toChain || liveStatus?.destinationChain || null;
+  const amountIn = liveStatus?.depositedAmount || tx?.amountIn || liveStatus?.swapDetails?.amountInFormatted || "—";
+  const amountOut = liveStatus?.settledAmount || liveStatus?.swapDetails?.amountOutFormatted || tx?.amountOut || "—";
   const depositAddress = tx?.depositAddress || liveStatus?.depositAddress || rawHash;
-  const recipient = tx?.recipient || liveStatus?.recipient || "—";
-  const destExplorer: string | null = liveStatus?.destinationExplorerUrl || null;
+  const recipient = tx?.recipient || liveStatus?.recipient || null;
+  const destExplorer: string | null =
+    typeof liveStatus?.destinationExplorerUrl === "string" && liveStatus.destinationExplorerUrl.startsWith("https://")
+      ? liveStatus.destinationExplorerUrl
+      : null;
   const destTxHash: string | null = liveStatus?.destinationTxHash || null;
-  const originTxHash: string | null = liveStatus?.originTxHash || null;
+  const originTxHash: string | null = liveStatus?.originTxHash || liveStatus?.forwardTxHash || null;
 
-  const statusLabel = isSettled ? "Complete" : isFailed ? (statusStr === "refunded" ? "Refunded" : "Failed") : "In progress";
+  const statusLabel = isSettled
+    ? "Complete"
+    : isFailed
+    ? statusStr === "refunded"
+      ? "Refunded"
+      : statusStr === "expired"
+      ? "Expired"
+      : "Failed"
+    : "In progress";
 
   const Row = ({ label, value, copyKey }: { label: string; value: string; copyKey?: string }) => (
     <div className="flex items-center justify-between gap-3 min-h-[44px]">
@@ -147,9 +171,15 @@ export default function SwapReceiptPage() {
               <h1 className="text-lg font-semibold text-on-surface">Swap {statusLabel.toLowerCase()}</h1>
               <p className="text-sm text-on-surface-variant mt-0.5">
                 {isSettled
-                  ? `${toAsset} delivered on ${chainName(toChain)}`
+                  ? toAsset && toChain
+                    ? `${toAsset} delivered on ${chainName(toChain)}`
+                    : "Swap delivered to destination"
                   : isFailed
-                  ? "This swap did not complete"
+                  ? statusStr === "refunded"
+                    ? "Funds refunded to origin"
+                    : statusStr === "expired"
+                    ? "Deposit window expired"
+                    : "This swap did not complete"
                   : "This page updates automatically"}
               </p>
             </div>
@@ -160,16 +190,16 @@ export default function SwapReceiptPage() {
             <div className="bg-surface-container-low p-3.5 min-w-0">
               <span className="text-xs text-on-surface-variant block">Sent</span>
               <span className="font-mono text-base font-semibold text-on-surface block truncate tabular-nums">
-                {amountIn} {fromAsset}
+                {amountIn}{fromAsset ? ` ${fromAsset}` : ""}
               </span>
-              <span className="text-[11px] text-on-surface-variant">{chainName(fromChain)}</span>
+              <span className="text-[11px] text-on-surface-variant">{fromChain ? chainName(fromChain) : "Origin chain"}</span>
             </div>
             <div className="bg-surface-container-low p-3.5 min-w-0">
               <span className="text-xs text-on-surface-variant block">{isSettled ? "Received" : "Expected"}</span>
               <span className="font-mono text-base font-semibold text-secondary block truncate tabular-nums">
-                {amountOut} {toAsset}
+                {amountOut}{toAsset ? ` ${toAsset}` : ""}
               </span>
-              <span className="text-[11px] text-on-surface-variant">{chainName(toChain)}</span>
+              <span className="text-[11px] text-on-surface-variant">{toChain ? chainName(toChain) : "Destination chain"}</span>
             </div>
           </div>
 
@@ -177,7 +207,7 @@ export default function SwapReceiptPage() {
           <div className="divide-y divide-outline-variant">
             <Row label="Status" value={statusLabel} />
             <Row label="Deposit address" value={depositAddress} copyKey="deposit" />
-            {recipient && recipient !== "—" && <Row label="Recipient" value={recipient} copyKey="recipient" />}
+            {recipient && <Row label="Recipient" value={recipient} copyKey="recipient" />}
             {originTxHash && <Row label="Deposit tx" value={originTxHash} copyKey="origin" />}
             {destTxHash && <Row label="Delivery tx" value={destTxHash} copyKey="dest" />}
           </div>

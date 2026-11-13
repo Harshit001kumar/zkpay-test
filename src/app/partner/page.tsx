@@ -533,7 +533,7 @@ export default function PartnerDashboard() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
                           <span className="font-semibold text-white font-mono">
-                            {s.amount} {s.fromAsset}
+                            {s.amount}
                           </span>
                           <span className="text-neutral-500">→</span>
                           <span className="text-neutral-300 font-medium">
@@ -561,8 +561,8 @@ export default function PartnerDashboard() {
                           <span className="text-secondary font-mono">
                             {s.partnerFeeUsdEstimate > 0
                               ? `$${s.partnerFeeUsdEstimate.toFixed(4)} USD`
-                              : s.partnerFeeAmount
-                              ? `${s.partnerFeeAmount} ${s.fromAsset}`
+                              : s.partnerFeeAmount && s.partnerFeeAmount !== "0"
+                              ? s.partnerFeeAmount
                               : "50% share"}
                           </span>
                         </span>

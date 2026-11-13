@@ -7,6 +7,7 @@ import { SWAP_ALLOWED_TOKENS } from "@/lib/constants";
 import { CHAIN_METADATA, SupportedChainId, SwapTokenItem } from "@/lib/types";
 import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { saveTransaction, updateTransactionStatus } from "@/lib/history";
+import { isValidAddressForOriginAsset } from "@/lib/refundAddress";
 import { chainVisual, tokenColor, POPULAR_PAIRS, type PopularPair } from "@/lib/chainVisuals";
 import { CryptoIcon } from "@/components/ui/CryptoIcon";
 import {
@@ -71,35 +72,35 @@ function validateDestinationAddress(chain: string, address: string): { valid: bo
   if (!clean) return { valid: false, error: "Recipient address cannot be empty." };
 
   if (EVM_CHAINS.has(chain)) {
-    if (!/^0x[a-fA-F0-9]{40}$/.test(clean)) {
+    if (!isValidAddressForOriginAsset(":evm", clean)) {
       return { valid: false, error: "Please enter a valid 42-character EVM address (0x...)." };
     }
     return { valid: true };
   }
 
   if (chain === "sol") {
-    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(clean)) {
+    if (!isValidAddressForOriginAsset(":sol", clean)) {
       return { valid: false, error: "Please enter a valid Solana Base58 address (32-44 characters)." };
     }
     return { valid: true };
   }
 
   if (chain === "btc") {
-    if (!/^(bc1[a-zA-HJ-NP-Z0-9]{25,90}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})$/i.test(clean)) {
-      return { valid: false, error: "Please enter a valid Bitcoin address (starts with bc1, 1, or 3)." };
+    if (!isValidAddressForOriginAsset(":btc", clean)) {
+      return { valid: false, error: "Please enter a valid Bitcoin address (starts with lowercase bc1, 1, or 3)." };
     }
     return { valid: true };
   }
 
   if (chain === "ltc") {
-    if (!/^(ltc1[a-zA-HJ-NP-Z0-9]{25,90}|[LM][a-km-zA-HJ-NP-Z1-9]{25,34})$/i.test(clean)) {
+    if (!isValidAddressForOriginAsset(":ltc", clean)) {
       return { valid: false, error: "Please enter a valid Litecoin address (starts with ltc1, L, or M)." };
     }
     return { valid: true };
   }
 
   if (chain === "tron") {
-    if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(clean)) {
+    if (!isValidAddressForOriginAsset(":tron", clean)) {
       return { valid: false, error: "Please enter a valid Tron address (starts with T, 34 characters)." };
     }
     return { valid: true };
@@ -407,8 +408,9 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
         if (active && data.success) {
           setOrderStatus(data);
           const s = (data.status || "").toUpperCase();
+          const settledOut = data.settledAmount || data.swapDetails?.amountOutFormatted;
           if (s === "SETTLED" || s === "SUCCESS" || s === "COMPLETED") {
-            updateTransactionStatus(depAddr, "settled", data.swapDetails?.amountOutFormatted);
+            updateTransactionStatus(depAddr, "settled", settledOut);
             try {
               localStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
             } catch {}
@@ -532,21 +534,28 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
       setShowQr(false);
 
       const depAddress = order.deposit?.address || order.quote?.depositAddress || "";
+      const resolvedOrderId = order.swapId || order.orderId;
+      const resolvedAmountIn = order.deposit?.amount || order.deposit?.amountFormatted || amountInHuman;
+      const resolvedAmountOut =
+        order.settlement?.estimatedAmountOut ||
+        order.quote?.amountOutFormatted ||
+        quoteData?.amountOutFormatted ||
+        "0";
       saveTransaction({
-        hash: depAddress || order.orderId || order.swapId || `swap_${Date.now()}`,
+        hash: depAddress || resolvedOrderId || `swap_${Date.now()}`,
         type: "swap",
         title: `Swap ${fromToken.symbol} → ${toToken.symbol}`,
         fromAsset: fromToken.symbol,
         toAsset: toToken.symbol,
         fromChain: fromToken.blockchain,
         toChain: toToken.blockchain,
-        amountIn: amountInHuman,
-        amountOut: order.quote?.amountOutFormatted || quoteData?.amountOutFormatted || "0",
+        amountIn: resolvedAmountIn,
+        amountOut: resolvedAmountOut,
         depositAddress: depAddress,
-        amountUSDC: parseFloat(order.quote?.amountOutFormatted || "0") || 0,
+        amountUSDC: parseFloat(resolvedAmountOut) || 0,
         fee: 0,
         recipient: cleanRecipient,
-        orderId: order.orderId,
+        orderId: resolvedOrderId,
         network: `${fromToken.blockchain.toUpperCase()} → ${toToken.blockchain.toUpperCase()}`,
         timestamp: Date.now(),
         status: "pending",
@@ -614,19 +623,53 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
   // ── ACTIVE DEPOSIT & LIVE SETTLEMENT VIEW ──
   if (activeOrder) {
     const depAddr = activeOrder.deposit?.address || activeOrder.quote?.depositAddress || "";
-    const exactDepositAmount = activeOrder.deposit?.amountFormatted || amountInHuman;
-    const expectedOut = activeOrder.quote?.amountOutFormatted || quoteData?.amountOutFormatted || "—";
-    const rawStat = (orderStatus?.status || "PENDING_DEPOSIT").toUpperCase();
+    const exactDepositAmount = activeOrder.deposit?.amount || activeOrder.deposit?.amountFormatted || amountInHuman;
+    const expectedOut =
+      activeOrder.settlement?.estimatedAmountOut ||
+      activeOrder.quote?.amountOutFormatted ||
+      quoteData?.amountOutFormatted ||
+      "—";
+    const mappedStat = (orderStatus?.status || "PENDING_DEPOSIT").toUpperCase();
+    const rawStat = (orderStatus?.rawStatus || orderStatus?.status || "PENDING_DEPOSIT").toUpperCase();
 
-    const isFailed = rawStat === "FAILED" || rawStat === "REFUNDED" || rawStat === "EXPIRED";
+    const isFailed =
+      mappedStat === "FAILED" ||
+      mappedStat === "REFUNDED" ||
+      mappedStat === "EXPIRED" ||
+      rawStat === "FAILED" ||
+      rawStat === "REFUNDED" ||
+      rawStat === "EXPIRED" ||
+      rawStat === "INCOMPLETE_DEPOSIT";
+    const failKind =
+      mappedStat === "REFUNDED" || rawStat === "REFUNDED"
+        ? "REFUNDED"
+        : mappedStat === "EXPIRED" || rawStat === "EXPIRED" || rawStat === "INCOMPLETE_DEPOSIT"
+        ? "EXPIRED"
+        : "FAILED";
     let stepIndex = 0;
-    if (rawStat.includes("DETECTED") || rawStat.includes("KNOWN")) stepIndex = 1;
-    else if (rawStat.includes("FORWARD") || rawStat.includes("PROCESS") || rawStat.includes("SWAP")) stepIndex = 2;
-    else if (rawStat === "SETTLED" || rawStat === "SUCCESS" || rawStat === "COMPLETED") stepIndex = 3;
+    if (
+      mappedStat === "SETTLED" ||
+      mappedStat === "SUCCESS" ||
+      mappedStat === "COMPLETED" ||
+      rawStat === "SETTLED" ||
+      rawStat === "SUCCESS" ||
+      rawStat === "COMPLETED"
+    ) {
+      stepIndex = 3;
+    } else if (
+      rawStat.includes("FORWARD") ||
+      rawStat.includes("PROCESS") ||
+      rawStat.includes("SWAP") ||
+      mappedStat === "PROCESSING"
+    ) {
+      stepIndex = 2;
+    } else if (rawStat.includes("DETECTED") || rawStat.includes("KNOWN")) {
+      stepIndex = 1;
+    }
     const isSettled = stepIndex === 3;
 
     const destExplorer: string | null = orderStatus?.destinationExplorerUrl || null;
-    const deliveredOut = orderStatus?.swapDetails?.amountOutFormatted || expectedOut;
+    const deliveredOut = orderStatus?.settledAmount || orderStatus?.swapDetails?.amountOutFormatted || expectedOut;
 
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(depAddr)}&color=090A0E&bgcolor=ffffff&margin=8`;
 
@@ -780,16 +823,16 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-error" />
               <div className="text-sm leading-relaxed text-on-error-container">
                 <p className="font-semibold mb-0.5">
-                  {rawStat === "REFUNDED"
+                  {failKind === "REFUNDED"
                     ? "Order Refunded / Cancelled"
-                    : rawStat === "EXPIRED"
+                    : failKind === "EXPIRED"
                     ? "Quote Expired"
                     : "Swap Could Not Be Completed"}
                 </p>
                 <p className="text-xs text-on-error-container/90">
-                  {rawStat === "REFUNDED"
+                  {failKind === "REFUNDED"
                     ? "The solver could not fill this order. If refunded to ZkPay Treasury, our support team will disburse funds to your wallet immediately."
-                    : rawStat === "EXPIRED"
+                    : failKind === "EXPIRED"
                     ? "This quote expired before a deposit arrived. If you already sent funds, contact support below with your deposit address."
                     : "If you deposited funds, they are protected in ZkPay Treasury. Contact support with your transaction details to receive your refund."}
                 </p>
@@ -894,7 +937,7 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
               href={`/tx/${encodeURIComponent(depAddr)}`}
               className="font-mono hover:text-on-surface transition-colors"
             >
-              #{String(activeOrder.orderId || depAddr).slice(0, 10)}
+              #{String(activeOrder.swapId || activeOrder.orderId || depAddr).slice(0, 10)}
             </a>
           )}
         </div>

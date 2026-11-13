@@ -16,7 +16,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { base, arbitrum, polygon, bsc } from "viem/chains";
 import { CONTRACTS, normalizeChain, SWAP_ALLOWED_TOKENS, getTreasuryAddressForChain } from "@/lib/constants";
 import {
-  ProxySwapOrder,
+  type ProxySwapOrder,
   getProxyOrderByAddress,
   getProxyOrderBySwapId,
   getPendingProxyOrders,
@@ -73,6 +73,7 @@ const USDC_EIP712_VERSIONS: Record<string, string> = {
   polygon: "2",
 };
 const CHAIN_IDS: Record<string, number> = {
+  eth: 1,
   base: 8453,
   arb: 42161,
   polygon: 137,
@@ -308,9 +309,10 @@ async function executeBundledGaslessUsdcTransfers(params: {
     return txHash;
   } catch (err: any) {
     console.warn("[ProxyForwarder] Multicall3 bundle failed, falling back to sequential transfers:", err?.message || err);
-    let lastHash = "";
-    for (const out of validOutputs) {
-      lastHash = await executeGaslessUsdcTransfer({
+    let solverHash = "";
+    for (let i = 0; i < validOutputs.length; i++) {
+      const out = validOutputs[i];
+      const txHash = await executeGaslessUsdcTransfer({
         proxyAccount,
         tokenAddress,
         to: out.to,
@@ -318,9 +320,24 @@ async function executeBundledGaslessUsdcTransfers(params: {
         chainKey,
         publicClient,
       });
-      await publicClient.waitForTransactionReceipt({ hash: lastHash as `0x${string}` }).catch(() => {});
+      const rcpt = await publicClient
+        .waitForTransactionReceipt({ hash: txHash as `0x${string}`, timeout: 45_000 })
+        .catch(() => null);
+      if (!rcpt || rcpt.status !== "success") {
+        if (i === 0) {
+          throw new Error(
+            rcpt
+              ? `Sequential gasless solver transfer ${txHash} reverted on-chain.`
+              : `Sequential gasless solver transfer ${txHash} confirmation timed out.`
+          );
+        }
+        console.warn(`[ProxyForwarder] Sequential gasless fee transfer ${txHash} unconfirmed or reverted.`);
+      }
+      if (i === 0) {
+        solverHash = txHash;
+      }
     }
-    return lastHash;
+    return solverHash;
   }
 }
 
@@ -579,7 +596,12 @@ const PENDING_FORWARD_STALE_MS = 10 * 60 * 1000;
  * the upfront fee split and forward to Near Intents solvers.
  */
 export async function checkAndForwardProxyDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
-  if (order.status === "FORWARDED" || order.status === "SETTLED" || order.status === "FAILED") {
+  if (
+    order.status === "FORWARDED" ||
+    order.status === "SETTLED" ||
+    order.status === "FAILED" ||
+    order.status === "REFUNDED"
+  ) {
     return order;
   }
 
@@ -666,6 +688,29 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
   if (isNative) {
     // ─── CASE A: Native Gas Token (ETH, BNB, POL) ───
+    // Reconcile or guard against an already-broadcast forwardTxHash before checking deposit threshold
+    if (order.forwardTxHash && order.forwardTxHash.startsWith("0x")) {
+      const priorReceipt = await publicClient
+        .getTransactionReceipt({ hash: order.forwardTxHash as `0x${string}` })
+        .catch(() => null);
+      if (priorReceipt && (priorReceipt.status === "success" || priorReceipt.status === 1 || priorReceipt.status === "0x1")) {
+        const reconciled = await updateProxySwapOrder(order.swapId, {
+          status: "FORWARDED",
+          depositTxHash: order.feeTxHash || order.forwardTxHash,
+          forwardTxHash: order.forwardTxHash,
+          error: undefined,
+        }).catch(() => null);
+        return reconciled || order;
+      }
+      const isStalePending =
+        !priorReceipt &&
+        !!order.lastAttemptAt &&
+        Date.now() - order.lastAttemptAt > PENDING_FORWARD_STALE_MS;
+      if (!priorReceipt && !isStalePending) {
+        return order;
+      }
+    }
+
     const balanceWei = await publicClient.getBalance({ address: proxyAddress });
     const expectedAtomic = BigInt(order.totalAmountIn);
 
@@ -678,141 +723,195 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       `[ProxyForwarder] Native deposit detected for order ${order.swapId}: ${formatUnits(balanceWei, 18)} ${upperSymbol}`
     );
 
-    await updateProxySwapOrder(order.swapId, { status: "FORWARDING" });
-
-    const rawKey = getDecryptedProxyPrivateKey(order);
-    const proxyAccount = privateKeyToAccount(rawKey);
-
-    const walletClient = getWalletClientForChain(order.chain, proxyAccount);
-
-    let zkpayFeeWei = 0n;
-    let partnerFeeWei = 0n;
-
-    if (order.zkpayFeeBps !== undefined) {
-      zkpayFeeWei = (balanceWei * BigInt(order.zkpayFeeBps)) / 10000n;
-      if ((order.partnerFeeBps ?? 0) > 0) {
-        partnerFeeWei = (balanceWei * BigInt(order.partnerFeeBps!)) / 10000n;
-      }
-    } else {
-      zkpayFeeWei = (balanceWei * BigInt(order.feeAmount)) / expectedAtomic;
-    }
-
-    // 100% of all fees collected are swept to ZkPay Treasury on-chain.
-    // Partner's share is credited off-chain upon swap completion.
-    const totalFeeWei = zkpayFeeWei + partnerFeeWei;
-    const hasFees = totalFeeWei > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase();
-
-    const feeData = await publicClient.estimateFeesPerGas().catch(() => null);
-    const maxFee = feeData?.maxFeePerGas || (await publicClient.getGasPrice());
-    const l1Buffer = (chainKey === "base" || chainKey === "arb") ? 600_000_000_000n : 10_000_000_000n;
-    const gasLimit = hasFees ? 150_000n : 120_000n;
-    const gasReserve = gasLimit * maxFee + l1Buffer;
-
-    if (balanceWei <= gasReserve + totalFeeWei) {
-      throw new Error("Remaining native balance too small to cover gas and fees.");
-    }
-
-    const netWei = balanceWei - gasReserve - totalFeeWei;
-    if (netWei <= 0n) {
-      throw new Error("Net balance for solver is 0 after fees and gas reserve.");
-    }
+    await updateProxySwapOrder(order.swapId, {
+      status: "FORWARDING",
+      lastAttemptAt: Date.now(),
+    });
 
     let forwardTxHash = "";
     let feeTxHash = "";
+    let hasFees = false;
+    let totalFeeWei = 0n;
+    let zkpayFeeWei = 0n;
+    let partnerFeeWei = 0n;
+    let netWei = 0n;
 
-    if (hasFees) {
-      // ── ATOMIC BUNDLE VIA MULTICALL3 ──
-      // Solver transfer is Call #1 so Near Intents is funded immediately in the same block!
-      const calls: { target: `0x${string}`; allowFailure: boolean; value: bigint; callData: `0x${string}` }[] = [];
+    try {
+      const rawKey = getDecryptedProxyPrivateKey(order);
+      const proxyAccount = privateKeyToAccount(rawKey);
+      const walletClient = getWalletClientForChain(order.chain, proxyAccount);
 
-      calls.push({
-        target: solverAddress,
-        allowFailure: false,
-        value: netWei,
-        callData: "0x",
-      });
+      if (order.zkpayFeeBps !== undefined) {
+        zkpayFeeWei = (balanceWei * BigInt(order.zkpayFeeBps)) / 10000n;
+        if ((order.partnerFeeBps ?? 0) > 0) {
+          partnerFeeWei = (balanceWei * BigInt(order.partnerFeeBps!)) / 10000n;
+        }
+      } else {
+        zkpayFeeWei = (balanceWei * BigInt(order.feeAmount)) / expectedAtomic;
+      }
 
-      // 100% of fees to Treasury
-      calls.push({
-        target: treasuryAddress,
-        allowFailure: false,
-        value: totalFeeWei,
-        callData: "0x",
-      });
+      // 100% of all fees collected are swept to ZkPay Treasury on-chain.
+      // Partner's share is credited off-chain upon swap completion.
+      totalFeeWei = zkpayFeeWei + partnerFeeWei;
+      hasFees = totalFeeWei > 0n && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase();
 
-      const totalToSend = netWei + totalFeeWei;
+      const feeData = await publicClient.estimateFeesPerGas().catch(() => null);
+      const maxFee = feeData?.maxFeePerGas || (await publicClient.getGasPrice());
+      const l1Buffer = (chainKey === "base" || chainKey === "arb") ? 600_000_000_000n : 10_000_000_000n;
+      const gasLimit = hasFees ? 150_000n : 120_000n;
+      const gasReserve = gasLimit * maxFee + l1Buffer;
 
-      try {
-        forwardTxHash = await walletClient.writeContract({
-          account: proxyAccount,
-          address: MULTICALL3_ADDRESS,
-          abi: MULTICALL3_ABI,
-          functionName: "aggregate3Value",
-          args: [calls],
-          value: totalToSend,
-          gas: gasLimit,
+      if (balanceWei <= gasReserve + totalFeeWei) {
+        throw new Error("Remaining native balance too small to cover gas and fees.");
+      }
+
+      netWei = balanceWei - gasReserve - totalFeeWei;
+      if (netWei <= 0n) {
+        throw new Error("Net balance for solver is 0 after fees and gas reserve.");
+      }
+
+      if (hasFees) {
+        // ── ATOMIC BUNDLE VIA MULTICALL3 ──
+        // Solver transfer is Call #1 so Near Intents is funded immediately in the same block!
+        const calls: { target: `0x${string}`; allowFailure: boolean; value: bigint; callData: `0x${string}` }[] = [];
+
+        calls.push({
+          target: solverAddress,
+          allowFailure: false,
+          value: netWei,
+          callData: "0x",
         });
-        feeTxHash = forwardTxHash;
-        console.log(`[ProxyForwarder] ✓ Atomic Multicall3 bundled native transfer (solver + fees): ${forwardTxHash}`);
-      } catch (mcErr: any) {
-        console.warn("[ProxyForwarder] Multicall3 aggregate3Value failed, falling back to sequential transfers:", mcErr?.message || mcErr);
-        // Fallback: send solver first, then 100% fee to treasury
+
+        // 100% of fees to Treasury
+        calls.push({
+          target: treasuryAddress,
+          allowFailure: false,
+          value: totalFeeWei,
+          callData: "0x",
+        });
+
+        const totalToSend = netWei + totalFeeWei;
+
+        try {
+          forwardTxHash = await walletClient.writeContract({
+            account: proxyAccount,
+            address: MULTICALL3_ADDRESS,
+            abi: MULTICALL3_ABI,
+            functionName: "aggregate3Value",
+            args: [calls],
+            value: totalToSend,
+            gas: gasLimit,
+          });
+          feeTxHash = forwardTxHash;
+          console.log(`[ProxyForwarder] ✓ Atomic Multicall3 bundled native transfer (solver + fees): ${forwardTxHash}`);
+        } catch (mcErr: any) {
+          console.warn("[ProxyForwarder] Multicall3 aggregate3Value failed, falling back to sequential transfers:", mcErr?.message || mcErr);
+          // Fallback: send solver first, then 100% fee to treasury
+          forwardTxHash = await walletClient.sendTransaction({
+            account: proxyAccount,
+            to: solverAddress,
+            value: netWei,
+            gas: 120_000n,
+          });
+          notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
+
+          feeTxHash = await walletClient.sendTransaction({
+            account: proxyAccount,
+            to: treasuryAddress,
+            value: totalFeeWei,
+            gas: 120_000n,
+          }).catch(() => "");
+        }
+      } else {
+        // Direct transfer to solver (no fees)
         forwardTxHash = await walletClient.sendTransaction({
           account: proxyAccount,
           to: solverAddress,
           value: netWei,
           gas: 120_000n,
         });
-        notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
-
-        feeTxHash = await walletClient.sendTransaction({
-          account: proxyAccount,
-          to: treasuryAddress,
-          value: totalFeeWei,
-          gas: 120_000n,
-        }).catch(() => "");
+        console.log(`[ProxyForwarder] Direct solver forward broadcast: ${forwardTxHash}`);
       }
-    } else {
-      // Direct transfer to solver (no fees)
-      forwardTxHash = await walletClient.sendTransaction({
-        account: proxyAccount,
-        to: solverAddress,
-        value: netWei,
-        gas: 120_000n,
+
+      // Persist forwardTxHash & cooldown timestamp immediately after broadcast
+      await updateProxySwapOrder(order.swapId, {
+        forwardTxHash,
+        ...(feeTxHash ? { feeTxHash } : {}),
+        lastAttemptAt: Date.now(),
+      }).catch(() => {});
+
+      notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
+
+      let receipt: any = null;
+      try {
+        receipt = await publicClient.waitForTransactionReceipt({
+          hash: forwardTxHash as `0x${string}`,
+          timeout: 45_000,
+        });
+      } catch (rcptErr: any) {
+        console.warn(`[ProxyForwarder] Waiting for receipt failed for tx ${forwardTxHash}:`, rcptErr?.message || rcptErr);
+      }
+
+      const isSuccess = receipt && (receipt.status === "success" || receipt.status === 1 || receipt.status === "0x1");
+      if (!isSuccess) {
+        if (receipt) {
+          // Confirmed revert on-chain -> clear forwardTxHash and revert status so retry/expiry logic works safely
+          console.error(
+            `[ProxyForwarder] Native EVM transfer reverted for order ${order.swapId}, tx: ${forwardTxHash}, receipt status: ${receipt.status}`
+          );
+          const revertedOrder = await updateProxySwapOrder(order.swapId, {
+            status: "PENDING_DEPOSIT",
+            forwardTxHash: undefined,
+            feeTxHash: undefined,
+            lastAttemptAt: Date.now(),
+            error: `Native EVM transfer ${forwardTxHash} reverted on-chain.`,
+          }).catch(() => null);
+          return revertedOrder || order;
+        }
+
+        // Receipt timed out: check whether balance already left the proxy
+        const postBal = await publicClient.getBalance({ address: proxyAddress }).catch(() => balanceWei);
+        if (postBal >= (balanceWei * 20n) / 100n) {
+          console.warn(
+            `[ProxyForwarder] Native EVM transfer ${forwardTxHash} receipt pending confirmation for order ${order.swapId}. Preserving forwardTxHash and cooldown.`
+          );
+          const pendingOrder = await updateProxySwapOrder(order.swapId, {
+            status: "PENDING_DEPOSIT",
+            forwardTxHash,
+            ...(feeTxHash ? { feeTxHash } : {}),
+            lastAttemptAt: Date.now(),
+            error: `Native EVM transfer ${forwardTxHash} awaiting receipt confirmation.`,
+          }).catch(() => null);
+          return pendingOrder || order;
+        }
+      }
+
+      const updated = await updateProxySwapOrder(order.swapId, {
+        status: "FORWARDED",
+        totalAmountIn: balanceWei.toString(),
+        netSwapAmount: netWei.toString(),
+        feeAmount: (hasFees ? totalFeeWei : 0n).toString(),
+        zkpayFeeAmount: (hasFees ? zkpayFeeWei : 0n).toString(),
+        partnerFeeAmount: (hasFees ? partnerFeeWei : 0n).toString(),
+        depositTxHash: feeTxHash || forwardTxHash,
+        feeTxHash: feeTxHash || forwardTxHash,
+        forwardTxHash,
+        lastAttemptAt: Date.now(),
+        error: undefined,
       });
-      console.log(`[ProxyForwarder] Direct solver forward broadcast: ${forwardTxHash}`);
+
+      return updated || order;
+    } catch (nativeErr: any) {
+      console.error(`[ProxyForwarder] Native EVM forward error for order ${order.swapId}:`, nativeErr?.message || nativeErr);
+      const revertedOrder = await updateProxySwapOrder(order.swapId, {
+        status: "PENDING_DEPOSIT",
+        ...(forwardTxHash ? { forwardTxHash } : {}),
+        ...(feeTxHash ? { feeTxHash } : {}),
+        lastAttemptAt: Date.now(),
+        error: `Native EVM forward error: ${nativeErr?.message || nativeErr}`,
+      }).catch(() => null);
+      return revertedOrder || order;
     }
-
-    notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
-
-    let receipt: any = null;
-    try {
-      receipt = await publicClient.waitForTransactionReceipt({ hash: forwardTxHash as `0x${string}` });
-    } catch (rcptErr: any) {
-      console.warn(`[ProxyForwarder] Waiting for receipt failed for tx ${forwardTxHash}:`, rcptErr?.message || rcptErr);
-    }
-
-    const isSuccess = receipt && (receipt.status === "success" || receipt.status === 1 || receipt.status === "0x1");
-    if (!isSuccess) {
-      console.error(
-        `[ProxyForwarder] Native EVM transfer reverted or unconfirmed for order ${order.swapId}, tx: ${forwardTxHash}, receipt status: ${receipt?.status}`
-      );
-      return order;
-    }
-
-    const updated = await updateProxySwapOrder(order.swapId, {
-      status: "FORWARDED",
-      totalAmountIn: balanceWei.toString(),
-      netSwapAmount: netWei.toString(),
-      feeAmount: (hasFees ? totalFeeWei : 0n).toString(),
-      zkpayFeeAmount: (hasFees ? zkpayFeeWei : 0n).toString(),
-      partnerFeeAmount: (hasFees ? partnerFeeWei : 0n).toString(),
-      depositTxHash: feeTxHash || forwardTxHash,
-      feeTxHash: feeTxHash || forwardTxHash,
-      forwardTxHash,
-    });
-
-    return updated || order;
   } else {
     // ─── CASE B: Stablecoins & ERC-20s (USDC, USDT) ───
     const tokenMap = CHAIN_TOKENS[chainKey] || {};
@@ -980,6 +1079,36 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     if (isGaslessEligible) {
       // ── GASLESS PATH: Atomic Multicall3 or Single EIP-3009 ──
+      const latestOrder = (await getProxyOrderBySwapId(order.swapId).catch(() => null)) || order;
+      if (latestOrder.forwardTxHash && latestOrder.forwardTxHash.startsWith("0x")) {
+        const priorReceipt = await publicClient
+          .getTransactionReceipt({ hash: latestOrder.forwardTxHash as `0x${string}` })
+          .catch(() => null);
+        if (priorReceipt?.status === "success") {
+          const reconciled = await updateProxySwapOrder(order.swapId, {
+            status: "FORWARDED",
+            totalAmountIn: tokenBalance.toString(),
+            netSwapAmount: netTokenUnits.toString(),
+            feeAmount: totalFeeUnits.toString(),
+            fixedFeeAmount: fixedFeeUnits.toString(),
+            zkpayFeeAmount: zkpayFeeUnits.toString(),
+            partnerFeeAmount: partnerFeeUnits.toString(),
+            depositTxHash: latestOrder.depositTxHash || latestOrder.forwardTxHash,
+            feeTxHash: latestOrder.feeTxHash || latestOrder.forwardTxHash,
+            forwardTxHash: latestOrder.forwardTxHash,
+            error: undefined,
+          }).catch(() => null);
+          return reconciled || latestOrder;
+        }
+        const isStalePending =
+          !priorReceipt &&
+          !!latestOrder.lastAttemptAt &&
+          Date.now() - latestOrder.lastAttemptAt > PENDING_FORWARD_STALE_MS;
+        if (!priorReceipt && !isStalePending) {
+          return latestOrder;
+        }
+      }
+
       console.log(`[ProxyForwarder] Using atomic gasless EIP-3009 for USDC transfer on ${chainKey}`);
 
       const outputs: GaslessTransferOutput[] = [];
@@ -991,17 +1120,68 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
         outputs.push({ to: treasuryAddress, value: totalFeeUnits });
       }
 
-      const bundleTxHash = await executeBundledGaslessUsdcTransfers({
-        proxyAccount,
-        tokenAddress,
-        outputs,
-        chainKey,
-        publicClient,
-      });
+      let bundleTxHash = "";
+      try {
+        bundleTxHash = await executeBundledGaslessUsdcTransfers({
+          proxyAccount,
+          tokenAddress,
+          outputs,
+          chainKey,
+          publicClient,
+        });
+      } catch (gaslessErr: any) {
+        console.error(`[ProxyForwarder] Gasless USDC transfer failed for order ${order.swapId}:`, gaslessErr?.message || gaslessErr);
+        const revertedOrder = await updateProxySwapOrder(order.swapId, {
+          status: "PENDING_DEPOSIT",
+          lastAttemptAt: Date.now(),
+          error: `Gasless USDC transfer failed: ${gaslessErr?.message || gaslessErr}`,
+        }).catch(() => null);
+        return revertedOrder || order;
+      }
 
-      console.log(`[ProxyForwarder] ✓ Bundled gasless USDC transfer completed: ${bundleTxHash}`);
+      await updateProxySwapOrder(order.swapId, {
+        forwardTxHash: bundleTxHash,
+        lastAttemptAt: Date.now(),
+      }).catch(() => {});
+
       notifyNearIntentsDepositSubmit(order.solverDepositAddress, bundleTxHash).catch(() => {});
-      await publicClient.waitForTransactionReceipt({ hash: bundleTxHash as `0x${string}` }).catch(() => {});
+      const bundleReceipt = await publicClient
+        .waitForTransactionReceipt({ hash: bundleTxHash as `0x${string}`, timeout: 45_000 })
+        .catch(() => null);
+
+      if (bundleReceipt && bundleReceipt.status !== "success") {
+        console.error(`[ProxyForwarder] ✗ Gasless USDC transfer reverted on-chain (${bundleTxHash}) for order ${order.swapId}`);
+        const revertedOrder = await updateProxySwapOrder(order.swapId, {
+          status: "PENDING_DEPOSIT",
+          forwardTxHash: undefined,
+          lastAttemptAt: Date.now(),
+          error: `Gasless USDC transfer ${bundleTxHash} reverted on-chain.`,
+        }).catch(() => null);
+        return revertedOrder || order;
+      }
+
+      if (!bundleReceipt) {
+        const postBal = (await publicClient
+          .readContract({
+            address: tokenAddress,
+            abi: ERC20_ABI,
+            functionName: "balanceOf",
+            args: [proxyAddress],
+          })
+          .catch(() => tokenBalance)) as bigint;
+        if (postBal >= tokenBalance) {
+          console.warn(`[ProxyForwarder] Gasless USDC transfer ${bundleTxHash} receipt pending confirmation for order ${order.swapId}.`);
+          const pendingOrder = await updateProxySwapOrder(order.swapId, {
+            status: "PENDING_DEPOSIT",
+            forwardTxHash: bundleTxHash,
+            lastAttemptAt: Date.now(),
+            error: `Gasless USDC transfer ${bundleTxHash} awaiting receipt confirmation.`,
+          }).catch(() => null);
+          return pendingOrder || order;
+        }
+      }
+
+      console.log(`[ProxyForwarder] ✓ Bundled gasless USDC transfer confirmed: ${bundleTxHash}`);
 
       const updated = await updateProxySwapOrder(order.swapId, {
         status: "FORWARDED",
@@ -1014,6 +1194,8 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
         depositTxHash: bundleTxHash,
         feeTxHash: bundleTxHash,
         forwardTxHash: bundleTxHash,
+        lastAttemptAt: Date.now(),
+        error: undefined,
       });
 
       return updated || order;
@@ -1773,6 +1955,7 @@ export function getExplorerTxUrl(chain: string, txHash: string): string {
   if (c === "polygon") return `https://polygonscan.com/tx/${txHash}`;
   if (c === "arb") return `https://arbiscan.io/tx/${txHash}`;
   if (c === "bsc") return `https://bscscan.com/tx/${txHash}`;
+  if (c === "eth") return `https://etherscan.io/tx/${txHash}`;
   return `https://basescan.org/tx/${txHash}`;
 }
 
@@ -2143,13 +2326,19 @@ export async function recoverProxyDeposit(
 
   // 1.5 LITECOIN RECOVERY
   if (normChain === "ltc") {
-    if (!destination || (!destination.startsWith("L") && !destination.startsWith("M") && !destination.startsWith("ltc1"))) {
+    const cleanLtcDest = destination?.trim() || "";
+    const isValidLtc =
+      /^(L[a-km-zA-HJ-NP-Z1-9]{26,33}|M[a-km-zA-HJ-NP-Z1-9]{26,33}|ltc1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{39,59})$/i.test(
+        cleanLtcDest
+      );
+    if (!isValidLtc) {
       return {
         success: false,
-        message: `Invalid LTC destination address: '${destination}'. Must start with L, M, or ltc1.`,
+        message: `Invalid LTC destination address: '${destination}'. Must be a valid Litecoin address (L, M, or ltc1).`,
         order,
       };
     }
+    destination = cleanLtcDest;
 
     const { getLtcBalanceAndUtxos, sweepLtcDeposit } = await import("./ltcClient");
     const { balanceSatoshis, utxos } = await getLtcBalanceAndUtxos(order.proxyDepositAddress);
@@ -2396,11 +2585,30 @@ export async function recoverProxyDeposit(
       txHash = await walletClient.sendTransaction(txParams);
     }
 
+    const nativeReceipt = await publicClient
+      .waitForTransactionReceipt({ hash: txHash as `0x${string}`, timeout: 45_000 })
+      .catch(() => null);
+
+    if (!nativeReceipt || nativeReceipt.status !== "success") {
+      const errMsg = nativeReceipt
+        ? `Native transfer ${txHash} reverted on-chain (status: ${nativeReceipt.status}).`
+        : `Native transfer ${txHash} confirmation timed out. Check explorer before retrying.`;
+      await updateProxySwapOrder(order.swapId, {
+        lastAttemptAt: Date.now(),
+        error: errMsg,
+      }).catch(() => {});
+      return {
+        success: false,
+        message: errMsg,
+        txHash,
+        order,
+        explorerUrl: getExplorerTxUrl(order.chain, txHash),
+      };
+    }
+
     if (action === "forward") {
       notifyNearIntentsDepositSubmit(cleanDestination, txHash).catch(() => {});
     }
-
-    await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` }).catch(() => {});
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: action === "refund" ? "EXPIRED" : "FORWARDED",
@@ -2505,6 +2713,9 @@ export async function recoverProxyDeposit(
     const isStable = upperSymbol === "USDC" || upperSymbol === "USDT";
     const twoCentsUnits = isStable && decimals >= 2 ? 2n * 10n ** BigInt(decimals - 2) : 0n;
 
+    let fixedFeeUnits = 0n;
+    let zkpayFeeUnits = 0n;
+    let partnerFeeUnits = 0n;
     let totalFeeUnits = 0n;
     const treasuryAddress = getAddress((order.treasuryAddress || CONTRACTS.TREASURY) as `0x${string}`);
 
@@ -2514,13 +2725,22 @@ export async function recoverProxyDeposit(
         const clean = (order.totalAmountIn || "0").trim();
         parsedTotal = clean.includes(".") ? parseUnits(clean, decimals) : BigInt(clean);
       } catch {}
-      if (order.feeAmount && parsedTotal > 0n) {
-        totalFeeUnits = (tokenBalance * BigInt(order.feeAmount)) / parsedTotal;
-      } else if (order.zkpayFeeBps !== undefined) {
+      if (order.zkpayFeeBps !== undefined) {
         const zkpayPercentUnits = (tokenBalance * BigInt(order.zkpayFeeBps)) / 10000n;
-        const fixedFeeUnits = isStable && zkpayPercentUnits < twoCentsUnits ? twoCentsUnits : 0n;
-        const partnerFeeUnits = (order.partnerFeeBps ?? 0) > 0 ? (tokenBalance * BigInt(order.partnerFeeBps!)) / 10000n : 0n;
-        totalFeeUnits = zkpayPercentUnits + fixedFeeUnits + partnerFeeUnits;
+        fixedFeeUnits = isStable && zkpayPercentUnits < twoCentsUnits ? twoCentsUnits : 0n;
+        zkpayFeeUnits = zkpayPercentUnits + fixedFeeUnits;
+        if ((order.partnerFeeBps ?? 0) > 0) {
+          partnerFeeUnits = (tokenBalance * BigInt(order.partnerFeeBps!)) / 10000n;
+        }
+        totalFeeUnits = zkpayFeeUnits + partnerFeeUnits;
+      } else if (order.feeAmount && parsedTotal > 0n) {
+        // Preserve flat $0.02 fixedFeeAmount unscaled; scale only the percentage portion proportionally
+        fixedFeeUnits = order.fixedFeeAmount ? BigInt(order.fixedFeeAmount) : 0n;
+        const totalOrderFee = BigInt(order.feeAmount);
+        const variableOrderFee = totalOrderFee > fixedFeeUnits ? totalOrderFee - fixedFeeUnits : 0n;
+        const scaledVariableFee = (tokenBalance * variableOrderFee) / parsedTotal;
+        zkpayFeeUnits = scaledVariableFee + fixedFeeUnits;
+        totalFeeUnits = zkpayFeeUnits;
       }
     }
     const proxyNonce = await publicClient.getTransactionCount({ address: proxyAccount.address }).catch(() => 0);
@@ -2704,6 +2924,18 @@ export async function recoverProxyDeposit(
           });
         }
 
+        const gaslessReceipt = await publicClient
+          .waitForTransactionReceipt({ hash: txHash as `0x${string}`, timeout: 45_000 })
+          .catch(() => null);
+
+        if (!gaslessReceipt || gaslessReceipt.status !== "success") {
+          throw new Error(
+            gaslessReceipt
+              ? `Gasless USDC transfer ${txHash} reverted on-chain (status: ${gaslessReceipt.status}).`
+              : `Gasless USDC transfer ${txHash} confirmation timed out.`
+          );
+        }
+
         if (action === "forward") {
           notifyNearIntentsDepositSubmit(cleanDestination, txHash).catch(() => {});
         }
@@ -2724,7 +2956,9 @@ export async function recoverProxyDeposit(
                 totalAmountIn: tokenBalance.toString(),
                 netSwapAmount: netSolverUnits.toString(),
                 feeAmount: totalFeeUnits.toString(),
-                ...(totalFeeUnits === 0n ? { zkpayFeeAmount: "0", partnerFeeAmount: "0" } : {}),
+                fixedFeeAmount: fixedFeeUnits.toString(),
+                zkpayFeeAmount: totalFeeUnits > 0n ? zkpayFeeUnits.toString() : "0",
+                partnerFeeAmount: totalFeeUnits > 0n ? partnerFeeUnits.toString() : "0",
               }),
         });
 
@@ -2929,6 +3163,26 @@ export async function recoverProxyDeposit(
       };
     }
 
+    if (!solverReceipt || solverReceipt.status !== "success") {
+      const postBalCheck = (await publicClient
+        .readContract({
+          address: tokenAddress,
+          abi: ERC20_ABI,
+          functionName: "balanceOf",
+          args: [proxyAccount.address],
+        })
+        .catch(() => liveTokenBal)) as bigint;
+      if (postBalCheck >= liveTokenBal) {
+        return {
+          success: false,
+          message: `Transfer ${txHash} confirmation timed out and balance is still in proxy. Check explorer before retrying.`,
+          txHash,
+          order,
+          explorerUrl: getExplorerTxUrl(order.chain, txHash),
+        };
+      }
+    }
+
     // Confirmed on-chain: checkpoint status & forwardTxHash in DB so order never remains in PENDING_DEPOSIT
     await updateProxySwapOrder(order.swapId, {
       status: action === "refund" ? "EXPIRED" : "FORWARDED",
@@ -3034,6 +3288,9 @@ export async function recoverProxyDeposit(
             totalAmountIn: liveTokenBal.toString(),
             netSwapAmount: finalSolverUnits.toString(),
             feeAmount: (feeTxHash ? totalFeeUnits : 0n).toString(),
+            fixedFeeAmount: (feeTxHash ? fixedFeeUnits : 0n).toString(),
+            zkpayFeeAmount: (feeTxHash ? zkpayFeeUnits : 0n).toString(),
+            partnerFeeAmount: (feeTxHash ? partnerFeeUnits : 0n).toString(),
           }),
     });
 
@@ -3203,7 +3460,10 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
                   })) || { ...order, status: "SETTLED" as const };
                 await creditPartnerFeeOnSettlement(updatedOrder);
                 processed++;
-              } else if (rawSt === "FAILED" || rawSt === "REFUNDED") {
+              } else if (rawSt === "REFUNDED") {
+                await updateProxySwapOrder(order.swapId, { status: "REFUNDED" });
+                processed++;
+              } else if (rawSt === "FAILED") {
                 await updateProxySwapOrder(order.swapId, { status: "FAILED" });
                 processed++;
               }

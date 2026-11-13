@@ -1,7 +1,9 @@
+import { SWAP_ALLOWED_TOKENS } from "@/lib/constants";
 import { getMongoDb } from "./mongodb";
-import { ProxySwapOrder } from "./proxySwapStore";
-import { DirectSwapOrder } from "./directSwapStore";
+import type { ProxySwapOrder } from "./proxySwapStore";
+import type { DirectSwapOrder } from "./directSwapStore";
 import { listAllApiKeys } from "./apiKeysStore";
+import { getLiveTokenPriceUsd } from "./priceService";
 
 export type AdminTxChannel = "app" | "api";
 export type AdminTxCategory = "swap";
@@ -81,6 +83,143 @@ function getExplorerUrl(chain: string, txHash?: string | null): string | null {
   return `https://basescan.org/tx/${txHash}`;
 }
 
+function round4(n: number): number {
+  return Math.round(n * 10000) / 10000;
+}
+
+function getFallbackDecimalsForSymbol(symbol?: string): number {
+  const sym = (symbol || "").toUpperCase();
+  if (sym.includes("USDC") || sym.includes("USDT") || sym === "TRX" || sym === "V2_1") return 6;
+  if (sym.includes("SOL")) return 9;
+  if (sym.includes("BTC") || sym.includes("WBTC") || sym.includes("LTC")) return 8;
+  return 18;
+}
+
+export function resolveLedgerTokenMeta(
+  originAssetId?: string,
+  fromAsset?: string
+): { symbol: string; decimals: number } {
+  const match = SWAP_ALLOWED_TOKENS.find(
+    (t) => t.assetId.toLowerCase() === (originAssetId || "").toLowerCase()
+  );
+  if (match) {
+    return { symbol: match.symbol.toUpperCase(), decimals: match.decimals };
+  }
+
+  let sym = (fromAsset || "").trim().toUpperCase();
+  if (sym === "BASE" || sym === "ARB") sym = "ETH";
+  else if (sym === "BSC") sym = "BNB";
+  else if (sym === "POLYGON") sym = "POL";
+  else if (sym === "V2_1") {
+    sym = originAssetId?.includes("3hpYoaLtt8MP1Z2GH1U473DMRKgr") ? "USDT" : "USDC";
+  }
+
+  return {
+    symbol: sym || "USDC",
+    decimals: getFallbackDecimalsForSymbol(sym),
+  };
+}
+
+function atomicToNumber(atomicStr?: string, decimals = 6): number {
+  if (!atomicStr || atomicStr === "0") return 0;
+  const clean = atomicStr.trim();
+  if (!clean) return 0;
+  try {
+    if (clean.includes(".")) {
+      const parsed = parseFloat(clean);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    const raw = BigInt(clean);
+    if (decimals <= 0) return Number(raw);
+    const divisor = 10n ** BigInt(decimals);
+    const whole = raw / divisor;
+    const frac = raw % divisor;
+    const fracStr = frac.toString().padStart(decimals, "0");
+    const parsed = parseFloat(`${whole.toString()}.${fracStr}`);
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function computeProxySwapUsdEstimates(
+  o: Pick<
+    ProxySwapOrder,
+    | "originAssetId"
+    | "fromAsset"
+    | "totalAmountFormatted"
+    | "totalAmountIn"
+    | "zkpayFeeBps"
+    | "partnerFeeBps"
+    | "feeAmount"
+    | "fixedFeeAmount"
+    | "zkpayFeeAmount"
+    | "partnerFeeAmount"
+    | "partnerFeeUsd"
+    | "apiKeyId"
+    | "partnerUserId"
+    | "partnerFeeRecipient"
+  >,
+  priceUsd: number
+): {
+  amountUsdEstimate: number;
+  zkpayFeeUsdEstimate: number;
+  partnerFeeUsdEstimate: number;
+} {
+  const { decimals } = resolveLedgerTokenMeta(o.originAssetId, o.fromAsset);
+  const parsedFormatted = parseFloat(o.totalAmountFormatted);
+  const amountTokens =
+    Number.isFinite(parsedFormatted) && parsedFormatted > 0
+      ? parsedFormatted
+      : atomicToNumber(o.totalAmountIn, decimals);
+
+  const safePrice = Number.isFinite(priceUsd) && priceUsd > 0 ? priceUsd : 0;
+  const amountUsdEstimate = round4(amountTokens * safePrice);
+
+  const hasPartner = Boolean(o.apiKeyId || o.partnerUserId || o.partnerFeeRecipient);
+  const zkpayBps = o.zkpayFeeBps ?? (hasPartner ? 100 : 200);
+  const partnerBps =
+    o.partnerFeeBps ?? (o.zkpayFeeBps !== undefined ? 0 : hasPartner ? 100 : 0);
+  const totalBps = zkpayBps + partnerBps;
+
+  let zkpayFeeUsdEstimate = 0;
+  if (o.zkpayFeeAmount !== undefined && o.zkpayFeeAmount !== "") {
+    zkpayFeeUsdEstimate = atomicToNumber(o.zkpayFeeAmount, decimals) * safePrice;
+  } else if (o.feeAmount !== undefined && o.feeAmount !== "") {
+    const totalFeeTokens = atomicToNumber(o.feeAmount, decimals);
+    const fixedFeeTokens = atomicToNumber(o.fixedFeeAmount, decimals);
+    const variableFeeTokens = Math.max(0, totalFeeTokens - fixedFeeTokens);
+    const zkpayVariableTokens =
+      totalBps > 0 ? (variableFeeTokens * zkpayBps) / totalBps : variableFeeTokens;
+    zkpayFeeUsdEstimate = (zkpayVariableTokens + fixedFeeTokens) * safePrice;
+  } else {
+    const fixedFeeUsd = atomicToNumber(o.fixedFeeAmount, decimals) * safePrice;
+    zkpayFeeUsdEstimate = (amountUsdEstimate * zkpayBps) / 10000 + fixedFeeUsd;
+  }
+
+  let partnerFeeUsdEstimate = 0;
+  if (typeof o.partnerFeeUsd === "number" && Number.isFinite(o.partnerFeeUsd)) {
+    partnerFeeUsdEstimate = o.partnerFeeUsd;
+  } else if (o.partnerFeeAmount !== undefined && o.partnerFeeAmount !== "") {
+    partnerFeeUsdEstimate = atomicToNumber(o.partnerFeeAmount, decimals) * safePrice;
+  } else if (o.feeAmount !== undefined && o.feeAmount !== "") {
+    const totalFeeTokens = atomicToNumber(o.feeAmount, decimals);
+    const fixedFeeTokens = atomicToNumber(o.fixedFeeAmount, decimals);
+    const variableFeeTokens = Math.max(0, totalFeeTokens - fixedFeeTokens);
+    const partnerTokens =
+      totalBps > 0 ? (variableFeeTokens * partnerBps) / totalBps : 0;
+    partnerFeeUsdEstimate = partnerTokens * safePrice;
+  } else {
+    partnerFeeUsdEstimate = (amountUsdEstimate * partnerBps) / 10000;
+  }
+
+  return {
+    amountUsdEstimate,
+    zkpayFeeUsdEstimate: round4(zkpayFeeUsdEstimate),
+    partnerFeeUsdEstimate: round4(partnerFeeUsdEstimate),
+  };
+}
+
 export async function getAdminSystemTransactions(
   options: GetAdminTransactionsOptions = {}
 ): Promise<{
@@ -119,11 +258,28 @@ export async function getAdminSystemTransactions(
       db.collection<DirectSwapOrder>("direct_swap_orders").find(filter).sort({ createdAt: -1 }).limit(500).toArray(),
     ]);
 
+    const symbolsNeeded = new Set<string>();
+    for (const o of proxySwaps) {
+      symbolsNeeded.add(resolveLedgerTokenMeta(o.originAssetId, o.fromAsset).symbol);
+    }
+    for (const o of directSwaps) {
+      symbolsNeeded.add(resolveLedgerTokenMeta(o.originAssetId, o.fromAsset).symbol);
+    }
+
+    const priceMap = new Map<string, number>();
+    await Promise.all(
+      Array.from(symbolsNeeded).map(async (sym) => {
+        const price = await getLiveTokenPriceUsd(sym).catch(() => 0);
+        priceMap.set(sym, price);
+      })
+    );
+
     for (const o of proxySwaps) {
       const txHash = o.forwardTxHash || o.depositTxHash || o.feeTxHash || null;
-      const usdEst = parseFloat(o.totalAmountFormatted) || 0;
-      const totalBps = (o.zkpayFeeBps || 50) + (o.partnerFeeBps || 50);
-      const feeUsdEst = (usdEst * totalBps) / 10000;
+      const { symbol } = resolveLedgerTokenMeta(o.originAssetId, o.fromAsset);
+      const priceUsd = priceMap.get(symbol) ?? 0;
+      const { amountUsdEstimate, zkpayFeeUsdEstimate, partnerFeeUsdEstimate } =
+        computeProxySwapUsdEstimates(o, priceUsd);
       const txChannel: AdminTxChannel = o.apiKeyId || o.source === "api" ? "api" : "app";
 
       entries.push({
@@ -138,9 +294,9 @@ export async function getAdminSystemTransactions(
         fromAsset: o.fromAsset,
         toAsset: o.toAsset,
         amountHuman: `${o.totalAmountFormatted} ${o.fromAsset}`,
-        amountUsdEstimate: usdEst,
-        zkpayFeeUsdEstimate: feeUsdEst / 2,
-        partnerFeeUsdEstimate: feeUsdEst / 2,
+        amountUsdEstimate,
+        zkpayFeeUsdEstimate,
+        partnerFeeUsdEstimate,
         recipient: o.recipient,
         depositAddress: o.proxyDepositAddress,
         txHash,
@@ -152,7 +308,14 @@ export async function getAdminSystemTransactions(
     }
 
     for (const o of directSwaps) {
-      const usdEst = parseFloat(o.totalAmountFormatted) || 0;
+      const { symbol, decimals } = resolveLedgerTokenMeta(o.originAssetId, o.fromAsset);
+      const priceUsd = priceMap.get(symbol) ?? 0;
+      const parsedFormatted = parseFloat(o.totalAmountFormatted);
+      const amountTokens =
+        Number.isFinite(parsedFormatted) && parsedFormatted > 0
+          ? parsedFormatted
+          : atomicToNumber(o.totalAmountIn, decimals);
+      const usdEst = round4(amountTokens * priceUsd);
       const txChannel: AdminTxChannel = o.apiKeyId || o.source === "api" ? "api" : "app";
 
       entries.push({

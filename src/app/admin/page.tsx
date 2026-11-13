@@ -26,6 +26,7 @@ import {
   Users,
   Fuel,
   Clock,
+  ShieldAlert,
   X,
 } from "lucide-react";
 
@@ -2112,47 +2113,63 @@ export default function AdminPage() {
                 </div>
               )}
 
-              {shiftData && (
-                <div className="p-4 rounded-xl bg-black/40 border border-white/10 text-xs font-sans tabular-nums space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-white/5">
-                    <span className="text-outline">Status:</span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold  bg-success/20 text-success">
-                      {shiftData.status || shiftData.rawStatus || "UNKNOWN"}
-                    </span>
+              {shiftData && (() => {
+                const depositAmt = shiftData.depositAmount ?? shiftData.depositedAmount;
+                const settleAmt = shiftData.settleAmount ?? shiftData.settledAmount;
+                const txHash = shiftData.txId ?? shiftData.destinationTxHash;
+                const explorerUrl = shiftData.txExplorerUrl ?? shiftData.destinationExplorerUrl;
+                return (
+                  <div className="p-4 rounded-xl bg-black/40 border border-white/10 text-xs font-sans tabular-nums space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                      <span className="text-outline">Status:</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-success/20 text-success">
+                        {shiftData.status || shiftData.rawStatus || "UNKNOWN"}
+                      </span>
+                    </div>
+                    {shiftData.rawStatus && shiftData.rawStatus !== shiftData.status && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-outline">Raw Status:</span>
+                        <span className="text-on-surface-variant font-mono">{shiftData.rawStatus}</span>
+                      </div>
+                    )}
+                    {depositAmt && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-outline">Deposited:</span>
+                        <span className="text-white font-bold">{depositAmt}</span>
+                      </div>
+                    )}
+                    {settleAmt && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-outline">Settled:</span>
+                        <span className="text-success font-bold">{settleAmt}</span>
+                      </div>
+                    )}
+                    {txHash && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-outline">Settlement TX:</span>
+                        <a
+                          href={
+                            typeof explorerUrl === "string" && explorerUrl.startsWith("https://")
+                              ? explorerUrl
+                              : `https://basescan.org/tx/${encodeURIComponent(txHash)}`
+                          }
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline flex items-center gap-1"
+                        >
+                          <span className="truncate max-w-[180px]">{txHash}</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    )}
+                    {shiftData.error && (
+                      <div className="text-error text-[11px] pt-1 border-t border-white/5">
+                        {shiftData.error}
+                      </div>
+                    )}
                   </div>
-                  {shiftData.depositedAmount && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-outline">Deposited:</span>
-                      <span className="text-white font-bold">{shiftData.depositedAmount}</span>
-                    </div>
-                  )}
-                  {shiftData.settledAmount && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-outline">Settled:</span>
-                      <span className="text-success font-bold">{shiftData.settledAmount}</span>
-                    </div>
-                  )}
-                  {shiftData.destinationTxHash && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-outline">Base TX:</span>
-                      <a
-                        href={
-                          typeof shiftData.destinationExplorerUrl === "string" &&
-                          shiftData.destinationExplorerUrl.startsWith("https://")
-                            ? shiftData.destinationExplorerUrl
-                            : `https://basescan.org/tx/${encodeURIComponent(shiftData.destinationTxHash)}`
-                        }
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline flex items-center gap-1"
-                      >
-                        <span className="truncate max-w-[180px]">{shiftData.destinationTxHash}</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    </div>
-                  )}
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             {/* Tool 3: Emergency Proxy Sweeper & Manual Recovery Console */}
@@ -2606,7 +2623,7 @@ export default function AdminPage() {
                   type="button"
                   onClick={() => handleRecycleDust()}
                   disabled={isRecyclingDust}
-                  className="px-4 py-2.5 rounded-xl bg-success hover:bg-success text-white font-sans tabular-nums text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95 shrink-0 shadow-lg shadow-success/15"
+                  className="px-4 py-2.5 rounded-xl bg-success hover:bg-success/90 text-black font-sans tabular-nums text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95 shrink-0 shadow-lg shadow-success/15"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isRecyclingDust ? "animate-spin" : ""}`} />
                   <span>{isRecyclingDust ? "Recycling Gas Dust..." : "Recycle Stranded Dust to Relayer"}</span>
@@ -2642,7 +2659,7 @@ export default function AdminPage() {
                 </div>
 
                 <span className="text-[11px] text-outline">
-                  Scans recent proxy orders &bull; 0 wei dust left behind
+                  Scans last 50 proxy orders &bull; 0 wei dust left behind
                 </span>
               </div>
 
@@ -2651,7 +2668,7 @@ export default function AdminPage() {
                 <div
                   className={`p-4 rounded-xl text-xs font-sans tabular-nums space-y-3 ${
                     recycleDustResult.success
-                      ? "bg-success/15/30 border border-success/30 text-success"
+                      ? "bg-success/15 border border-success/30 text-success"
                       : "bg-error-container/30 border border-error/30 text-error"
                   }`}
                 >

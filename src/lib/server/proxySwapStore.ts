@@ -29,7 +29,7 @@ export interface ProxySwapOrder {
   zkpayFeeBps?: number; // ZkPay share of % fee
   partnerFeeBps?: number; // Partner share of % fee
   fixedFeeAmount?: string; // Conditional 0.02 USDC/USDT in atomic units when zkpayPercentFee < $0.02 (ZkPay only)
-  status: "PENDING_DEPOSIT" | "DETECTED" | "FORWARDING" | "FORWARDED" | "SETTLED" | "FAILED" | "EXPIRED" | "REFUND_PENDING";
+  status: "PENDING_DEPOSIT" | "DETECTED" | "FORWARDING" | "FORWARDED" | "SETTLED" | "FAILED" | "REFUNDED" | "EXPIRED" | "REFUND_PENDING";
   depositTxHash?: string;
   feeTxHash?: string;
   forwardTxHash?: string;
@@ -244,7 +244,9 @@ export async function getProxyOrderBySwapId(swapId: string): Promise<ProxySwapOr
 }
 
 /**
- * Retrieves all currently active PENDING_DEPOSIT proxy swap orders.
+ * Retrieves all currently active pending/forwarding/refund-pending proxy swap orders.
+ * Separates in-flight/refund orders, active PENDING_DEPOSIT orders, and expired PENDING_DEPOSIT
+ * orders so active or old orders never starve behind a small descending limit.
  */
 export async function getPendingProxyOrders(): Promise<ProxySwapOrder[]> {
   await hydrateCache();
@@ -252,22 +254,48 @@ export async function getPendingProxyOrders(): Promise<ProxySwapOrder[]> {
     const db = await getMongoDb();
     if (db) {
       const collection = db.collection<ProxySwapOrder>("proxy_swap_orders");
-      const list = await collection
-        .find({ status: { $in: ["PENDING_DEPOSIT", "FORWARDING", "REFUND_PENDING"] } })
-        .sort({ createdAt: -1 })
-        .limit(50)
-        .toArray();
-      if (list && list.length > 0) {
-        return list;
+      const activeCutoff = Date.now() - 60_000;
+      const [inFlightOrRefund, activePending, expiredPending] = await Promise.all([
+        collection
+          .find({ status: { $in: ["FORWARDING", "REFUND_PENDING"] } })
+          .sort({ createdAt: 1 })
+          .limit(100)
+          .toArray(),
+        collection
+          .find({ status: "PENDING_DEPOSIT", expiresAt: { $gte: activeCutoff } })
+          .sort({ createdAt: 1 })
+          .limit(100)
+          .toArray(),
+        collection
+          .find({ status: "PENDING_DEPOSIT", expiresAt: { $lt: activeCutoff } })
+          .sort({ createdAt: 1 })
+          .limit(100)
+          .toArray(),
+      ]);
+
+      const combined = [...inFlightOrRefund, ...activePending, ...expiredPending];
+      const seen = new Set<string>();
+      const deduped: ProxySwapOrder[] = [];
+      for (const ord of combined) {
+        if (!seen.has(ord.swapId)) {
+          seen.add(ord.swapId);
+          deduped.push(ord);
+        }
       }
+      return deduped;
     }
   } catch (e) {
-    // Fall back to memory
+    console.warn("[ProxySwapStore] getPendingProxyOrders MongoDB warning, falling back to memory:", e);
   }
 
-  return Array.from(ordersBySwapId.values()).filter(
-    (o) => o.status === "PENDING_DEPOSIT" || o.status === "FORWARDING" || o.status === "REFUND_PENDING"
-  );
+  return Array.from(ordersBySwapId.values())
+    .filter(
+      (o) =>
+        o.status === "PENDING_DEPOSIT" ||
+        o.status === "FORWARDING" ||
+        o.status === "REFUND_PENDING"
+    )
+    .sort((a, b) => a.createdAt - b.createdAt);
 }
 
 /**

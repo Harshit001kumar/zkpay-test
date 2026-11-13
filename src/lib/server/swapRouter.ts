@@ -34,7 +34,7 @@ import {
   saveProxySwapOrder,
   getProxyOrderByAddress,
   updateProxySwapOrder,
-  ProxySwapOrder,
+  type ProxySwapOrder,
 } from "./proxySwapStore";
 import { saveDirectSwapOrder } from "./directSwapStore";
 import { checkAndForwardProxyDeposit } from "./proxyForwarder";
@@ -403,7 +403,18 @@ function filterTokensByChain(tokens: SwapToken[], chain?: string | null): SwapTo
 export async function resolveAssetId(symbolOrAssetId: string, chainHint?: string | null): Promise<string> {
   const query = symbolOrAssetId.trim();
   if (query.startsWith("nep141:") || query.startsWith("nep245:") || query.startsWith("1cs_v1:")) {
-    return query;
+    const allowed = SWAP_ALLOWED_TOKENS.find(
+      (t) => t.assetId === query || t.assetId.toLowerCase() === query.toLowerCase()
+    );
+    if (!allowed) {
+      const err: any = new Error(
+        `Asset '${query}' is not in ZkPay's supported token allowlist. Use GET /api/v1/swap/tokens to inspect supported assetIds.`
+      );
+      err.code = "UNSUPPORTED_ASSET";
+      err.statusCode = 400;
+      throw err;
+    }
+    return allowed.assetId;
   }
 
   const allTokens = await getSupportedTokens();
@@ -508,9 +519,12 @@ export async function resolveAssetId(symbolOrAssetId: string, chainHint?: string
   const match = allTokens.find((t) => t.symbol === upper);
   if (match) return match.assetId;
 
-  throw new Error(
+  const err: any = new Error(
     `Asset '${symbolOrAssetId}' not found. Use GET /api/v1/swap/tokens to inspect supported assetIds, or pass 'chain' parameter (e.g. ?fromAsset=${symbolOrAssetId}&chain=polygon).`
   );
+  err.code = "UNSUPPORTED_ASSET";
+  err.statusCode = 400;
+  throw err;
 }
 
 /**
@@ -1229,8 +1243,17 @@ export async function getSwapStatus(depositAddress: string) {
             console.warn("[SwapRouter] Partner fee settlement credit retry error:", e)
           );
         } else if (
-          (solverStatus.status === "failed" || solverStatus.status === "refunded") &&
-          currentOrder.status !== "FAILED"
+          solverStatus.status === "refunded" &&
+          currentOrder.status !== "REFUNDED"
+        ) {
+          currentOrder =
+            (await updateProxySwapOrder(currentOrder.swapId, {
+              status: "REFUNDED",
+            })) || currentOrder;
+        } else if (
+          solverStatus.status === "failed" &&
+          currentOrder.status !== "FAILED" &&
+          currentOrder.status !== "REFUNDED"
         ) {
           currentOrder =
             (await updateProxySwapOrder(currentOrder.swapId, {
@@ -1244,7 +1267,12 @@ export async function getSwapStatus(depositAddress: string) {
             })) || currentOrder;
         }
 
-        if (currentOrder.status === "FORWARDED" || currentOrder.status === "SETTLED" || isSolverActiveOrDone) {
+        if (
+          currentOrder.status === "FORWARDED" ||
+          currentOrder.status === "SETTLED" ||
+          currentOrder.status === "REFUNDED" ||
+          isSolverActiveOrDone
+        ) {
           return {
             ...solverStatus,
             depositAddress: currentOrder.proxyDepositAddress,
@@ -1266,6 +1294,8 @@ export async function getSwapStatus(depositAddress: string) {
         ? "pending"
         : currentOrder.status === "SETTLED"
         ? "settled"
+        : currentOrder.status === "REFUNDED"
+        ? "refunded"
         : currentOrder.status === "FAILED"
         ? "failed"
         : currentOrder.status === "EXPIRED"

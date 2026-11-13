@@ -582,7 +582,7 @@ export default function AdminTransactionsPage() {
                                       : "bg-secondary/20 text-secondary border border-secondary/30"
                                   }`}
                                 >
-                                  {tx.channel === "api" ? "API" : tx.channel === "checkout" ? "Checkout" : "App"}
+                                  {tx.channel === "api" ? "API" : "App"}
                                 </span>
                                 {tx.apiKeyLabel && (
                                   <span className="text-[10px] text-outline truncate max-w-[120px]">
