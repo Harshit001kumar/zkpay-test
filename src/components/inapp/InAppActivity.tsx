@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { getTransactions, TransactionRecord, timeAgo } from "@/lib/history";
 import { CryptoIcon } from "@/components/ui/CryptoIcon";
 import { chainVisual } from "@/lib/chainVisuals";
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 
 export function InAppActivity({ onNewSwap }: { onNewSwap?: () => void }) {
+  const router = useRouter();
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [filter, setFilter] = useState<"all" | "pending" | "settled" | "failed">("all");
   const [search, setSearch] = useState("");
@@ -155,7 +157,16 @@ export function InAppActivity({ onNewSwap }: { onNewSwap?: () => void }) {
             return (
               <div
                 key={tx.hash + tx.timestamp}
-                className="rounded-2xl p-4 bg-surface-container-low/90 border border-outline-variant hover:border-outline transition-colors space-y-3"
+                role="button"
+                tabIndex={0}
+                onClick={() => router.push(`/tx/${encodeURIComponent(depAddr)}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push(`/tx/${encodeURIComponent(depAddr)}`);
+                  }
+                }}
+                className="rounded-2xl p-4 bg-surface-container-low/90 border border-outline-variant hover:border-outline hover:bg-surface-container transition-all space-y-3 cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <div className="flex items-center justify-between gap-3">
                   {/* Token icons + route */}
@@ -181,8 +192,8 @@ export function InAppActivity({ onNewSwap }: { onNewSwap?: () => void }) {
                     </div>
                   </div>
 
-                  {/* Status chip */}
-                  <div className="flex flex-col items-end shrink-0">
+                  {/* Status chip & details link */}
+                  <div className="flex items-center gap-2 shrink-0">
                     <span
                       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${
                         isSettled
@@ -198,6 +209,10 @@ export function InAppActivity({ onNewSwap }: { onNewSwap?: () => void }) {
                         }`}
                       />
                       <span>{isSettled ? "Settled" : isFailed ? "Failed" : "In Progress"}</span>
+                    </span>
+
+                    <span className="w-7 h-7 rounded-lg bg-surface-container group-hover:bg-surface-container-high flex items-center justify-center text-on-surface-variant group-hover:text-on-surface transition-colors">
+                      <ExternalLink className="w-3.5 h-3.5" />
                     </span>
                   </div>
                 </div>
@@ -229,7 +244,10 @@ export function InAppActivity({ onNewSwap }: { onNewSwap?: () => void }) {
                     {depAddr && (
                       <button
                         type="button"
-                        onClick={() => handleCopy(depAddr, tx.hash)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCopy(depAddr, tx.hash);
+                        }}
                         className="w-7 h-7 rounded-lg bg-surface-container-high hover:bg-surface-container-highest flex items-center justify-center text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer shrink-0"
                         title="Copy deposit address"
                       >

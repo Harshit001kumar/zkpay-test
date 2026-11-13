@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   AlertCircle,
   ChevronDown,
+  ChevronUp,
   SlidersHorizontal,
   Wallet,
   RotateCcw,
@@ -45,6 +46,7 @@ function findToken(key: string): SwapTokenItem | undefined {
 
 const EVM_CHAINS = new Set(["base", "eth", "arb", "polygon", "bsc"]);
 const STABLES = new Set(["USDC", "USDT", "DAI"]);
+const ACTIVE_ORDER_STORAGE_KEY = "zkpay_active_swap_order";
 
 function toAtomicUnits(humanAmount: string, decimals: number): string | null {
   let clean = humanAmount.trim();
@@ -177,6 +179,7 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
   const [amountInHuman, setAmountInHuman] = useState<string>("1");
   const [recipient, setRecipient] = useState<string>("");
   const [refundTo, setRefundTo] = useState<string>("");
+  const [showRefundInput, setShowRefundInput] = useState<boolean>(false);
   const [slippageBps, setSlippageBps] = useState<number>(100); // 1.0%
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
   const [showDetails, setShowDetails] = useState<boolean>(false);
@@ -208,7 +211,59 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
   useEffect(() => {
     setMounted(true);
     setPasteSupported(typeof navigator !== "undefined" && !!navigator.clipboard?.readText);
+
+    // Hydrate active swap order from localStorage if available & unexpired
+    try {
+      const raw = localStorage.getItem(ACTIVE_ORDER_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const order = parsed.activeOrder || parsed;
+        const status = parsed.orderStatus || null;
+        const deadline = order?.deposit?.deadline || order?.quote?.deadline || order?.expiresAt;
+        const end = deadline ? (typeof deadline === "number" ? deadline : new Date(deadline).getTime()) : null;
+
+        const rawStat = (status?.status || "").toUpperCase();
+        const isTerminal = ["SETTLED", "SUCCESS", "COMPLETED", "FAILED", "REFUNDED", "EXPIRED"].includes(rawStat);
+
+        if (!isTerminal && (!end || end > Date.now())) {
+          if (parsed.fromToken) setFromToken(parsed.fromToken);
+          if (parsed.toToken) setToToken(parsed.toToken);
+          if (parsed.recipient) setRecipient(parsed.recipient);
+          setActiveOrder(order);
+          if (status) setOrderStatus(status);
+        } else {
+          localStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
+        }
+      }
+    } catch {}
   }, []);
+
+  // Persist active order to localStorage
+  useEffect(() => {
+    if (typeof window === "undefined" || !activeOrder) return;
+
+    const rawStat = (orderStatus?.status || "").toUpperCase();
+    const isTerminal = ["SETTLED", "SUCCESS", "COMPLETED", "FAILED", "REFUNDED", "EXPIRED"].includes(rawStat);
+    if (isTerminal) {
+      try {
+        localStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
+      } catch {}
+    } else {
+      try {
+        localStorage.setItem(
+          ACTIVE_ORDER_STORAGE_KEY,
+          JSON.stringify({
+            activeOrder,
+            orderStatus,
+            fromToken,
+            toToken,
+            recipient,
+            savedAt: Date.now(),
+          })
+        );
+      } catch {}
+    }
+  }, [activeOrder, orderStatus, fromToken, toToken, recipient]);
 
   // Apply an externally requested route (landing page quick routes)
   useEffect(() => {
@@ -308,8 +363,14 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
           const s = (data.status || "").toUpperCase();
           if (s === "SETTLED" || s === "SUCCESS" || s === "COMPLETED") {
             updateTransactionStatus(depAddr, "settled", data.swapDetails?.amountOutFormatted);
+            try {
+              localStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
+            } catch {}
           } else if (s === "FAILED" || s === "REFUNDED" || s === "EXPIRED") {
             updateTransactionStatus(depAddr, "failed");
+            try {
+              localStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
+            } catch {}
           }
         }
       } catch {}
@@ -517,6 +578,9 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
     ];
 
     const resetOrder = () => {
+      try {
+        localStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
+      } catch {}
       setActiveOrder(null);
       setOrderStatus(null);
       setShowQr(false);
@@ -778,6 +842,7 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
   // ── STANDARD SWAP ENTRY VIEW ──
   const amountValid = !!toAtomicUnits(amountInHuman, fromToken.decimals);
   const recipientMissing = !recipient.trim();
+  const isRefundOpen = showRefundInput || Boolean(refundTo.trim());
   const ctaDisabled = creatingOrder || quoteLoading || !!quoteError || !quoteData || recipientMissing;
   const ctaLabel = creatingOrder
     ? "Creating deposit address…"
@@ -877,7 +942,7 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
               if (v === "" || /^\d*\.?\d*$/.test(v)) setAmountInHuman(v);
             }}
             placeholder="0"
-            className="w-full min-w-0 bg-transparent font-mono text-[28px] sm:text-[32px] leading-tight font-semibold text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none tabular-nums"
+            className="w-full min-w-0 bg-transparent font-mono text-[28px] sm:text-[32px] leading-tight font-semibold text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none tabular-nums"
           />
 
           <button
@@ -942,7 +1007,7 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
             ) : quoteData?.amountOutFormatted ? (
               <span className="text-on-surface">{quoteData.amountOutFormatted}</span>
             ) : (
-              <span className="text-on-surface-variant/40">0</span>
+              <span className="text-on-surface-variant/70">0</span>
             )}
           </div>
 
@@ -1038,7 +1103,7 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
             value={recipient}
             onChange={(e) => setRecipient(e.target.value)}
             placeholder={toChainMeta?.addressPlaceholder || `${toToken.blockchain.toUpperCase()} wallet address`}
-            className="w-full min-w-0 h-10 bg-transparent font-mono text-base sm:text-sm text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none"
+            className="w-full min-w-0 h-10 bg-transparent font-mono text-base sm:text-sm text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none"
           />
           {recipient ? (
             <button
@@ -1064,61 +1129,86 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
         </div>
       </div>
 
-      {/* OPTIONAL REFUND ADDRESS INPUT */}
-      <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant focus-within:border-outline space-y-2 transition-colors">
-        <div className="flex items-center justify-between gap-2">
-          <label htmlFor="swap-refund" className="text-xs font-medium text-on-surface flex items-center gap-1.5">
+      {/* OPTIONAL REFUND ADDRESS ACCORDION */}
+      {!isRefundOpen ? (
+        <button
+          type="button"
+          onClick={() => setShowRefundInput(true)}
+          className="w-full py-2.5 px-3 rounded-xl border border-outline-variant/60 bg-surface-container-low/60 hover:bg-surface-container-low hover:border-outline-variant flex items-center justify-between text-xs text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
+        >
+          <span className="inline-flex items-center gap-2">
             <ShieldCheck className="w-3.5 h-3.5 text-primary" />
-            <span>Refund address on {chainName(fromToken.blockchain)}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant border border-outline-variant font-semibold">
-              Optional
-            </span>
-          </label>
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            id="swap-refund"
-            type="text"
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            value={refundTo}
-            onChange={(e) => setRefundTo(e.target.value)}
-            placeholder={fromChainMeta?.addressPlaceholder || `${fromToken.blockchain.toUpperCase()} refund address`}
-            className="w-full min-w-0 h-10 bg-transparent font-mono text-base sm:text-sm text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none"
-          />
-          {refundTo ? (
+            <span className="font-medium">+ Add refund address (optional)</span>
+          </span>
+          <ChevronDown className="w-4 h-4 text-on-surface-variant/70" />
+        </button>
+      ) : (
+        <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant focus-within:border-outline space-y-2 transition-colors animate-fade-in-up">
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="swap-refund" className="text-xs font-medium text-on-surface flex items-center gap-1.5 cursor-pointer">
+              <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+              <span>Refund address on {chainName(fromToken.blockchain)}</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant border border-outline-variant font-semibold">
+                Optional
+              </span>
+            </label>
             <button
               type="button"
-              onClick={() => setRefundTo("")}
-              aria-label="Clear refund address"
-              className="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high cursor-pointer"
+              onClick={() => {
+                setShowRefundInput(false);
+                setRefundTo("");
+              }}
+              className="h-7 w-7 rounded-lg inline-flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors cursor-pointer"
+              aria-label="Collapse refund address"
             >
-              <X className="w-4 h-4" />
+              <ChevronUp className="w-4 h-4" />
             </button>
-          ) : (
-            pasteSupported && (
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              id="swap-refund"
+              type="text"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              value={refundTo}
+              onChange={(e) => setRefundTo(e.target.value)}
+              placeholder={fromChainMeta?.addressPlaceholder || `${fromToken.blockchain.toUpperCase()} refund address`}
+              className="w-full min-w-0 h-10 bg-transparent font-mono text-base sm:text-sm text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none"
+            />
+            {refundTo ? (
               <button
                 type="button"
-                onClick={async () => {
-                  try {
-                    const text = (await navigator.clipboard.readText()).trim();
-                    if (text) setRefundTo(text);
-                  } catch {}
-                }}
-                className="shrink-0 h-10 px-3 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-on-surface bg-surface-container-high hover:bg-surface-container-highest cursor-pointer active:scale-[0.98]"
+                onClick={() => setRefundTo("")}
+                aria-label="Clear refund address"
+                className="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high cursor-pointer"
               >
-                <ClipboardPaste className="w-4 h-4" />
-                <span>Paste</span>
+                <X className="w-4 h-4" />
               </button>
-            )
-          )}
+            ) : (
+              pasteSupported && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const text = (await navigator.clipboard.readText()).trim();
+                      if (text) setRefundTo(text);
+                    } catch {}
+                  }}
+                  className="shrink-0 h-10 px-3 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-on-surface bg-surface-container-high hover:bg-surface-container-highest cursor-pointer active:scale-[0.98]"
+                >
+                  <ClipboardPaste className="w-4 h-4" />
+                  <span>Paste</span>
+                </button>
+              )
+            )}
+          </div>
+          <p className="text-[11px] text-on-surface-variant leading-relaxed">
+            Optional. If left blank, failed deposits route to ZkPay Treasury protection and our support team will refund you directly.
+          </p>
         </div>
-        <p className="text-[11px] text-on-surface-variant leading-relaxed">
-          Optional. If left blank, failed deposits route to ZkPay Treasury protection and our support team will refund you directly.
-        </p>
-      </div>
+      )}
 
       {/* ERROR DISPLAY */}
       {(quoteError || createError) && (

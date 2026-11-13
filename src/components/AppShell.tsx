@@ -55,7 +55,7 @@ export default function AppShell() {
       <SpatialMultiChain3D />
 
       {/* Floating Island Glass Header */}
-      <header className="fixed top-3 sm:top-5 inset-x-0 z-50 px-3 sm:px-6 pointer-events-none">
+      <header className="fixed top-[max(0.75rem,env(safe-area-inset-top,0px))] sm:top-5 inset-x-0 z-50 px-3 sm:px-6 pointer-events-none">
         <div className="max-w-5xl mx-auto h-14 sm:h-16 px-4 sm:px-6 rounded-full bg-surface-container-low/85 backdrop-blur-2xl border border-outline-variant shadow-elevated flex items-center justify-between gap-3 pointer-events-auto">
           <div className="flex items-center gap-4 sm:gap-6">
             <button
@@ -94,11 +94,19 @@ export default function AppShell() {
       </header>
 
       {/* Main Content Workspace */}
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 pt-24 sm:pt-28 pb-safe-nav md:pb-16 relative z-10">
-        {activeTab === "swap" && <Dashboard onSelectTab={setActiveTab} />}
-        {activeTab === "activity" && <InAppActivity onNewSwap={() => setActiveTab("swap")} />}
-        {activeTab === "partner" && <InAppPartner />}
-        {activeTab === "account" && <Profile onBack={() => setActiveTab("swap")} />}
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 pt-[calc(6rem+env(safe-area-inset-top,0px))] sm:pt-28 pb-safe-nav md:pb-16 relative z-10">
+        <div className={activeTab === "swap" ? "block animate-fade-in" : "hidden"}>
+          <Dashboard onSelectTab={setActiveTab} />
+        </div>
+        <div className={activeTab === "activity" ? "block animate-fade-in" : "hidden"}>
+          <InAppActivity onNewSwap={() => setActiveTab("swap")} />
+        </div>
+        <div className={activeTab === "partner" ? "block animate-fade-in" : "hidden"}>
+          <InAppPartner />
+        </div>
+        <div className={activeTab === "account" ? "block animate-fade-in" : "hidden"}>
+          <Profile onBack={() => setActiveTab("swap")} />
+        </div>
       </main>
 
       <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />

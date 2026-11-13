@@ -54,7 +54,7 @@ const config: Config = {
         "inverse-surface": "#F4F7FB",
         "inverse-on-surface": "#050608",
         "outline": "#606D82",
-        "outline-variant": "#1E293B",
+        "outline-variant": "rgba(41, 112, 255, 0.18)",
         "surface-tint": "#2970FF",
         "primary": "#2970FF",
         "on-primary": "#F4F7FB",
@@ -131,6 +131,15 @@ const config: Config = {
         "elevated": "var(--shadow-elevated)",
         "dock-badge": "var(--shadow-dock-badge)",
         "dock-label": "var(--shadow-dock-label)",
+      },
+      keyframes: {
+        fadeIn: {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
+      },
+      animation: {
+        "fade-in": "fadeIn 200ms ease-out forwards",
       },
     },
   },
