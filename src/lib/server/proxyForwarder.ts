@@ -949,20 +949,20 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     })) as number;
 
     const isStable = upperSymbol === "USDC" || upperSymbol === "USDT";
-    // Fixed fee: 0.05 units for USDC/USDT (50,000 in 6 decimals)
-    const fixedFeeUnits = isStable
-      ? (order.fixedFeeAmount ? BigInt(order.fixedFeeAmount) : (tokenDecimals >= 2 ? 5n * 10n ** BigInt(tokenDecimals - 2) : 0n))
-      : 0n;
-
+    const twoCentsUnits = isStable && tokenDecimals >= 2 ? 2n * 10n ** BigInt(tokenDecimals - 2) : 0n;
+    let fixedFeeUnits = 0n;
     let zkpayFeeUnits = 0n;
     let partnerFeeUnits = 0n;
 
     if (order.zkpayFeeBps !== undefined) {
-      zkpayFeeUnits = (tokenBalance * BigInt(order.zkpayFeeBps)) / 10000n + fixedFeeUnits;
+      const zkpayPercentUnits = (tokenBalance * BigInt(order.zkpayFeeBps)) / 10000n;
+      fixedFeeUnits = isStable && zkpayPercentUnits < twoCentsUnits ? twoCentsUnits : 0n;
+      zkpayFeeUnits = zkpayPercentUnits + fixedFeeUnits;
       if ((order.partnerFeeBps ?? 0) > 0) {
         partnerFeeUnits = (tokenBalance * BigInt(order.partnerFeeBps!)) / 10000n;
       }
     } else {
+      fixedFeeUnits = order.fixedFeeAmount ? BigInt(order.fixedFeeAmount) : 0n;
       zkpayFeeUnits = (tokenBalance * BigInt(order.feeAmount)) / expectedAtomic;
     }
 
@@ -1008,6 +1008,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
         totalAmountIn: tokenBalance.toString(),
         netSwapAmount: netTokenUnits.toString(),
         feeAmount: totalFeeUnits.toString(),
+        fixedFeeAmount: fixedFeeUnits.toString(),
         zkpayFeeAmount: zkpayFeeUnits.toString(),
         partnerFeeAmount: partnerFeeUnits.toString(),
         depositTxHash: bundleTxHash,
@@ -1262,6 +1263,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       totalAmountIn: tokenBalance.toString(),
       netSwapAmount: netTokenUnits.toString(),
       feeAmount: (feeTxHash ? totalFeeUnits : 0n).toString(),
+      fixedFeeAmount: (feeTxHash ? fixedFeeUnits : 0n).toString(),
       zkpayFeeAmount: (feeTxHash ? zkpayFeeUnits : 0n).toString(),
       partnerFeeAmount: (feeTxHash ? partnerFeeUnits : 0n).toString(),
       depositTxHash: feeTxHash || forwardTxHash,
@@ -2501,9 +2503,7 @@ export async function recoverProxyDeposit(
     }
 
     const isStable = upperSymbol === "USDC" || upperSymbol === "USDT";
-    const fixedFeeUnits = isStable
-      ? (order.fixedFeeAmount ? BigInt(order.fixedFeeAmount) : (decimals >= 2 ? 5n * 10n ** BigInt(decimals - 2) : 0n))
-      : 0n;
+    const twoCentsUnits = isStable && decimals >= 2 ? 2n * 10n ** BigInt(decimals - 2) : 0n;
 
     let totalFeeUnits = 0n;
     const treasuryAddress = getAddress((order.treasuryAddress || CONTRACTS.TREASURY) as `0x${string}`);
@@ -2517,8 +2517,10 @@ export async function recoverProxyDeposit(
       if (order.feeAmount && parsedTotal > 0n) {
         totalFeeUnits = (tokenBalance * BigInt(order.feeAmount)) / parsedTotal;
       } else if (order.zkpayFeeBps !== undefined) {
-        const totalBps = BigInt(order.zkpayFeeBps) + BigInt(order.partnerFeeBps || 0);
-        totalFeeUnits = (tokenBalance * totalBps) / 10000n + fixedFeeUnits;
+        const zkpayPercentUnits = (tokenBalance * BigInt(order.zkpayFeeBps)) / 10000n;
+        const fixedFeeUnits = isStable && zkpayPercentUnits < twoCentsUnits ? twoCentsUnits : 0n;
+        const partnerFeeUnits = (order.partnerFeeBps ?? 0) > 0 ? (tokenBalance * BigInt(order.partnerFeeBps!)) / 10000n : 0n;
+        totalFeeUnits = zkpayPercentUnits + fixedFeeUnits + partnerFeeUnits;
       }
     }
     const proxyNonce = await publicClient.getTransactionCount({ address: proxyAccount.address }).catch(() => 0);

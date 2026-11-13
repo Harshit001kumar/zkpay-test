@@ -48,9 +48,9 @@ export const DEFAULT_CUSTOM_FEE_BPS = 100;        // 1.00% default
 export const MIN_CUSTOM_FEE_BPS = 20;             // 0.20% minimum custom fee
 export const MAX_CUSTOM_FEE_BPS = 450;            // 4.50% max custom fee (leaves headroom for 25 bps overhead < 500 bps cap)
 
-// Fixed fee (0.05 units) charged on every proxied USDC/USDT API swap.
-// Covers relayer-sponsored gas. Always goes 100% to the ZkPay treasury (never split with partners).
-export const FIXED_STABLE_FEE_CENTS = 5n; // 0.05 = 5 cents
+// Conditional fixed fee (0.02 units) charged on proxied USDC/USDT API swaps when ZkPay % fee < $0.02.
+// Covers relayer-sponsored gas on small swaps. Always goes 100% to the ZkPay treasury (never split with partners).
+export const FIXED_STABLE_FEE_CENTS = 2n; // 0.02 = 2 cents
 
 // The solver is quoted this much BELOW the real net amount on wet-run orders. Because the quote is FLEX_INPUT,
 // the solver swaps 100% of what actually arrives. A 3.5% buffer (350 bps) allows the user to deposit
@@ -104,7 +104,7 @@ export function getOriginTokenMeta(originAssetId: string): { symbol: string; dec
 export interface UpfrontFeeBreakdown {
   zkpayPercentFee: bigint; // ZkPay share of the % fee
   partnerFee: bigint;      // Partner share of the % fee
-  fixedFee: bigint;        // Fixed 0.05 USDC/USDT (ZkPay only)
+  fixedFee: bigint;        // Conditional 0.02 USDC/USDT when zkpayPercentFee < $0.02 (ZkPay only)
   zkpayFee: bigint;        // zkpayPercentFee + fixedFee -> treasury
   totalFee: bigint;        // zkpayFee + partnerFee
   netSwapAmount: bigint;   // What the proxy actually forwards to the solver
@@ -133,19 +133,20 @@ export function computeUpfrontFees(
 
   const meta = getOriginTokenMeta(originAssetId);
   const isStable = !!meta && (meta.symbol === "USDC" || meta.symbol === "USDT") && meta.decimals >= 2;
-  const fixedFee = isStable ? FIXED_STABLE_FEE_CENTS * 10n ** BigInt(meta!.decimals - 2) : 0n;
 
   const partnerFee = feeSplit.partnerFeeBps > 0
     ? (totalAtomic * BigInt(feeSplit.partnerFeeBps)) / 10000n
     : 0n;
   const zkpayPercentFee = (totalAtomic * BigInt(feeSplit.zkpayFeeBps)) / 10000n;
+  const twoCentsUnits = isStable ? FIXED_STABLE_FEE_CENTS * 10n ** BigInt(meta!.decimals - 2) : 0n;
+  const fixedFee = isStable && zkpayPercentFee < twoCentsUnits ? twoCentsUnits : 0n;
   const zkpayFee = zkpayPercentFee + fixedFee;
   const totalFee = zkpayFee + partnerFee;
 
   if (totalAtomic <= totalFee) {
     const err: any = new Error(
-      isStable
-        ? `Amount is too small: it must be larger than the fees (${feeSplit.totalCustomFeeBps / 100}% + 0.05 ${meta!.symbol} fixed fee).`
+      fixedFee > 0n
+        ? `Amount is too small: it must be larger than the fees (${feeSplit.totalCustomFeeBps / 100}% + 0.02 ${meta!.symbol} fixed fee).`
         : `Amount is too small to cover the ${feeSplit.totalCustomFeeBps / 100}% platform fee.`
     );
     err.code = "AMOUNT_BELOW_MINIMUM";

@@ -28,7 +28,7 @@ export interface ProxySwapOrder {
   zkpayFeeAmount?: string;
   zkpayFeeBps?: number; // ZkPay share of % fee
   partnerFeeBps?: number; // Partner share of % fee
-  fixedFeeAmount?: string; // Fixed 0.05 USDC/USDT in atomic units (ZkPay only)
+  fixedFeeAmount?: string; // Conditional 0.02 USDC/USDT in atomic units when zkpayPercentFee < $0.02 (ZkPay only)
   status: "PENDING_DEPOSIT" | "DETECTED" | "FORWARDING" | "FORWARDED" | "SETTLED" | "FAILED" | "EXPIRED" | "REFUND_PENDING";
   depositTxHash?: string;
   feeTxHash?: string;

@@ -1428,7 +1428,7 @@ export default function AdminPage() {
                     ${(partnerAnalytics?.summary?.zkpayNetProfitUsd || 0).toFixed(4)}
                   </div>
                   <span className="text-[10px] text-success/80 block">
-                    Our 50% + $0.05 Fixed + 100% In-App
+                    Our 50% + Conditional $0.02 Fixed + 100% In-App
                   </span>
                 </div>
 
@@ -2630,7 +2630,7 @@ export default function AdminPage() {
                     <h3 className="text-sm sm:text-base font-bold text-white tracking-normal font-sans tabular-nums flex items-center gap-2">
                       <span>Partners Progress & Real On-Chain Revenue</span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-success/20 text-success font-sans tabular-nums">
-                        50/50 Split + $0.05 Fixed
+                        50/50 Split + Conditional $0.02 Fixed
                       </span>
                     </h3>
                     <p className="text-xs text-outline font-sans tabular-nums mt-0.5">
@@ -2670,7 +2670,7 @@ export default function AdminPage() {
                     ${(partnerAnalytics?.summary?.zkpayNetProfitUsd || 0).toFixed(4)}
                   </div>
                   <p className="text-[11px] text-success/80">
-                    Our 50% Partner Cut + 100% Fixed ($0.05) + 100% In-App Fees
+                    Our 50% Partner Cut + 100% Conditional Fixed ($0.02) + 100% In-App Fees
                   </p>
                 </div>
 

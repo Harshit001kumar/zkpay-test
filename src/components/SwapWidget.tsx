@@ -11,13 +11,14 @@ import { chainVisual, tokenColor, POPULAR_PAIRS, type PopularPair } from "@/lib/
 import { CryptoIcon } from "@/components/ui/CryptoIcon";
 import {
   ArrowDownUp,
+  ArrowLeft,
+  ArrowRight,
   Copy,
   Check,
   RefreshCw,
   CheckCircle2,
   AlertCircle,
   ChevronDown,
-  ChevronUp,
   SlidersHorizontal,
   Wallet,
   RotateCcw,
@@ -163,6 +164,46 @@ function formatCountdown(sec: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+const WIZARD_STEPS = [
+  { num: 1, label: "Amount" },
+  { num: 2, label: "Wallets" },
+  { num: 3, label: "Deposit" },
+] as const;
+
+function StepBar({ current }: { current: 1 | 2 | 3 }) {
+  return (
+    <nav
+      aria-label="Swap progress"
+      className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-surface-container-low border border-outline-variant"
+    >
+      {WIZARD_STEPS.map((s) => {
+        const isActive = current === s.num;
+        const isDone = current > s.num;
+        return (
+          <div
+            key={s.num}
+            aria-current={isActive ? "step" : undefined}
+            className={`h-8 px-2 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium transition-colors ${
+              isActive
+                ? "bg-secondary/15 text-secondary"
+                : isDone
+                ? "text-primary"
+                : "text-on-surface-variant"
+            }`}
+          >
+            {isDone ? (
+              <Check className="w-3.5 h-3.5 shrink-0" strokeWidth={2.5} />
+            ) : (
+              <span className="font-mono text-[11px]">{s.num}.</span>
+            )}
+            <span className="truncate">{s.label}</span>
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
 export default function SwapWidget({ compact = false, onSwapCreated, pair = null }: SwapWidgetProps) {
   const { address } = useActiveAccount();
 
@@ -174,12 +215,12 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
     SWAP_ALLOWED_TOKENS.find((t) => t.symbol === "USDC" && t.blockchain === "base") ||
     SWAP_ALLOWED_TOKENS[5];
 
+  const [step, setStep] = useState<1 | 2>(1);
   const [fromToken, setFromToken] = useState<SwapTokenItem>(defaultFrom);
   const [toToken, setToToken] = useState<SwapTokenItem>(defaultTo);
   const [amountInHuman, setAmountInHuman] = useState<string>("1");
   const [recipient, setRecipient] = useState<string>("");
   const [refundTo, setRefundTo] = useState<string>("");
-  const [showRefundInput, setShowRefundInput] = useState<boolean>(false);
   const [slippageBps, setSlippageBps] = useState<number>(100); // 1.0%
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
   const [showDetails, setShowDetails] = useState<boolean>(false);
@@ -268,9 +309,14 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
   // Apply an externally requested route (landing page quick routes)
   useEffect(() => {
     if (!pair || activeOrder) return;
+    setStep(1);
+    setCreateError(null);
     const f = findToken(pair.from);
     const t = findToken(pair.to);
-    if (f) setFromToken(f);
+    if (f) {
+      if (f.blockchain !== fromToken.blockchain) setRefundTo("");
+      setFromToken(f);
+    }
     if (t) {
       setToToken(t);
       setRecipient("");
@@ -409,7 +455,10 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
     setFromToken(prevTo);
     setToToken(prevFrom);
     setFlipTurns((n) => n + 1);
-    if (prevFrom.blockchain !== prevTo.blockchain) setRecipient("");
+    if (prevFrom.blockchain !== prevTo.blockchain) {
+      setRecipient("");
+      setRefundTo("");
+    }
     if (quoteData?.amountOutFormatted) {
       setAmountInHuman(String(quoteData.amountOutFormatted));
     }
@@ -434,6 +483,18 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
       return;
     }
 
+    const cleanRefund = refundTo.trim();
+    if (cleanRefund) {
+      const refundValidation = validateDestinationAddress(fromToken.blockchain, cleanRefund);
+      if (!refundValidation.valid) {
+        setCreateError(
+          refundValidation.error?.replace("destination recipient", "refund") ||
+            `Invalid ${chainName(fromToken.blockchain)} refund address.`
+        );
+        return;
+      }
+    }
+
     setCreatingOrder(true);
     try {
       const payload: Record<string, any> = {
@@ -448,8 +509,8 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
         slippageBps,
         swapType: "FLEX_INPUT",
       };
-      if (refundTo.trim()) {
-        payload.refundTo = refundTo.trim();
+      if (cleanRefund) {
+        payload.refundTo = cleanRefund;
       }
 
       const res = await fetch("/api/v1/swap/create", {
@@ -509,12 +570,12 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const handlePasteRecipient = async () => {
+  const pasteInto = async (setter: (val: string) => void) => {
     try {
       const text = (await navigator.clipboard.readText()).trim();
-      if (text) setRecipient(text);
+      if (text) setter(text);
     } catch {
-      // Clipboard permission denied — user can still long-press paste into the field.
+      // Clipboard permission denied; user can still long-press paste into the field.
     }
   };
 
@@ -584,10 +645,13 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
       setActiveOrder(null);
       setOrderStatus(null);
       setShowQr(false);
+      setCreateError(null);
+      setStep(1);
     };
 
     return (
       <div className="rounded-2xl bg-surface-container border border-outline-variant p-4 sm:p-6 space-y-5">
+        <StepBar current={3} />
         {/* Header */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
@@ -839,22 +903,19 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
     );
   }
 
-  // ── STANDARD SWAP ENTRY VIEW ──
+  // ── STANDARD SWAP ENTRY VIEW (STEPS 1 & 2) ──
   const amountValid = !!toAtomicUnits(amountInHuman, fromToken.decimals);
   const recipientMissing = !recipient.trim();
-  const isRefundOpen = showRefundInput || Boolean(refundTo.trim());
-  const ctaDisabled = creatingOrder || quoteLoading || !!quoteError || !quoteData || recipientMissing;
-  const ctaLabel = creatingOrder
-    ? "Creating deposit address…"
-    : !amountValid
+  const step1Blocked = quoteLoading || !!quoteError || !quoteData || !amountValid;
+  const step1Label = !amountValid
     ? "Enter an amount"
     : quoteLoading
-    ? "Fetching best rate…"
-    : quoteError
+    ? "Fetching best rate..."
+    : quoteError || !quoteData
     ? "Quote unavailable"
-    : recipientMissing
-    ? `Enter ${chainName(toToken.blockchain)} address`
-    : `Swap ${fromToken.symbol} to ${toToken.symbol}`;
+    : "Proceed";
+  const step2Blocked = creatingOrder || recipientMissing;
+  const step2Label = creatingOrder ? "Creating deposit address..." : "Continue to deposit";
 
   const rate =
     quoteData?.amountOutFormatted && Number(amountInHuman) > 0
@@ -869,365 +930,392 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
   const etaSeconds: number | null = typeof quoteData?.timeEstimateSeconds === "number" ? quoteData.timeEstimateSeconds : null;
 
   return (
-    <div className="rounded-2xl bg-surface-container border border-outline-variant p-3 sm:p-5 space-y-2 relative">
-      {/* Header Row */}
-      <div className="flex items-center justify-between px-1 pb-1">
-        <div className="flex items-center gap-2 min-w-0">
-          <h2 className="text-base font-semibold text-on-surface">Swap</h2>
-          <span className="hidden min-[380px]:inline-flex items-center gap-1 h-6 px-2 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-medium text-on-primary-container whitespace-nowrap">
-            <Zap className="w-3 h-3" />
-            <span>
-              {chainVisual(fromToken.blockchain).code} to {chainVisual(toToken.blockchain).code}
-            </span>
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          aria-expanded={showAdvanced}
-          className={`h-10 px-3 rounded-xl inline-flex items-center gap-1.5 text-sm transition-colors cursor-pointer ${
-            showAdvanced
-              ? "bg-secondary/15 text-secondary"
-              : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
-          }`}
-          title="Slippage & refund settings"
-        >
-          <SlidersHorizontal className="w-4 h-4" />
-          <span className="font-mono text-xs">{(slippageBps / 100).toFixed(1)}%</span>
-        </button>
-      </div>
+    <div className="rounded-2xl bg-surface-container border border-outline-variant p-3 sm:p-5 space-y-2.5 relative">
+      <StepBar current={step} />
 
-      {/* Advanced Settings */}
-      {showAdvanced && (
-        <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant space-y-2 animate-fade-in-up">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-medium text-on-surface">Max Slippage Tolerance</span>
-            <span className="font-mono text-secondary">{(slippageBps / 100).toFixed(1)}%</span>
-          </div>
-          <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-surface-container">
-            {[50, 100, 200].map((bps) => (
-              <button
-                key={bps}
-                type="button"
-                onClick={() => setSlippageBps(bps)}
-                className={`h-9 rounded-lg font-mono text-sm font-medium transition-colors cursor-pointer ${
-                  slippageBps === bps
-                    ? "bg-surface-container-highest text-on-surface shadow-sm"
-                    : "text-on-surface-variant hover:text-on-surface"
-                }`}
-              >
-                {(bps / 100).toFixed(1)}%
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* FROM BOX */}
-      <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant focus-within:border-outline space-y-3 transition-colors">
-        <div className="flex items-center justify-between text-xs text-on-surface-variant">
-          <label htmlFor="swap-amount" className="font-medium">You pay</label>
-          <span>on {chainName(fromToken.blockchain)}</span>
-        </div>
-
-        <div className="flex items-center justify-between gap-3">
-          <input
-            id="swap-amount"
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            value={amountInHuman}
-            onChange={(e) => {
-              const v = e.target.value.replace(",", ".");
-              if (v === "" || /^\d*\.?\d*$/.test(v)) setAmountInHuman(v);
-            }}
-            placeholder="0"
-            className="w-full min-w-0 bg-transparent font-mono text-[28px] sm:text-[32px] leading-tight font-semibold text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none tabular-nums"
-          />
-
-          <button
-            type="button"
-            onClick={() => openSelector("from")}
-            aria-label={`Change token to pay, currently ${fromToken.symbol} on ${chainName(fromToken.blockchain)}`}
-            className="shrink-0 h-12 pl-1.5 pr-2.5 rounded-full bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant flex items-center gap-2 transition-colors cursor-pointer active:scale-[0.98]"
-          >
-            <TokenMark symbol={fromToken.symbol} chain={fromToken.blockchain} size="sm" />
-            <span className="flex flex-col items-start leading-none">
-              <span className="text-sm font-semibold text-on-surface">{fromToken.symbol}</span>
-              <span className="text-[10px] text-on-surface-variant mt-0.5">{chainName(fromToken.blockchain)}</span>
-            </span>
-            <ChevronDown className="w-4 h-4 text-on-surface-variant" />
-          </button>
-        </div>
-
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1">
-          {presetsFor(fromToken).map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => setAmountInHuman(p)}
-              className={`h-8 px-3 rounded-full border text-xs font-mono font-medium whitespace-nowrap transition-colors cursor-pointer ${
-                amountInHuman === p
-                  ? "border-secondary/50 bg-secondary/10 text-secondary"
-                  : "border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-outline"
-              }`}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* FLIP BUTTON */}
-      <div className="flex justify-center -my-4 relative z-10">
-        <motion.button
-          type="button"
-          onClick={handleFlipTokens}
-          animate={{ rotate: flipTurns * 180 }}
-          whileTap={{ scale: 0.88 }}
-          transition={{ type: "spring", stiffness: 320, damping: 20 }}
-          className="w-11 h-11 rounded-full bg-surface-container-high hover:bg-primary hover:text-on-primary border-4 border-surface-container flex items-center justify-center text-on-surface transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-secondary focus-visible:outline-none"
-          aria-label="Switch tokens"
-        >
-          <ArrowDownUp className="w-4 h-4" />
-        </motion.button>
-      </div>
-
-      {/* TO BOX */}
-      <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant space-y-3">
-        <div className="flex items-center justify-between text-xs text-on-surface-variant">
-          <span className="font-medium">You receive</span>
-          <span>on {chainName(toToken.blockchain)}</span>
-        </div>
-
-        <div className="flex items-center justify-between gap-3">
-          <div className="w-full min-w-0 font-mono text-[28px] sm:text-[32px] leading-tight font-semibold tabular-nums truncate" aria-live="polite">
-            {quoteLoading ? (
-              <span className="inline-block h-8 w-32 rounded-lg bg-surface-container-high animate-pulse align-middle" />
-            ) : quoteData?.amountOutFormatted ? (
-              <span className="text-on-surface">{quoteData.amountOutFormatted}</span>
-            ) : (
-              <span className="text-on-surface-variant/70">0</span>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => openSelector("to")}
-            aria-label={`Change token to receive, currently ${toToken.symbol} on ${chainName(toToken.blockchain)}`}
-            className="shrink-0 h-12 pl-1.5 pr-2.5 rounded-full bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant flex items-center gap-2 transition-colors cursor-pointer active:scale-[0.98]"
-          >
-            <TokenMark symbol={toToken.symbol} chain={toToken.blockchain} size="sm" />
-            <span className="flex flex-col items-start leading-none">
-              <span className="text-sm font-semibold text-on-surface">{toToken.symbol}</span>
-              <span className="text-[10px] text-on-surface-variant mt-0.5">{chainName(toToken.blockchain)}</span>
-            </span>
-            <ChevronDown className="w-4 h-4 text-on-surface-variant" />
-          </button>
-        </div>
-      </div>
-
-      {/* RATE & ROUTE */}
-      {quoteData && !quoteLoading && (
-        <div className="rounded-xl border border-outline-variant">
-          <button
-            type="button"
-            onClick={() => setShowDetails((v) => !v)}
-            aria-expanded={showDetails}
-            className="w-full min-h-[44px] px-4 flex items-center justify-between gap-2 text-sm cursor-pointer"
-          >
-            <span className="font-mono text-xs sm:text-sm text-on-surface truncate">
-              {rate !== null
-                ? `1 ${fromToken.symbol} ≈ ${rate < 0.01 ? rate.toPrecision(3) : rate.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${toToken.symbol}`
-                : "Rate details"}
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-xs text-on-surface-variant shrink-0">
-              {etaSeconds !== null && <span>~{etaSeconds < 90 ? `${etaSeconds}s` : `${Math.round(etaSeconds / 60)}m`}</span>}
-              <ChevronDown className={`w-4 h-4 transition-transform ${showDetails ? "rotate-180" : ""}`} />
-            </span>
-          </button>
-          {showDetails && (
-            <dl className="px-4 pb-3 pt-1 space-y-2 text-xs border-t border-outline-variant">
-              <div className="flex justify-between gap-3 pt-2">
-                <dt className="text-on-surface-variant">Minimum received</dt>
-                <dd className="font-mono text-on-surface text-right">
-                  {quoteData.minAmountOutFormatted} {toToken.symbol}
-                </dd>
-              </div>
-              {feeBps !== null && (
-                <div className="flex justify-between gap-3">
-                  <dt className="text-on-surface-variant">Total fees</dt>
-                  <dd className="font-mono text-on-surface">{(feeBps / 100).toFixed(2)}%</dd>
-                </div>
-              )}
-              <div className="flex justify-between gap-3">
-                <dt className="text-on-surface-variant">Max slippage</dt>
-                <dd className="font-mono text-on-surface">{(slippageBps / 100).toFixed(1)}%</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-on-surface-variant">Route</dt>
-                <dd className="text-on-surface text-right">
-                  {chainName(fromToken.blockchain)} → {chainName(toToken.blockchain)} via solver network
-                </dd>
-              </div>
-            </dl>
-          )}
-        </div>
-      )}
-
-      {/* RECIPIENT ADDRESS INPUT */}
-      <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant focus-within:border-outline space-y-2 transition-colors">
-        <div className="flex items-center justify-between gap-2">
-          <label htmlFor="swap-recipient" className="text-xs font-medium text-on-surface-variant">
-            Send to {toChainMeta?.name || toToken.blockchain.toUpperCase()} address
-          </label>
-          {address && EVM_CHAINS.has(toToken.blockchain) && recipient.toLowerCase() !== address.toLowerCase() && (
-            <button
-              type="button"
-              onClick={() => setRecipient(address)}
-              className="h-8 -my-1 px-2 rounded-lg inline-flex items-center gap-1 text-xs font-medium text-secondary hover:bg-secondary/10 cursor-pointer"
-            >
-              <Wallet className="w-3.5 h-3.5" />
-              <span>My wallet</span>
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            id="swap-recipient"
-            type="text"
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            value={recipient}
-            onChange={(e) => setRecipient(e.target.value)}
-            placeholder={toChainMeta?.addressPlaceholder || `${toToken.blockchain.toUpperCase()} wallet address`}
-            className="w-full min-w-0 h-10 bg-transparent font-mono text-base sm:text-sm text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none"
-          />
-          {recipient ? (
-            <button
-              type="button"
-              onClick={() => setRecipient("")}
-              aria-label="Clear address"
-              className="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          ) : (
-            pasteSupported && (
-              <button
-                type="button"
-                onClick={handlePasteRecipient}
-                className="shrink-0 h-10 px-3 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-on-surface bg-surface-container-high hover:bg-surface-container-highest cursor-pointer active:scale-[0.98]"
-              >
-                <ClipboardPaste className="w-4 h-4" />
-                <span>Paste</span>
-              </button>
-            )
-          )}
-        </div>
-      </div>
-
-      {/* OPTIONAL REFUND ADDRESS ACCORDION */}
-      {!isRefundOpen ? (
-        <button
-          type="button"
-          onClick={() => setShowRefundInput(true)}
-          className="w-full py-2.5 px-3 rounded-xl border border-outline-variant/60 bg-surface-container-low/60 hover:bg-surface-container-low hover:border-outline-variant flex items-center justify-between text-xs text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
-        >
-          <span className="inline-flex items-center gap-2">
-            <ShieldCheck className="w-3.5 h-3.5 text-primary" />
-            <span className="font-medium">+ Add refund address (optional)</span>
-          </span>
-          <ChevronDown className="w-4 h-4 text-on-surface-variant/70" />
-        </button>
-      ) : (
-        <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant focus-within:border-outline space-y-2 transition-colors animate-fade-in-up">
-          <div className="flex items-center justify-between gap-2">
-            <label htmlFor="swap-refund" className="text-xs font-medium text-on-surface flex items-center gap-1.5 cursor-pointer">
-              <ShieldCheck className="w-3.5 h-3.5 text-primary" />
-              <span>Refund address on {chainName(fromToken.blockchain)}</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant border border-outline-variant font-semibold">
-                Optional
+      {step === 1 ? (
+        <>
+          {/* Header Row */}
+          <div className="flex items-center justify-between px-1 pb-0.5">
+            <div className="flex items-center gap-2 min-w-0">
+              <h2 className="text-base font-semibold text-on-surface">Swap</h2>
+              <span className="hidden min-[380px]:inline-flex items-center gap-1 h-6 px-2 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-medium text-on-primary-container whitespace-nowrap">
+                <Zap className="w-3 h-3" />
+                <span>
+                  {chainVisual(fromToken.blockchain).code} to {chainVisual(toToken.blockchain).code}
+                </span>
               </span>
-            </label>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              aria-expanded={showAdvanced}
+              className={`h-10 px-3 rounded-xl inline-flex items-center gap-1.5 text-sm transition-colors cursor-pointer ${
+                showAdvanced
+                  ? "bg-secondary/15 text-secondary"
+                  : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
+              }`}
+              title="Slippage settings"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              <span className="font-mono text-xs">{(slippageBps / 100).toFixed(1)}%</span>
+            </button>
+          </div>
+
+          {/* Advanced Settings */}
+          {showAdvanced && (
+            <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant space-y-2 animate-fade-in-up">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-medium text-on-surface">Max Slippage Tolerance</span>
+                <span className="font-mono text-secondary">{(slippageBps / 100).toFixed(1)}%</span>
+              </div>
+              <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-surface-container">
+                {[50, 100, 200].map((bps) => (
+                  <button
+                    key={bps}
+                    type="button"
+                    onClick={() => setSlippageBps(bps)}
+                    className={`h-9 rounded-lg font-mono text-sm font-medium transition-colors cursor-pointer ${
+                      slippageBps === bps
+                        ? "bg-surface-container-highest text-on-surface shadow-sm"
+                        : "text-on-surface-variant hover:text-on-surface"
+                    }`}
+                  >
+                    {(bps / 100).toFixed(1)}%
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* FROM BOX */}
+          <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant focus-within:border-outline space-y-3 transition-colors">
+            <div className="flex items-center justify-between text-xs text-on-surface-variant">
+              <label htmlFor="swap-amount" className="font-medium">You pay</label>
+              <span>on {chainName(fromToken.blockchain)}</span>
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <input
+                id="swap-amount"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                value={amountInHuman}
+                onChange={(e) => {
+                  const v = e.target.value.replace(",", ".");
+                  if (v === "" || /^\d*\.?\d*$/.test(v)) setAmountInHuman(v);
+                }}
+                placeholder="0"
+                className="w-full min-w-0 bg-transparent font-mono text-[28px] sm:text-[32px] leading-tight font-semibold text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none tabular-nums"
+              />
+
+              <button
+                type="button"
+                onClick={() => openSelector("from")}
+                aria-label={`Change token to pay, currently ${fromToken.symbol} on ${chainName(fromToken.blockchain)}`}
+                className="shrink-0 h-12 pl-1.5 pr-2.5 rounded-full bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant flex items-center gap-2 transition-colors cursor-pointer active:scale-[0.98]"
+              >
+                <TokenMark symbol={fromToken.symbol} chain={fromToken.blockchain} size="sm" />
+                <span className="flex flex-col items-start leading-none">
+                  <span className="text-sm font-semibold text-on-surface">{fromToken.symbol}</span>
+                  <span className="text-[10px] text-on-surface-variant mt-0.5">{chainName(fromToken.blockchain)}</span>
+                </span>
+                <ChevronDown className="w-4 h-4 text-on-surface-variant" />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1">
+              {presetsFor(fromToken).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setAmountInHuman(p)}
+                  className={`h-8 px-3 rounded-full border text-xs font-mono font-medium whitespace-nowrap transition-colors cursor-pointer ${
+                    amountInHuman === p
+                      ? "border-secondary/50 bg-secondary/10 text-secondary"
+                      : "border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-outline"
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* FLIP BUTTON */}
+          <div className="flex justify-center -my-4 relative z-10">
+            <motion.button
+              type="button"
+              onClick={handleFlipTokens}
+              animate={{ rotate: flipTurns * 180 }}
+              whileTap={{ scale: 0.88 }}
+              transition={{ type: "spring", stiffness: 320, damping: 20 }}
+              className="w-11 h-11 rounded-full bg-surface-container-high hover:bg-primary hover:text-on-primary border-4 border-surface-container flex items-center justify-center text-on-surface transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-secondary focus-visible:outline-none"
+              aria-label="Switch tokens"
+            >
+              <ArrowDownUp className="w-4 h-4" />
+            </motion.button>
+          </div>
+
+          {/* TO BOX */}
+          <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant space-y-3">
+            <div className="flex items-center justify-between text-xs text-on-surface-variant">
+              <span className="font-medium">You receive</span>
+              <span>on {chainName(toToken.blockchain)}</span>
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="w-full min-w-0 font-mono text-[28px] sm:text-[32px] leading-tight font-semibold tabular-nums truncate" aria-live="polite">
+                {quoteLoading ? (
+                  <span className="inline-block h-8 w-32 rounded-lg bg-surface-container-high animate-pulse align-middle" />
+                ) : quoteData?.amountOutFormatted ? (
+                  <span className="text-on-surface">{quoteData.amountOutFormatted}</span>
+                ) : (
+                  <span className="text-on-surface-variant/70">0</span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => openSelector("to")}
+                aria-label={`Change token to receive, currently ${toToken.symbol} on ${chainName(toToken.blockchain)}`}
+                className="shrink-0 h-12 pl-1.5 pr-2.5 rounded-full bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant flex items-center gap-2 transition-colors cursor-pointer active:scale-[0.98]"
+              >
+                <TokenMark symbol={toToken.symbol} chain={toToken.blockchain} size="sm" />
+                <span className="flex flex-col items-start leading-none">
+                  <span className="text-sm font-semibold text-on-surface">{toToken.symbol}</span>
+                  <span className="text-[10px] text-on-surface-variant mt-0.5">{chainName(toToken.blockchain)}</span>
+                </span>
+                <ChevronDown className="w-4 h-4 text-on-surface-variant" />
+              </button>
+            </div>
+          </div>
+
+          {/* RATE & ROUTE */}
+          {quoteData && !quoteLoading && (
+            <div className="rounded-xl border border-outline-variant">
+              <button
+                type="button"
+                onClick={() => setShowDetails((v) => !v)}
+                aria-expanded={showDetails}
+                className="w-full min-h-[44px] px-4 flex items-center justify-between gap-2 text-sm cursor-pointer"
+              >
+                <span className="font-mono text-xs sm:text-sm text-on-surface truncate">
+                  {rate !== null
+                    ? `1 ${fromToken.symbol} ≈ ${rate < 0.01 ? rate.toPrecision(3) : rate.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${toToken.symbol}`
+                    : "Rate details"}
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-xs text-on-surface-variant shrink-0">
+                  {etaSeconds !== null && <span>~{etaSeconds < 90 ? `${etaSeconds}s` : `${Math.round(etaSeconds / 60)}m`}</span>}
+                  <ChevronDown className={`w-4 h-4 transition-transform ${showDetails ? "rotate-180" : ""}`} />
+                </span>
+              </button>
+              {showDetails && (
+                <dl className="px-4 pb-3 pt-1 space-y-2 text-xs border-t border-outline-variant">
+                  <div className="flex justify-between gap-3 pt-2">
+                    <dt className="text-on-surface-variant">Minimum received</dt>
+                    <dd className="font-mono text-on-surface text-right">
+                      {quoteData.minAmountOutFormatted} {toToken.symbol}
+                    </dd>
+                  </div>
+                  {feeBps !== null && (
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-on-surface-variant">Total fees</dt>
+                      <dd className="font-mono text-on-surface">{(feeBps / 100).toFixed(2)}%</dd>
+                    </div>
+                  )}
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-on-surface-variant">Max slippage</dt>
+                    <dd className="font-mono text-on-surface">{(slippageBps / 100).toFixed(1)}%</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-on-surface-variant">Route</dt>
+                    <dd className="text-on-surface text-right">
+                      {chainName(fromToken.blockchain)} → {chainName(toToken.blockchain)} via solver network
+                    </dd>
+                  </div>
+                </dl>
+              )}
+            </div>
+          )}
+
+          {/* QUOTE ERROR */}
+          {quoteError && (
+            <div role="alert" className="p-3 rounded-xl bg-error-container/40 border border-error/25 flex items-start gap-2 text-sm text-on-error-container">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-error" />
+              <span>{quoteError}</span>
+            </div>
+          )}
+
+          {/* STEP 1 CTA */}
+          <button
+            type="button"
+            disabled={step1Blocked}
+            onClick={() => {
+              setCreateError(null);
+              setStep(2);
+            }}
+            className="w-full h-14 px-5 rounded-xl bg-secondary hover:brightness-110 disabled:bg-surface-container-high disabled:text-on-surface-variant disabled:cursor-not-allowed text-on-secondary font-semibold text-base transition-colors cursor-pointer active:scale-[0.99] flex items-center justify-center gap-2"
+          >
+            {quoteLoading && amountValid && <RefreshCw className="w-4 h-4 animate-spin" />}
+            <span>{step1Label}</span>
+          </button>
+        </>
+      ) : (
+        <>
+          {/* STEP 2 TOP BAR: BACK + TRADE RECAP */}
+          <div className="flex items-center justify-between gap-2 pb-0.5">
             <button
               type="button"
               onClick={() => {
-                setShowRefundInput(false);
-                setRefundTo("");
+                setCreateError(null);
+                setStep(1);
               }}
-              className="h-7 w-7 rounded-lg inline-flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors cursor-pointer"
-              aria-label="Collapse refund address"
+              className="h-10 px-2.5 -ml-1 rounded-xl inline-flex items-center gap-1.5 text-sm font-medium text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors cursor-pointer shrink-0"
             >
-              <ChevronUp className="w-4 h-4" />
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back</span>
             </button>
+
+            <div className="min-w-0 flex items-center gap-1.5 px-2.5 h-9 rounded-xl bg-surface-container-low border border-outline-variant text-xs font-mono text-on-surface overflow-hidden">
+              <TokenMark symbol={fromToken.symbol} chain={fromToken.blockchain} size="sm" />
+              <span className="truncate tabular-nums">
+                {amountInHuman} {fromToken.symbol}
+              </span>
+              <ArrowRight className="w-3.5 h-3.5 text-on-surface-variant shrink-0" />
+              <TokenMark symbol={toToken.symbol} chain={toToken.blockchain} size="sm" />
+              <span className="truncate tabular-nums text-secondary">
+                {quoteData?.amountOutFormatted || "..."} {toToken.symbol}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <input
-              id="swap-refund"
-              type="text"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              value={refundTo}
-              onChange={(e) => setRefundTo(e.target.value)}
-              placeholder={fromChainMeta?.addressPlaceholder || `${fromToken.blockchain.toUpperCase()} refund address`}
-              className="w-full min-w-0 h-10 bg-transparent font-mono text-base sm:text-sm text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none"
-            />
-            {refundTo ? (
-              <button
-                type="button"
-                onClick={() => setRefundTo("")}
-                aria-label="Clear refund address"
-                className="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            ) : (
-              pasteSupported && (
+
+          {/* RECEIVING WALLET */}
+          <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant focus-within:border-outline space-y-2 transition-colors">
+            <div className="flex items-center justify-between gap-2">
+              <label htmlFor="swap-recipient" className="text-xs font-medium text-on-surface-variant">
+                Receiving {chainName(toToken.blockchain)} wallet
+              </label>
+              {address && EVM_CHAINS.has(toToken.blockchain) && recipient.toLowerCase() !== address.toLowerCase() && (
                 <button
                   type="button"
-                  onClick={async () => {
-                    try {
-                      const text = (await navigator.clipboard.readText()).trim();
-                      if (text) setRefundTo(text);
-                    } catch {}
-                  }}
-                  className="shrink-0 h-10 px-3 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-on-surface bg-surface-container-high hover:bg-surface-container-highest cursor-pointer active:scale-[0.98]"
+                  onClick={() => setRecipient(address)}
+                  className="h-8 -my-1 px-2 rounded-lg inline-flex items-center gap-1 text-xs font-medium text-secondary hover:bg-secondary/10 cursor-pointer"
                 >
-                  <ClipboardPaste className="w-4 h-4" />
-                  <span>Paste</span>
+                  <Wallet className="w-3.5 h-3.5" />
+                  <span>My wallet</span>
                 </button>
-              )
-            )}
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                id="swap-recipient"
+                type="text"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                value={recipient}
+                onChange={(e) => setRecipient(e.target.value)}
+                placeholder={toChainMeta?.addressPlaceholder || `${toToken.blockchain.toUpperCase()} wallet address`}
+                className="w-full min-w-0 h-10 bg-transparent font-mono text-base sm:text-sm text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none"
+              />
+              {recipient ? (
+                <button
+                  type="button"
+                  onClick={() => setRecipient("")}
+                  aria-label="Clear receiving address"
+                  className="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              ) : (
+                pasteSupported && (
+                  <button
+                    type="button"
+                    onClick={() => pasteInto(setRecipient)}
+                    className="shrink-0 h-10 px-3 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-on-surface bg-surface-container-high hover:bg-surface-container-highest cursor-pointer active:scale-[0.98]"
+                  >
+                    <ClipboardPaste className="w-4 h-4" />
+                    <span>Paste</span>
+                  </button>
+                )
+              )}
+            </div>
           </div>
-          <p className="text-[11px] text-on-surface-variant leading-relaxed">
-            Optional. If left blank, failed deposits route to ZkPay Treasury protection and our support team will refund you directly.
-          </p>
-        </div>
-      )}
 
-      {/* ERROR DISPLAY */}
-      {(quoteError || createError) && (
-        <div role="alert" className="p-3 rounded-xl bg-error-container/40 border border-error/25 flex items-start gap-2 text-sm text-on-error-container">
-          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-error" />
-          <span>{createError || quoteError}</span>
-        </div>
-      )}
+          {/* REFUND WALLET */}
+          <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant focus-within:border-outline space-y-2 transition-colors">
+            <label htmlFor="swap-refund" className="text-xs font-medium text-on-surface-variant flex items-center gap-2 flex-wrap cursor-pointer">
+              <span>Refund {chainName(fromToken.blockchain)} wallet</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant border border-outline-variant font-semibold">
+                Optional · Recommended
+              </span>
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                id="swap-refund"
+                type="text"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                value={refundTo}
+                onChange={(e) => setRefundTo(e.target.value)}
+                placeholder={fromChainMeta?.addressPlaceholder || `${fromToken.blockchain.toUpperCase()} refund address`}
+                className="w-full min-w-0 h-10 bg-transparent font-mono text-base sm:text-sm text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none"
+              />
+              {refundTo ? (
+                <button
+                  type="button"
+                  onClick={() => setRefundTo("")}
+                  aria-label="Clear refund address"
+                  className="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              ) : (
+                pasteSupported && (
+                  <button
+                    type="button"
+                    onClick={() => pasteInto(setRefundTo)}
+                    className="shrink-0 h-10 px-3 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-on-surface bg-surface-container-high hover:bg-surface-container-highest cursor-pointer active:scale-[0.98]"
+                  >
+                    <ClipboardPaste className="w-4 h-4" />
+                    <span>Paste</span>
+                  </button>
+                )
+              )}
+            </div>
+            <p className="flex items-start gap-1.5 text-[11px] text-on-surface-variant leading-relaxed">
+              <ShieldCheck className="w-3.5 h-3.5 shrink-0 mt-0.5 text-primary" />
+              <span>
+                Optional, but always recommended. Without a refund address, failed swaps fall back to ZkPay protection and require contacting support for a manual refund.
+              </span>
+            </p>
+          </div>
 
-      {/* SUBMIT CTA */}
-      <button
-        type="button"
-        disabled={ctaDisabled}
-        onClick={handleCreateSwap}
-        className="w-full h-14 px-5 rounded-xl bg-secondary hover:brightness-110 disabled:bg-surface-container-high disabled:text-on-surface-variant disabled:cursor-not-allowed text-on-secondary font-semibold text-base transition-colors cursor-pointer active:scale-[0.99] flex items-center justify-center gap-2"
-      >
-        {(creatingOrder || quoteLoading) && amountValid && <RefreshCw className="w-4 h-4 animate-spin" />}
-        <span>{ctaLabel}</span>
-      </button>
+          {/* CREATE ERROR */}
+          {createError && (
+            <div role="alert" className="p-3 rounded-xl bg-error-container/40 border border-error/25 flex items-start gap-2 text-sm text-on-error-container">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-error" />
+              <span>{createError}</span>
+            </div>
+          )}
+
+          {/* STEP 2 CTA */}
+          <button
+            type="button"
+            disabled={step2Blocked}
+            onClick={handleCreateSwap}
+            className="w-full h-14 px-5 rounded-xl bg-secondary hover:brightness-110 disabled:bg-surface-container-high disabled:text-on-surface-variant disabled:cursor-not-allowed text-on-secondary font-semibold text-base transition-colors cursor-pointer active:scale-[0.99] flex items-center justify-center gap-2"
+          >
+            {creatingOrder && <RefreshCw className="w-4 h-4 animate-spin" />}
+            <span>{step2Label}</span>
+          </button>
+        </>
+      )}
 
       {/* TOKEN SELECTOR — bottom sheet on mobile, centered dialog on desktop.
           Portaled to <body> so 3D-transformed ancestors cannot trap position: fixed. */}
@@ -1306,6 +1394,7 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
                           key={p.label}
                           type="button"
                           onClick={() => {
+                            if (f.blockchain !== fromToken.blockchain) setRefundTo("");
                             setFromToken(f);
                             setToToken(t);
                             setRecipient("");
@@ -1346,6 +1435,9 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
                       type="button"
                       onClick={() => {
                         if (selectorSide === "from") {
+                          if (token.blockchain !== fromToken.blockchain) {
+                            setRefundTo("");
+                          }
                           setFromToken(token);
                           setAmountInHuman(presetsFor(token)[1] || "1");
                         } else {
