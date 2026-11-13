@@ -2,27 +2,33 @@
 
 import { useActiveAccount } from "@/hooks/useActiveAccount";
 import { useState } from "react";
-import Link from "next/link";
+import { motion, useReducedMotion } from "framer-motion";
 import WalletConnect from "./WalletConnect";
 import LandingPage from "./LandingPage";
 import Dashboard from "./Dashboard";
-import BottomNav from "./BottomNav";
 import Profile from "./Profile";
 import { InAppActivity } from "./inapp/InAppActivity";
 import { InAppPartner } from "./inapp/InAppPartner";
-import { SpatialMultiChain3D } from "@/components/ui/SpatialMultiChain3D";
 
 export type NavTab = "swap" | "activity" | "partner" | "account";
+
+const NAV_TABS: { id: NavTab; label: string }[] = [
+  { id: "swap", label: "Swap" },
+  { id: "activity", label: "Track" },
+  { id: "partner", label: "Partner" },
+  { id: "account", label: "Account" },
+];
 
 export default function AppShell() {
   const { ready, authenticated, login } = useActiveAccount();
   const [activeTab, setActiveTab] = useState<NavTab>("swap");
+  const reduceMotion = useReducedMotion();
 
   if (!ready) {
     return (
       <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-surface gap-3">
         <div className="w-6 h-6 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
-        <span className="text-sm text-on-surface-variant">Loading…</span>
+        <span className="text-sm text-on-surface-variant">Loading...</span>
       </div>
     );
   }
@@ -31,70 +37,94 @@ export default function AppShell() {
     return <LandingPage login={login} />;
   }
 
-  const navItem = (tab: NavTab, label: string) => {
-    const isAct = activeTab === tab;
+  const renderTabButton = (tab: { id: NavTab; label: string }, mobile = false) => {
+    const isActive = activeTab === tab.id;
     return (
       <button
-        key={tab}
+        key={`${mobile ? "m" : "d"}-${tab.id}`}
         type="button"
-        onClick={() => setActiveTab(tab)}
-        className={`h-8 px-3.5 rounded-full text-xs font-semibold inline-flex items-center transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
-          isAct
-            ? "bg-surface-container text-on-surface shadow-sm border border-outline-variant"
-            : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low"
+        onClick={() => setActiveTab(tab.id)}
+        aria-current={isActive ? "page" : undefined}
+        className={`relative h-8 ${
+          mobile ? "w-full rounded-lg" : "px-4 rounded-full"
+        } text-xs font-semibold inline-flex items-center justify-center transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
+          isActive
+            ? "text-on-secondary"
+            : "text-on-surface-variant hover:text-on-surface"
         }`}
       >
-        {label}
+        {isActive &&
+          (reduceMotion ? (
+            <span
+              aria-hidden="true"
+              className={`absolute inset-0 bg-secondary ${
+                mobile ? "rounded-lg" : "rounded-full"
+              }`}
+            />
+          ) : (
+            <motion.span
+              layoutId={mobile ? "cmd-pill-mobile" : "cmd-pill-desktop"}
+              transition={{ type: "spring", stiffness: 420, damping: 34 }}
+              aria-hidden="true"
+              className={`absolute inset-0 bg-secondary ${
+                mobile ? "rounded-lg" : "rounded-full"
+              }`}
+            />
+          ))}
+        <span className="relative z-10">{tab.label}</span>
       </button>
     );
   };
 
   return (
-    <div className="relative min-h-[100dvh] flex flex-col bg-surface text-on-surface overflow-x-hidden selection:bg-secondary selection:text-on-secondary">
-      {/* 3D Multi-Chain Spatial Universe Background */}
-      <SpatialMultiChain3D />
+    <div
+      className="relative min-h-[100dvh] flex flex-col bg-surface text-on-surface overflow-x-hidden selection:bg-secondary selection:text-on-secondary"
+      style={{
+        backgroundImage:
+          "radial-gradient(ellipse 70% 35% at 50% 0%, rgba(41, 112, 255, 0.08), transparent)",
+      }}
+    >
+      {/* Unified Sticky Command Header */}
+      <header className="sticky top-0 z-40 w-full bg-surface/90 backdrop-blur-xl border-b border-outline-variant pt-[env(safe-area-inset-top,0px)]">
+        <div className="max-w-5xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => setActiveTab("swap")}
+            className="flex items-center gap-2.5 h-9 rounded-lg focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none cursor-pointer active:scale-95 transition-transform"
+            aria-label="ZkPay home"
+          >
+            <span className="w-7 h-7 rounded-lg bg-primary text-on-primary flex items-center justify-center font-bold text-xs">
+              Z
+            </span>
+            <span className="font-semibold text-sm tracking-tight text-on-surface">
+              ZkPay
+            </span>
+          </button>
 
-      {/* Floating Island Glass Header */}
-      <header className="fixed top-[max(0.75rem,env(safe-area-inset-top,0px))] sm:top-5 inset-x-0 z-50 px-3 sm:px-6 pointer-events-none">
-        <div className="max-w-5xl mx-auto h-14 sm:h-16 px-4 sm:px-6 rounded-full bg-surface-container-low/85 backdrop-blur-2xl border border-outline-variant shadow-elevated flex items-center justify-between gap-3 pointer-events-auto">
-          <div className="flex items-center gap-4 sm:gap-6">
-            <button
-              type="button"
-              onClick={() => setActiveTab("swap")}
-              className="flex items-center gap-2.5 h-10 active:scale-95 transition-transform cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none rounded-lg"
-              aria-label="ZkPay home"
-            >
-              <span className="w-8 h-8 rounded-xl bg-primary text-on-primary flex items-center justify-center font-extrabold text-sm">
-                Z
-              </span>
-              <span className="font-bold text-base tracking-tight text-on-surface">ZkPay</span>
-              <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-secondary/10 border border-secondary/30 text-[10px] text-secondary font-bold">
-                <span className="w-1.5 h-1.5 rounded-full bg-secondary motion-safe:animate-pulse" />
-                <span>9 chains</span>
-              </span>
-            </button>
-
-            {/* Desktop Navigation Tabs */}
-            <nav aria-label="Primary" className="hidden md:flex items-center gap-1">
-              {navItem("swap", "Swap")}
-              {navItem("activity", "Activity")}
-              {navItem("partner", "Partner")}
-              {navItem("account", "Account")}
-              <Link
-                href="/docs"
-                className="h-8 px-3 rounded-full text-xs font-semibold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low inline-flex items-center transition-colors"
-              >
-                Docs
-              </Link>
-            </nav>
-          </div>
+          {/* Desktop Segmented Pill Switcher */}
+          <nav
+            aria-label="Workspace switcher"
+            className="hidden md:inline-flex items-center p-1 rounded-full bg-surface-container-low border border-outline-variant gap-0.5"
+          >
+            {NAV_TABS.map((t) => renderTabButton(t, false))}
+          </nav>
 
           <WalletConnect />
         </div>
+
+        {/* Mobile Segmented Pill Switcher (< md) */}
+        <div className="md:hidden px-3 pb-2.5">
+          <nav
+            aria-label="Mobile workspace switcher"
+            className="grid grid-cols-4 p-1 rounded-xl bg-surface-container-low border border-outline-variant gap-1"
+          >
+            {NAV_TABS.map((t) => renderTabButton(t, true))}
+          </nav>
+        </div>
       </header>
 
-      {/* Main Content Workspace */}
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 pt-[calc(6rem+env(safe-area-inset-top,0px))] sm:pt-28 pb-safe-nav md:pb-16 relative z-10">
+      {/* Focused Workspace */}
+      <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 pt-6 sm:pt-10 pb-12 pb-safe">
         <div className={activeTab === "swap" ? "block animate-fade-in" : "hidden"}>
           <Dashboard onSelectTab={setActiveTab} />
         </div>
@@ -108,8 +138,6 @@ export default function AppShell() {
           <Profile onBack={() => setActiveTab("swap")} />
         </div>
       </main>
-
-      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
     </div>
   );
 }
