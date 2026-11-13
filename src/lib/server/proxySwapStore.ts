@@ -42,7 +42,7 @@ export interface ProxySwapOrder {
   feeCredited?: boolean; // True once partner's USD share has been credited upon settlement
   feeCreditedAt?: number; // Timestamp of fee crediting
   partnerFeeUsd?: number; // USD value credited to partner
-  source?: "api" | "app" | "checkout";
+  source?: "api" | "app";
   swapType?: "FLEX_INPUT";
   createdAt: number;
   expiresAt: number;
