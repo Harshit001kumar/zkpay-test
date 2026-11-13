@@ -1,11 +1,7 @@
-const DIAMOND = process.env.NEXT_PUBLIC_DIAMOND_ADDRESS || "0x4cad6eC90e65baBec9335cAd728DDC610c316368";
 const USDC = process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const TREASURY = process.env.NEXT_PUBLIC_TREASURY_ADDRESS || "0xb856b24fb054135deba5e0309edd31ed6a8afbe2";
 
 export const CONTRACTS = {
-  // Legacy reference kept for ABI compatibility
-  DIAMOND: DIAMOND as `0x${string}`,
-
   // Native USDC on Base Mainnet
   USDC: USDC as `0x${string}`,
 
@@ -16,10 +12,6 @@ export const CONTRACTS = {
   REFUND_WALLET: (process.env.NEXT_PUBLIC_REFUND_WALLET_ADDRESS ||
     process.env.ZKPAY_REFUND_WALLET ||
     TREASURY) as `0x${string}`,
-
-  // Pimlico ERC-20 Paymaster contracts on Base Mainnet
-  PIMLICO_PAYMASTER_V6: "0x6666666666667849c56f2850848cE1C4da65c68b" as `0x${string}`,
-  PIMLICO_PAYMASTER_V7: "0x777777777777AeC03fd955926DbF81597e66834C" as `0x${string}`,
 } as const;
 
 const INFURA_KEY =
@@ -56,9 +48,6 @@ export const CHAIN = {
 
 // Platform fee (2% default take rate on swaps, split 50/50 with partners)
 export const PLATFORM_FEE_BPS = 200; // 200 basis points = 2%
-
-// Standard gas relay fee in USDC
-export const RELAY_GAS_FEE_USDC = 0.05;
 
 export const APP_NAME = "ZkPay";
 export const APP_DESCRIPTION = "Instant Cross-Chain Swap Engine & Developer API";

@@ -543,7 +543,6 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
         amountIn: amountInHuman,
         amountOut: order.quote?.amountOutFormatted || quoteData?.amountOutFormatted || "0",
         depositAddress: depAddress,
-        amountINR: 0,
         amountUSDC: parseFloat(order.quote?.amountOutFormatted || "0") || 0,
         fee: 0,
         recipient: cleanRecipient,

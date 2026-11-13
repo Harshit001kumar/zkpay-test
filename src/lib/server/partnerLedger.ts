@@ -296,16 +296,6 @@ export async function getPartnerMetrics(
     failedTransactions,
     successRate,
     estimatedPartnerEarningsUsd: Math.round(estimatedPartnerEarningsUsd * 1000) / 1000,
-    breakdownByType: {
-      swaps: swapsCount,
-      payins: 0,
-      paylinks: 0,
-    },
-    volumeByType: {
-      swapsUsd: Math.round(swapsUsd * 100) / 100,
-      payinsUsd: 0,
-      paylinksUsd: 0,
-    },
     activeKeysCount,
   };
 }

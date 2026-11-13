@@ -20,14 +20,12 @@ import {
   DollarSign,
   Sparkles,
   Code2,
-  QrCode,
   Smartphone,
 } from "lucide-react";
 import {
   AdminSystemTransaction,
   AdminSystemMetrics,
   AdminTxChannel,
-  AdminTxCategory,
   AdminTxStatus,
 } from "@/lib/server/adminLedger";
 
@@ -48,7 +46,6 @@ export default function AdminTransactionsPage() {
   // Filter states
   const [timeRange, setTimeRange] = useState<"all" | "24h" | "7d" | "30d">("all");
   const [channelFilter, setChannelFilter] = useState<"all" | AdminTxChannel>("all");
-  const [categoryFilter, setCategoryFilter] = useState<"all" | AdminTxCategory>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | AdminTxStatus>("all");
   const [chainFilter, setChainFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -111,7 +108,6 @@ export default function AdminTransactionsPage() {
         limit: "50",
         timeRange,
         channel: channelFilter,
-        category: categoryFilter,
         status: statusFilter,
         chain: chainFilter,
       });
@@ -133,7 +129,7 @@ export default function AdminTransactionsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthorized, getAccessToken, page, timeRange, channelFilter, categoryFilter, statusFilter, chainFilter, searchQuery]);
+  }, [isAuthorized, getAccessToken, page, timeRange, channelFilter, statusFilter, chainFilter, searchQuery]);
 
   useEffect(() => {
     if (isAuthorized) {
@@ -157,7 +153,6 @@ export default function AdminTransactionsPage() {
       const params = new URLSearchParams({
         timeRange,
         channel: channelFilter,
-        category: categoryFilter,
         status: statusFilter,
         chain: chainFilter,
         export: "csv",
@@ -344,8 +339,8 @@ export default function AdminTransactionsPage() {
               ${(metrics?.totalVolumeUsd ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between text-[11px] text-outline">
-              <span>Payments: ${(metrics?.volumeByCategory?.paymentsUsd ?? 0).toLocaleString()}</span>
-              <span>Swaps: ${(metrics?.volumeByCategory?.swapsUsd ?? 0).toLocaleString()}</span>
+              <span>Cross-chain swaps</span>
+              <span>{(metrics?.totalTransactions ?? 0).toLocaleString()} orders</span>
             </div>
           </div>
 
@@ -405,11 +400,11 @@ export default function AdminTransactionsPage() {
         <div className="p-4 sm:p-5 rounded-2xl bg-surface-container-low border border-white/10 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center">
             {/* Search Input */}
-            <div className="lg:col-span-5 relative">
+            <div className="lg:col-span-8 relative">
               <Search className="w-4 h-4 text-outline absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
-                placeholder="Search tx hash, order ID, UPI ID, address..."
+                placeholder="Search tx hash, swap ID, deposit or recipient address..."
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
@@ -428,7 +423,7 @@ export default function AdminTransactionsPage() {
             </div>
 
             {/* Channel Filter (App vs API) */}
-            <div className="lg:col-span-3 flex items-center p-1 rounded-xl bg-surface-container-lowest border border-white/10">
+            <div className="lg:col-span-4 flex items-center p-1 rounded-xl bg-surface-container-lowest border border-white/10">
               {(["all", "app", "api"] as const).map((c) => (
                 <button
                   key={c}
@@ -443,26 +438,6 @@ export default function AdminTransactionsPage() {
                   }`}
                 >
                   {c === "all" ? "All Channels" : c === "app" ? "In-App" : "Developer API"}
-                </button>
-              ))}
-            </div>
-
-            {/* Category Filter (Payments vs Swaps) */}
-            <div className="lg:col-span-4 flex items-center p-1 rounded-xl bg-surface-container-lowest border border-white/10">
-              {(["all", "payment", "swap"] as const).map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => {
-                    setCategoryFilter(cat);
-                    setPage(1);
-                  }}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer text-center ${
-                    categoryFilter === cat
-                      ? "bg-white/15 text-white"
-                      : "text-outline hover:text-white"
-                  }`}
-                >
-                  {cat === "all" ? "All Types" : cat === "payment" ? "Payments" : "Swaps"}
                 </button>
               ))}
             </div>
@@ -506,11 +481,10 @@ export default function AdminTransactionsPage() {
                 <option value="EXPIRED">Expired</option>
               </select>
 
-              {(channelFilter !== "all" || categoryFilter !== "all" || statusFilter !== "all" || chainFilter !== "all" || searchQuery) && (
+              {(channelFilter !== "all" || statusFilter !== "all" || chainFilter !== "all" || searchQuery) && (
                 <button
                   onClick={() => {
                     setChannelFilter("all");
-                    setCategoryFilter("all");
                     setStatusFilter("all");
                     setChainFilter("all");
                     setSearchQuery("");
@@ -658,11 +632,6 @@ export default function AdminTransactionsPage() {
                                   <span className="text-outline italic">Direct solver</span>
                                 )}
                               </span>
-                              {tx.fiatAmount && (
-                                <span className="text-[10px] text-primary">
-                                  ₹{tx.fiatAmount.toLocaleString()} INR
-                                </span>
-                              )}
                             </div>
                           </td>
 
@@ -806,7 +775,7 @@ export default function AdminTransactionsPage() {
             <div className="flex items-center justify-between pb-4 border-b border-white/10">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-                  {selectedTx.category === "payment" ? <QrCode className="w-5 h-5" /> : <Repeat className="w-5 h-5" />}
+                  <Repeat className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white tracking-tight">{selectedTx.title}</h3>
@@ -863,7 +832,7 @@ export default function AdminTransactionsPage() {
               )}
               {selectedTx.recipient && (
                 <div className="flex items-center justify-between pb-2 border-b border-white/5">
-                  <span className="text-outline">Recipient or UPI:</span>
+                  <span className="text-outline">Recipient:</span>
                   <span className="font-mono text-primary font-medium">{selectedTx.recipient}</span>
                 </div>
               )}

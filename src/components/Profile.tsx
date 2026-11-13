@@ -20,13 +20,7 @@ import {
   Scale,
   Code2,
   ExternalLink,
-  Gift,
-  Users,
-  Share2,
   ArrowLeft,
-  Sparkles,
-  Calendar,
-  CheckCircle,
   Plus,
   Trash2,
   Terminal,
@@ -34,7 +28,6 @@ import {
   RefreshCw,
   LayoutDashboard,
   UserCheck,
-  Zap,
   Sliders,
   Lock,
 } from "lucide-react";
@@ -56,12 +49,8 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
 
   const shortAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Not connected";
   const [copied, setCopied] = useState(false);
-  const [copiedCode, setCopiedCode] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(true);
-  const [activeView, setActiveView] = useState<"main" | "referral" | "api-keys">("main");
-  const [rewardsData, setRewardsData] = useState<any>(null);
-  const [isLoadingRewards, setIsLoadingRewards] = useState(false);
+  const [activeView, setActiveView] = useState<"main" | "api-keys">("main");
 
   // API Keys state
   const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>([]);
@@ -78,100 +67,12 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [keyError, setKeyError] = useState<string | null>(null);
 
-  // Manual Referral Code State
-  const [manualRefCode, setManualRefCode] = useState("");
-  const [isBindingRef, setIsBindingRef] = useState(false);
-  const [refBindingMsg, setRefBindingMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
-
-  const handleApplyReferral = async () => {
-    if (!manualRefCode.trim() || !address) return;
-    try {
-      setIsBindingRef(true);
-      setRefBindingMsg(null);
-      const token = await getAccessToken();
-      const res = await fetch("/api/referrals/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          userAddress: address,
-          referrerCodeOrAddress: manualRefCode.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setRefBindingMsg({
-          type: "success",
-          text: data.alreadyBound ? "Referrer already linked to your account." : "Referral code bound successfully!",
-        });
-        setRewardsData((prev: any) => ({
-          ...prev,
-          referredBy: data.referrer,
-        }));
-        setManualRefCode("");
-      } else {
-        setRefBindingMsg({ type: "error", text: data.error || "Failed to apply referral code" });
-      }
-    } catch (err: any) {
-      setRefBindingMsg({ type: "error", text: err.message || "Failed to bind referral" });
-    } finally {
-      setIsBindingRef(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!address) return;
-    let cancelled = false;
-
-    async function loadRewards() {
-      setIsLoadingRewards(true);
-      try {
-        const token = await getAccessToken();
-        if (cancelled) return;
-        const res = await fetch(`/api/rewards/user?address=${address}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const json = await res.json();
-        if (json.success && !cancelled) {
-          setRewardsData(json.data);
-        }
-      } catch (err) {
-        console.warn("[Profile] Failed to fetch rewards:", err);
-      } finally {
-        if (!cancelled) setIsLoadingRewards(false);
-      }
-    }
-
-    loadRewards();
-    return () => {
-      cancelled = true;
-    };
-  }, [address, getAccessToken]);
-
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (address) {
       navigator.clipboard.writeText(address);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  const handleCopyReferralCode = () => {
-    if (rewardsData?.referralCode) {
-      navigator.clipboard.writeText(rewardsData.referralCode);
-      setCopiedCode(true);
-      setTimeout(() => setCopiedCode(false), 2000);
-    }
-  };
-
-  const handleCopyReferralLink = () => {
-    if (rewardsData?.referralLink) {
-      navigator.clipboard.writeText(rewardsData.referralLink);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
     }
   };
 
@@ -268,271 +169,6 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
       setRevokingId(null);
     }
   };
-
-  if (activeView === "referral") {
-    const code = rewardsData?.referralCode || "…";
-    const link = rewardsData?.referralLink || `https://zkpay.top/?ref=${code}`;
-    const shareText = `Hey! I use ZkPay for instant non-custodial cross-chain crypto swaps across 9 chains with zero bridges: ${link}`;
-    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
-    const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("Instant cross-chain crypto swaps with zero bridges across 9 blockchains!")}`;
-
-    return (
-      <div className="fixed inset-0 z-[70] bg-surface text-on-surface font-body-md selection:bg-primary/30 min-h-screen flex flex-col pb-36 overflow-y-auto w-full">
-        {/* TopAppBar */}
-        <header className="w-full sticky top-3.5 z-50 flex justify-between items-center px-6 py-3 max-w-2xl mx-auto bg-surface/85 backdrop-blur-xl rounded-full border border-primary/25 mt-3.5">
-          <button
-            onClick={() => setActiveView("main")}
-            className="flex items-center gap-2 px-4 py-2 bg-surface-container-low border border-primary/30 rounded-full cursor-pointer active:scale-95 transition-transform text-xs font-sans tabular-nums font-bold text-primary hover:text-on-surface whitespace-nowrap"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Back to Profile</span>
-          </button>
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary/10 border border-secondary/20 text-secondary text-xs font-sans tabular-nums font-bold">
-            <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
-            <span>Cross-Chain Swap</span>
-          </div>
-        </header>
-
-        <main className="w-full max-w-xl mx-auto px-4 pt-4 pb-40 space-y-6">
-          {/* Header */}
-          <div className="text-center space-y-2">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 border border-primary/30 text-primary mb-2 shadow-dock-label">
-              <Gift className="w-7 h-7" />
-            </div>
-            <h2 className="font-display-xl-mobile text-[28px] font-bold text-on-surface tracking-tight">
-              Refer &amp; Earn
-            </h2>
-            <p className="text-xs text-on-surface-variant max-w-md mx-auto leading-relaxed font-sans tabular-nums">
-              Earn 20% commission on friends&apos; Scan &amp; Pay fees + get Monthly Cashback on all your own payments.
-            </p>
-          </div>
-
-          {/* Monthly Pool Card */}
-          <section className="bg-surface-container-low border border-primary/30 shadow-elevated rounded-3xl p-6 md:p-8 space-y-4">
-            <div className="flex justify-between items-center text-xs font-sans tabular-nums text-primary">
-              <span className="tracking-normal font-bold">This month&apos;s accrual</span>
-              <span className="text-xs px-2 py-0.5 rounded-md bg-surface-container text-on-surface">
-                Cycle: {rewardsData?.currentCycle || "Current"}
-              </span>
-            </div>
-
-            <div className="space-y-1">
-              <div className="font-mono text-4xl font-bold tracking-tight text-on-surface flex items-baseline gap-2">
-                ${(rewardsData?.thisMonth?.totalDueUsdc || 0).toFixed(2)}
-                <span className="text-base font-normal font-sans tabular-nums text-primary">USDC</span>
-              </div>
-              <p className="text-xs font-sans tabular-nums text-on-surface-variant">
-                Status:{" "}
-                <span className="text-secondary font-bold">
-                  {rewardsData?.thisMonth?.status === "PAID" ? "Settled / Paid" : "Accruing for Month-End Disbursal"}
-                </span>
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-primary/15 text-xs font-sans tabular-nums">
-              <div className="bg-surface-container p-3 rounded-xl border border-primary/15">
-                <span className="text-on-surface-variant block text-xs mb-1">Your cashback</span>
-                <span className="font-mono text-on-surface font-bold text-sm">
-                  ${(rewardsData?.thisMonth?.cashbackUsdc || 0).toFixed(2)} USDC
-                </span>
-              </div>
-              <div className="bg-surface-container p-3 rounded-xl border border-primary/15">
-                <span className="text-on-surface-variant block text-xs mb-1">Referral commissions</span>
-                <span className="font-mono text-on-surface font-bold text-sm">
-                  ${(rewardsData?.thisMonth?.referralUsdc || 0).toFixed(2)} USDC
-                </span>
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-surface-container border border-primary/15 flex items-start gap-3 text-xs font-sans tabular-nums text-on-surface-variant leading-relaxed">
-              <Calendar className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-              <span>
-                Rewards are sent automatically by Admin in a single batch directly to your wallet at the end of each month.
-              </span>
-            </div>
-          </section>
-
-          {/* Referral Sharing Card */}
-          <section className="bg-surface-container-low border border-primary/20 shadow-elevated rounded-3xl p-6 md:p-8 space-y-5">
-            <div className="flex items-center gap-2 text-xs font-sans tabular-nums font-bold text-on-surface-variant tracking-normal">
-              <Share2 className="w-4 h-4 text-primary" />
-              <span>Share Your Referral Link</span>
-            </div>
-
-            {/* Code Row */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-sans tabular-nums text-on-surface-variant">Your Referral Code</label>
-              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-surface-container border border-primary/15">
-                <span className="font-mono tabular-nums text-base font-bold text-primary tracking-normal">{code}</span>
-                <button
-                  onClick={handleCopyReferralCode}
-                  className="p-2 rounded-xl bg-surface-container-low hover:bg-surface-container-high text-on-surface transition-colors"
-                  title="Copy Code"
-                >
-                  {copiedCode ? <Check className="w-4 h-4 text-secondary" /> : <Copy className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Link Row */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-sans tabular-nums text-on-surface-variant">Your Referral Link</label>
-              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-surface-container border border-primary/15">
-                <span className="font-mono tabular-nums text-xs text-on-surface truncate max-w-[260px]">{link}</span>
-                <button
-                  onClick={handleCopyReferralLink}
-                  className="p-2 rounded-xl bg-surface-container-low hover:bg-surface-container-high text-on-surface transition-colors"
-                  title="Copy Link"
-                >
-                  {copiedLink ? <Check className="w-4 h-4 text-secondary" /> : <Copy className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            {/* 1-Tap Share Buttons */}
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <a
-                href={waUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="py-3.5 px-4 rounded-xl bg-secondary/20 hover:bg-secondary/30 border border-secondary/30 text-secondary text-xs font-sans tabular-nums font-bold flex items-center justify-center gap-2 transition-colors active:scale-95 whitespace-nowrap"
-              >
-                <Share2 className="w-4 h-4" />
-                <span>WhatsApp</span>
-              </a>
-              <a
-                href={tgUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="py-3.5 px-4 rounded-xl bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary text-xs font-sans tabular-nums font-bold flex items-center justify-center gap-2 transition-colors active:scale-95 whitespace-nowrap"
-              >
-                <Share2 className="w-4 h-4" />
-                <span>Telegram</span>
-              </a>
-            </div>
-          </section>
-
-          {/* Referrer Status & Manual Binding Card */}
-          <section className="bg-surface-container-low border border-primary/20 shadow-elevated rounded-3xl p-6 md:p-8 space-y-4">
-            <div className="flex items-center gap-2 text-xs font-sans tabular-nums font-bold text-on-surface-variant tracking-normal">
-              <Gift className="w-4 h-4 text-primary" />
-              <span>Your Referrer Status</span>
-            </div>
-
-            {rewardsData?.referredBy ? (
-              <div className="flex items-center justify-between p-4 rounded-2xl bg-secondary/10 border border-secondary/20">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-secondary/20 flex items-center justify-center text-secondary">
-                    <CheckCircle className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-sans tabular-nums font-bold text-on-surface block">Bound to Referrer</span>
-                    <span className="text-xs font-mono tabular-nums text-secondary">
-                      {rewardsData.referredBy.slice(0, 6)}…{rewardsData.referredBy.slice(-4)}
-                    </span>
-                  </div>
-                </div>
-                <span className="px-2.5 py-1 rounded-full bg-secondary/20 text-secondary text-xs font-sans tabular-nums font-bold">
-                  Active
-                </span>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-xs font-sans tabular-nums text-on-surface-variant leading-relaxed">
-                  Have a friend&apos;s referral code or address? Enter it once below to link your account and earn cashback.
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={manualRefCode}
-                    onChange={(e) => setManualRefCode(e.target.value)}
-                    placeholder="Enter code (e.g. ZK12AB)"
-                    className="flex-1 bg-surface-container border border-primary/20 rounded-xl px-4 py-3 text-xs font-sans tabular-nums text-on-surface placeholder-on-surface-variant focus:outline-none focus:border-primary"
-                  />
-                  <button
-                    onClick={handleApplyReferral}
-                    disabled={isBindingRef || !manualRefCode.trim()}
-                    className="px-5 py-3 rounded-xl bg-primary text-on-primary font-sans tabular-nums font-bold text-xs hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center gap-1.5 whitespace-nowrap"
-                  >
-                    {isBindingRef ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "Apply"}
-                  </button>
-                </div>
-                {refBindingMsg && (
-                  <p
-                    className={`text-xs font-sans tabular-nums ${
-                      refBindingMsg.type === "success" ? "text-secondary" : "text-error"
-                    }`}
-                  >
-                    {refBindingMsg.text}
-                  </p>
-                )}
-              </div>
-            )}
-          </section>
-
-          {/* Quick Stats Grid */}
-          <section className="grid grid-cols-2 gap-3">
-            <div className="bg-surface-container-low border border-primary/20 shadow-elevated rounded-2xl p-5 text-center space-y-1">
-              <Users className="w-5 h-5 text-primary mx-auto mb-1" />
-              <div className="font-mono text-2xl font-bold text-on-surface">
-                {rewardsData?.friendsInvited || 0}
-              </div>
-              <div className="text-xs font-sans tabular-nums text-on-surface-variant tracking-normal">Friends Invited</div>
-            </div>
-            <div className="bg-surface-container-low border border-primary/20 shadow-elevated rounded-2xl p-5 text-center space-y-1">
-              <Sparkles className="w-5 h-5 text-primary mx-auto mb-1" />
-              <div className="font-mono text-2xl font-bold text-on-surface">
-                ${(rewardsData?.lifetime?.totalEarnedUsdc || 0).toFixed(2)}
-              </div>
-              <div className="text-xs font-sans tabular-nums text-on-surface-variant tracking-normal">Lifetime Rewards</div>
-            </div>
-          </section>
-
-          {/* Past Payouts History */}
-          <section className="bg-surface-container-low border border-primary/20 shadow-elevated rounded-3xl p-6 space-y-3">
-            <span className="text-xs font-sans tabular-nums font-bold text-on-surface-variant tracking-normal block">
-              Past Monthly Disbursals
-            </span>
-            {rewardsData?.pastPayouts && rewardsData.pastPayouts.length > 0 ? (
-              <div className="space-y-2">
-                {rewardsData.pastPayouts.map((p: any, idx: number) => (
-                  <div
-                    key={idx}
-                    className="p-3.5 rounded-xl bg-surface-container border border-primary/15 flex items-center justify-between text-xs font-sans tabular-nums"
-                  >
-                    <div>
-                      <span className="text-on-surface font-bold block">Cycle {p.cycle}</span>
-                      <span className="text-xs text-on-surface-variant">
-                        {new Date(p.paidAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-secondary font-bold">
-                        +<span className="font-mono">${p.amountUsdc.toFixed(2)}</span> USDC
-                      </span>
-                      <a
-                        href={`https://basescan.org/tx/${p.payoutTxHash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline"
-                        title="View on Basescan"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs font-sans tabular-nums text-on-surface-variant text-center py-4">
-                No past payouts yet. Your active rewards will be included in this month&apos;s batch!
-              </p>
-            )}
-          </section>
-        </main>
-      </div>
-    );
-  }
 
   if (activeView === "api-keys") {
     return (
@@ -847,75 +483,13 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
               </div>
               <div className="p-3 rounded-xl bg-surface-container-low border border-outline-variant flex items-center justify-between">
                 <span className="text-xs text-on-surface font-medium">
-                  Gasless paymaster
+                  Non-custodial
                 </span>
-                <Zap className="w-4 h-4 text-secondary" />
+                <Shield className="w-4 h-4 text-secondary" />
               </div>
             </div>
           </div>
         </div>
-
-        {/* Refer & Earn & Monthly Cashback Module */}
-        <section className="rounded-3xl p-6 sm:p-7 bg-surface-container-low border border-primary/25 shadow-elevated">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-primary/15 border border-primary/35 flex items-center justify-center text-primary">
-                <Gift className="w-4 h-4" />
-              </div>
-              <span className="text-sm font-bold text-on-surface">
-                Refer &amp; Earn · Monthly Cashback
-              </span>
-            </div>
-            <span className="px-2.5 py-1 rounded-full bg-secondary/10 border border-secondary/30 text-secondary text-xs font-bold">
-              Scan &amp; Pay
-            </span>
-          </div>
-
-          <div className="bg-surface-container rounded-2xl p-5 border border-primary/20 mb-5 space-y-3">
-            <div className="flex justify-between items-baseline">
-              <span className="text-xs font-medium text-on-surface-variant">
-                This month&apos;s accrued
-              </span>
-              <span className="font-mono text-2xl font-extrabold text-on-surface tracking-tight tabular-nums">
-                ${(rewardsData?.thisMonth?.totalDueUsdc || 0).toFixed(2)}{" "}
-                <span className="font-sans text-xs text-primary font-semibold">USDC</span>
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-primary/15 text-xs tabular-nums text-on-surface-variant">
-              <div>
-                Cashback:{" "}
-                <span className="font-mono text-on-surface font-bold">
-                  ${(rewardsData?.thisMonth?.cashbackUsdc || 0).toFixed(2)}
-                </span>
-              </div>
-              <div className="text-right">
-                Referral:{" "}
-                <span className="font-mono text-on-surface font-bold">
-                  ${(rewardsData?.thisMonth?.referralUsdc || 0).toFixed(2)}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between text-xs tabular-nums text-on-surface-variant mb-5 px-1">
-            <span className="flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-primary" />
-              <span>Batch disbursed at month-end</span>
-            </span>
-            <span>
-              <span className="font-mono">{rewardsData?.friendsInvited || 0}</span> invited
-            </span>
-          </div>
-
-          <button
-            onClick={() => setActiveView("referral")}
-            className="w-full py-4 rounded-xl bg-secondary hover:brightness-110 text-on-secondary font-bold text-xs transition-colors flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer shadow-card whitespace-nowrap"
-          >
-            <Share2 className="w-4 h-4" />
-            <span>Open Referral Hub &amp; Share</span>
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </section>
 
         {/* Security Module */}
         <section className="rounded-3xl p-6 sm:p-7 bg-surface-container-low border border-primary/25 shadow-elevated">

@@ -1,4 +1,4 @@
-export type PartnerTxType = "payin_session" | "pay_link" | "swap";
+export type PartnerTxType = "swap";
 export type PartnerTxStatus = "COMPLETED" | "PENDING" | "FAILED" | "EXPIRED";
 
 export interface PartnerTransaction {
@@ -12,8 +12,6 @@ export interface PartnerTransaction {
   amount: string;
   currency: string;
   amountUsdEstimate: number;
-  fiatAmount?: number;
-  fiatCurrency?: string;
   partnerFeeAmount?: string | null;
   partnerFeeCurrency?: string | null;
   partnerFeeUsdEstimate: number;
@@ -29,7 +27,7 @@ export interface PartnerTransaction {
   createdAt: number;
   expiresAt?: number;
   settledAt?: number;
-  source: "api" | "app" | "checkout";
+  source: "api" | "app";
   details?: Record<string, any>;
 }
 
@@ -41,16 +39,6 @@ export interface PartnerMetrics {
   failedTransactions: number;
   successRate: number;
   estimatedPartnerEarningsUsd: number;
-  breakdownByType: {
-    swaps: number;
-    payins: number;
-    paylinks: number;
-  };
-  volumeByType: {
-    swapsUsd: number;
-    payinsUsd: number;
-    paylinksUsd: number;
-  };
   activeKeysCount: number;
 }
 

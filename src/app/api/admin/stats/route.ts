@@ -24,7 +24,7 @@ export async function GET(req: Request) {
   try {
     const publicClient = getServerPublicClient();
 
-    // 1. Fetch Treasury USDC Balance (collected 1% take-rate fees)
+    // 1. Fetch Treasury USDC Balance (collected swap fees)
     let treasuryUsdcRaw = 0n;
     try {
       treasuryUsdcRaw = (await publicClient.readContract({
@@ -37,16 +37,7 @@ export async function GET(req: Request) {
       console.warn("[Admin Stats] Failed to read Treasury USDC balance:", err);
     }
 
-    // 2. Gas Sponsorship Telemetry
-    const gasSponsorship = {
-      provider: "Pimlico ERC-4337",
-      mode: "Paymaster Gas Sponsorship",
-      network: "Base Mainnet (Chain 8453)",
-      healthy: true,
-      policy: "100% Gas Sponsored for Smart Accounts",
-    };
-
-    // 3. Backend Relayer / Sweeper Wallet Telemetry
+    // 2. Backend Relayer / Proxy Forwarder Wallet Telemetry
     let sweeperStats = {
       configured: false,
       address: null as string | null,
@@ -75,9 +66,9 @@ export async function GET(req: Request) {
     }
 
     const relayerStats = {
-      address: sweeperStats.address || "Pimlico Paymaster (ERC-4337)",
-      balanceEth: sweeperStats.configured ? `${sweeperStats.balanceEth} ETH` : "Active",
-      healthy: sweeperStats.configured ? sweeperStats.healthy : true,
+      address: sweeperStats.address || null,
+      balanceEth: sweeperStats.configured ? `${sweeperStats.balanceEth} ETH` : "Unconfigured",
+      healthy: sweeperStats.healthy,
       error: sweeperStats.error,
     };
 
@@ -97,7 +88,6 @@ export async function GET(req: Request) {
       },
       relayer: relayerStats,
       sweeper: sweeperStats,
-      gasSponsorship,
       telemetry: {
         treasuryUsdcBalance: treasuryUsdc,
         platformFeeBps: 200,

@@ -3,8 +3,8 @@ import { ProxySwapOrder } from "./proxySwapStore";
 import { DirectSwapOrder } from "./directSwapStore";
 import { listAllApiKeys } from "./apiKeysStore";
 
-export type AdminTxChannel = "app" | "api" | "checkout";
-export type AdminTxCategory = "swap" | "payment";
+export type AdminTxChannel = "app" | "api";
+export type AdminTxCategory = "swap";
 export type AdminTxStatus = "COMPLETED" | "PENDING" | "FAILED" | "REFUNDED" | "EXPIRED";
 
 export interface AdminSystemTransaction {
@@ -22,7 +22,6 @@ export interface AdminSystemTransaction {
   amountUsdEstimate: number;
   zkpayFeeUsdEstimate: number;
   partnerFeeUsdEstimate?: number;
-  fiatAmount?: number;
   recipient: string;
   depositAddress?: string | null;
   txHash?: string | null;
@@ -41,10 +40,6 @@ export interface AdminSystemMetrics {
   refundedTransactions: number;
   successRate: number;
   totalFeesUsd: number;
-  volumeByCategory: {
-    paymentsUsd: number;
-    swapsUsd: number;
-  };
   countsByChannel: {
     appCount: number;
     apiCount: number;
@@ -224,10 +219,6 @@ export async function getAdminSystemTransactions(
     refundedTransactions,
     successRate,
     totalFeesUsd: Math.round(totalFeesUsd * 100) / 100,
-    volumeByCategory: {
-      paymentsUsd: 0,
-      swapsUsd: Math.round(totalVolumeUsd * 100) / 100,
-    },
     countsByChannel: {
       appCount,
       apiCount,

@@ -4,7 +4,7 @@
 
 export interface TransactionRecord {
   hash: string; // swapId or depositAddress or txHash
-  type: "swap" | "payment" | "cashout" | "deposit";
+  type: "swap" | "deposit";
   title: string;
   fromAsset?: string;
   toAsset?: string;
@@ -13,7 +13,6 @@ export interface TransactionRecord {
   amountIn?: string;
   amountOut?: string;
   depositAddress?: string;
-  amountINR: number;
   amountUSDC: number;
   fee: number;
   protocolFee?: number;

@@ -3,33 +3,11 @@ import dns from "dns/promises";
 
 export interface WebhookPayload {
   event:
-    | "payin.detected"
-    | "payin.settled"
-    | "payin.failed"
-    | "payin.rejected_under_minimum"
-    | "payin.refunded"
-    | "paylink.paid"
     | "swap.deposit_detected"
     | "swap.settled"
     | "swap.failed"
     | "swap.refunded"
     | (string & {});
-  sessionId?: string;
-  linkId?: string;
-  recipientUpi?: string;
-  fiatAmount?: number;
-  currency?: string;
-  amountUsdc?: string;
-  txHash?: string;
-  p2pOrderId?: string;
-  orderId?: string;
-  proof?: {
-    verification: string;
-    p2pOrderId?: string;
-    actualFiatAmount?: number;
-    basescanTx?: string;
-    [key: string]: any;
-  };
   // Cross-chain swap event fields
   swapId?: string;
   depositAddress?: string;

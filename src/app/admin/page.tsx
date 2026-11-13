@@ -1,11 +1,9 @@
 "use client";
 
-import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { usePrivy } from "@privy-io/react-auth";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
-  ShieldAlert,
-  ShieldCheck,
   RefreshCw,
   Search,
   ExternalLink,
@@ -17,122 +15,19 @@ import {
   Layers,
   Lock,
   ArrowLeft,
-  Server,
   Zap,
   CheckCircle2,
   AlertCircle,
   Filter,
-  CreditCard,
-  ArrowDownLeft,
-  ArrowUpRight,
   ChevronRight,
   SlidersHorizontal,
-  Gift,
-  UserMinus,
-  UserCheck,
   Send,
   Wallet,
-  Calendar,
-  Sparkles,
   Users,
-  Trash2,
   Fuel,
   Clock,
   X,
 } from "lucide-react";
-import { CONTRACTS } from "@/lib/constants";
-import { ERC20_ABI } from "@/lib/abi";
-import { encodeFunctionData, parseUnits } from "viem";
-
-function formatUpiName(id: string): string {
-  return id;
-}
-
-interface AdminPaymentOverview {
-  success: boolean;
-  stats?: {
-    storedRefundsCount: number;
-    totalSessions: number;
-    settledSessions: number;
-    activeSessions: number;
-    [key: string]: any;
-  };
-  wallets?: {
-    treasuryBalanceUsdc: string;
-    refundWalletBalanceUsdc: string;
-    [key: string]: any;
-  };
-  relayer?: {
-    address: string;
-    balanceEth: string;
-    healthy: boolean;
-    [key: string]: any;
-  };
-  metrics: {
-    totalPayinSessions: number;
-    settledCount: number;
-    inFlightCount: number;
-    refundedCount: number;
-    storedInRefundWalletCount: number;
-    underpaidAcceptedCount: number;
-    underpaidRejectedCount: number;
-    overpaidCount: number;
-    totalPenaltyUsdcCollected: string;
-    totalTipsUsdcCollected: string;
-  };
-  refundWallet: { address: string; balanceUsdc: string };
-  relayerWallet: { address: string; balanceUsdc: string; balanceEth: string };
-  sessions: any[];
-  payLinks: any[];
-  [key: string]: any;
-}
-
-async function getAdminPaymentOverview(_token?: string | null): Promise<AdminPaymentOverview> {
-  return {
-    success: true,
-    stats: {
-      storedRefundsCount: 0,
-      totalSessions: 0,
-      settledSessions: 0,
-      activeSessions: 0,
-    },
-    wallets: {
-      treasuryBalanceUsdc: "0.00",
-      refundWalletBalanceUsdc: "0.00",
-    },
-    relayer: {
-      address: CONTRACTS.TREASURY,
-      balanceEth: "0.0000",
-      healthy: true,
-    },
-    metrics: {
-      totalPayinSessions: 0,
-      settledCount: 0,
-      inFlightCount: 0,
-      refundedCount: 0,
-      storedInRefundWalletCount: 0,
-      underpaidAcceptedCount: 0,
-      underpaidRejectedCount: 0,
-      overpaidCount: 0,
-      totalPenaltyUsdcCollected: "0.00",
-      totalTipsUsdcCollected: "0.00",
-    },
-    refundWallet: { address: CONTRACTS.REFUND_WALLET, balanceUsdc: "0.00" },
-    relayerWallet: { address: CONTRACTS.TREASURY, balanceUsdc: "0.00", balanceEth: "0.0000" },
-    sessions: [],
-    payLinks: [],
-  };
-}
-
-async function executeManualRefundAction(_params: any): Promise<any> {
-  return { success: false, error: "Legacy fiat actions are deprecated." };
-}
-async function retryHandshakeAction(_id: string, _token?: string | null): Promise<any> {
-  return { success: false, error: "Legacy fiat actions are deprecated." };
-}
-async function forceCancelOrderAction(_id: string, _token?: string | null): Promise<any> {
-  return { success: false, error: "Legacy fiat actions are deprecated." };
-}
 
 interface AdminStats {
   network: {
@@ -141,27 +36,8 @@ interface AdminStats {
     explorer: string;
   };
   contracts: {
-    diamond: string;
     usdc: string;
     treasury: string;
-    vault?: string | null;
-  };
-  gasSponsorship?: {
-    provider: string;
-    mode: string;
-    network: string;
-    healthy: boolean;
-    policy: string;
-  };
-  earnVault?: {
-    configured: boolean;
-    vaultId: string | null;
-    address: string | null;
-    name: string;
-    provider: string;
-    apy: string;
-    tvlUsd: number | null;
-    healthy: boolean;
   };
   relayer?: {
     address: string;
@@ -176,43 +52,18 @@ interface AdminStats {
     healthy: boolean;
     error?: string;
   };
-  paylinksSummary?: {
-    total: number;
-    paid: number;
-    active: number;
-  };
-  payinSessionsSummary?: {
-    activeCount: number;
-  };
   telemetry: {
     treasuryUsdcBalance: string;
-    diamondUsdcLiquidity: string;
-    inrPerUsdcRate: string;
     platformFeeBps: number;
     fixedFeeThresholdUsdc?: number;
     fixedFeeUsdc?: number;
-    noKycLimitUsdc: number;
   };
 }
 
-interface OrderItem {
-  id: string;
-  orderType: string;
-  user: string;
-  recipient: string;
-  currency: string;
-  usdcAmount: string;
-  fiatAmount: string;
-  status: string;
-  txHash: string;
-  timestamp: number;
-}
-
-type AdminTab = "overview" | "orders" | "payments" | "payouts" | "rewards" | "tools";
+type AdminTab = "overview" | "payouts" | "tools";
 
 export default function AdminPage() {
   const { ready, authenticated, user, login, logout, getAccessToken } = usePrivy();
-  const { wallets } = useWallets();
 
   const [isVerifying, setIsVerifying] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -220,19 +71,8 @@ export default function AdminPage() {
 
   const [activeTab, setActiveTab] = useState<AdminTab>("overview");
   const [stats, setStats] = useState<AdminStats | null>(null);
-  const [orders, setOrders] = useState<OrderItem[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-
-  // Payments & Fund Recovery Console State
-  const [paymentData, setPaymentData] = useState<AdminPaymentOverview | null>(null);
-  const [isLoadingPaymentData, setIsLoadingPaymentData] = useState(false);
-  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>("ALL");
-  const [manualRefundSession, setManualRefundSession] = useState<any | null>(null);
-  const [manualRefundRecipient, setManualRefundRecipient] = useState<string>("");
-  const [manualRefundAmount, setManualRefundAmount] = useState<string>("");
-  const [isExecutingAdminAction, setIsExecutingAdminAction] = useState(false);
-  const [adminActionResult, setAdminActionResult] = useState<{ success: boolean; message: string; txHash?: string } | null>(null);
 
   // Partner Payouts & Partner Analytics State
   const [adminPayouts, setAdminPayouts] = useState<any[]>([]);
@@ -252,51 +92,11 @@ export default function AdminPage() {
   const [isRejectingPayout, setIsRejectingPayout] = useState(false);
   const [rejectPayoutError, setRejectPayoutError] = useState<string | null>(null);
 
-  // Rewards State
-  const [rewardsData, setRewardsData] = useState<any>(null);
-  const [rewardsCycle, setRewardsCycle] = useState<string>("");
-  const [isDisbursing, setIsDisbursing] = useState(false);
-  const [disburseProgress, setDisburseProgress] = useState<string | null>(null);
-  const [disburseTxHash, setDisburseTxHash] = useState<string | null>(null);
-  const [disburseError, setDisburseError] = useState<string | null>(null);
-
-  // Orders Filter State
-  const [searchQuery, setSearchQuery] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"all" | "pay" | "cashout">("all");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
-
   // Cross-Chain Deposit Lookup State (NEAR Intents)
   const [shiftIdInput, setShiftIdInput] = useState("");
   const [shiftData, setShiftData] = useState<any>(null);
   const [isSearchingShift, setIsSearchingShift] = useState(false);
   const [shiftError, setShiftError] = useState<string | null>(null);
-
-  // Sweeper State
-  const [isSweeping, setIsSweeping] = useState(false);
-  const [sweepResult, setSweepResult] = useState<any>(null);
-
-  const handleSweepAll = async () => {
-    setIsSweeping(true);
-    setSweepResult(null);
-    try {
-      const token = await getAccessToken();
-      const res = await fetch("/api/admin/sweeper", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({}),
-      });
-      const data = await res.json();
-      setSweepResult(data);
-      loadAdminData();
-    } catch (err: any) {
-      setSweepResult({ success: false, error: err.message });
-    } finally {
-      setIsSweeping(false);
-    }
-  };
 
   // Emergency Proxy Recovery Tool State
   const [proxyQueryInput, setProxyQueryInput] = useState("");
@@ -531,247 +331,31 @@ export default function AdminPage() {
       const token = await getAccessToken();
       if (!token) return;
 
-      const reqHeaders = {
-        Authorization: `Bearer ${token}`,
-      };
-
-      // 1. Fetch Stats
       const statsRes = await fetch("/api/admin/stats", {
-        headers: reqHeaders,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
       if (statsRes.ok) {
         const statsJson = await statsRes.json();
         setStats(statsJson);
-      }
-
-      // 2. Fetch Orders with server filtering
-      const ordersRes = await fetch(
-        `/api/admin/orders?limit=40&type=${typeFilter}&status=${statusFilter}${
-          searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ""
-        }`,
-        { headers: reqHeaders }
-      );
-      if (ordersRes.ok) {
-        const ordersJson = await ordersRes.json();
-        setOrders(ordersJson.orders || []);
-      }
-
-      // 3. Fetch Monthly Rewards
-      const rewardsUrl = `/api/admin/rewards${rewardsCycle ? `?cycle=${encodeURIComponent(rewardsCycle)}` : ""}`;
-      const rewardsRes = await fetch(rewardsUrl, { headers: reqHeaders });
-      if (rewardsRes.ok) {
-        const rewardsJson = await rewardsRes.json();
-        if (rewardsJson.success) {
-          setRewardsData(rewardsJson.data);
-          if (!rewardsCycle && rewardsJson.data.cycle) {
-            setRewardsCycle(rewardsJson.data.cycle);
-          }
-        }
       }
     } catch (err) {
       console.error("Failed to load admin data", err);
     } finally {
       setIsLoadingData(false);
     }
-  }, [isAuthorized, getAccessToken, searchQuery, typeFilter, statusFilter, rewardsCycle]);
-
-  // Handler for Admin excluding or adding back a user from monthly payout list
-  const handleToggleExclusion = async (userAddress: string, currentlyExcluded: boolean) => {
-    try {
-      const token = await getAccessToken();
-      if (!token) return;
-      const res = await fetch("/api/admin/rewards", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "toggle-exclusion",
-          cycle: rewardsData?.cycle,
-          userAddress,
-          excluded: !currentlyExcluded,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        loadAdminData();
-      } else {
-        alert(data.error || "Failed to toggle user exclusion");
-      }
-    } catch (err: any) {
-      alert(err.message || "Failed to toggle user exclusion");
-    }
-  };
-
-  const handleResetCycle = async () => {
-    if (!window.confirm("Are you sure you want to reset and clear all phantom/test reward entries for this cycle?")) {
-      return;
-    }
-    try {
-      const token = await getAccessToken();
-      const res = await fetch("/api/admin/rewards", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "reset-cycle",
-          cycle: rewardsData?.cycle,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert("Cycle rewards successfully reset.");
-        loadAdminData();
-      } else {
-        alert(data.error || "Failed to reset cycle");
-      }
-    } catch (err: any) {
-      alert(err.message || "Failed to reset cycle");
-    }
-  };
-
-  // Handler for Admin signing batch payout transaction
-  const handleDisburseRewards = async () => {
-    if (!rewardsData || !rewardsData.users) return;
-    const eligible = rewardsData.users.filter(
-      (u: any) => !u.excluded && u.status === "PENDING" && u.totalDueUsdc > 0
-    );
-
-    if (eligible.length === 0) {
-      alert("No eligible users pending disbursal in this cycle.");
-      return;
-    }
-
-    const totalUsdc = eligible.reduce((acc: number, u: any) => acc + u.totalDueUsdc, 0);
-    const confirmed = window.confirm(
-      `Disburse $${totalUsdc.toFixed(2)} USDC to ${eligible.length} users using your connected admin wallet?`
-    );
-    if (!confirmed) return;
-
-    const activeWallet = wallets?.[0] || user?.wallet;
-    if (!activeWallet) {
-      alert("No wallet connected. Please ensure your admin wallet is connected.");
-      return;
-    }
-
-    setIsDisbursing(true);
-    setDisburseError(null);
-    setDisburseTxHash(null);
-    setDisburseProgress(`Preparing batch disbursal to ${eligible.length} users...`);
-
-    try {
-      const provider = await (activeWallet as any).getEthereumProvider();
-      const adminAddress = (activeWallet as any).address;
-      const token = await getAccessToken();
-      let lastTxHash = "";
-      const disbursedAddresses: string[] = [];
-
-      for (let i = 0; i < eligible.length; i++) {
-        const u = eligible[i];
-        setDisburseProgress(`Sending ${i + 1}/${eligible.length}: $${u.totalDueUsdc.toFixed(2)} USDC to ${u.userAddress.slice(0, 6)}...${u.userAddress.slice(-4)}`);
-
-        const amountWei = parseUnits(u.totalDueUsdc.toFixed(6), 6);
-        const data = encodeFunctionData({
-          abi: ERC20_ABI,
-          functionName: "transfer",
-          args: [u.userAddress as any, amountWei],
-        });
-
-        const txHash = await provider.request({
-          method: "eth_sendTransaction",
-          params: [{
-            from: adminAddress,
-            to: CONTRACTS.USDC,
-            data,
-          }],
-        });
-
-        lastTxHash = txHash as string;
-        disbursedAddresses.push(u.userAddress);
-
-        // Immediately record each completed transfer on backend to prevent double-payout if a subsequent tx fails
-        if (token) {
-          await fetch("/api/admin/rewards", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              action: "mark-paid",
-              cycle: rewardsData.cycle,
-              userAddresses: [u.userAddress],
-              payoutTxHash: lastTxHash,
-            }),
-          }).catch((e) => console.warn("Incremental mark-paid warning:", e));
-        }
-      }
-
-      setDisburseProgress("Confirming payout records on backend...");
-      const recordRes = await fetch("/api/admin/rewards", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "mark-paid",
-          cycle: rewardsData.cycle,
-          userAddresses: disbursedAddresses,
-          payoutTxHash: lastTxHash,
-        }),
-      });
-
-      const recordJson = await recordRes.json();
-      if (!recordJson.success) {
-        console.warn("Backend mark-paid warning:", recordJson.error);
-      }
-
-      setDisburseTxHash(lastTxHash);
-      setDisburseProgress(null);
-      loadAdminData();
-    } catch (err: any) {
-      console.error("[Admin Payout] Failed:", err);
-      setDisburseError(err.message || "Payout transaction failed or was rejected.");
-      loadAdminData();
-    } finally {
-      setIsDisbursing(false);
-    }
-  };
+  }, [isAuthorized, getAccessToken]);
 
   useEffect(() => {
     verifyAdmin();
   }, [verifyAdmin]);
-
-  const loadPayments = useCallback(async () => {
-    setIsLoadingPaymentData(true);
-    try {
-      const token = await getAccessToken();
-      const res = await getAdminPaymentOverview(token);
-      if (res.success) {
-        setPaymentData(res);
-      }
-    } catch (err: any) {
-      console.warn("[Admin] loadPayments warning:", err);
-    } finally {
-      setIsLoadingPaymentData(false);
-    }
-  }, [getAccessToken]);
 
   useEffect(() => {
     if (isAuthorized) {
       loadAdminData();
     }
   }, [isAuthorized, loadAdminData]);
-
-  useEffect(() => {
-    if (isAuthorized && activeTab === "payments") {
-      loadPayments();
-    }
-  }, [isAuthorized, activeTab, loadPayments]);
 
   useEffect(() => {
     if (isAuthorized && activeTab === "tools") {
@@ -908,27 +492,6 @@ export default function AdminPage() {
     }
   };
 
-  // Filtered orders list (with instant local filter support)
-  const filteredOrders = useMemo(() => {
-    return orders.filter((order) => {
-      const matchesSearch =
-        !searchQuery ||
-        order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        order.user?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        order.recipient?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        order.txHash?.toLowerCase().includes(searchQuery.toLowerCase());
-
-      const matchesType =
-        typeFilter === "all" ||
-        (typeFilter === "pay" && order.orderType.includes("PAY")) ||
-        (typeFilter === "cashout" && order.orderType.includes("SELL"));
-
-      const matchesStatus =
-        statusFilter === "ALL" || order.status.toUpperCase() === statusFilter.toUpperCase();
-
-      return matchesSearch && matchesType && matchesStatus;
-    });
-  }, [orders, searchQuery, typeFilter, statusFilter]);
 
   // -------------------------------------------------------------
   // 1. LOADING STATE
@@ -1077,7 +640,7 @@ export default function AdminPage() {
       <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-5 space-y-6">
 
         {/* Segmented Tab Bar (Mobile-First) */}
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 p-1 rounded-2xl bg-black/40 border border-white/10 max-w-3xl mx-auto sm:mx-0">
+        <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-black/40 border border-white/10 max-w-xl mx-auto sm:mx-0">
           <button
             onClick={() => setActiveTab("overview")}
             className={`py-2 px-2.5 rounded-xl text-xs font-sans tabular-nums font-bold transition-colors ${
@@ -1087,36 +650,6 @@ export default function AdminPage() {
             }`}
           >
             Overview
-          </button>
-          <button
-            onClick={() => setActiveTab("orders")}
-            className={`py-2 px-2.5 rounded-xl text-xs font-sans tabular-nums font-bold transition-colors relative ${
-              activeTab === "orders"
-                ? "bg-white/10 text-white shadow-sm border border-white/15"
-                : "text-outline hover:text-on-surface"
-            }`}
-          >
-            <span>Orders</span>
-            {orders.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-success/20 text-success text-[9px]">
-                {orders.length}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab("payments")}
-            className={`py-2 px-2.5 rounded-xl text-xs font-sans tabular-nums font-bold transition-colors relative ${
-              activeTab === "payments"
-                ? "bg-white/10 text-white shadow-sm border border-white/15"
-                : "text-outline hover:text-on-surface"
-            }`}
-          >
-            <span>Payments</span>
-            {paymentData?.stats?.storedRefundsCount ? (
-              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-warning/20 text-warning text-[9px] font-bold">
-                {paymentData.stats.storedRefundsCount}
-              </span>
-            ) : null}
           </button>
           <button
             onClick={() => setActiveTab("payouts")}
@@ -1136,21 +669,6 @@ export default function AdminPage() {
                 {partnerAnalytics.summary.totalPartners}
               </span>
             ) : null}
-          </button>
-          <button
-            onClick={() => setActiveTab("rewards")}
-            className={`py-2 px-2.5 rounded-xl text-xs font-sans tabular-nums font-bold transition-colors relative ${
-              activeTab === "rewards"
-                ? "bg-white/10 text-white shadow-sm border border-white/15"
-                : "text-outline hover:text-on-surface"
-            }`}
-          >
-            <span>Rewards</span>
-            {rewardsData?.eligibleUserCount > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-primary/20 text-primary text-[9px]">
-                {rewardsData.eligibleUserCount}
-              </span>
-            )}
           </button>
           <button
             onClick={() => setActiveTab("tools")}
@@ -1182,7 +700,7 @@ export default function AdminPage() {
                     <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-[10px] font-bold">Live explorer</span>
                   </div>
                   <p className="text-xs text-outline font-sans tabular-nums mt-0.5">
-                    View total volume, in-app payments & swaps, developer API transactions, and export CSV archives.
+                    View total swap volume, in-app swaps, developer API transactions, and export CSV archives.
                   </p>
                 </div>
               </div>
@@ -1191,30 +709,42 @@ export default function AdminPage() {
                 <ChevronRight className="w-4 h-4" />
               </div>
             </Link>
-            
-            {/* Infrastructure & Gas Sponsorship Banners */}
+
+            {/* Infrastructure & Base Treasury Banners */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {/* Pimlico Paymaster Banner */}
-              <div className="p-4 rounded-2xl bg-success/15/30 border border-success/20 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
+              {/* Base Treasury USDC Card */}
+              <div className="p-4 rounded-2xl bg-surface border border-white/10 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <div className="w-8 h-8 rounded-xl bg-success/10 border border-success/30 flex items-center justify-center text-success shrink-0">
-                    <Zap className="w-4 h-4" />
+                    <DollarSign className="w-4 h-4" />
                   </div>
-                  <div>
-                    <h4 className="text-xs sm:text-sm font-bold text-success">
-                      Pimlico ERC-4337 Gas Sponsorship
+                  <div className="min-w-0">
+                    <h4 className="text-xs sm:text-sm font-bold text-white">
+                      Base Treasury USDC
                     </h4>
-                    <p className="text-[11px] text-success/80 font-sans tabular-nums">
-                      100% of UserOps sponsored on Base Mainnet
+                    <p className="text-[11px] text-outline font-sans tabular-nums">
+                      ${stats?.telemetry?.treasuryUsdcBalance || "0.00"} USDC on Base
                     </p>
                   </div>
                 </div>
-                <span className="px-2.5 py-1 rounded-full bg-success/20 text-success text-[10px] font-sans tabular-nums font-bold shrink-0">
-                  ACTIVE
-                </span>
+                {stats?.contracts?.treasury ? (
+                  <a
+                    href={`https://basescan.org/token/${stats.contracts.usdc}?a=${stats.contracts.treasury}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-2.5 py-1 rounded-full bg-success/20 text-success text-[10px] font-sans tabular-nums font-bold inline-flex items-center gap-1 shrink-0"
+                  >
+                    <span>Basescan</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                ) : (
+                  <span className="px-2.5 py-1 rounded-full bg-success/20 text-success text-[10px] font-sans tabular-nums font-bold shrink-0">
+                    LIVE
+                  </span>
+                )}
               </div>
 
-              {/* Sweeper Wallet Card */}
+              {/* Proxy Forwarder Relayer Card */}
               <div className="p-4 rounded-2xl bg-surface border border-white/10 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/30 flex items-center justify-center text-primary shrink-0">
@@ -1223,7 +753,7 @@ export default function AdminPage() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <h4 className="text-xs sm:text-sm font-bold text-white">
-                        Deposit Sweeper Wallet
+                        Proxy Forwarder Relayer
                       </h4>
                       <span className="text-[10px] font-sans tabular-nums text-outline">
                         ({stats?.sweeper?.balanceEth || "0.0000"} ETH)
@@ -1237,7 +767,7 @@ export default function AdminPage() {
                         <button
                           onClick={() => copyToClipboard(stats!.sweeper!.address!, "sweeper")}
                           className="text-primary hover:text-white transition-colors"
-                          title="Copy Sweeper Address"
+                          title="Copy Relayer Address"
                         >
                           {copiedKey === "sweeper" ? (
                             <Check className="w-3 h-3 text-success" />
@@ -1269,128 +799,9 @@ export default function AdminPage() {
                       : "bg-warning/20 text-warning border border-warning/30"
                   }`}
                 >
-                  {stats?.sweeper?.configured ? "SWEEPER READY" : "SETUP KEY"}
+                  {stats?.sweeper?.configured ? "RELAYER READY" : "SETUP KEY"}
                 </span>
               </div>
-            </div>
-
-            {/* KPI Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-              
-              {/* Card 1: Treasury Revenue */}
-              <div className="obsidian-glass rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-bold  tracking-normal text-outline font-sans tabular-nums">
-                    Treasury Revenue (USDC)
-                  </span>
-                  <div className="w-7 h-7 rounded-lg bg-success/10 border border-success/20 flex items-center justify-center text-success">
-                    <DollarSign className="w-4 h-4" />
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-3xl font-black text-white tracking-tight">
-                    ${stats?.telemetry?.treasuryUsdcBalance || "0.00"}
-                  </h3>
-                  <p className="text-[11px] font-sans tabular-nums text-outline mt-1">
-                    Collected 1% Platform Take-Rate
-                  </p>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-[11px] font-sans tabular-nums">
-                  <span className="text-success font-bold">1% Auto-Directed</span>
-                  {stats?.contracts?.treasury && (
-                    <a
-                      href={`https://basescan.org/token/${stats.contracts.usdc}?a=${stats.contracts.treasury}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-primary hover:underline inline-flex items-center gap-1"
-                    >
-                      <span>Basescan</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  )}
-                </div>
-              </div>
-
-              {/* Card 2: P2P Live Rate */}
-              <div className="obsidian-glass rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-bold  tracking-normal text-outline font-sans tabular-nums">
-                    Live P2P Market Rate
-                  </span>
-                  <div className="w-7 h-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-                    <TrendingUp className="w-4 h-4" />
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-3xl font-black text-white tracking-tight">
-                    ₹{stats?.telemetry?.inrPerUsdcRate || "0.00"}
-                  </h3>
-                  <p className="text-[11px] font-sans tabular-nums text-outline mt-1">
-                    INR per USDC (P2P Oracle Feed)
-                  </p>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-[11px] font-sans tabular-nums">
-                  <span className="text-success">● Live Subgraph Feed</span>
-                  <span className="text-outline">INR</span>
-                </div>
-              </div>
-
-              {/* Card 3: Protocol Escrow Liquidity */}
-              <div className="obsidian-glass rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-bold  tracking-normal text-outline font-sans tabular-nums">
-                    Diamond Escrow Liquidity
-                  </span>
-                  <div className="w-7 h-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-                    <Layers className="w-4 h-4" />
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-3xl font-black text-white tracking-tight">
-                    ${stats?.telemetry?.diamondUsdcLiquidity || "0.00"}
-                  </h3>
-                  <p className="text-[11px] font-sans tabular-nums text-outline mt-1">
-                    Locked USDC in Diamond Core
-                  </p>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-[11px] font-sans tabular-nums">
-                  <span className="text-primary">Base Mainnet</span>
-                  <span className="text-primary font-bold">P2P v4</span>
-                </div>
-              </div>
-
-              {/* Card 4: Earn Yield Vault */}
-              <div className="obsidian-glass rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden group">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-bold  tracking-normal text-outline font-sans tabular-nums">
-                    Base USDC Earn Vault
-                  </span>
-                  <div className="w-7 h-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-                    <TrendingUp className="w-4 h-4" />
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-3xl font-black text-white tracking-tight">
-                    {stats?.earnVault?.apy || "5.51"}% <span className="text-sm font-normal text-outline">APY</span>
-                  </h3>
-                  <p className="text-[11px] font-sans tabular-nums text-outline mt-1">
-                    Steakhouse / Morpho Blue Vault
-                  </p>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-[11px] font-sans tabular-nums">
-                  <span className="text-primary font-bold">Auto-Compounding</span>
-                  <span className="text-outline">DeFi Yield</span>
-                </div>
-              </div>
-
             </div>
 
             {/* Real On-Chain Swap Revenue & Partner Profit Overview */}
@@ -1482,31 +893,31 @@ export default function AdminPage() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-xs font-sans tabular-nums">
                 <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
                   <span className="text-outline text-[10px]  font-bold block">
-                    1. Platform Convenience Fee
+                    1. In-App Swap Fee
                   </span>
-                  <p className="text-base font-bold text-white">1.00% (100 bps)</p>
+                  <p className="text-base font-bold text-white">2.00% (200 bps)</p>
                   <p className="text-[11px] text-outline">
-                    Sent to ZkPay Treasury on every Scan & Pay and Cashout order
+                    Applied on cross-chain swaps via ZkPay Treasury
                   </p>
                 </div>
 
                 <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
                   <span className="text-outline text-[10px]  font-bold block">
-                    2. Protocol Small-Order Fee
+                    2. Partner API Fee Split
                   </span>
-                  <p className="text-base font-bold text-white">$0.10 USDC</p>
+                  <p className="text-base font-bold text-white">50% / 50% Share</p>
                   <p className="text-[11px] text-outline">
-                    Enforced by Diamond for orders ≤ $10 USDC. (Free for orders &gt; $10)
+                    Developers keep 50% of configured bps fees; Treasury retains 50%
                   </p>
                 </div>
 
                 <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
                   <span className="text-outline text-[10px]  font-bold block">
-                    3. No-KYC Transaction Ceiling
+                    3. EVM Conditional Fixed Fee
                   </span>
-                  <p className="text-base font-bold text-white">100 USDC / Order</p>
+                  <p className="text-base font-bold text-white">$0.02 Flat Fee</p>
                   <p className="text-[11px] text-outline">
-                    Zero verification baseline floor for INR UPI settlements
+                    Applied on EVM proxy deposits only when ZkPay&apos;s bps share &lt; $0.02
                   </p>
                 </div>
               </div>
@@ -1515,1106 +926,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ────────────── TAB 2: LIVE ORDERS ────────────── */}
-        {activeTab === "orders" && (
-          <div className="space-y-4 animate-in fade-in duration-300">
-            
-            {/* Filter & Search Bar */}
-            <div className="obsidian-glass rounded-2xl p-4 space-y-3">
-              <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
-                {/* Search Input */}
-                <div className="relative w-full sm:flex-1">
-                  <Search className="w-4 h-4 text-outline absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="Search by Order ID, Address, UPI ID, Hash..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs font-sans tabular-nums text-white placeholder:text-outline/60 focus:border-primary outline-none transition-colors"
-                  />
-                </div>
-
-                {/* Type Filter Chips */}
-                <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-                  <button
-                    onClick={() => setTypeFilter("all")}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-sans tabular-nums font-bold transition-colors shrink-0 ${
-                      typeFilter === "all" ? "bg-white/15 text-white border border-white/20" : "bg-white/5 text-outline hover:text-white"
-                    }`}
-                  >
-                    All Types
-                  </button>
-                  <button
-                    onClick={() => setTypeFilter("pay")}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-sans tabular-nums font-bold transition-colors shrink-0 ${
-                      typeFilter === "pay" ? "bg-success/20 text-success border border-success/30" : "bg-white/5 text-outline hover:text-white"
-                    }`}
-                  >
-                    Scan & Pay
-                  </button>
-                  <button
-                    onClick={() => setTypeFilter("cashout")}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-sans tabular-nums font-bold transition-colors shrink-0 ${
-                      typeFilter === "cashout" ? "bg-primary/20 text-primary border border-primary/30" : "bg-white/5 text-outline hover:text-white"
-                    }`}
-                  >
-                    Cashout
-                  </button>
-                </div>
-              </div>
-
-              {/* Status Filter Chips */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs font-sans tabular-nums">
-                <span className="text-outline text-[10px]  font-bold mr-1 shrink-0">Status:</span>
-                {["ALL", "SETTLED", "ACCEPTED", "PENDING", "CANCELLED", "DISPUTED"].map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => setStatusFilter(status)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors shrink-0 ${
-                      statusFilter === status
-                        ? "bg-white/20 text-white"
-                        : "bg-white/5 text-outline hover:text-white"
-                    }`}
-                  >
-                    {status}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Results Count */}
-            <div className="flex items-center justify-between text-xs font-sans tabular-nums text-outline px-1">
-              <span>Showing {filteredOrders.length} orders</span>
-              {isLoadingData && <span className="animate-pulse text-primary">Updating live feed…</span>}
-            </div>
-
-            {/* Empty State */}
-            {filteredOrders.length === 0 && (
-              <div className="obsidian-glass rounded-2xl p-12 text-center text-xs font-sans tabular-nums text-outline">
-                {isLoadingData ? "Streaming protocol orders..." : "No orders matching current filter criteria."}
-              </div>
-            )}
-
-            {/* Mobile Cards View (< md) */}
-            <div className="grid grid-cols-1 gap-3 md:hidden">
-              {filteredOrders.map((order) => {
-                const isPay = order.orderType.includes("PAY");
-                const merchantName = order.recipient?.includes("@") ? formatUpiName(order.recipient) : null;
-
-                return (
-                  <div key={order.id} className="obsidian-glass rounded-2xl p-4 space-y-3 font-sans tabular-nums text-xs">
-                    {/* Card Top: Order ID + Status */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="px-2.5 py-0.5 rounded-md bg-white/10 font-bold text-white">
-                          #{order.id}
-                        </span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          isPay ? "bg-success/15 text-success border border-success/25" : "bg-primary/15 text-primary border border-primary/25"
-                        }`}>
-                          {isPay ? "Scan & Pay" : "Cashout"}
-                        </span>
-                      </div>
-
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        order.status === "SETTLED"
-                          ? "bg-success/20 text-success"
-                          : order.status === "ACCEPTED"
-                          ? "bg-primary/20 text-primary"
-                          : order.status === "CANCELLED"
-                          ? "bg-error/20 text-error"
-                          : "bg-white/10 text-outline"
-                      }`}>
-                        {order.status}
-                      </span>
-                    </div>
-
-                    {/* Card Body: Amounts */}
-                    <div className="flex items-baseline justify-between pt-1 border-t border-white/5">
-                      <div>
-                        <span className="text-xl font-bold text-white">{order.fiatAmount}</span>
-                        <span className="text-[11px] text-outline ml-2">({order.usdcAmount})</span>
-                      </div>
-                      <span className="text-[10px] text-outline">
-                        {new Date(order.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    </div>
-
-                    {/* Card Details: Recipient & Merchant Name */}
-                    <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 text-[11px] space-y-1">
-                      {merchantName && (
-                        <div className="flex justify-between text-white font-bold">
-                          <span className="text-outline">Recipient:</span>
-                          <span className="truncate max-w-[180px]">{merchantName}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between text-outline">
-                        <span>UPI VPA:</span>
-                        <span className="text-white truncate max-w-[180px]">{order.recipient || "—"}</span>
-                      </div>
-                      <div className="flex justify-between text-outline">
-                        <span>User:</span>
-                        <span className="text-primary truncate max-w-[180px]">{order.user ? `${order.user.slice(0, 8)}...${order.user.slice(-6)}` : "—"}</span>
-                      </div>
-                    </div>
-
-                    {/* Card Footer: Basescan Link */}
-                    {order.txHash && (
-                      <div className="pt-2 flex justify-end">
-                        <a
-                          href={`https://basescan.org/tx/${order.txHash}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[11px] text-primary hover:text-white inline-flex items-center gap-1 font-bold"
-                        >
-                          <span>Basescan Tx</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Desktop Table View (hidden on mobile, visible on md+) */}
-            <div className="hidden md:block obsidian-glass rounded-2xl p-5 overflow-x-auto">
-              <table className="w-full text-left text-xs font-sans tabular-nums">
-                <thead>
-                  <tr className="border-b border-white/10 text-[10px]  font-bold text-outline tracking-normal">
-                    <th className="pb-3 pl-2">Order</th>
-                    <th className="pb-3">Type</th>
-                    <th className="pb-3">Fiat Payout</th>
-                    <th className="pb-3">USDC</th>
-                    <th className="pb-3">Recipient / Merchant</th>
-                    <th className="pb-3">User Address</th>
-                    <th className="pb-3">Status</th>
-                    <th className="pb-3 pr-2 text-right">Explorer</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {filteredOrders.map((order) => {
-                    const isPay = order.orderType.includes("PAY");
-                    const merchantName = order.recipient?.includes("@") ? formatUpiName(order.recipient) : null;
-
-                    return (
-                      <tr key={order.id} className="hover:bg-white/[0.02] transition-colors">
-                        <td className="py-3.5 pl-2 font-bold text-white">#{order.id}</td>
-                        <td className="py-3.5">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            isPay ? "bg-success/10 text-success" : "bg-primary/10 text-primary"
-                          }`}>
-                            {isPay ? "Scan & Pay" : "Cashout"}
-                          </span>
-                        </td>
-                        <td className="py-3.5 font-bold text-success">{order.fiatAmount}</td>
-                        <td className="py-3.5 font-bold text-white">{order.usdcAmount}</td>
-                        <td className="py-3.5 truncate max-w-[160px]" title={order.recipient}>
-                          <span className="font-bold text-white block">{merchantName || "—"}</span>
-                          <span className="text-outline text-[10px]">{order.recipient || "—"}</span>
-                        </td>
-                        <td className="py-3.5 text-outline truncate max-w-[120px]">
-                          {order.user ? `${order.user.slice(0, 6)}...${order.user.slice(-4)}` : "—"}
-                        </td>
-                        <td className="py-3.5">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            order.status === "SETTLED"
-                              ? "bg-success/15 text-success border border-success/25"
-                              : order.status === "ACCEPTED"
-                              ? "bg-primary/15 text-primary border border-primary/25"
-                              : order.status === "CANCELLED"
-                              ? "bg-error/15 text-error border border-error/25"
-                              : "bg-white/5 text-outline border border-white/10"
-                          }`}>
-                            {order.status}
-                          </span>
-                        </td>
-                        <td className="py-3.5 pr-2 text-right">
-                          {order.txHash ? (
-                            <a
-                              href={`https://basescan.org/tx/${order.txHash}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-primary hover:text-white inline-flex items-center gap-1 font-bold"
-                            >
-                              <span>Basescan</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          ) : (
-                            <span className="text-outline">None</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-          </div>
-        )}
-
-        {/* ────────────── TAB 3: SYSTEM & TOOLS ────────────── */}
-        {activeTab === "tools" && (
-          <div className="space-y-6 animate-in fade-in duration-300">
-            
-            {/* System Contracts Registry */}
-            <div className="obsidian-glass rounded-2xl p-5 sm:p-6 space-y-4">
-              <div className="flex items-center gap-2 pb-3 border-b border-white/10">
-                <Server className="w-4 h-4 text-primary" />
-                <h3 className="text-sm font-bold text-white  tracking-normal font-sans tabular-nums">
-                  Base Mainnet Contract Registry
-                </h3>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs font-sans tabular-nums">
-                
-                {/* Diamond */}
-                <div className="p-3.5 rounded-xl bg-black/40 border border-white/10 flex flex-col justify-between">
-                  <div>
-                    <span className="text-outline text-[10px]  font-bold block mb-1">
-                      P2P Diamond Core
-                    </span>
-                    <p className="text-white break-all text-[11px]">{stats?.contracts?.diamond || "0x..."}</p>
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-white/5 flex items-center justify-between">
-                    <button
-                      onClick={() => stats?.contracts?.diamond && copyToClipboard(stats.contracts.diamond, "diamond")}
-                      className="text-primary hover:text-white inline-flex items-center gap-1"
-                    >
-                      {copiedKey === "diamond" ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedKey === "diamond" ? "Copied" : "Copy"}</span>
-                    </button>
-                    {stats?.contracts?.diamond && (
-                      <a
-                        href={`https://basescan.org/address/${stats.contracts.diamond}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-outline hover:text-white"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                {/* USDC */}
-                <div className="p-3.5 rounded-xl bg-black/40 border border-white/10 flex flex-col justify-between">
-                  <div>
-                    <span className="text-outline text-[10px]  font-bold block mb-1">
-                      Native USDC (Base)
-                    </span>
-                    <p className="text-white break-all text-[11px]">{stats?.contracts?.usdc || "0x..."}</p>
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-white/5 flex items-center justify-between">
-                    <button
-                      onClick={() => stats?.contracts?.usdc && copyToClipboard(stats.contracts.usdc, "usdc")}
-                      className="text-primary hover:text-white inline-flex items-center gap-1"
-                    >
-                      {copiedKey === "usdc" ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedKey === "usdc" ? "Copied" : "Copy"}</span>
-                    </button>
-                    {stats?.contracts?.usdc && (
-                      <a
-                        href={`https://basescan.org/token/${stats.contracts.usdc}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-outline hover:text-white"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                {/* Treasury */}
-                <div className="p-3.5 rounded-xl bg-black/40 border border-white/10 flex flex-col justify-between">
-                  <div>
-                    <span className="text-outline text-[10px]  font-bold block mb-1">
-                      ZkPay Treasury
-                    </span>
-                    <p className="text-white break-all text-[11px]">{stats?.contracts?.treasury || "0x..."}</p>
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-white/5 flex items-center justify-between">
-                    <button
-                      onClick={() => stats?.contracts?.treasury && copyToClipboard(stats.contracts.treasury, "treasury")}
-                      className="text-primary hover:text-white inline-flex items-center gap-1"
-                    >
-                      {copiedKey === "treasury" ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedKey === "treasury" ? "Copied" : "Copy"}</span>
-                    </button>
-                    {stats?.contracts?.treasury && (
-                      <a
-                        href={`https://basescan.org/address/${stats.contracts.treasury}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-outline hover:text-white"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                {/* Earn Vault */}
-                <div className="p-3.5 rounded-xl bg-black/40 border border-white/10 flex flex-col justify-between">
-                  <div>
-                    <span className="text-outline text-[10px]  font-bold block mb-1">
-                      Steakhouse Morpho Vault
-                    </span>
-                    <p className="text-white break-all text-[11px]">
-                      {stats?.contracts?.vault || stats?.earnVault?.address || "Configured"}
-                    </p>
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-white/5 flex items-center justify-between">
-                    <button
-                      onClick={() => (stats?.contracts?.vault || stats?.earnVault?.address) && copyToClipboard((stats.contracts.vault || stats.earnVault?.address)!, "vault")}
-                      disabled={!stats?.contracts?.vault && !stats?.earnVault?.address}
-                      className="text-primary hover:text-white inline-flex items-center gap-1 disabled:opacity-40"
-                    >
-                      {copiedKey === "vault" ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedKey === "vault" ? "Copied" : "Copy"}</span>
-                    </button>
-                    {(stats?.contracts?.vault || stats?.earnVault?.address) && (
-                      <a
-                        href={`https://basescan.org/address/${stats.contracts.vault || stats.earnVault?.address}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-outline hover:text-white"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-              </div>
-            </div>
-
-            {/* Cross-Chain Deposit Lookup (NEAR Intents) */}
-            <div className="obsidian-glass rounded-2xl p-5 sm:p-6 space-y-4">
-              <div className="flex items-center gap-2 pb-3 border-b border-white/10">
-                <Server className="w-4 h-4 text-primary" />
-                <h3 className="text-sm font-bold text-white  tracking-normal font-sans tabular-nums">
-                  Cross-Chain Deposit Inspector
-                </h3>
-              </div>
-
-              <form onSubmit={handleLookupShift} className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Enter deposit address (e.g. 0x76b4c...)"
-                  value={shiftIdInput}
-                  onChange={(e) => setShiftIdInput(e.target.value)}
-                  className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-sans tabular-nums text-white placeholder:text-outline/60 focus:border-primary outline-none"
-                />
-                <button
-                  type="submit"
-                  disabled={isSearchingShift || !shiftIdInput.trim()}
-                  className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-sans tabular-nums font-bold transition-colors disabled:opacity-40"
-                >
-                  {isSearchingShift ? "Querying..." : "Query"}
-                </button>
-              </form>
-
-              {shiftError && (
-                <div className="p-3 rounded-xl bg-error-container/30 border border-error/20 text-error text-xs font-sans tabular-nums">
-                  {shiftError}
-                </div>
-              )}
-
-              {shiftData && (
-                <div className="p-4 rounded-xl bg-black/40 border border-white/10 text-xs font-sans tabular-nums space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-outline">Status:</span>
-                    <span className="font-bold text-success ">{shiftData.status}</span>
-                  </div>
-                  {shiftData.depositAmount && (
-                    <div className="flex justify-between">
-                      <span className="text-outline">Deposit Amount:</span>
-                      <span className="text-white">{shiftData.depositAmount} {shiftData.depositCoin}</span>
-                    </div>
-                  )}
-                  {shiftData.settleAmount && (
-                    <div className="flex justify-between">
-                      <span className="text-outline">Settled Amount:</span>
-                      <span className="text-success font-bold">{shiftData.settleAmount} USDC</span>
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveTab("tools");
-                      setProxyQueryInput(shiftIdInput.trim());
-                      handleInspectProxy(shiftIdInput.trim());
-                    }}
-                    className="w-full mt-2 py-2 px-3 rounded-xl bg-primary/15 hover:bg-primary/25 border border-primary/30 text-primary font-sans tabular-nums text-xs font-bold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap"
-                  >
-                    <Zap className="w-3.5 h-3.5" />
-                    <span>Emergency Recovery</span>
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* PayLinks & Active Sessions Telemetry */}
-            <div className="obsidian-glass rounded-2xl p-5 sm:p-6 space-y-4">
-              <h3 className="text-sm font-bold text-white  tracking-normal font-sans tabular-nums pb-3 border-b border-white/10">
-                PayLinks & Active Pay-In Telemetry
-              </h3>
-
-              <div className="grid grid-cols-3 gap-3 text-center font-sans tabular-nums">
-                <div className="p-3.5 rounded-xl bg-black/40 border border-white/10">
-                  <span className="text-[10px] font-bold text-outline  block mb-1">Total PayLinks</span>
-                  <span className="text-2xl font-black text-white">{stats?.paylinksSummary?.total || 0}</span>
-                </div>
-                <div className="p-3.5 rounded-xl bg-black/40 border border-white/10">
-                  <span className="text-[10px] font-bold text-outline  block mb-1">Settled</span>
-                  <span className="text-2xl font-black text-success">{stats?.paylinksSummary?.paid || 0}</span>
-                </div>
-                <div className="p-3.5 rounded-xl bg-black/40 border border-white/10">
-                  <span className="text-[10px] font-bold text-outline  block mb-1">Active Sessions</span>
-                  <span className="text-2xl font-black text-primary">{stats?.payinSessionsSummary?.activeCount || 0}</span>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        )}
-
-        {/* ────────────── TAB 4: MONTHLY REWARDS & CASHBACK ────────────── */}
-        {activeTab === "rewards" && (
-          <div className="space-y-6 animate-in fade-in duration-300">
-            {/* Header & Controls */}
-            <div className="p-5 rounded-2xl bg-black/40 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-primary/10 border border-primary/30 flex items-center justify-center text-primary shrink-0">
-                  <Gift className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-white font-sans tabular-nums tracking-tight flex items-center gap-2">
-                    <span>Monthly Cashback & Referral Disbursal</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-success/20 text-success font-sans tabular-nums">
-                      Scan & Pay Only
-                    </span>
-                  </h2>
-                  <p className="text-xs text-outline font-sans tabular-nums">
-                    Cycle: <span className="text-white font-bold">{rewardsData?.cycle || rewardsCycle || "Current"}</span> • Funded from 1% Scan & Pay Platform Fees
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleResetCycle}
-                  disabled={isLoadingData}
-                  title="Clear phantom/test records for this cycle"
-                  className="px-3.5 py-2 rounded-xl bg-error/10 hover:bg-error/20 border border-error/20 text-xs font-sans tabular-nums text-error flex items-center gap-1.5 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Reset Cycle</span>
-                </button>
-
-                <button
-                  onClick={loadAdminData}
-                  disabled={isLoadingData}
-                  className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-sans tabular-nums text-primary flex items-center gap-1.5 transition-colors"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingData ? "animate-spin" : ""}`} />
-                  <span>Refresh</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Metrics Overview Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 font-sans tabular-nums">
-              <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-1">
-                <span className="text-[10px] font-bold text-outline  tracking-normal block">Scan & Pay Volume</span>
-                <span className="text-xl sm:text-2xl font-black text-white">${rewardsData?.totalCycleVolume?.toFixed(2) || "0.00"}</span>
-                <span className="text-[10px] text-outline block">Base Network</span>
-              </div>
-              <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-1">
-                <span className="text-[10px] font-bold text-outline  tracking-normal block">1% Fees Logged</span>
-                <span className="text-xl sm:text-2xl font-black text-primary">${rewardsData?.totalPlatformFees?.toFixed(2) || "0.00"}</span>
-                <span className="text-[10px] text-outline block">Volume Take-Rate</span>
-              </div>
-              <div className="p-4 rounded-2xl bg-black/40 border border-primary/20 bg-primary-container/20 space-y-1">
-                <span className="text-[10px] font-bold text-primary  tracking-normal block">Pending Disbursal</span>
-                <span className="text-xl sm:text-2xl font-black text-primary">${rewardsData?.totalPendingPayout?.toFixed(2) || "0.00"}</span>
-                <span className="text-[10px] text-primary/70 block">{rewardsData?.eligibleUserCount || 0} Eligible Wallets</span>
-              </div>
-              <div className="p-4 rounded-2xl bg-black/40 border border-success/20 bg-success/15/20 space-y-1">
-                <span className="text-[10px] font-bold text-success  tracking-normal block">Net Profit Retained</span>
-                <span className="text-xl sm:text-2xl font-black text-success">${rewardsData?.netTreasuryProfitRetained?.toFixed(2) || "0.00"}</span>
-                <span className="text-[10px] text-success/70 block">≥60% Guaranteed Margin</span>
-              </div>
-            </div>
-
-            {/* Disbursal Action Banner */}
-            <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-primary-container/40 via-black/50 to-primary-container/40 border border-primary/30 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-sm font-bold text-white font-sans tabular-nums  tracking-normal flex items-center gap-2">
-                    <Send className="w-4 h-4 text-primary" />
-                    <span>Month-End Disbursal Action</span>
-                  </h3>
-                  <p className="text-xs text-outline font-sans tabular-nums mt-1">
-                    Signing will disburse <strong className="text-white">${rewardsData?.totalPendingPayout?.toFixed(2) || "0.00"} USDC</strong> to{" "}
-                    <strong className="text-white">{rewardsData?.eligibleUserCount || 0} approved users</strong> directly from your connected admin wallet.
-                  </p>
-                </div>
-
-                <button
-                  onClick={handleDisburseRewards}
-                  disabled={isDisbursing || !rewardsData?.eligibleUserCount || rewardsData.eligibleUserCount === 0}
-                  className="px-6 py-3.5 rounded-xl bg-gradient-to-r from-primary to-primary hover:from-primary hover:to-primary text-white font-bold text-xs font-sans tabular-nums  tracking-normal transition-colors shadow-lg active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shrink-0"
-                >
-                  <Wallet className="w-4 h-4" />
-                  <span>
-                    {isDisbursing ? "Disbursing..." : `Sign & Disburse ($${rewardsData?.totalPendingPayout?.toFixed(2) || "0.00"})`}
-                  </span>
-                </button>
-              </div>
-
-              {/* Disbursal Feedback Messages */}
-              {disburseProgress && (
-                <div className="p-3.5 rounded-xl bg-primary-container/60 border border-primary/40 text-xs font-sans tabular-nums text-primary flex items-center gap-2 animate-pulse">
-                  <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
-                  <span>{disburseProgress}</span>
-                </div>
-              )}
-
-              {disburseTxHash && (
-                <div className="p-3.5 rounded-xl bg-success/15/60 border border-success/40 text-xs font-sans tabular-nums text-success flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
-                    <span>Payout successful! Transaction recorded on Base.</span>
-                  </span>
-                  <a
-                    href={`https://basescan.org/tx/${disburseTxHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline text-white flex items-center gap-1 font-bold"
-                  >
-                    <span>View Basescan</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              )}
-
-              {disburseError && (
-                <div className="p-3.5 rounded-xl bg-error-container/60 border border-error/40 text-xs font-sans tabular-nums text-error">
-                  {disburseError}
-                </div>
-              )}
-            </div>
-
-            {/* Eligible Users Table */}
-            <div className="obsidian-glass rounded-2xl overflow-hidden border border-white/10">
-              <div className="p-4 sm:p-5 border-b border-white/10 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-primary" />
-                  <h3 className="text-sm font-bold text-white  tracking-normal font-sans tabular-nums">
-                    User Reward Ledger ({rewardsData?.users?.length || 0})
-                  </h3>
-                </div>
-                <span className="text-xs text-outline font-sans tabular-nums">
-                  Toggle to exclude or add back users before signing
-                </span>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs font-sans tabular-nums">
-                  <thead>
-                    <tr className="border-b border-white/10 bg-white/[0.02] text-outline">
-                      <th className="py-3 px-4">User Address</th>
-                      <th className="py-3 px-4">Scan Orders</th>
-                      <th className="py-3 px-4">Cashback</th>
-                      <th className="py-3 px-4">Referrals</th>
-                      <th className="py-3 px-4 font-bold text-white">Total Due</th>
-                      <th className="py-3 px-4">Status</th>
-                      <th className="py-3 px-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {rewardsData?.users && rewardsData.users.length > 0 ? (
-                      rewardsData.users.map((u: any, idx: number) => (
-                        <tr
-                          key={idx}
-                          className={`hover:bg-white/[0.02] transition-colors ${
-                            u.excluded ? "opacity-40 bg-error-container/10" : ""
-                          }`}
-                        >
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2">
-                              <span className="text-white font-sans tabular-nums">
-                                {u.userAddress.slice(0, 6)}…{u.userAddress.slice(-4)}
-                              </span>
-                              <button
-                                onClick={() => copyToClipboard(u.userAddress, `user_${idx}`)}
-                                className="text-outline hover:text-white"
-                                title="Copy"
-                              >
-                                {copiedKey === `user_${idx}` ? (
-                                  <Check className="w-3 h-3 text-success" />
-                                ) : (
-                                  <Copy className="w-3 h-3" />
-                                )}
-                              </button>
-                              <a
-                                href={`https://basescan.org/address/${u.userAddress}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-outline hover:text-white"
-                              >
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-outline">{u.scanCount} txs</td>
-                          <td className="py-3 px-4 text-white">${u.cashbackUsdc.toFixed(2)}</td>
-                          <td className="py-3 px-4 text-white">${u.referralUsdc.toFixed(2)}</td>
-                          <td className="py-3 px-4 text-success font-bold">
-                            ${u.totalDueUsdc.toFixed(2)} USDC
-                          </td>
-                          <td className="py-3 px-4">
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                u.status === "PAID"
-                                  ? "bg-success/20 text-success"
-                                  : u.excluded
-                                  ? "bg-error/20 text-error"
-                                  : "bg-warning/20 text-warning"
-                              }`}
-                            >
-                              {u.status}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            {u.status !== "PAID" ? (
-                              <button
-                                onClick={() => handleToggleExclusion(u.userAddress, u.excluded)}
-                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
-                                  u.excluded
-                                    ? "bg-success/20 hover:bg-success/30 text-success border border-success/30"
-                                    : "bg-error/20 hover:bg-error/30 text-error border border-error/30"
-                                }`}
-                              >
-                                {u.excluded ? (
-                                  <span className="flex items-center gap-1">
-                                    <UserCheck className="w-3 h-3" /> Add Back
-                                  </span>
-                                ) : (
-                                  <span className="flex items-center gap-1">
-                                    <UserMinus className="w-3 h-3" /> Exclude
-                                  </span>
-                                )}
-                              </button>
-                            ) : (
-                              <span className="text-[11px] text-success font-bold flex items-center justify-end gap-1">
-                                <CheckCircle2 className="w-3 h-3" /> Disbursed
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={7} className="py-8 text-center text-outline">
-                          No user rewards recorded for this cycle yet.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ────────────── TAB 3: PAYMENTS & FUND RECOVERY ────────────── */}
-        {activeTab === "payments" && (
-          <div className="space-y-6 animate-in fade-in duration-300">
-            {/* Header & Quick Refresh */}
-            <div className="obsidian-glass rounded-2xl p-5 sm:p-6 space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
-                    <CreditCard className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-white  tracking-normal font-sans tabular-nums">
-                      Payment API Sessions & Fund Recovery
-                    </h3>
-                    <p className="text-xs text-outline font-sans tabular-nums mt-0.5">
-                      On-chain P2P session tracker, tipping router, and manual refund console (Server-Action Secured)
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={loadPayments}
-                  disabled={isLoadingPaymentData}
-                  className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-sans tabular-nums text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95 shrink-0"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingPaymentData ? "animate-spin" : ""}`} />
-                  <span>{isLoadingPaymentData ? "Refreshing..." : "Refresh Sessions"}</span>
-                </button>
-              </div>
-
-              {/* Action Result Notification Banner */}
-              {adminActionResult && (
-                <div
-                  className={`p-4 rounded-xl border text-xs font-sans tabular-nums flex items-start gap-2.5 ${
-                    adminActionResult.success
-                      ? "bg-success/15/40 border-success/30 text-success"
-                      : "bg-error-container/40 border-error/30 text-error"
-                  }`}
-                >
-                  {adminActionResult.success ? (
-                    <CheckCircle2 className="w-4 h-4 text-success shrink-0 mt-0.5" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 text-error shrink-0 mt-0.5" />
-                  )}
-                  <div className="space-y-1 flex-1">
-                    <p>{adminActionResult.message}</p>
-                    {adminActionResult.txHash && (
-                      <a
-                        href={`https://basescan.org/tx/${adminActionResult.txHash}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-white underline inline-flex items-center gap-1 font-bold"
-                      >
-                        <span>View on Basescan: {adminActionResult.txHash.slice(0, 16)}…</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setAdminActionResult(null)}
-                    className="text-outline hover:text-white text-xs"
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-
-              {/* Wallet Telemetry Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 text-xs font-sans tabular-nums">
-                {/* Card 1: Treasury */}
-                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
-                  <div className="flex items-center justify-between text-outline">
-                    <span className="text-[10px]  font-bold">Treasury Balance</span>
-                    <DollarSign className="w-3.5 h-3.5 text-success" />
-                  </div>
-                  <div className="text-lg font-bold text-white font-sans tabular-nums">
-                    ${paymentData?.wallets?.treasuryBalanceUsdc || "0.00"} <span className="text-xs text-outline">USDC</span>
-                  </div>
-                  <p className="text-[10px] text-outline truncate">1% fees + tips + penalties</p>
-                </div>
-
-                {/* Card 2: Refund Wallet */}
-                <div className={`p-4 rounded-xl border space-y-1 transition-colors ${
-                  (paymentData?.stats?.storedRefundsCount || 0) > 0
-                    ? "bg-warning/15/20 border-warning/30 text-warning"
-                    : "bg-white/[0.03] border-white/10"
-                }`}>
-                  <div className="flex items-center justify-between text-outline">
-                    <span className="text-[10px]  font-bold">ZkPay Refund Wallet</span>
-                    <ShieldAlert className="w-3.5 h-3.5 text-warning" />
-                  </div>
-                  <div className="text-lg font-bold text-white font-sans tabular-nums">
-                    ${paymentData?.wallets?.refundWalletBalanceUsdc || "0.00"} <span className="text-xs text-outline">USDC</span>
-                  </div>
-                  <p className="text-[10px] text-warning font-bold">
-                    {paymentData?.stats?.storedRefundsCount || 0} Unclaimed Refunds
-                  </p>
-                </div>
-
-                {/* Card 3: Relayer Gas */}
-                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
-                  <div className="flex items-center justify-between text-outline">
-                    <span className="text-[10px]  font-bold">Relayer Gas Tank</span>
-                    <Zap className="w-3.5 h-3.5 text-primary" />
-                  </div>
-                  <div className="text-lg font-bold text-white font-sans tabular-nums">
-                    {paymentData?.relayer?.balanceEth || "0.0000"} <span className="text-xs text-outline">ETH</span>
-                  </div>
-                  <p className="text-[10px] text-success">
-                    {paymentData?.relayer?.healthy ? "✓ Healthy Gas Buffer" : "⚠ Low Gas Level"}
-                  </p>
-                </div>
-
-                {/* Card 4: Session Metrics */}
-                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
-                  <div className="flex items-center justify-between text-outline">
-                    <span className="text-[10px]  font-bold">Session Overview</span>
-                    <Activity className="w-3.5 h-3.5 text-primary" />
-                  </div>
-                  <div className="text-lg font-bold text-white font-sans tabular-nums">
-                    {paymentData?.stats?.totalSessions || 0} <span className="text-xs text-outline">Total</span>
-                  </div>
-                  <p className="text-[10px] text-outline">
-                    {paymentData?.stats?.settledSessions || 0} Settled • {paymentData?.stats?.activeSessions || 0} Active
-                  </p>
-                </div>
-              </div>
-
-              {/* Status Filter Tabs */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-sans tabular-nums scrollbar-none">
-                {["ALL", "AWAITING_PAYMENT", "ORDER_PLACED", "AWAITING_FIAT_PAYMENT", "SETTLED", "STORED_IN_REFUND_WALLET", "REFUNDED_TO_USER", "FAILED_AND_REFUNDED", "CANCELLED_AND_REFUNDED", "REJECTED_UNDER_MINIMUM"].map((st) => (
-                  <button
-                    key={st}
-                    type="button"
-                    onClick={() => setPaymentStatusFilter(st)}
-                    className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold  transition-colors whitespace-nowrap ${
-                      paymentStatusFilter === st
-                        ? "bg-white/15 border-white/30 text-white"
-                        : "bg-white/[0.02] border-white/5 text-outline hover:text-white"
-                    }`}
-                  >
-                    {st.replace(/_/g, " ")}
-                  </button>
-                ))}
-              </div>
-
-              {/* Sessions Table */}
-              <div className="overflow-x-auto rounded-xl border border-white/10">
-                <table className="w-full text-left text-xs font-sans tabular-nums">
-                  <thead className="bg-white/5 border-b border-white/10 text-outline  text-[10px]">
-                    <tr>
-                      <th className="py-3 px-3.5">Session / Date</th>
-                      <th className="py-3 px-3.5">Recipient UPI</th>
-                      <th className="py-3 px-3.5">USDC Exp / Recv</th>
-                      <th className="py-3 px-3.5">Tip</th>
-                      <th className="py-3 px-3.5">Fiat Delivered</th>
-                      <th className="py-3 px-3.5">Status</th>
-                      <th className="py-3 px-3.5 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {paymentData?.sessions && paymentData.sessions.length > 0 ? (
-                      paymentData.sessions
-                        .filter((s) => paymentStatusFilter === "ALL" || s.status === paymentStatusFilter)
-                        .map((s) => (
-                          <tr key={s.id} className="hover:bg-white/[0.02] transition-colors">
-                            <td className="py-3 px-3.5">
-                              <div className="font-bold text-white truncate max-w-[130px]">{s.id}</div>
-                              <div className="text-[10px] text-outline">
-                                {new Date(s.createdAt).toLocaleDateString()} {new Date(s.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                              </div>
-                            </td>
-                            <td className="py-3 px-3.5">
-                              <span className="text-white font-bold">{s.recipientUpi}</span>
-                              {s.p2pOrderId && (
-                                <div className="text-[10px] text-primary">Order #{s.p2pOrderId}</div>
-                              )}
-                            </td>
-                            <td className="py-3 px-3.5">
-                              <div className="text-white font-bold">${s.receivedUsdc || "0.00"} <span className="text-outline font-normal text-[10px]">/ ${s.expectedUsdc}</span></div>
-                              {s.gasFeeUsdc && (
-                                <div className="text-[9px] text-warning">
-                                  Gas Paid: ${s.gasFeeUsdc} USDC
-                                </div>
-                              )}
-                              {s.refundAddress && (
-                                <div className="text-[9px] text-outline truncate max-w-[110px]" title={s.refundAddress}>
-                                  Refund: {s.refundAddress.slice(0, 6)}…
-                                </div>
-                              )}
-                            </td>
-                            <td className="py-3 px-3.5">
-                              {s.tipUsdc ? (
-                                <span className="text-success font-bold">+${s.tipUsdc}</span>
-                              ) : (
-                                <span className="text-outline">-</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-3.5">
-                              <span className="text-success font-bold">
-                                ₹ {s.amountINR ? s.amountINR.toLocaleString("en-IN") : "0"}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3.5">
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold  inline-block ${
-                                  s.status === "SETTLED"
-                                    ? "bg-success/20 text-success border border-success/30"
-                                    : s.status === "ORDER_PLACED" || s.status === "DELIVERING_HANDSHAKE"
-                                    ? "bg-primary/20 text-primary border border-primary/30"
-                                    : s.status === "STORED_IN_REFUND_WALLET"
-                                    ? "bg-warning/20 text-warning border border-warning/30 animate-pulse"
-                                    : s.status === "REFUNDED_TO_USER"
-                                    ? "bg-primary/20 text-primary border border-primary/30"
-                                    : s.status === "FAILED_AND_REFUNDED" || s.status === "CANCELLED_AND_REFUNDED"
-                                    ? "bg-error/20 text-error border border-error/30"
-                                    : s.status === "REJECTED_UNDER_MINIMUM"
-                                    ? "bg-error/20 text-error border border-error/30"
-                                    : "bg-white/10 text-white border border-white/20"
-                                }`}
-                              >
-                                {s.status.replace(/_/g, " ")}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3.5 text-right space-x-1.5 whitespace-nowrap">
-                              {s.status === "STORED_IN_REFUND_WALLET" && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setManualRefundSession(s);
-                                    setManualRefundRecipient(s.refundAddress || "");
-                                    setManualRefundAmount(s.receivedUsdc || s.expectedUsdc);
-                                  }}
-                                  className="px-2.5 py-1 rounded-lg bg-warning/20 hover:bg-warning/30 border border-warning/30 text-warning text-[10px] font-bold  transition-colors"
-                                >
-                                  Refund User
-                                </button>
-                              )}
-                              {s.status === "ORDER_PLACED" && (
-                                <button
-                                  type="button"
-                                  disabled={isExecutingAdminAction}
-                                  onClick={async () => {
-                                    setIsExecutingAdminAction(true);
-                                    const token = await getAccessToken();
-                                    const res = await retryHandshakeAction(s.id, token);
-                                    setAdminActionResult(res);
-                                    setIsExecutingAdminAction(false);
-                                    loadPayments();
-                                  }}
-                                  className="px-2.5 py-1 rounded-lg bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary text-[10px] font-bold  transition-colors"
-                                >
-                                  Retry Handshake
-                                </button>
-                              )}
-                              {s.status !== "SETTLED" && s.status !== "REFUNDED_TO_USER" && s.p2pOrderId && (
-                                <button
-                                  type="button"
-                                  disabled={isExecutingAdminAction}
-                                  onClick={async () => {
-                                    if (!confirm(`Cancel order #${s.p2pOrderId} on Diamond and refund?`)) return;
-                                    setIsExecutingAdminAction(true);
-                                    const token = await getAccessToken();
-                                    const res = await forceCancelOrderAction(s.id, token);
-                                    setAdminActionResult(res);
-                                    setIsExecutingAdminAction(false);
-                                    loadPayments();
-                                  }}
-                                  className="px-2.5 py-1 rounded-lg bg-error/20 hover:bg-error/30 border border-error/30 text-error text-[10px] font-bold  transition-colors"
-                                >
-                                  Cancel & Refund
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        ))
-                    ) : (
-                      <tr>
-                        <td colSpan={7} className="py-8 text-center text-outline">
-                          No payment sessions found.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Manual Refund Modal */}
-            {manualRefundSession && (
-              <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-                <div className="w-full max-w-lg bg-surface border border-white/15 rounded-3xl p-6 space-y-5 animate-in zoom-in-95 duration-200">
-                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-warning/20 border border-warning/30 flex items-center justify-center text-warning">
-                        <ShieldAlert className="w-4 h-4" />
-                      </div>
-                      <h4 className="text-sm font-bold text-white font-sans tabular-nums  tracking-normal">
-                        Dispatch Manual User Refund
-                      </h4>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setManualRefundSession(null)}
-                      className="text-outline hover:text-white"
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  <div className="space-y-3 text-xs font-sans tabular-nums">
-                    <div className="p-3 rounded-xl bg-white/[0.02] border border-white/10 space-y-1">
-                      <div className="text-outline text-[10px]">Session Details</div>
-                      <div className="text-white font-bold">{manualRefundSession.id} • {manualRefundSession.recipientUpi}</div>
-                      <div className="text-outline text-[10px]">Original INR: ₹{manualRefundSession.amountINR}</div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px]  font-bold text-outline">
-                        Destination 0x EVM Address (Recipient)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="0x..."
-                        value={manualRefundRecipient}
-                        onChange={(e) => setManualRefundRecipient(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/15 text-white font-sans tabular-nums text-xs focus:outline-none focus:border-warning"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px]  font-bold text-outline">
-                        Refund Amount (USDC)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 5.50"
-                        value={manualRefundAmount}
-                        onChange={(e) => setManualRefundAmount(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/15 text-white font-sans tabular-nums text-xs focus:outline-none focus:border-warning"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setManualRefundSession(null)}
-                      className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-outline font-sans tabular-nums text-xs font-bold  transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isExecutingAdminAction || !manualRefundRecipient.trim() || !manualRefundAmount.trim()}
-                      onClick={async () => {
-                        setIsExecutingAdminAction(true);
-                        const token = await getAccessToken();
-                        const res = await executeManualRefundAction({
-                          sessionId: manualRefundSession.id,
-                          destinationAddress: manualRefundRecipient.trim(),
-                          amountUsdc: manualRefundAmount.trim(),
-                          accessToken: token,
-                        });
-                        setAdminActionResult(res);
-                        setIsExecutingAdminAction(false);
-                        setManualRefundSession(null);
-                        loadPayments();
-                      }}
-                      className="flex-1 py-2.5 rounded-xl bg-warning hover:bg-warning text-black font-sans tabular-nums text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-warning/20 whitespace-nowrap"
-                    >
-                      {isExecutingAdminAction && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                      <span>{isExecutingAdminAction ? "Sending…" : "Confirm Refund"}</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* ────────────── TAB: PARTNERS, ON-CHAIN REVENUE & PAYOUTS ────────────── */}
         {activeTab === "payouts" && (
@@ -3706,37 +2017,26 @@ export default function AdminPage() {
         {/* ────────────── TAB 4: TOOLS & SWEEPER ────────────── */}
         {activeTab === "tools" && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            {/* Tool 1: Gasless Pay-In Sweeper Control */}
+            {/* Tool 1: Automated Proxy Forwarder Relayer */}
             <div className="obsidian-glass rounded-2xl p-5 sm:p-6 space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
-                    <Layers className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-white  tracking-normal font-sans tabular-nums">
-                      Pay-In Deposit Sweeper
-                    </h3>
-                    <p className="text-xs text-outline font-sans tabular-nums mt-0.5">
-                      Pure EIP-3009 Gasless Relay: Sweeps USDC directly to Treasury (0 ETH sent to deposit address)
-                    </p>
-                  </div>
+              <div className="flex items-center gap-3 pb-4 border-b border-white/10">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+                  <Layers className="w-5 h-5" />
                 </div>
-
-                <button
-                  onClick={handleSweepAll}
-                  disabled={isSweeping || !stats?.sweeper?.configured}
-                  className="px-4 py-2.5 rounded-xl bg-primary hover:bg-primary text-white font-sans tabular-nums text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95 shrink-0"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isSweeping ? "animate-spin" : ""}`} />
-                  <span>{isSweeping ? "Sweeping Deposits..." : "Sweep All Settled Deposits"}</span>
-                </button>
+                <div>
+                  <h3 className="text-sm font-bold text-white tracking-normal font-sans tabular-nums">
+                    Automated Proxy Forwarder Relayer
+                  </h3>
+                  <p className="text-xs text-outline font-sans tabular-nums mt-0.5">
+                    Background EVM proxy sweeper routing user deposits through Treasury fee splits to NEAR Intents
+                  </p>
+                </div>
               </div>
 
-              {/* Sweeper Wallet Status */}
+              {/* Relayer Wallet Status */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 text-xs font-sans tabular-nums">
                 <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
-                  <span className="text-outline text-[10px]  font-bold block">Sweeper Address</span>
+                  <span className="text-outline text-[10px] font-bold block">Relayer Address</span>
                   <div className="flex items-center gap-1.5">
                     <span className="text-white truncate">
                       {stats?.sweeper?.address || "Not Configured"}
@@ -3753,7 +2053,7 @@ export default function AdminPage() {
                 </div>
 
                 <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
-                  <span className="text-outline text-[10px]  font-bold block">Gas Tank Balance</span>
+                  <span className="text-outline text-[10px] font-bold block">Gas Tank Balance</span>
                   <span className="text-base font-bold text-white">
                     {stats?.sweeper?.balanceEth || "0.0000"} ETH
                   </span>
@@ -3761,7 +2061,7 @@ export default function AdminPage() {
                 </div>
 
                 <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
-                  <span className="text-outline text-[10px]  font-bold block">Operational Status</span>
+                  <span className="text-outline text-[10px] font-bold block">Operational Status</span>
                   <span className={`text-base font-bold ${stats?.sweeper?.healthy ? "text-success" : "text-warning"}`}>
                     {stats?.sweeper?.configured ? (stats?.sweeper?.healthy ? "Ready & Funded" : "Low Balance") : "Requires Key"}
                   </span>
@@ -3770,32 +2070,6 @@ export default function AdminPage() {
                   </span>
                 </div>
               </div>
-
-              {/* Sweep Result Feedback */}
-              {sweepResult && (
-                <div className={`p-4 rounded-xl text-xs font-sans tabular-nums ${
-                  sweepResult.success
-                    ? "bg-success/15/30 border border-success/30 text-success"
-                    : "bg-error-container/30 border border-error/30 text-error"
-                }`}>
-                  <p className="font-bold mb-1">
-                    {sweepResult.success
-                      ? `Successfully swept ${sweepResult.sweptCount || (sweepResult.result?.success ? 1 : 0)} deposit(s)!`
-                      : `Sweep Failed: ${sweepResult.error || "Unknown error"}`}
-                  </p>
-                  {sweepResult.result?.txHash && (
-                    <a
-                      href={`https://basescan.org/tx/${sweepResult.result.txHash}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-white underline inline-flex items-center gap-1 mt-1"
-                    >
-                      <span>View Transaction on Basescan</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* Tool 2: Cross-Chain Solver Transaction Tracker */}

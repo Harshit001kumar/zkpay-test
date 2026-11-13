@@ -423,7 +423,7 @@ export function getDecryptedProxyPrivateKey(order: ProxySwapOrder): `0x${string}
     throw new Error(`Proxy swap order ${order.swapId} does not have an encrypted private key.`);
   }
 
-  // Uses payStore's decryption logic
+  // Decrypt iv:authTag:ciphertext using AES-256-GCM
   const parts = order.encryptedPrivateKey.split(":");
   if (parts.length !== 3) {
     throw new Error("Invalid encrypted key format. Expected iv:authTag:ciphertext");
