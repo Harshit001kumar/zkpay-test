@@ -174,17 +174,12 @@ export async function saveProxySwapOrder(order: ProxySwapOrder): Promise<void> {
 
 /**
  * Retrieves a proxy swap order by its deposit address.
+ * Queries MongoDB first so multi-instance serverless deployments (Vercel)
+ * never serve stale PENDING_DEPOSIT state from another container's RAM cache.
  */
 export async function getProxyOrderByAddress(address: string): Promise<ProxySwapOrder | null> {
-  await hydrateCache();
   const clean = address.trim();
-  const cached =
-    ordersByAddress.get(clean.toLowerCase()) ||
-    ordersByAddress.get(clean) ||
-    ordersBySwapId.get(clean);
-  if (cached) return cached;
 
-  // Direct MongoDB query if memory cache missed
   try {
     const db = await getMongoDb();
     if (db) {
@@ -202,27 +197,28 @@ export async function getProxyOrderByAddress(address: string): Promise<ProxySwap
         ordersBySwapId.set(order.swapId, order);
         return order;
       }
+      return null;
     }
   } catch (e) {
-    // ignore
+    // Fall back to local cache if MongoDB is unreachable
   }
 
-  return null;
+  await hydrateCache();
+  return (
+    ordersByAddress.get(clean.toLowerCase()) ||
+    ordersByAddress.get(clean) ||
+    ordersBySwapId.get(clean) ||
+    null
+  );
 }
 
 /**
  * Retrieves a proxy swap order by its swapId.
+ * Queries MongoDB first to ensure fresh status and forwardTxHash guards across lambdas.
  */
 export async function getProxyOrderBySwapId(swapId: string): Promise<ProxySwapOrder | null> {
-  await hydrateCache();
   const clean = swapId.trim();
-  const cached =
-    ordersBySwapId.get(clean) ||
-    ordersByAddress.get(clean.toLowerCase()) ||
-    ordersByAddress.get(clean);
-  if (cached) return cached;
 
-  // Direct MongoDB query if memory cache missed
   try {
     const db = await getMongoDb();
     if (db) {
@@ -240,12 +236,19 @@ export async function getProxyOrderBySwapId(swapId: string): Promise<ProxySwapOr
         ordersBySwapId.set(order.swapId, order);
         return order;
       }
+      return null;
     }
   } catch (e) {
-    // ignore
+    // Fall back to local cache if MongoDB is unreachable
   }
 
-  return null;
+  await hydrateCache();
+  return (
+    ordersBySwapId.get(clean) ||
+    ordersByAddress.get(clean.toLowerCase()) ||
+    ordersByAddress.get(clean) ||
+    null
+  );
 }
 
 /**
