@@ -4,6 +4,7 @@ import { createSwapOrder } from "@/lib/server/swapRouter";
 import { resolvePublicApiAuth } from "@/lib/server/publicApiAuth";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 /**
  * POST /api/v1/swap/create

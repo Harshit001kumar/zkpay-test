@@ -32,7 +32,12 @@ export async function GET(req: Request) {
         count: tokens.length,
         tokens,
       },
-      { headers: rateLimit.headers }
+      {
+        headers: {
+          ...rateLimit.headers,
+          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+        },
+      }
     );
   } catch (err: any) {
     console.error("[SwapTokens] Error:", err);

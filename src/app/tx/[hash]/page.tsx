@@ -40,8 +40,17 @@ export default function SwapReceiptPage() {
 
     const depositAddr = record?.depositAddress || rawHash;
     let active = true;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const stopPolling = () => {
+      active = false;
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
 
     const fetchStatus = async () => {
+      if (!active || (typeof document !== "undefined" && document.hidden)) return;
       try {
         const res = await fetch(`/api/v1/swap/status?depositAddress=${encodeURIComponent(depositAddr)}`);
         if (!res.ok) return;
@@ -53,6 +62,7 @@ export default function SwapReceiptPage() {
           const settledOut = data.settledAmount || data.swapDetails?.amountOutFormatted;
           if (s === "settled" || s === "success" || s === "completed" || raw === "SUCCESS" || raw === "SETTLED") {
             updateTransactionStatus(rawHash, "settled", settledOut);
+            stopPolling();
           } else if (
             s === "failed" ||
             s === "refunded" ||
@@ -63,20 +73,30 @@ export default function SwapReceiptPage() {
             raw === "INCOMPLETE_DEPOSIT"
           ) {
             updateTransactionStatus(rawHash, "failed");
+            stopPolling();
           }
         }
       } catch {
         // Ignore transient poll errors
       } finally {
-        if (active) setLoading(false);
+        setLoading(false);
       }
     };
 
+    const onVisibility = () => {
+      if (typeof document !== "undefined" && !document.hidden) fetchStatus();
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibility);
+    }
+
     fetchStatus();
-    const timer = setInterval(fetchStatus, 6000);
+    timer = setInterval(fetchStatus, 10000);
     return () => {
-      active = false;
-      clearInterval(timer);
+      stopPolling();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisibility);
+      }
     };
   }, [rawHash]);
 

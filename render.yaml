@@ -4,32 +4,27 @@ services:
     runtime: node
     buildCommand: npm install && npm run build
     startCommand: npm start
+    healthCheckPath: /api/health
     plan: free
     envVars:
+      - key: MONGODB_URI
+        sync: false
       - key: NEXT_PUBLIC_PRIVY_APP_ID
-        sync: false
-      - key: NEXT_PUBLIC_INFURA_API_KEY
-        sync: false
-      - key: SIDESHIFT_AFFILIATE_ID
-        sync: false
-      - key: NEXT_PUBLIC_DIAMOND_ADDRESS
-        sync: false
-      - key: NEXT_PUBLIC_USDC_ADDRESS
-        sync: false
-      - key: NEXT_PUBLIC_CHAIN_ID
-        sync: false
-      - key: NEXT_PUBLIC_SUBGRAPH_URL
         sync: false
       - key: PRIVY_APP_SECRET
         sync: false
-      - key: PRIVY_EARN_VAULT_ID
+      - key: NEXT_PUBLIC_INFURA_API_KEY
         sync: false
-      - key: PRIVY_AUTH_PRIVATE_KEY
+      - key: NEAR_INTENTS_API_KEY
+        sync: false
+      - key: RELAYER_PRIVATE_KEY
         sync: false
       - key: ADMIN_WALLETS
         sync: false
       - key: ADMIN_PRIVY_DIDS
         sync: false
+      - key: SWEEPER_IDLE_INTERVAL_MS
+        value: "120000"
       - key: PAYIN_MASTER_SECRET
         generateValue: true
       - key: ZKPAY_API_KEY_HASH_SALT

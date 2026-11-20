@@ -400,7 +400,17 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
     if (!depAddr) return;
 
     let active = true;
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const stopPolling = () => {
+      active = false;
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
     const poll = async () => {
+      if (!active || (typeof document !== "undefined" && document.hidden)) return;
       try {
         const res = await fetch(`/api/v1/swap/status?depositAddress=${encodeURIComponent(depAddr)}`);
         if (!res.ok) return;
@@ -414,21 +424,32 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
             try {
               localStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
             } catch {}
+            stopPolling();
           } else if (s === "FAILED" || s === "REFUNDED" || s === "EXPIRED") {
             updateTransactionStatus(depAddr, "failed");
             try {
               localStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
             } catch {}
+            stopPolling();
           }
         }
       } catch {}
     };
 
+    const onVisibility = () => {
+      if (typeof document !== "undefined" && !document.hidden) poll();
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibility);
+    }
+
     poll();
-    const interval = setInterval(poll, 5000);
+    interval = setInterval(poll, 8000);
     return () => {
-      active = false;
-      clearInterval(interval);
+      stopPolling();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisibility);
+      }
     };
   }, [activeOrder]);
 

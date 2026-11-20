@@ -115,7 +115,12 @@ async function hydrateCache() {
       }
 
       const activeOrders = await collection
-        .find({ expiresAt: { $gt: Date.now() - 48 * 60 * 60 * 1000 } })
+        .find({
+          status: { $in: ["PENDING_DEPOSIT", "FORWARDING", "REFUND_PENDING", "FORWARDED"] },
+          expiresAt: { $gt: Date.now() - 48 * 60 * 60 * 1000 },
+        } as any)
+        .sort({ createdAt: -1 })
+        .limit(200)
         .toArray();
 
       for (const ord of activeOrders) {
@@ -259,17 +264,17 @@ export async function getPendingProxyOrders(): Promise<ProxySwapOrder[]> {
         collection
           .find({ status: { $in: ["FORWARDING", "REFUND_PENDING"] } })
           .sort({ createdAt: 1 })
-          .limit(100)
+          .limit(50)
           .toArray(),
         collection
           .find({ status: "PENDING_DEPOSIT", expiresAt: { $gte: activeCutoff } })
           .sort({ createdAt: 1 })
-          .limit(100)
+          .limit(50)
           .toArray(),
         collection
           .find({ status: "PENDING_DEPOSIT", expiresAt: { $lt: activeCutoff } })
           .sort({ createdAt: 1 })
-          .limit(100)
+          .limit(50)
           .toArray(),
       ]);
 

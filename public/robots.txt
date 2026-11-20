@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Allow: /docs
+Allow: /privacy
+Allow: /terms
+Disallow: /api/
+Disallow: /admin/
+Disallow: /tx/
+Disallow: /wallet/

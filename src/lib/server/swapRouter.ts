@@ -37,7 +37,7 @@ import {
   type ProxySwapOrder,
 } from "./proxySwapStore";
 import { saveDirectSwapOrder } from "./directSwapStore";
-import { checkAndForwardProxyDeposit } from "./proxyForwarder";
+import { checkAndForwardProxyDeposit, wakeProxySweeperDaemon } from "./proxyForwarder";
 import { creditPartnerFeeOnSettlement } from "./partnerBalanceStore";
 
 const ONECLICK_API = "https://1click.chaindefuser.com/v0";
@@ -1058,6 +1058,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
       };
 
       await saveProxySwapOrder(proxyOrder);
+      wakeProxySweeperDaemon();
       proxySaved = true;
       console.log(`[SwapRouter] Proxy single-transfer order initialized: ${proxyOrder.swapId} -> ${proxyOrder.proxyDepositAddress}`);
     } catch (proxyErr) {

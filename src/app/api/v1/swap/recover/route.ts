@@ -8,6 +8,7 @@ import {
 } from "@/lib/server/proxyForwarder";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function OPTIONS() {
   return corsOptions();

@@ -3311,8 +3311,33 @@ export async function recoverProxyDeposit(
 }
 }
 
-let sweeperInterval: ReturnType<typeof setInterval> | null = null;
+let sweeperTimeout: ReturnType<typeof setTimeout> | null = null;
+let sweeperIsIdleMode = false;
 let isSweeperTickActive = false;
+const SWEEPER_ACTIVE_INTERVAL_MS = Math.max(
+  10_000,
+  Number(process.env.SWEEPER_INTERVAL_MS) || 15_000
+);
+const SWEEPER_IDLE_INTERVAL_MS = Math.max(
+  SWEEPER_ACTIVE_INTERVAL_MS,
+  Number(process.env.SWEEPER_IDLE_INTERVAL_MS) || 120_000
+);
+const EXPIRED_RECHECK_COOLDOWN_MS = 120_000;
+const STUCK_REFUND_COOLDOWN_MS = 300_000;
+const OLD_FORWARDED_POLL_COOLDOWN_MS = 120_000;
+const tickCooldowns = new Map<string, number>();
+
+function canCheckWithCooldown(key: string, cooldownMs: number): boolean {
+  const now = Date.now();
+  const prev = tickCooldowns.get(key);
+  if (prev && now - prev < cooldownMs) return false;
+  tickCooldowns.set(key, now);
+  if (tickCooldowns.size > 2000) {
+    const oldestKey = tickCooldowns.keys().next().value;
+    if (oldestKey) tickCooldowns.delete(oldestKey);
+  }
+  return true;
+}
 
 /**
  * Starts the automatic background sweeper daemon.
@@ -3396,6 +3421,15 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
           const isExpired = Date.now() > order.expiresAt + 60_000;
 
           if (isExpired) {
+            // Back off checks for expired orders and stuck REFUND_PENDING orders to save RPC/Mongo bandwidth
+            const cooldownMs =
+              order.status === "REFUND_PENDING"
+                ? STUCK_REFUND_COOLDOWN_MS
+                : EXPIRED_RECHECK_COOLDOWN_MS;
+            if (!canCheckWithCooldown(`expired:${order.swapId}`, cooldownMs)) {
+              continue;
+            }
+
             // Check if funds were deposited on an expired quote.
             // If yes, automatic 100% refund to user's refundTo address!
             const refundRes = await recoverProxyDeposit(order.proxyDepositAddress, { action: "refund" });
@@ -3442,6 +3476,13 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
             await creditPartnerFeeOnSettlement(order);
             processed++;
           } else if (order.status === "FORWARDED" && order.solverDepositAddress) {
+            // Poll fast for fresh swaps (<10m), back off to 2m for long-running swaps
+            if (
+              Date.now() - order.createdAt > 10 * 60_000 &&
+              !canCheckWithCooldown(`fwd:${order.swapId}`, OLD_FORWARDED_POLL_COOLDOWN_MS)
+            ) {
+              continue;
+            }
             const solverUrl = `https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(order.solverDepositAddress.trim())}`;
             const headers: Record<string, string> = { Accept: "application/json" };
             if (process.env.NEAR_INTENTS_API_KEY) {
@@ -3483,17 +3524,49 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
   return { checked, processed };
 }
 
+function scheduleSweeperTick(delayMs: number, isIdle: boolean) {
+  if (sweeperTimeout) {
+    clearTimeout(sweeperTimeout);
+    sweeperTimeout = null;
+  }
+  sweeperIsIdleMode = isIdle;
+  sweeperTimeout = setTimeout(async () => {
+    sweeperTimeout = null;
+    const { checked, processed } = await runProxySweeperTick();
+    const hasWork = checked > 0 || processed > 0;
+    scheduleSweeperTick(
+      hasWork ? SWEEPER_ACTIVE_INTERVAL_MS : SWEEPER_IDLE_INTERVAL_MS,
+      !hasWork
+    );
+  }, delayMs);
+  if (sweeperTimeout && typeof (sweeperTimeout as any).unref === "function") {
+    (sweeperTimeout as any).unref();
+  }
+}
+
 export function ensureProxySweeperDaemonRunning() {
-  if (sweeperInterval) return;
+  // Vercel serverless freezes functions between requests; sweeps run via /api/health?sweep=1 cron
+  if (process.env.VERCEL === "1") return;
+  if (sweeperTimeout) return;
 
-  console.log("[ProxySweeperDaemon] Starting automated background proxy deposit sweeper & settlement monitor (interval: 12s)...");
+  console.log(
+    `[ProxySweeperDaemon] Starting adaptive background sweeper (active: ${SWEEPER_ACTIVE_INTERVAL_MS}ms, idle: ${SWEEPER_IDLE_INTERVAL_MS}ms)...`
+  );
 
-  sweeperInterval = setInterval(async () => {
-    await runProxySweeperTick();
-  }, 12_000);
+  scheduleSweeperTick(SWEEPER_ACTIVE_INTERVAL_MS, false);
+}
 
-  if (sweeperInterval && typeof (sweeperInterval as any).unref === "function") {
-    (sweeperInterval as any).unref();
+/**
+ * Resets an idle sweeper timer back to active cadence immediately when a new swap is created.
+ */
+export function wakeProxySweeperDaemon() {
+  if (process.env.VERCEL === "1") return;
+  if (!sweeperTimeout) {
+    ensureProxySweeperDaemonRunning();
+    return;
+  }
+  if (sweeperIsIdleMode) {
+    scheduleSweeperTick(SWEEPER_ACTIVE_INTERVAL_MS, false);
   }
 }
 
