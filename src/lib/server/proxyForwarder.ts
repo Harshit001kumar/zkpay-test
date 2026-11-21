@@ -3421,13 +3421,20 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
       for (const order of pendingOrders) {
         try {
           if (order.status === "PAYING_OUT") {
-            // Never interrupt or auto-refund an in-flight liquidity pool payout (< 3m)
+            if (order.destinationTxHash) {
+              // Payout was already broadcast on-chain; reconcile its receipt status via processInternalLiquidityOrder
+              const { processInternalLiquidityOrder } = await import("./liquidityEngine");
+              const res = await processInternalLiquidityOrder(order);
+              if (res.status === "SETTLED" || res.status === "REFUNDED") processed++;
+              continue;
+            }
+            // No destinationTxHash recorded yet: wait up to 3m for the active payout worker before flagging REFUND_PENDING
             const startedAt = order.payoutStartedAt || order.lastAttemptAt || order.createdAt;
             if (Date.now() - startedAt > 180_000) {
               await updateProxySwapOrder(order.swapId, {
                 status: "REFUND_PENDING",
                 error:
-                  "Liquidity payout timed out without confirmation; flagged for manual verification before refund.",
+                  "Liquidity payout worker timed out before broadcast; queued for automatic refund.",
               });
             }
             continue;

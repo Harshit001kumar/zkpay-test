@@ -203,7 +203,7 @@ export function getQuoteDeadline(originChain?: string): string {
 
 export interface ExecutionTransfer {
   purpose: "PLATFORM_FEE" | "PARTNER_FEE" | "SWAP_DEPOSIT";
-  recipient: string;
+  recipient: string | null;
   amount: string;
 }
 
@@ -216,7 +216,7 @@ export interface ExecutionPlan {
   feeAsset: string;
   treasuryAddress: string | null;
   partnerFeeRecipient: string | null;
-  depositAddress: string;
+  depositAddress: string | null;
   transfers: ExecutionTransfer[];
 }
 
