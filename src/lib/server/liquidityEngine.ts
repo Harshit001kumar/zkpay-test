@@ -542,7 +542,7 @@ export async function processInternalLiquidityOrder(
     return updated || claimed;
   }
 
-  const spreadBps = Math.max(0, Math.min(500, Number(poolCfg.poolSpreadBps ?? 35)));
+  const spreadBps = Math.max(0, Math.min(500, Number(poolCfg.spreadBufferBps ?? 35)));
   const actualNetInNum = Number(formatUnits(actualNetIn, originDef.decimals));
   const liveGrossOutUsd = actualNetInNum * liveOriginPrice;
   const liveAfterSpreadUsd = liveGrossOutUsd * ((10000 - spreadBps) / 10000);
