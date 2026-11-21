@@ -642,8 +642,8 @@ export async function sendFromLiquidityWallet(params: {
   if (enforceMinReserve) {
     const cfg = await getLiquidityPoolConfig();
     const minReserveHuman =
-      cfg.minReserveByAsset?.[def.assetKey] || def.defaultMinReserveFormatted;
-    minReserveAtomic = parseUnitsSafe(minReserveHuman, def.decimals);
+      cfg.minReserveByAsset?.[def.assetKey] || def.defaultMinReserveHuman;
+    minReserveAtomic = parseHumanToAtomic(minReserveHuman, def.decimals);
   }
 
   const cleanTo = (toAddress || "").trim();
