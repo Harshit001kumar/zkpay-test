@@ -177,14 +177,16 @@ export async function reconcilePartnerSwaps(userId: string): Promise<void> {
       await creditPartnerFeeOnSettlement(ord);
     }
 
-    const forwardedOrders = uncreditedOrders.filter(
-      (ord) =>
-        (ord.status === "FORWARDED" || ord.status === "FORWARDING") &&
-        Boolean(ord.solverDepositAddress)
-    );
+    const forwardedOrders = uncreditedOrders
+      .filter(
+        (ord) =>
+          (ord.status === "FORWARDED" || ord.status === "FORWARDING") &&
+          Boolean(ord.solverDepositAddress)
+      )
+      .slice(0, 6);
     if (forwardedOrders.length > 0) {
       const { reconcileForwardedSolverOrder } = await import("./proxyForwarder");
-      const BATCH_SIZE = 6;
+      const BATCH_SIZE = 2;
       for (let i = 0; i < forwardedOrders.length; i += BATCH_SIZE) {
         const batch = forwardedOrders.slice(i, i + BATCH_SIZE);
         await Promise.all(

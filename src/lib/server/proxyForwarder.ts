@@ -3428,11 +3428,13 @@ async function hasProxyDepositFunds(order: ProxySwapOrder): Promise<boolean> {
   return (await checkProxyDepositFundsTriState(order)) === true;
 }
 
+const recentForwardReconcileAt = new Map<string, number>();
+
 /**
  * Single source of truth for reconciling a FORWARDED order against the external Solver:
  * - Only marks SETTLED (and credits partner fee) when the Solver explicitly reports SUCCESS / SETTLED.
  * - Marks REFUNDED / FAILED when the Solver reports REFUNDED / FAILED / INCOMPLETE_DEPOSIT.
- * - If the Solver reports PENDING_DEPOSIT / KNOWN_DEPOSIT_TX:
+ * - If the Solver reports PENDING_DEPOSIT:
  *   1) Re-submits `forwardTxHash` to `/v0/deposit/submit` and re-checks status once.
  *   2) If the forward tx was dropped on-chain (`stillInProxy === true`), re-forwards (if active) or 100% auto-refunds (if expired).
  *   3) If the proxy wallet is confirmed empty (`stillInProxy === false`) and the order expired >30m ago without Solver settlement, marks FAILED (never fake-SETTLED).
@@ -3443,6 +3445,13 @@ export async function reconcileForwardedSolverOrder(
 ): Promise<ProxySwapOrder> {
   if (!order.solverDepositAddress) return order;
 
+  // Deduplicate concurrent/back-to-back checks within 8s so admin page load doesn't trigger 1Click 429 rate limits
+  const lastCheck = recentForwardReconcileAt.get(order.swapId) || 0;
+  if (Date.now() - lastCheck < 8_000) {
+    return (await getProxyOrderBySwapId(order.swapId)) || order;
+  }
+  recentForwardReconcileAt.set(order.swapId, Date.now());
+
   const solverUrl = `https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(order.solverDepositAddress.trim())}`;
   const res = await fetch(solverUrl, {
     headers: buildOneClickHeaders(),
@@ -3450,17 +3459,16 @@ export async function reconcileForwardedSolverOrder(
   }).catch(() => null);
 
   if (!res || !res.ok) {
+    // Allow immediate retry if request timed out or failed
+    recentForwardReconcileAt.delete(order.swapId);
     return order;
   }
 
   let data = await res.json().catch(() => null);
   let rawSt = String(data?.status || "").toUpperCase();
 
-  // If Solver still says PENDING_DEPOSIT or KNOWN_DEPOSIT_TX, re-submit forwardTxHash once and re-query
-  if (
-    (rawSt === "PENDING_DEPOSIT" || rawSt === "KNOWN_DEPOSIT_TX") &&
-    order.forwardTxHash
-  ) {
+  // Only re-submit forwardTxHash when Solver still says PENDING_DEPOSIT (KNOWN_DEPOSIT_TX already has the tx hash)
+  if (rawSt === "PENDING_DEPOSIT" && order.forwardTxHash) {
     const submitted = await notifyNearIntentsDepositSubmit(
       order.solverDepositAddress,
       order.forwardTxHash

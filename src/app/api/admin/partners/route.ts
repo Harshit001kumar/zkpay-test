@@ -272,15 +272,14 @@ export async function GET(req: Request) {
       // Directly reconcile any remaining FORWARDED orders in the top 50 via shared reconcileForwardedSolverOrder
       const stillForwarded = allOrders
         .slice(0, 50)
-        .filter((o) => o.status === "FORWARDED" && Boolean(o.solverDepositAddress));
+        .filter((o) => o.status === "FORWARDED" && Boolean(o.solverDepositAddress))
+        .slice(0, 4);
       if (stillForwarded.length > 0) {
         const { reconcileForwardedSolverOrder } = await import("@/lib/server/proxyForwarder");
-        await Promise.all(
-          stillForwarded.slice(0, 10).map(async (ord) => {
-            const updated = await reconcileForwardedSolverOrder(ord).catch(() => ord);
-            ord.status = updated.status;
-          })
-        );
+        for (const ord of stillForwarded) {
+          const updated = await reconcileForwardedSolverOrder(ord).catch(() => ord);
+          ord.status = updated.status;
+        }
       }
     } else {
       allOrders = await getRecentProxyOrders(200);
