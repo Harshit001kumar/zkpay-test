@@ -155,22 +155,32 @@ export async function reconcilePartnerSwaps(userId: string): Promise<void> {
     const uncreditedOrders = (await db
       .collection<ProxySwapOrder>("proxy_swap_orders")
       .find({
-        feeCredited: { $ne: true },
-        status: { $in: ["SETTLED", "FORWARDED"] },
-        $or: orConditions,
+        $and: [
+          { $or: orConditions },
+          {
+            $or: [
+              { status: { $in: ["FORWARDED", "FORWARDING"] } },
+              { status: "SETTLED", feeCredited: { $ne: true } },
+            ],
+          },
+        ],
       } as any)
       .sort({ createdAt: -1 })
       .limit(30)
       .toArray()) as ProxySwapOrder[];
 
-    const settledOrders = uncreditedOrders.filter((ord) => ord.status === "SETTLED");
+    const settledOrders = uncreditedOrders.filter(
+      (ord) => ord.status === "SETTLED" && !ord.feeCredited
+    );
     for (const ord of settledOrders) {
       if (!ord.partnerUserId) ord.partnerUserId = userId;
       await creditPartnerFeeOnSettlement(ord);
     }
 
     const forwardedOrders = uncreditedOrders.filter(
-      (ord) => ord.status === "FORWARDED" && Boolean(ord.solverDepositAddress)
+      (ord) =>
+        (ord.status === "FORWARDED" || ord.status === "FORWARDING") &&
+        Boolean(ord.solverDepositAddress)
     );
     const solverHeaders = buildOneClickHeaders();
     const BATCH_SIZE = 6;

@@ -12,7 +12,11 @@ import {
 import { ProxySwapOrder, getRecentProxyOrders } from "@/lib/server/proxySwapStore";
 import { getLiveTokenPriceUsd } from "@/lib/server/priceService";
 import { CONTRACTS, SWAP_ALLOWED_TOKENS, getTreasuryAddressForChain } from "@/lib/constants";
-import { getResilientPublicClientForChain, fetchResilientSolanaRpc } from "@/lib/server/rpcConfig";
+import {
+   getResilientPublicClientForChain,
+  fetchResilientSolanaRpc,
+  buildOneClickHeaders,
+} from "@/lib/server/rpcConfig";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -264,6 +268,52 @@ export async function GET(req: Request) {
       allOrders = ordersDocs as ProxySwapOrder[];
       balanceRecords = balDocs as PartnerBalanceRecord[];
       creditRecords = credDocs as PartnerFeeCreditRecord[];
+
+      // Directly reconcile any remaining FORWARDED orders in the top 50 (including orders where feeCredited was already set)
+      const stillForwarded = allOrders
+        .slice(0, 50)
+        .filter((o) => o.status === "FORWARDED" && Boolean(o.solverDepositAddress));
+      if (stillForwarded.length > 0) {
+        const solverHeaders = buildOneClickHeaders();
+        await Promise.all(
+          stillForwarded.slice(0, 10).map(async (ord) => {
+            try {
+              const solverUrl = `https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(ord.solverDepositAddress.trim())}`;
+              const res = await fetch(solverUrl, {
+                headers: solverHeaders,
+                signal: AbortSignal.timeout(5000),
+              }).catch(() => null);
+              if (!res || !res.ok) return;
+              const data = await res.json().catch(() => null);
+              const rawSt = String(data?.status || "").toUpperCase();
+              if (rawSt === "SUCCESS" || rawSt === "SETTLED") {
+                ord.status = "SETTLED";
+                await db
+                  .collection("proxy_swap_orders")
+                  .updateOne({ swapId: ord.swapId } as any, { $set: { status: "SETTLED" } });
+              } else if (rawSt === "REFUNDED") {
+                ord.status = "REFUNDED";
+                await db
+                  .collection("proxy_swap_orders")
+                  .updateOne({ swapId: ord.swapId } as any, { $set: { status: "REFUNDED" } });
+              } else if (rawSt === "FAILED" || rawSt === "INCOMPLETE_DEPOSIT") {
+                ord.status = "FAILED";
+                await db
+                  .collection("proxy_swap_orders")
+                  .updateOne({ swapId: ord.swapId } as any, { $set: { status: "FAILED" } });
+              } else if (rawSt === "PENDING_DEPOSIT") {
+                const { reconcileStuckForwardedOrder } = await import("@/lib/server/proxyForwarder");
+                const healed = await reconcileStuckForwardedOrder(ord, rawSt);
+                if (healed) {
+                  ord.status = healed.status;
+                }
+              }
+            } catch {
+              // non-fatal
+            }
+          })
+        );
+      }
     } else {
       allOrders = await getRecentProxyOrders(200);
     }
