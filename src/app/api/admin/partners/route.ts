@@ -283,7 +283,12 @@ export async function GET(req: Request) {
                 headers: solverHeaders,
                 signal: AbortSignal.timeout(5000),
               }).catch(() => null);
-              if (!res || !res.ok) return;
+              if (!res || !res.ok) {
+                const { reconcileStuckForwardedOrder } = await import("@/lib/server/proxyForwarder");
+                const healed = await reconcileStuckForwardedOrder(ord, "HTTP_ERROR");
+                if (healed) ord.status = healed.status;
+                return;
+              }
               const data = await res.json().catch(() => null);
               const rawSt = String(data?.status || "").toUpperCase();
               if (rawSt === "SUCCESS" || rawSt === "SETTLED") {
@@ -301,7 +306,7 @@ export async function GET(req: Request) {
                 await db
                   .collection("proxy_swap_orders")
                   .updateOne({ swapId: ord.swapId } as any, { $set: { status: "FAILED" } });
-              } else if (rawSt === "PENDING_DEPOSIT") {
+              } else {
                 const { reconcileStuckForwardedOrder } = await import("@/lib/server/proxyForwarder");
                 const healed = await reconcileStuckForwardedOrder(ord, rawSt);
                 if (healed) {

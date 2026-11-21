@@ -3441,12 +3441,21 @@ export async function reconcileStuckForwardedOrder(
     });
   }
 
-  if (rawSt !== "PENDING_DEPOSIT") {
+  if (
+    rawSt !== "PENDING_DEPOSIT" &&
+    rawSt !== "KNOWN_DEPOSIT_TX" &&
+    rawSt !== "PROCESSING" &&
+    rawSt !== "HTTP_ERROR"
+  ) {
     return null;
   }
 
   // 1. Re-submit forwardTxHash to Solver in case pre-confirmation submit was ignored, then re-check status once
-  if (order.forwardTxHash && order.solverDepositAddress) {
+  if (
+    (rawSt === "PENDING_DEPOSIT" || rawSt === "KNOWN_DEPOSIT_TX") &&
+    order.forwardTxHash &&
+    order.solverDepositAddress
+  ) {
     const submitted = await notifyNearIntentsDepositSubmit(
       order.solverDepositAddress,
       order.forwardTxHash
@@ -3478,15 +3487,17 @@ export async function reconcileStuckForwardedOrder(
     }
   }
 
+  const ageMs = Date.now() - (Number(order.createdAt) || 0);
   // Wait at least 2 minutes after order creation before diagnosing a dropped forward tx
-  if (Date.now() - order.createdAt < 120_000) {
+  if (ageMs < 120_000) {
     return null;
   }
 
   // 2. Check if the forward tx was dropped on-chain (funds still sitting in proxyDepositAddress)
   const stillInProxy = await hasProxyDepositFunds(order);
+  const effectiveExpiresAt = Number(order.expiresAt) || Number(order.createdAt) + 15 * 60_000;
   if (stillInProxy) {
-    if (Date.now() > order.expiresAt) {
+    if (Date.now() > effectiveExpiresAt) {
       console.warn(
         `[ProxyForwarder] Stuck FORWARDED order ${order.swapId} expired with funds still in proxy (${order.proxyDepositAddress}); triggering 100% auto-refund.`
       );
@@ -3515,13 +3526,21 @@ export async function reconcileStuckForwardedOrder(
     }
   }
 
-  // 3. If proxy wallet is empty, order expired > 30m ago, and Solver still says PENDING_DEPOSIT:
-  // Check if forwardTxHash actually failed/dropped on Solana
-  if (Date.now() > order.expiresAt + 1800_000) {
-    return updateProxySwapOrder(order.swapId, {
-      status: "EXPIRED",
-      error: "Quote expired with no deposit received by Solver.",
-    });
+  // 3. Proxy wallet is empty (funds confirmed forwarded on-chain!) and order is > 15m old:
+  // If Solver still reports KNOWN_DEPOSIT_TX / PENDING_DEPOSIT / PROCESSING / HTTP_ERROR after 15m, finalize as SETTLED
+  if (ageMs > 15 * 60_000) {
+    const needsFeeRecredit = Boolean(order.feeCredited && (!order.partnerFeeUsd || order.partnerFeeUsd === 0));
+    const settled =
+      (await updateProxySwapOrder(order.swapId, {
+        status: "SETTLED",
+        ...(needsFeeRecredit ? { feeCredited: false } : {}),
+      })) || {
+        ...order,
+        status: "SETTLED" as const,
+        ...(needsFeeRecredit ? { feeCredited: false } : {}),
+      };
+    await creditPartnerFeeOnSettlement(settled).catch(() => {});
+    return settled;
   }
 
   return null;
@@ -3658,10 +3677,14 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
               headers: buildOneClickHeaders(),
               signal: AbortSignal.timeout(5000),
             }).catch(() => null);
-            if (res && !res.ok) {
+            if (!res || !res.ok) {
               console.warn(
-                `[ProxySweeperDaemon] 1Click status returned ${res.status} for ${order.swapId} (${order.solverDepositAddress})`
+                `[ProxySweeperDaemon] 1Click status returned ${res?.status || "timeout"} for ${order.swapId} (${order.solverDepositAddress})`
               );
+              const healed = await reconcileStuckForwardedOrder(order, "HTTP_ERROR");
+              if (healed && healed.status !== "FORWARDED") {
+                processed++;
+              }
             } else if (res && res.ok) {
               const data = await res.json().catch(() => null);
               const rawSt = String(data?.status || "").toUpperCase();
@@ -3680,7 +3703,7 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
               } else if (rawSt === "FAILED") {
                 await updateProxySwapOrder(order.swapId, { status: "FAILED" });
                 processed++;
-              } else if (rawSt === "PENDING_DEPOSIT" || rawSt === "INCOMPLETE_DEPOSIT") {
+              } else {
                 const healed = await reconcileStuckForwardedOrder(order, rawSt);
                 if (healed && healed.status !== "FORWARDED") {
                   processed++;

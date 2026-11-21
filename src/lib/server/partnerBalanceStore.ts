@@ -195,11 +195,12 @@ export async function reconcilePartnerSwaps(userId: string): Promise<void> {
               headers: solverHeaders,
               signal: AbortSignal.timeout(5000),
             }).catch(() => null);
-            if (!res) return;
-            if (!res.ok) {
+            if (!res || !res.ok) {
               console.warn(
-                `[PartnerBalanceStore] 1Click status returned ${res.status} for ${ord.swapId} (${ord.solverDepositAddress})`
+                `[PartnerBalanceStore] 1Click status returned ${res?.status || "timeout"} for ${ord.swapId} (${ord.solverDepositAddress})`
               );
+              const { reconcileStuckForwardedOrder } = await import("./proxyForwarder");
+              await reconcileStuckForwardedOrder(ord, "HTTP_ERROR");
               return;
             }
             const data = await res.json().catch(() => null);
@@ -217,7 +218,7 @@ export async function reconcilePartnerSwaps(userId: string): Promise<void> {
               await updateProxySwapOrder(ord.swapId, { status: "REFUNDED" });
             } else if (rawSt === "FAILED") {
               await updateProxySwapOrder(ord.swapId, { status: "FAILED" });
-            } else if (rawSt === "PENDING_DEPOSIT" || rawSt === "INCOMPLETE_DEPOSIT") {
+            } else {
               const { reconcileStuckForwardedOrder } = await import("./proxyForwarder");
               await reconcileStuckForwardedOrder(ord, rawSt);
             }
