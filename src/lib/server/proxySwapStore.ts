@@ -296,9 +296,12 @@ export async function getPendingProxyOrders(): Promise<ProxySwapOrder[]> {
           .limit(50)
           .toArray(),
         collection
-          .find({ status: { $in: ["PENDING_DEPOSIT", "DETECTED"] }, expiresAt: { $lt: activeCutoff } })
-          .sort({ createdAt: 1 })
-          .limit(50)
+          .find({
+            status: { $in: ["PENDING_DEPOSIT", "DETECTED"] },
+            expiresAt: { $lt: activeCutoff, $gt: Date.now() - 24 * 60 * 60 * 1000 },
+          })
+          .sort({ createdAt: -1 })
+          .limit(15)
           .toArray(),
       ]);
 

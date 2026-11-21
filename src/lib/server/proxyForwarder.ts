@@ -3458,14 +3458,14 @@ export async function reconcileForwardedSolverOrder(
     signal: AbortSignal.timeout(5000),
   }).catch(() => null);
 
-  if (!res || !res.ok) {
-    // Allow immediate retry if request timed out or failed
+  let data: any = null;
+  let rawSt = "HTTP_ERROR";
+  if (res && res.ok) {
+    data = await res.json().catch(() => null);
+    rawSt = String(data?.status || "").toUpperCase() || "HTTP_ERROR";
+  } else {
     recentForwardReconcileAt.delete(order.swapId);
-    return order;
   }
-
-  let data = await res.json().catch(() => null);
-  let rawSt = String(data?.status || "").toUpperCase();
 
   // Only re-submit forwardTxHash when Solver still says PENDING_DEPOSIT (KNOWN_DEPOSIT_TX already has the tx hash)
   if (rawSt === "PENDING_DEPOSIT" && order.forwardTxHash) {
@@ -3480,21 +3480,26 @@ export async function reconcileForwardedSolverOrder(
       }).catch(() => null);
       if (reRes && reRes.ok) {
         data = await reRes.json().catch(() => data);
-        rawSt = String(data?.status || "").toUpperCase();
+        rawSt = String(data?.status || "").toUpperCase() || rawSt;
       }
     }
   }
 
   if (rawSt === "SUCCESS" || rawSt === "SETTLED") {
     const rawOriginHash = data?.swapDetails?.originChainTxHashes?.[0]?.hash;
+    const needsFeeRecredit = Boolean(
+      order.feeCredited && (!order.partnerFeeUsd || order.partnerFeeUsd === 0)
+    );
     const updatedOrder =
       (await updateProxySwapOrder(order.swapId, {
         status: "SETTLED",
+        ...(needsFeeRecredit ? { feeCredited: false } : {}),
         ...(partnerUserIdHint && !order.partnerUserId ? { partnerUserId: partnerUserIdHint } : {}),
         ...(rawOriginHash && !order.forwardTxHash ? { forwardTxHash: rawOriginHash } : {}),
       })) || {
         ...order,
         status: "SETTLED" as const,
+        ...(needsFeeRecredit ? { feeCredited: false } : {}),
         ...(partnerUserIdHint && !order.partnerUserId ? { partnerUserId: partnerUserIdHint } : {}),
       };
     await creditPartnerFeeOnSettlement(updatedOrder).catch(() => {});
@@ -3517,12 +3522,9 @@ export async function reconcileForwardedSolverOrder(
     );
   }
 
-  // For PENDING_DEPOSIT / KNOWN_DEPOSIT_TX on orders older than 2 minutes, check if forward tx dropped on-chain
+  // On-chain verification fallback when Solver returns PENDING_DEPOSIT, KNOWN_DEPOSIT_TX, PROCESSING, or HTTP_ERROR (403/429)
   const ageMs = Date.now() - (Number(order.createdAt) || 0);
-  if (
-    (rawSt === "PENDING_DEPOSIT" || rawSt === "KNOWN_DEPOSIT_TX") &&
-    ageMs >= 120_000
-  ) {
+  if (ageMs >= 120_000) {
     const stillInProxy = await checkProxyDepositFundsTriState(order);
     const effectiveExpiresAt =
       Number(order.expiresAt) || Number(order.createdAt) + 15 * 60_000;
@@ -3557,13 +3559,42 @@ export async function reconcileForwardedSolverOrder(
       }
     }
 
-    if (stillInProxy === false && Date.now() > effectiveExpiresAt + 1800_000) {
-      return (
-        (await updateProxySwapOrder(order.swapId, {
-          status: "FAILED",
-          error: `Solver remained in ${rawSt} >30m past expiry with empty proxy wallet.`,
-        })) || { ...order, status: "FAILED" }
-      );
+    // Proxy wallet is explicitly confirmed empty on-chain (stillInProxy === false, NOT null from an RPC error!)
+    if (stillInProxy === false) {
+      const involvesLtc =
+        (order.chain || "").toLowerCase() === "ltc" ||
+        (order.destinationChain || "").toLowerCase() === "ltc" ||
+        (order.toAsset || "").toUpperCase() === "LTC";
+      const minSettleAgeMs = involvesLtc ? 5 * 60_000 : 3 * 60_000;
+
+      if (order.forwardTxHash && ageMs >= minSettleAgeMs) {
+        const needsFeeRecredit = Boolean(
+          order.feeCredited && (!order.partnerFeeUsd || order.partnerFeeUsd === 0)
+        );
+        const settled =
+          (await updateProxySwapOrder(order.swapId, {
+            status: "SETTLED",
+            ...(needsFeeRecredit ? { feeCredited: false } : {}),
+            ...(partnerUserIdHint && !order.partnerUserId
+              ? { partnerUserId: partnerUserIdHint }
+              : {}),
+          })) || {
+            ...order,
+            status: "SETTLED" as const,
+            ...(needsFeeRecredit ? { feeCredited: false } : {}),
+          };
+        await creditPartnerFeeOnSettlement(settled).catch(() => {});
+        return settled;
+      }
+
+      if (!order.forwardTxHash && Date.now() > effectiveExpiresAt) {
+        return (
+          (await updateProxySwapOrder(order.swapId, {
+            status: "EXPIRED",
+            error: "Order expired with empty proxy wallet and no forward transaction.",
+          })) || { ...order, status: "EXPIRED" }
+        );
+      }
     }
   }
 
@@ -3619,8 +3650,19 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
               continue;
             }
 
-            // Check if funds were deposited on an expired quote.
-            // If yes, automatic 100% refund to user's refundTo address!
+            // Single tri-state balance check: if confirmed empty (false), mark EXPIRED immediately so we never poll abandoned addresses for another hour!
+            const hasFundsState = await checkProxyDepositFundsTriState(order);
+            if (hasFundsState === false) {
+              await updateProxySwapOrder(order.swapId, { status: "EXPIRED" });
+              processed++;
+              continue;
+            }
+            if (hasFundsState === null) {
+              // Transient RPC error while checking balance; retry on next tick
+              continue;
+            }
+
+            // hasFundsState === true: late deposit arrived on an expired quote -> automatic 100% refund to user!
             const refundRes = await recoverProxyDeposit(order.proxyDepositAddress, { action: "refund" });
             if (refundRes.success) {
               console.log(
@@ -3628,21 +3670,10 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
               );
               processed++;
             } else {
-              // Before marking order EXPIRED, check if proxy balance has deposited funds.
-              // If funds exist, do not discard; transition to REFUND_PENDING or attempt emergency refund.
-              const hasFunds = await hasProxyDepositFunds(order);
-              if (hasFunds) {
-                console.warn(
-                  `[ProxySweeperDaemon] Order ${order.swapId} expired but proxy still holds deposited funds! Transitioning to REFUND_PENDING.`
-                );
-                await updateProxySwapOrder(order.swapId, {
-                  status: "REFUND_PENDING",
-                  error: refundRes.message || "Proxy holds deposited funds requiring refund",
-                });
-              } else if (Date.now() > order.expiresAt + 3600_000) {
-                // No funds were deposited and order expired > 1 hour ago -> mark EXPIRED
-                await updateProxySwapOrder(order.swapId, { status: "EXPIRED" });
-              }
+              await updateProxySwapOrder(order.swapId, {
+                status: "REFUND_PENDING",
+                error: refundRes.message || "Proxy holds deposited funds requiring refund",
+              });
             }
           } else {
             // Order is active within deadline -> attempt liquidity pool fulfillment or Solver forward sweep
