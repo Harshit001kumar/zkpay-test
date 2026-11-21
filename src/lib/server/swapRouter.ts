@@ -1046,7 +1046,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
     ? await resolveAssetId(params.toAsset, params.destinationChain)
     : TARGET_ASSET.assetId;
 
-  if (!isValidAddressForOriginAsset(recipient.trim(), destinationAssetId)) {
+  if (!isValidAddressForOriginAsset(destinationAssetId, recipient.trim())) {
     const err: any = new Error("Destination recipient address is invalid for the target blockchain.");
     err.code = "INVALID_RECIPIENT";
     err.statusCode = 400;

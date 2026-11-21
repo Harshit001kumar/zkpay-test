@@ -99,7 +99,7 @@ export async function POST(req: Request) {
         ? getTreasuryAddressForChain(def.chain)
         : rawDest;
 
-    if (!isValidAddressForOriginAsset(destination, def.assetId)) {
+    if (!isValidAddressForOriginAsset(def.assetId, destination)) {
       return NextResponse.json(
         { error: `Invalid destination address '${destination}' for ${def.chain.toUpperCase()}.` },
         { status: 400 }

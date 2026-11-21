@@ -1795,8 +1795,28 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
     const confirmStatus = await waitForSolanaSignature(txHash, 25_000);
     if (confirmStatus === "confirmed") {
       console.log(`[ProxyForwarder] ✓ Solana transfer confirmed on-chain: ${txHash}`);
+      // Re-notify 1Click now that the Solana transaction is finalized in a block
+      notifyNearIntentsDepositSubmit(order.solverDepositAddress, txHash).catch(() => {});
     } else {
-      console.log(`[ProxyForwarder] Solana transfer ${txHash} broadcast accepted; confirmation polling timed out (will finalize asynchronously).`);
+      const postBalRes = await fetchSolanaRpc("getBalance", [
+        order.proxyDepositAddress,
+        { commitment: "confirmed" },
+      ]).catch(() => null);
+      const postLamports = postBalRes ? BigInt(postBalRes?.value || 0) : 0n;
+      if (postLamports > SOLANA_NETWORK_FEE) {
+        console.warn(
+          `[ProxyForwarder] Solana transfer ${txHash} timed out and proxy still holds ${postLamports} lamports; keeping PENDING_DEPOSIT for retry.`
+        );
+        const pendingOrder = await updateProxySwapOrder(order.swapId, {
+          status: "PENDING_DEPOSIT",
+          forwardTxHash: txHash,
+          lastAttemptAt: Date.now(),
+          error: `Solana forward tx ${txHash} awaiting confirmation (will retry if dropped).`,
+        });
+        return pendingOrder || order;
+      }
+      console.log(`[ProxyForwarder] Solana transfer ${txHash} broadcast accepted and proxy balance emptied.`);
+      notifyNearIntentsDepositSubmit(order.solverDepositAddress, txHash).catch(() => {});
     }
 
     const updated = await updateProxySwapOrder(order.swapId, {
@@ -3404,6 +3424,110 @@ async function hasProxyDepositFunds(order: ProxySwapOrder): Promise<boolean> {
 }
 
 /**
+ * Reconciles a FORWARDED order when the upstream Solver returns PENDING_DEPOSIT or INCOMPLETE_DEPOSIT:
+ * 1. If INCOMPLETE_DEPOSIT -> marks FAILED.
+ * 2. If PENDING_DEPOSIT -> re-submits `forwardTxHash` to Solver `/v0/deposit/submit`, and if the forward tx
+ *    was dropped on-chain (funds still in `proxyDepositAddress`), either re-forwards (if active) or 100% auto-refunds (if expired).
+ */
+export async function reconcileStuckForwardedOrder(
+  order: ProxySwapOrder,
+  rawSolverStatus: string
+): Promise<ProxySwapOrder | null> {
+  const rawSt = (rawSolverStatus || "").toUpperCase();
+  if (rawSt === "INCOMPLETE_DEPOSIT") {
+    return updateProxySwapOrder(order.swapId, {
+      status: "FAILED",
+      error: "Solver reported INCOMPLETE_DEPOSIT",
+    });
+  }
+
+  if (rawSt !== "PENDING_DEPOSIT") {
+    return null;
+  }
+
+  // 1. Re-submit forwardTxHash to Solver in case pre-confirmation submit was ignored, then re-check status once
+  if (order.forwardTxHash && order.solverDepositAddress) {
+    const submitted = await notifyNearIntentsDepositSubmit(
+      order.solverDepositAddress,
+      order.forwardTxHash
+    ).catch(() => false);
+    if (submitted) {
+      const recheckUrl = `https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(order.solverDepositAddress.trim())}`;
+      const reRes = await fetch(recheckUrl, {
+        headers: buildOneClickHeaders(),
+        signal: AbortSignal.timeout(5000),
+      }).catch(() => null);
+      if (reRes && reRes.ok) {
+        const reData = await reRes.json().catch(() => null);
+        const reSt = String(reData?.status || "").toUpperCase();
+        if (reSt === "SUCCESS" || reSt === "SETTLED") {
+          const settled =
+            (await updateProxySwapOrder(order.swapId, {
+              status: "SETTLED",
+            })) || { ...order, status: "SETTLED" as const };
+          await creditPartnerFeeOnSettlement(settled).catch(() => {});
+          return settled;
+        }
+        if (reSt === "REFUNDED") {
+          return updateProxySwapOrder(order.swapId, { status: "REFUNDED" });
+        }
+        if (reSt === "FAILED" || reSt === "INCOMPLETE_DEPOSIT") {
+          return updateProxySwapOrder(order.swapId, { status: "FAILED" });
+        }
+      }
+    }
+  }
+
+  // Wait at least 2 minutes after order creation before diagnosing a dropped forward tx
+  if (Date.now() - order.createdAt < 120_000) {
+    return null;
+  }
+
+  // 2. Check if the forward tx was dropped on-chain (funds still sitting in proxyDepositAddress)
+  const stillInProxy = await hasProxyDepositFunds(order);
+  if (stillInProxy) {
+    if (Date.now() > order.expiresAt) {
+      console.warn(
+        `[ProxyForwarder] Stuck FORWARDED order ${order.swapId} expired with funds still in proxy (${order.proxyDepositAddress}); triggering 100% auto-refund.`
+      );
+      const refundRes = await recoverProxyDeposit(order.proxyDepositAddress, { action: "refund" });
+      if (refundRes.success) {
+        return updateProxySwapOrder(order.swapId, {
+          status: "REFUNDED",
+          refundTxHash: refundRes.txHash,
+          error: `Dropped forward transaction recovered; automatically refunded 100% to ${order.refundTo}.`,
+        });
+      }
+      return updateProxySwapOrder(order.swapId, {
+        status: "REFUND_PENDING",
+        error: refundRes.message || "Forward tx dropped; queued for automatic refund.",
+      });
+    } else {
+      console.warn(
+        `[ProxyForwarder] Stuck FORWARDED order ${order.swapId} still holds funds in proxy (${order.proxyDepositAddress}); re-forwarding now.`
+      );
+      const reset =
+        (await updateProxySwapOrder(order.swapId, {
+          status: "PENDING_DEPOSIT",
+          forwardTxHash: undefined,
+        })) || { ...order, status: "PENDING_DEPOSIT" as const };
+      return checkAndForwardProxyDeposit(reset);
+    }
+  }
+
+  // 3. If proxy wallet is empty, order expired > 30m ago, and Solver still says PENDING_DEPOSIT:
+  // Check if forwardTxHash actually failed/dropped on Solana
+  if (Date.now() > order.expiresAt + 1800_000) {
+    return updateProxySwapOrder(order.swapId, {
+      status: "EXPIRED",
+      error: "Quote expired with no deposit received by Solver.",
+    });
+  }
+
+  return null;
+}
+
+/**
  * Executes a single sweep and settlement cycle across all active proxy swap orders.
  * Returns the count of checked orders and processed operations.
  */
@@ -3556,6 +3680,11 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
               } else if (rawSt === "FAILED") {
                 await updateProxySwapOrder(order.swapId, { status: "FAILED" });
                 processed++;
+              } else if (rawSt === "PENDING_DEPOSIT" || rawSt === "INCOMPLETE_DEPOSIT") {
+                const healed = await reconcileStuckForwardedOrder(order, rawSt);
+                if (healed && healed.status !== "FORWARDED") {
+                  processed++;
+                }
               }
             }
           }

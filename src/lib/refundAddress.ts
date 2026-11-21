@@ -3,15 +3,18 @@ export function isValidAddressForOriginAsset(
   originAssetId: string,
   address?: string | null
 ): boolean {
-  if (!address || typeof address !== "string") return false;
-  const trimmed = address.trim();
-  if (originAssetId.includes(":sol")) {
+  if (!address || typeof address !== "string" || typeof originAssetId !== "string") return false;
+  const [assetId, trimmed] =
+    !originAssetId.includes(":") && address.includes(":")
+      ? [address.trim(), originAssetId.trim()]
+      : [originAssetId.trim(), address.trim()];
+  if (assetId.includes(":sol")) {
     return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmed);
-  } else if (originAssetId.includes(":tron")) {
+  } else if (assetId.includes(":tron")) {
     return /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(trimmed);
-  } else if (originAssetId.includes(":btc")) {
+  } else if (assetId.includes(":btc")) {
     return /^(1[a-km-zA-HJ-NP-Z1-9]{25,34}|3[a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-zA-HJ-NP-Z0-9]{39,59})$/.test(trimmed);
-  } else if (originAssetId.includes(":ltc")) {
+  } else if (assetId.includes(":ltc")) {
     return /^(L[a-km-zA-HJ-NP-Z1-9]{26,33}|M[a-km-zA-HJ-NP-Z1-9]{26,33}|ltc1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{39,59})$/i.test(trimmed);
   } else {
     return /^0x[a-fA-F0-9]{40}$/.test(trimmed);

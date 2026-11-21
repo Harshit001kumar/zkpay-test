@@ -361,14 +361,13 @@ export async function getRecentProxyOrders(limit = 50): Promise<ProxySwapOrder[]
  */
 export async function getForwardedOrUncreditedProxyOrders(limit = 30): Promise<ProxySwapOrder[]> {
   await hydrateCache();
-  const since24h = Date.now() - 24 * 60 * 60 * 1000;
   try {
     const db = await getMongoDb();
     if (db) {
       const collection = db.collection<ProxySwapOrder>("proxy_swap_orders");
       const [forwardedList, uncreditedSettledList] = await Promise.all([
         collection
-          .find({ status: "FORWARDED", createdAt: { $gte: since24h } } as any)
+          .find({ status: "FORWARDED" } as any)
           .sort({ createdAt: -1 })
           .limit(limit)
           .toArray(),
@@ -406,7 +405,7 @@ export async function getForwardedOrUncreditedProxyOrders(limit = 30): Promise<P
   return Array.from(ordersBySwapId.values())
     .filter(
       (o) =>
-        (o.status === "FORWARDED" && o.createdAt >= since24h) ||
+        o.status === "FORWARDED" ||
         (o.status === "SETTLED" &&
           !o.feeCredited &&
           Boolean(o.partnerUserId || o.apiKeyId || o.partnerFeeRecipient))
