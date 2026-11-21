@@ -21,6 +21,7 @@ import {
   getProxyOrderBySwapId,
   getPendingProxyOrders,
   getForwardedOrUncreditedProxyOrders,
+  getPendingInternalSweeps,
   getRecentProxyOrders,
   updateProxySwapOrder,
   getDecryptedProxyPrivateKey,
@@ -395,7 +396,7 @@ function getWalletClientForChain(chainStr: string, account: any) {
  * 3. Pre-flight checks native balance before EVERY transfer (including Tx #2 fee transfers): clamps gasPrice if affordable, or automatically advances a top-up from the relayer if gas spiked mid-sweep.
  * 4. Broadcasts via walletClient first, then falls back to direct raw broadcast across all configured RPC endpoints (with headers).
  */
-async function sendResilientErc20Transfer(params: {
+export async function sendResilientErc20Transfer(params: {
   chainKey: string;
   publicClient: any;
   walletClient: any;
@@ -1501,7 +1502,7 @@ interface SolanaTransferOutput {
  * - Preflight simulation is ENABLED, so rent/balance errors are rejected by the RPC
  *   before broadcast instead of landing on-chain as failed transactions.
  */
-async function sendSolanaMultiTransfer(params: {
+export async function sendSolanaMultiTransfer(params: {
   fromPubkeyBase58: string;
   fromPrivKeyHex: string;
   outputs: SolanaTransferOutput[];
@@ -1592,7 +1593,7 @@ async function sendSolanaMultiTransfer(params: {
  * Polls signature status until confirmed. Throws if the transaction failed on-chain.
  * Returns "timeout" if not confirmed within the window (preflight already passed).
  */
-async function waitForSolanaSignature(
+export async function waitForSolanaSignature(
   signature: string,
   timeoutMs = 20_000
 ): Promise<"confirmed" | "timeout"> {
@@ -3419,6 +3420,19 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
       checked += pendingOrders.length;
       for (const order of pendingOrders) {
         try {
+          if (order.status === "PAYING_OUT") {
+            // Never interrupt or auto-refund an in-flight liquidity pool payout (< 3m)
+            const startedAt = order.payoutStartedAt || order.lastAttemptAt || order.createdAt;
+            if (Date.now() - startedAt > 180_000) {
+              await updateProxySwapOrder(order.swapId, {
+                status: "REFUND_PENDING",
+                error:
+                  "Liquidity payout timed out without confirmation; flagged for manual verification before refund.",
+              });
+            }
+            continue;
+          }
+
           const isExpired = Date.now() > order.expiresAt + 60_000;
 
           if (isExpired) {
@@ -3457,12 +3471,36 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
               }
             }
           } else {
-            // Order is active within deadline -> attempt forward sweep
-            const res = await checkAndForwardProxyDeposit(order);
-            if (res.status === "FORWARDED") processed++;
+            // Order is active within deadline -> attempt liquidity pool fulfillment or Solver forward sweep
+            if (order.fulfillmentMode === "INTERNAL_POOL") {
+              const { processInternalLiquidityOrder } = await import("./liquidityEngine");
+              const res = await processInternalLiquidityOrder(order);
+              if (res.status === "SETTLED" || res.status === "REFUNDED") processed++;
+            } else {
+              const res = await checkAndForwardProxyDeposit(order);
+              if (res.status === "FORWARDED") processed++;
+            }
           }
         } catch (itemErr) {
           console.warn(`[ProxySweeperDaemon] Error sweeping order ${order.swapId}:`, itemErr);
+        }
+      }
+    }
+
+    // Phase 3: Retry pending single-sweeps for already-SETTLED internal liquidity orders
+    const pendingInternalSweeps = await getPendingInternalSweeps(10);
+    if (pendingInternalSweeps && pendingInternalSweeps.length > 0) {
+      checked += pendingInternalSweeps.length;
+      const { sweepInternalProxyToLiquidityWallet } = await import("./liquidityEngine");
+      for (const order of pendingInternalSweeps) {
+        if (!canCheckWithCooldown(`isweep:${order.swapId}`, EXPIRED_RECHECK_COOLDOWN_MS)) {
+          continue;
+        }
+        try {
+          const sweepRes = await sweepInternalProxyToLiquidityWallet(order);
+          if (sweepRes.swept) processed++;
+        } catch (sweepErr) {
+          console.warn(`[ProxySweeperDaemon] Pending liquidity sweep retry warning for ${order.swapId}:`, sweepErr);
         }
       }
     }

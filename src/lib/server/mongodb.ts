@@ -140,7 +140,14 @@ export async function initMongoIndexes(db: Db): Promise<void> {
       await coll.createIndex({ proxyDepositAddress: 1 }).catch(() => {});
       await coll.createIndex({ createdAt: -1 }).catch(() => {});
       await coll.createIndex({ apiKeyId: 1, createdAt: -1 }).catch(() => {});
+      await coll.createIndex({ fulfillmentMode: 1, status: 1, expiresAt: 1 }).catch(() => {});
+      await coll.createIndex({ sweepStatus: 1 }).catch(() => {});
     }
+
+    // liquidity_transfers audit ledger
+    const liqTransfers = db.collection("liquidity_transfers");
+    await liqTransfers.createIndex({ createdAt: -1 }).catch(() => {});
+    await liqTransfers.createIndex({ assetKey: 1, createdAt: -1 }).catch(() => {});
 
     // direct_swaps & direct_swap_orders (swapId unique, depositAddress)
     const directCollections = ["direct_swap_orders", "direct_swaps"];

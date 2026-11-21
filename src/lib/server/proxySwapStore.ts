@@ -29,10 +29,31 @@ export interface ProxySwapOrder {
   zkpayFeeBps?: number; // ZkPay share of % fee
   partnerFeeBps?: number; // Partner share of % fee
   fixedFeeAmount?: string; // Conditional 0.02 USDC/USDT in atomic units when zkpayPercentFee < $0.02 (ZkPay only)
-  status: "PENDING_DEPOSIT" | "DETECTED" | "FORWARDING" | "FORWARDED" | "SETTLED" | "FAILED" | "REFUNDED" | "EXPIRED" | "REFUND_PENDING";
+  status:
+    | "PENDING_DEPOSIT"
+    | "DETECTED"
+    | "PAYING_OUT"
+    | "FORWARDING"
+    | "FORWARDED"
+    | "SETTLED"
+    | "FAILED"
+    | "REFUNDED"
+    | "EXPIRED"
+    | "REFUND_PENDING";
   depositTxHash?: string;
   feeTxHash?: string;
   forwardTxHash?: string;
+  destinationTxHash?: string;
+  destinationExplorerUrl?: string;
+  refundTxHash?: string;
+  sweepStatus?: "PENDING_SWEEP" | "SWEPT" | "FAILED";
+  sweepTxHash?: string;
+  fulfillmentMode?: "SOLVER" | "INTERNAL_POOL";
+  destinationAssetId?: string;
+  expectedAmountOut?: string; // Atomic units of destination asset promised by internal liquidity pool
+  expectedAmountOutFormatted?: string;
+  settledAmountFormatted?: string;
+  payoutStartedAt?: number;
   error?: string;
   feeNote?: string; // Why a fee output was skipped / rolled into the solver transfer (audit trail)
   lastAttemptAt?: number; // Timestamp of last forward sweep attempt (used for cooldown backoff)
@@ -265,17 +286,17 @@ export async function getPendingProxyOrders(): Promise<ProxySwapOrder[]> {
       const activeCutoff = Date.now() - 60_000;
       const [inFlightOrRefund, activePending, expiredPending] = await Promise.all([
         collection
-          .find({ status: { $in: ["FORWARDING", "REFUND_PENDING"] } })
+          .find({ status: { $in: ["FORWARDING", "REFUND_PENDING", "PAYING_OUT"] } })
           .sort({ createdAt: 1 })
           .limit(50)
           .toArray(),
         collection
-          .find({ status: "PENDING_DEPOSIT", expiresAt: { $gte: activeCutoff } })
+          .find({ status: { $in: ["PENDING_DEPOSIT", "DETECTED"] }, expiresAt: { $gte: activeCutoff } })
           .sort({ createdAt: 1 })
           .limit(50)
           .toArray(),
         collection
-          .find({ status: "PENDING_DEPOSIT", expiresAt: { $lt: activeCutoff } })
+          .find({ status: { $in: ["PENDING_DEPOSIT", "DETECTED"] }, expiresAt: { $lt: activeCutoff } })
           .sort({ createdAt: 1 })
           .limit(50)
           .toArray(),
@@ -508,4 +529,137 @@ export function getDecryptedProxyPrivateKey(order: ProxySwapOrder): `0x${string}
 
   const clean = decrypted.trim();
   return (clean.startsWith("0x") ? clean : `0x${clean}`) as `0x${string}`;
+}
+
+/**
+ * Atomically transitions an INTERNAL_POOL order from PENDING_DEPOSIT/DETECTED -> PAYING_OUT.
+ * Guarantees at-most-once payout across concurrent serverless instances or sweeper ticks.
+ */
+export async function claimOrderForPayout(swapId: string): Promise<ProxySwapOrder | null> {
+  const clean = swapId.trim();
+  const now = Date.now();
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const collection = db.collection<ProxySwapOrder>("proxy_swap_orders");
+      const res = await collection.findOneAndUpdate(
+        {
+          swapId: clean,
+          status: { $in: ["PENDING_DEPOSIT", "DETECTED"] },
+        } as any,
+        {
+          $set: {
+            status: "PAYING_OUT",
+            payoutStartedAt: now,
+            lastAttemptAt: now,
+          },
+        },
+        { returnDocument: "after" }
+      );
+      const doc = (res && typeof res === "object" && "value" in res ? (res as any).value : res) as ProxySwapOrder | null;
+      if (doc) {
+        ordersBySwapId.set(doc.swapId, doc);
+        ordersByAddress.set(doc.proxyDepositAddress.toLowerCase(), doc);
+        ordersByAddress.set(doc.proxyDepositAddress, doc);
+        return doc;
+      }
+      return null;
+    }
+  } catch (err) {
+    console.warn("[ProxySwapStore] claimOrderForPayout MongoDB warning:", err);
+  }
+
+  await hydrateCache();
+  const existing = ordersBySwapId.get(clean);
+  if (!existing || (existing.status !== "PENDING_DEPOSIT" && existing.status !== "DETECTED")) {
+    return null;
+  }
+  return updateProxySwapOrder(clean, {
+    status: "PAYING_OUT",
+    payoutStartedAt: now,
+    lastAttemptAt: now,
+  });
+}
+
+/**
+ * Sums currently reserved destination liquidity across active unfulfilled INTERNAL_POOL orders.
+ * Keyed by destinationChain:toAsset (e.g. "ltc:LTC", "sol:SOL", "polygon:USDT").
+ */
+export async function getActiveReservedLiquidityByAsset(): Promise<Record<string, bigint>> {
+  const totals: Record<string, bigint> = {};
+  const now = Date.now();
+
+  const accumulate = (list: ProxySwapOrder[]) => {
+    for (const o of list) {
+      if (o.fulfillmentMode !== "INTERNAL_POOL") continue;
+      if (
+        o.status !== "PENDING_DEPOSIT" &&
+        o.status !== "DETECTED" &&
+        o.status !== "PAYING_OUT"
+      ) {
+        continue;
+      }
+      if (o.status !== "PAYING_OUT" && o.expiresAt < now) continue;
+      if (!o.expectedAmountOut) continue;
+      try {
+        const key = `${(o.destinationChain || "").toLowerCase()}:${(o.toAsset || "").toUpperCase()}`;
+        totals[key] = (totals[key] || 0n) + BigInt(o.expectedAmountOut);
+      } catch {}
+    }
+  };
+
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const list = await db
+        .collection<ProxySwapOrder>("proxy_swap_orders")
+        .find({
+          fulfillmentMode: "INTERNAL_POOL",
+          status: { $in: ["PENDING_DEPOSIT", "DETECTED", "PAYING_OUT"] },
+          expiresAt: { $gt: now - 10 * 60_000 },
+        } as any)
+        .limit(200)
+        .toArray();
+      accumulate(list as ProxySwapOrder[]);
+      return totals;
+    }
+  } catch (err) {
+    console.warn("[ProxySwapStore] getActiveReservedLiquidityByAsset warning:", err);
+  }
+
+  await hydrateCache();
+  accumulate(Array.from(ordersBySwapId.values()));
+  return totals;
+}
+
+/**
+ * Returns settled INTERNAL_POOL orders whose proxy deposit still needs to be swept into our liquidity wallet.
+ */
+export async function getPendingInternalSweeps(limit = 20): Promise<ProxySwapOrder[]> {
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const list = await db
+        .collection<ProxySwapOrder>("proxy_swap_orders")
+        .find({
+          fulfillmentMode: "INTERNAL_POOL",
+          status: "SETTLED",
+          sweepStatus: "PENDING_SWEEP",
+        } as any)
+        .sort({ createdAt: 1 })
+        .limit(limit)
+        .toArray();
+      return (list || []) as ProxySwapOrder[];
+    }
+  } catch {}
+
+  await hydrateCache();
+  return Array.from(ordersBySwapId.values())
+    .filter(
+      (o) =>
+        o.fulfillmentMode === "INTERNAL_POOL" &&
+        o.status === "SETTLED" &&
+        o.sweepStatus === "PENDING_SWEEP"
+    )
+    .slice(0, limit);
 }

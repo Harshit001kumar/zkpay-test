@@ -28,7 +28,7 @@ import {
   getFallbackDestinationAddress,
   normalizeChain,
 } from "@/lib/constants";
-import { resolveRefundAddress } from "@/lib/refundAddress";
+import { resolveRefundAddress, isValidAddressForOriginAsset } from "@/lib/refundAddress";
 import { generateProxyDepositWallet, isProxySupportedChain } from "./proxyWallets";
 import {
   saveProxySwapOrder,
@@ -39,6 +39,10 @@ import {
 import { saveDirectSwapOrder } from "./directSwapStore";
 import { checkAndForwardProxyDeposit, wakeProxySweeperDaemon } from "./proxyForwarder";
 import { creditPartnerFeeOnSettlement } from "./partnerBalanceStore";
+import {
+  quoteInternalLiquiditySwap,
+  processInternalLiquidityOrder,
+} from "./liquidityEngine";
 
 const ONECLICK_API = "https://1click.chaindefuser.com/v0";
 
@@ -810,11 +814,104 @@ export async function getSwapQuote(params: SwapQuoteParams) {
   const effectiveRefundTo = resolveRefundAddress(originAssetId, params.refundTo, effectiveRecipient, { isDryRun: true });
 
   const deadline = getQuoteDeadline(resolvedOriginChain);
+  const clampedSlippage = Math.max(10, Math.min(500, slippageBps || 100));
+
+  // Attempt internal liquidity pool quote first; automatically fall back to Solver if ineligible
+  try {
+    const internalQuote = await quoteInternalLiquiditySwap({
+      originAssetId,
+      destinationAssetId,
+      originChain: resolvedOriginChain,
+      destinationChain: resolvedDestChain,
+      totalAmountIn: normalizedAmount,
+      netSwapAmount,
+      slippageBps: clampedSlippage,
+    });
+    if (
+      internalQuote.eligible &&
+      internalQuote.amountOutAtomic &&
+      internalQuote.amountOutFormatted &&
+      internalQuote.minAmountOutAtomic &&
+      internalQuote.minAmountOutFormatted
+    ) {
+      const amountInFormatted = formatHumanAmount(netSwapAmount, originAssetId);
+      const executionPlan: ExecutionPlan = {
+        isDirectRoute: feeSplit.isDirectRoute,
+        type: feeSplit.isDirectRoute ? "DIRECT_DEPOSIT" : "UPFRONT_FEE_SPLIT",
+        totalAmountIn: amount.trim(),
+        netSwapAmount,
+        feeAmount,
+        feeAsset: originAssetId,
+        treasuryAddress: feeSplit.treasuryAddress || null,
+        partnerFeeRecipient: feeSplit.partnerFeeRecipient || null,
+        depositAddress: null,
+        transfers: feeSplit.isDirectRoute
+          ? [
+              {
+                purpose: "SWAP_DEPOSIT",
+                recipient: null,
+                amount: amount.trim(),
+              },
+            ]
+          : [
+              {
+                purpose: "PLATFORM_FEE",
+                recipient: feeSplit.treasuryAddress,
+                amount: feeAmount,
+              },
+              {
+                purpose: "SWAP_DEPOSIT",
+                recipient: null,
+                amount: netSwapAmount,
+              },
+            ],
+      };
+
+      return {
+        quoteId: `q_${Date.now()}`,
+        swapType: "FLEX_INPUT",
+        originAsset: originAssetId,
+        destinationAsset: destinationAssetId,
+        totalAmountIn: amount.trim(),
+        netSwapAmount,
+        feeAmount,
+        amountIn: netSwapAmount,
+        amountInFormatted,
+        amountOut: internalQuote.amountOutAtomic,
+        amountOutFormatted: internalQuote.amountOutFormatted,
+        minAmountOut: internalQuote.minAmountOutAtomic,
+        minAmountOutFormatted: internalQuote.minAmountOutFormatted,
+        executionPlan,
+        feeBreakdown: {
+          isDirectRoute: feeSplit.isDirectRoute,
+          networkProtocolFeeBps: feeSplit.networkProtocolFeeBps,
+          totalCustomFeeBps: feeSplit.totalCustomFeeBps,
+          feeAmount,
+          fixedFeeAmount: fees.fixedFee.toString(),
+          zkpayFeeAmount: fees.zkpayFee.toString(),
+          partnerFeeAmount: fees.partnerFee.toString(),
+          split: {
+            zkpayFeeBps: feeSplit.zkpayFeeBps,
+            partnerFeeBps: feeSplit.partnerFeeBps,
+            partnerFeeRecipient: feeSplit.partnerFeeRecipient,
+            treasuryAddress: feeSplit.treasuryAddress,
+          },
+          totalDeductionsBps: feeSplit.totalDeductionsBps,
+          feeSettlementNote: feeSplit.feeSettlementNote,
+        },
+        slippageBps: clampedSlippage,
+        timeEstimateSeconds: internalQuote.timeEstimateSeconds || 30,
+        expiresAt: deadline,
+      };
+    }
+  } catch (poolQuoteErr) {
+    console.warn("[SwapRouter] Liquidity pool quote fallback to Solver:", poolQuoteErr);
+  }
 
   const payload = {
     dry: true,
     swapType: "FLEX_INPUT",
-    slippageTolerance: Math.max(10, Math.min(500, slippageBps || 100)),
+    slippageTolerance: clampedSlippage,
     originAsset: originAssetId,
     depositType: "ORIGIN_CHAIN",
     destinationAsset: destinationAssetId,
@@ -949,6 +1046,13 @@ export async function createSwapOrder(params: CreateSwapParams) {
     ? await resolveAssetId(params.toAsset, params.destinationChain)
     : TARGET_ASSET.assetId;
 
+  if (!isValidAddressForOriginAsset(recipient.trim(), destinationAssetId)) {
+    const err: any = new Error("Destination recipient address is invalid for the target blockchain.");
+    err.code = "INVALID_RECIPIENT";
+    err.statusCode = 400;
+    throw err;
+  }
+
   // Resolve chains for origin (fee routing) and destination (settlement)
   const resolvedOriginChain = params.originChain || params.chain || resolveChainFromAssetId(originAssetId) || "base";
   const resolvedDestChain = params.destinationChain || resolveChainFromAssetId(destinationAssetId) || "base";
@@ -977,11 +1081,142 @@ export async function createSwapOrder(params: CreateSwapParams) {
 
   const effectiveRefundTo = resolveRefundAddress(originAssetId, params.refundTo, recipient, { isDryRun: false });
   const deadline = getQuoteDeadline(resolvedOriginChain);
+  const clampedSlippage = Math.max(10, Math.min(500, slippageBps || 100));
+
+  // Attempt internal liquidity pool fulfillment first; automatically fall back to Solver if ineligible
+  if (!feeSplit.isDirectRoute && isProxySupportedChain(resolvedOriginChain, originSymbol)) {
+    try {
+      const internalQuote = await quoteInternalLiquiditySwap({
+        originAssetId,
+        destinationAssetId,
+        originChain: resolvedOriginChain,
+        destinationChain: resolvedDestChain,
+        totalAmountIn: normalizedAmount,
+        netSwapAmount,
+        slippageBps: clampedSlippage,
+      });
+
+      if (
+        internalQuote.eligible &&
+        internalQuote.amountOutAtomic &&
+        internalQuote.amountOutFormatted &&
+        internalQuote.minAmountOutFormatted
+      ) {
+        const proxyWallet = generateProxyDepositWallet(resolvedOriginChain);
+        const finalDepositAddress = proxyWallet.depositAddress;
+        const finalDepositAmount = formatHumanAmount(normalizedAmount, originAssetId);
+        const swapId = `swp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const poolDeadlineIso = new Date(Date.now() + 20 * 60_000).toISOString();
+
+        const proxyOrder: ProxySwapOrder = {
+          swapId,
+          proxyDepositAddress: finalDepositAddress,
+          encryptedPrivateKey: proxyWallet.encryptedPrivateKey,
+          chain: normalizeChain(resolvedOriginChain) || resolvedOriginChain,
+          originAssetId,
+          destinationAssetId,
+          fromAsset: getOriginTokenMeta(originAssetId)?.symbol || fromAsset,
+          toAsset: internalQuote.destDef?.symbol || params.toAsset || "USDC",
+          destinationChain: resolvedDestChain,
+          recipient: recipient.trim(),
+          refundTo: effectiveRefundTo,
+          totalAmountIn: normalizedAmount,
+          totalAmountFormatted: finalDepositAmount,
+          netSwapAmount,
+          feeAmount,
+          gasBufferAmount: "0",
+          solverDepositAddress: "",
+          treasuryAddress: feeSplit.treasuryAddress,
+          partnerFeeRecipient: fees.partnerFee > 0n ? feeSplit.partnerFeeRecipient : null,
+          zkpayFeeBps: feeSplit.zkpayFeeBps,
+          partnerFeeBps: fees.partnerFee > 0n ? feeSplit.partnerFeeBps : 0,
+          fixedFeeAmount: fees.fixedFee.toString(),
+          zkpayFeeAmount: fees.zkpayFee.toString(),
+          partnerFeeAmount: fees.partnerFee.toString(),
+          fulfillmentMode: "INTERNAL_POOL",
+          expectedAmountOut: internalQuote.amountOutAtomic,
+          expectedAmountOutFormatted: internalQuote.amountOutFormatted,
+          status: "PENDING_DEPOSIT",
+          createdAt: Date.now(),
+          expiresAt: Date.now() + 20 * 60_000,
+          apiKeyId: params.apiKeyId || undefined,
+          partnerUserId: params.partnerUserId || undefined,
+          source: params.source || (params.apiKeyId ? "api" : "app"),
+          swapType: "FLEX_INPUT",
+        };
+
+        await saveProxySwapOrder(proxyOrder);
+        wakeProxySweeperDaemon();
+
+        const executionPlan: ExecutionPlan = {
+          isDirectRoute: feeSplit.isDirectRoute,
+          type: "UPFRONT_FEE_SPLIT",
+          totalAmountIn: amount.trim(),
+          netSwapAmount,
+          feeAmount,
+          feeAsset: originAssetId,
+          treasuryAddress: feeSplit.treasuryAddress || null,
+          partnerFeeRecipient: feeSplit.partnerFeeRecipient || null,
+          depositAddress: finalDepositAddress,
+          transfers: [
+            {
+              purpose: "PLATFORM_FEE",
+              recipient: feeSplit.treasuryAddress,
+              amount: feeAmount,
+            },
+            {
+              purpose: "SWAP_DEPOSIT",
+              recipient: finalDepositAddress,
+              amount: netSwapAmount,
+            },
+          ],
+        };
+
+        return {
+          swapId,
+          swapType: "FLEX_INPUT",
+          status: "PENDING_DEPOSIT",
+          deposit: {
+            address: finalDepositAddress,
+            memo: null,
+            amount: finalDepositAmount,
+            swapType: "FLEX_INPUT",
+            deadline: poolDeadlineIso,
+          },
+          settlement: {
+            recipient: recipient.trim(),
+            destinationAsset: destinationAssetId,
+            estimatedAmountOut: internalQuote.amountOutFormatted,
+            minAmountOut: internalQuote.minAmountOutFormatted,
+            timeEstimateSeconds: internalQuote.timeEstimateSeconds || 30,
+          },
+          executionPlan,
+          feeSplit: {
+            isDirectRoute: feeSplit.isDirectRoute,
+            totalCustomFeeBps: feeSplit.totalCustomFeeBps,
+            feeAmount,
+            fixedFeeAmount: fees.fixedFee.toString(),
+            zkpayFeeAmount: fees.zkpayFee.toString(),
+            partnerFeeAmount: fees.partnerFee.toString(),
+            zkpayFeeBps: feeSplit.zkpayFeeBps,
+            partnerFeeBps: feeSplit.partnerFeeBps,
+            partnerFeeRecipient: feeSplit.partnerFeeRecipient,
+            networkProtocolFeeBps: feeSplit.networkProtocolFeeBps,
+            totalDeductionsBps: feeSplit.totalDeductionsBps,
+            treasuryAddress: feeSplit.treasuryAddress,
+            feeSettlementNote: feeSplit.feeSettlementNote,
+          },
+        };
+      }
+    } catch (poolCreateErr) {
+      console.warn("[SwapRouter] Liquidity pool create fallback to Solver:", poolCreateErr);
+    }
+  }
 
   const payload = {
     dry: false, // Wet run: returns deposit address
     swapType: "FLEX_INPUT",
-    slippageTolerance: Math.max(10, Math.min(500, slippageBps || 100)),
+    slippageTolerance: clampedSlippage,
     originAsset: originAssetId,
     depositType: "ORIGIN_CHAIN",
     destinationAsset: destinationAssetId,
@@ -1206,6 +1441,55 @@ export async function getSwapStatus(depositAddress: string) {
 
   if (proxyOrder) {
     let currentOrder = proxyOrder;
+
+    // Internal Liquidity Pool order path (zero external Solver call)
+    if (proxyOrder.fulfillmentMode === "INTERNAL_POOL") {
+      if (
+        proxyOrder.status === "PENDING_DEPOSIT" ||
+        proxyOrder.status === "DETECTED" ||
+        (proxyOrder.status === "SETTLED" && proxyOrder.sweepStatus === "PENDING_SWEEP")
+      ) {
+        try {
+          currentOrder = await processInternalLiquidityOrder(proxyOrder);
+        } catch (poolStatusErr) {
+          console.warn("[SwapRouter] Liquidity pool status check warning:", poolStatusErr);
+        }
+      }
+
+      const mappedPoolStatus =
+        currentOrder.status === "PENDING_DEPOSIT"
+          ? "pending"
+          : currentOrder.status === "SETTLED"
+          ? "settled"
+          : currentOrder.status === "REFUNDED"
+          ? "refunded"
+          : currentOrder.status === "FAILED"
+          ? "failed"
+          : currentOrder.status === "EXPIRED"
+          ? currentOrder.error?.toLowerCase().includes("refund")
+            ? "refunded"
+            : "expired"
+          : "processing";
+
+      return {
+        status: mappedPoolStatus,
+        rawStatus: currentOrder.status,
+        depositAddress: currentOrder.proxyDepositAddress,
+        solverDepositAddress: currentOrder.solverDepositAddress || "",
+        depositedAmount: currentOrder.totalAmountFormatted,
+        settledAmount:
+          currentOrder.settledAmountFormatted ||
+          (currentOrder.status === "SETTLED" ? currentOrder.expectedAmountOutFormatted || null : null),
+        destinationTxHash: currentOrder.destinationTxHash || null,
+        destinationExplorerUrl: currentOrder.destinationExplorerUrl || null,
+        originTxHash: currentOrder.depositTxHash || currentOrder.sweepTxHash || null,
+        splitFeeTxHash: currentOrder.feeTxHash || null,
+        forwardTxHash: currentOrder.forwardTxHash || currentOrder.sweepTxHash || null,
+        feeNote: currentOrder.feeNote || null,
+        error: currentOrder.error || null,
+        updatedAt: new Date().toISOString(),
+      };
+    }
 
     // If pending or forwarding, trigger active balance check & auto-forward
     if (proxyOrder.status === "PENDING_DEPOSIT" || proxyOrder.status === "FORWARDING") {

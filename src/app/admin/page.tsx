@@ -61,7 +61,7 @@ interface AdminStats {
   };
 }
 
-type AdminTab = "overview" | "payouts" | "tools";
+type AdminTab = "overview" | "payouts" | "liquidity" | "tools";
 
 export default function AdminPage() {
   const { ready, authenticated, user, login, logout, getAccessToken } = usePrivy();
@@ -74,6 +74,26 @@ export default function AdminPage() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Internal Liquidity Pool & Funds Management State
+  const [liquidityData, setLiquidityData] = useState<any | null>(null);
+  const [isLoadingLiquidity, setIsLoadingLiquidity] = useState(false);
+  const [liquiditySubTab, setLiquiditySubTab] = useState<"swaps" | "transfers">("swaps");
+  const [isSavingLiquidityConfig, setIsSavingLiquidityConfig] = useState(false);
+  const [maxSwapUsdInput, setMaxSwapUsdInput] = useState<string>("500");
+  const [minReserveInputs, setMinReserveInputs] = useState<Record<string, string>>({
+    "ltc:LTC": "0.05",
+    "sol:SOL": "0.05",
+    "polygon:USDT": "5",
+  });
+  const [withdrawModalAsset, setWithdrawModalAsset] = useState<any | null>(null);
+  const [withdrawActionType, setWithdrawActionType] = useState<"withdraw" | "harvest_fees">("withdraw");
+  const [withdrawAmountInput, setWithdrawAmountInput] = useState<string>("");
+  const [withdrawDestInput, setWithdrawDestInput] = useState<string>("treasury");
+  const [isWithdrawingLiquidity, setIsWithdrawingLiquidity] = useState(false);
+  const [withdrawLiquidityError, setWithdrawLiquidityError] = useState<string | null>(null);
+  const [withdrawLiquidityResult, setWithdrawLiquidityResult] = useState<string | null>(null);
+  const [retryingSweepId, setRetryingSweepId] = useState<string | null>(null);
 
   // Partner Payouts & Partner Analytics State
   const [adminPayouts, setAdminPayouts] = useState<any[]>([]);
@@ -401,12 +421,136 @@ export default function AdminPage() {
     }
   }, [getAccessToken]);
 
+  const loadAdminLiquidity = useCallback(async () => {
+    setIsLoadingLiquidity(true);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch("/api/admin/liquidity", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data?.success) {
+        setLiquidityData(data);
+        if (data.config?.maxSwapUsd) {
+          setMaxSwapUsdInput(String(data.config.maxSwapUsd));
+        }
+        if (data.config?.minReserveByAsset) {
+          setMinReserveInputs((prev) => ({
+            ...prev,
+            ...data.config.minReserveByAsset,
+          }));
+        }
+      }
+    } catch (err) {
+      console.warn("[Admin] loadAdminLiquidity error:", err);
+    } finally {
+      setIsLoadingLiquidity(false);
+    }
+  }, [getAccessToken]);
+
+  const handleUpdateLiquidityConfig = async (patch: Record<string, any>) => {
+    setIsSavingLiquidityConfig(true);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch("/api/admin/liquidity", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json();
+      if (res.ok && data?.success) {
+        await loadAdminLiquidity();
+      }
+    } catch (err) {
+      console.warn("[Admin] handleUpdateLiquidityConfig error:", err);
+    } finally {
+      setIsSavingLiquidityConfig(false);
+    }
+  };
+
+  const handleToggleAssetPause = async (assetKey: string) => {
+    const currentPaused: string[] = liquidityData?.config?.pausedAssets || [];
+    const nextPaused = currentPaused.includes(assetKey)
+      ? currentPaused.filter((k) => k !== assetKey)
+      : [...currentPaused, assetKey];
+    await handleUpdateLiquidityConfig({ pausedAssets: nextPaused });
+  };
+
+  const handleExecuteLiquidityWithdraw = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!withdrawModalAsset || !withdrawAmountInput.trim()) return;
+    setIsWithdrawingLiquidity(true);
+    setWithdrawLiquidityError(null);
+    setWithdrawLiquidityResult(null);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch("/api/admin/liquidity/withdraw", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: withdrawActionType,
+          assetKey: withdrawModalAsset.assetKey,
+          amount: withdrawAmountInput.trim(),
+          destination: withdrawDestInput.trim() || "treasury",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || "Failed to execute liquidity transfer");
+      }
+      setWithdrawLiquidityResult(`Transfer sent: ${data.txHash}`);
+      setWithdrawModalAsset(null);
+      setWithdrawAmountInput("");
+      await loadAdminLiquidity();
+    } catch (err: any) {
+      setWithdrawLiquidityError(err?.message || "Failed to execute liquidity transfer");
+    } finally {
+      setIsWithdrawingLiquidity(false);
+    }
+  };
+
+  const handleRetryInternalSweep = async (swapId: string) => {
+    setRetryingSweepId(swapId);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch("/api/admin/liquidity/withdraw", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: "retry_sweep",
+          swapId,
+        }),
+      });
+      await res.json().catch(() => null);
+      await loadAdminLiquidity();
+    } catch (err) {
+      console.warn("[Admin] handleRetryInternalSweep error:", err);
+    } finally {
+      setRetryingSweepId(null);
+    }
+  };
+
   useEffect(() => {
     if (isAuthorized && (activeTab === "payouts" || activeTab === "overview")) {
       loadAdminPayouts();
       loadAdminPartnersOverview();
     }
   }, [isAuthorized, activeTab, loadAdminPayouts, loadAdminPartnersOverview]);
+
+  useEffect(() => {
+    if (isAuthorized && (activeTab === "liquidity" || activeTab === "overview")) {
+      loadAdminLiquidity();
+    }
+  }, [isAuthorized, activeTab, loadAdminLiquidity]);
 
   const handleCompletePayout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -641,7 +785,7 @@ export default function AdminPage() {
       <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-5 space-y-6">
 
         {/* Segmented Tab Bar (Mobile-First) */}
-        <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-black/40 border border-white/10 max-w-xl mx-auto sm:mx-0">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 p-1 rounded-2xl bg-black/40 border border-white/10 max-w-2xl mx-auto sm:mx-0">
           <button
             onClick={() => setActiveTab("overview")}
             className={`py-2 px-2.5 rounded-xl text-xs font-sans tabular-nums font-bold transition-colors ${
@@ -668,6 +812,21 @@ export default function AdminPage() {
             ) : partnerAnalytics?.summary?.totalPartners > 0 ? (
               <span className="ml-1 px-1.5 py-0.2 rounded-full bg-success/20 text-success text-[9px] font-bold">
                 {partnerAnalytics.summary.totalPartners}
+              </span>
+            ) : null}
+          </button>
+          <button
+            onClick={() => setActiveTab("liquidity")}
+            className={`py-2 px-2.5 rounded-xl text-xs font-sans tabular-nums font-bold transition-colors relative ${
+              activeTab === "liquidity"
+                ? "bg-white/10 text-white shadow-sm border border-white/15"
+                : "text-outline hover:text-on-surface"
+            }`}
+          >
+            <span>Liquidity</span>
+            {liquidityData?.summary?.totalLiquidityUsd > 0 ? (
+              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-primary/20 text-primary text-[9px] font-bold">
+                ${liquidityData.summary.totalLiquidityUsd.toFixed(0)}
               </span>
             ) : null}
           </button>
@@ -2015,6 +2174,685 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* ────────────── TAB 3: LIQUIDITY POOL & FUNDS MANAGEMENT ────────────── */}
+        {activeTab === "liquidity" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Master Control & Pool Summary Banner */}
+            <div className="obsidian-glass rounded-2xl p-5 sm:p-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/15 border border-primary/30 flex items-center justify-center text-primary shrink-0">
+                    <Wallet className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-sm sm:text-base font-bold text-white tracking-normal font-sans tabular-nums">
+                        Internal Liquidity Pool & Funds Console
+                      </h3>
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-bold font-sans tabular-nums ${
+                          liquidityData?.config?.enabled !== false
+                            ? "bg-success/20 text-success border border-success/30"
+                            : "bg-warning/20 text-warning border border-warning/30"
+                        }`}
+                      >
+                        {liquidityData?.config?.enabled !== false ? "POOL ACTIVE" : "PAUSED (SOLVER ONLY)"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-outline font-sans tabular-nums mt-0.5">
+                      Direct hot-wallet fulfillment (LTC 1-conf, SOL, Polygon USDT) with automatic Solver fallback, single-sweep deposit recycling, and 100% auto-refunds
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    disabled={isSavingLiquidityConfig}
+                    onClick={() =>
+                      handleUpdateLiquidityConfig({
+                        enabled: !(liquidityData?.config?.enabled !== false),
+                      })
+                    }
+                    className={`px-3.5 py-2 rounded-xl text-xs font-sans tabular-nums font-bold transition-colors border ${
+                      liquidityData?.config?.enabled !== false
+                        ? "bg-warning/15 hover:bg-warning/25 text-warning border-warning/30"
+                        : "bg-success/20 hover:bg-success/30 text-success border-success/30"
+                    }`}
+                  >
+                    {liquidityData?.config?.enabled !== false ? "Pause Pool" : "Enable Pool"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={loadAdminLiquidity}
+                    disabled={isLoadingLiquidity}
+                    className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-sans tabular-nums text-white font-bold flex items-center gap-1.5 transition-colors"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoadingLiquidity ? "animate-spin" : ""}`} />
+                    <span>Refresh</span>
+                  </button>
+                </div>
+              </div>
+
+              {withdrawLiquidityResult && (
+                <div className="p-3.5 rounded-xl bg-success/15 border border-success/30 text-xs font-sans tabular-nums text-success flex items-center justify-between">
+                  <span className="flex items-center gap-2 font-bold">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>{withdrawLiquidityResult}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setWithdrawLiquidityResult(null)}
+                    className="text-outline hover:text-white"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* KPI Metrics Grid */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs font-sans tabular-nums">
+                <div className="p-4 rounded-xl bg-primary/10 border border-primary/25 space-y-1">
+                  <span className="text-[10px] font-bold text-primary uppercase tracking-wider block">
+                    Total Pool Liquidity
+                  </span>
+                  <div className="text-2xl font-black text-white">
+                    ${(liquidityData?.summary?.totalLiquidityUsd || 0).toFixed(2)}
+                  </div>
+                  <span className="text-[10px] text-outline block">
+                    ${(liquidityData?.summary?.totalAvailableUsd || 0).toFixed(2)} unreserved available
+                  </span>
+                </div>
+
+                <div className="p-4 rounded-xl bg-success/10 border border-success/25 space-y-1">
+                  <span className="text-[10px] font-bold text-success uppercase tracking-wider block">
+                    Pool Fees Generated
+                  </span>
+                  <div className="text-2xl font-black text-white">
+                    ${(liquidityData?.summary?.zkpayNetPoolFeesUsd || 0).toFixed(4)}
+                  </div>
+                  <span className="text-[10px] text-success/80 block">
+                    Gross: ${(liquidityData?.summary?.grossPoolFeesUsd || 0).toFixed(4)} • Partner: ${(liquidityData?.summary?.partnerPoolFeesUsd || 0).toFixed(4)}
+                  </span>
+                </div>
+
+                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
+                  <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">
+                    Pool vs Solver Routing
+                  </span>
+                  <div className="text-2xl font-black text-white">
+                    {liquidityData?.summary?.poolSwapsSettled || 0}{" "}
+                    <span className="text-xs font-normal text-outline">
+                      / {liquidityData?.summary?.poolSwapsTotal || 0} pool
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-outline block">
+                    ${(liquidityData?.summary?.totalPoolVolumeUsd || 0).toFixed(2)} vol • {liquidityData?.summary?.solverSwapsTotal || 0} Solver swaps
+                  </span>
+                </div>
+
+                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 space-y-1">
+                  <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">
+                    Safety & Auto-Refunds
+                  </span>
+                  <div className="text-2xl font-black text-white">
+                    {liquidityData?.summary?.poolSwapsRefunded || 0}{" "}
+                    <span className="text-xs font-normal text-outline">refunded</span>
+                  </div>
+                  <span className="text-[10px] text-outline block">
+                    {liquidityData?.summary?.poolSwapsActive || 0} active • {liquidityData?.summary?.pendingSweepsCount || 0} pending sweeps
+                  </span>
+                </div>
+              </div>
+
+              {/* Risk Guardrails & Max Swap Control */}
+              <div className="p-4 rounded-xl bg-black/40 border border-white/10 flex flex-col sm:flex-row sm:items-end justify-between gap-4 text-xs font-sans tabular-nums">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1">
+                  <div>
+                    <label className="text-[10px] font-bold text-outline block mb-1">
+                      Max Internal Swap (USD)
+                    </label>
+                    <input
+                      type="number"
+                      min="5"
+                      step="10"
+                      value={maxSwapUsdInput}
+                      onChange={(e) => setMaxSwapUsdInput(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/15 text-white text-xs focus:border-primary outline-none"
+                    />
+                  </div>
+                  {(["ltc:LTC", "sol:SOL", "polygon:USDT"] as const).map((ak) => (
+                    <div key={ak}>
+                      <label className="text-[10px] font-bold text-outline block mb-1">
+                        Min Floor ({ak.split(":")[1]})
+                      </label>
+                      <input
+                        type="text"
+                        value={minReserveInputs[ak] || ""}
+                        onChange={(e) =>
+                          setMinReserveInputs((prev) => ({ ...prev, [ak]: e.target.value }))
+                        }
+                        className="w-full px-3 py-2 rounded-xl bg-black/60 border border-white/15 text-white text-xs focus:border-primary outline-none"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  disabled={isSavingLiquidityConfig}
+                  onClick={() =>
+                    handleUpdateLiquidityConfig({
+                      maxSwapUsd: Number(maxSwapUsdInput) || 500,
+                      minReserveByAsset: minReserveInputs,
+                    })
+                  }
+                  className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold text-xs transition-colors disabled:opacity-50 shrink-0"
+                >
+                  {isSavingLiquidityConfig ? "Saving…" : "Save Guardrails"}
+                </button>
+              </div>
+            </div>
+
+            {/* Hot Wallet Cards (LTC, SOL, Polygon USDT) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-sans tabular-nums">
+              {(["ltc:LTC", "sol:SOL", "polygon:USDT"] as const).map((ak) => {
+                const w = liquidityData?.balances?.[ak];
+                const isPaused = liquidityData?.config?.pausedAssets?.includes(ak);
+                const envVarName =
+                  ak === "ltc:LTC"
+                    ? "LIQUIDITY_LTC_PRIVATE_KEY"
+                    : ak === "sol:SOL"
+                    ? "LIQUIDITY_SOL_PRIVATE_KEY"
+                    : "LIQUIDITY_EVM_PRIVATE_KEY";
+
+                return (
+                  <div
+                    key={ak}
+                    className="obsidian-glass rounded-2xl p-5 flex flex-col justify-between space-y-4 border border-white/10"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <span className="text-[10px] font-bold text-outline uppercase tracking-wider block">
+                            {w?.chain?.toUpperCase() || ak.split(":")[0].toUpperCase()} Hot Wallet
+                          </span>
+                          <h4 className="text-base font-bold text-white">
+                            {w?.name || ak}
+                          </h4>
+                        </div>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            !w?.configured
+                              ? "bg-warning/20 text-warning"
+                              : isPaused
+                              ? "bg-warning/20 text-warning"
+                              : w?.gasHealthy
+                              ? "bg-success/20 text-success"
+                              : "bg-error/20 text-error"
+                          }`}
+                        >
+                          {!w?.configured
+                            ? "UNCONFIGURED"
+                            : isPaused
+                            ? "PAUSED"
+                            : w?.gasHealthy
+                            ? "READY"
+                            : "LOW GAS"}
+                        </span>
+                      </div>
+
+                      {/* Balance Display */}
+                      <div className="p-3.5 rounded-xl bg-black/40 border border-white/10 space-y-1.5">
+                        <div className="flex items-baseline justify-between">
+                          <span className="text-2xl font-black text-white">
+                            {w?.onChainBalanceFormatted || "0.00"}{" "}
+                            <span className="text-xs font-bold text-primary">
+                              {w?.symbol || ak.split(":")[1]}
+                            </span>
+                          </span>
+                          <span className="text-xs font-bold text-success">
+                            ${(w?.totalUsd || 0).toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-outline pt-1 border-t border-white/5">
+                          <span>Available to Fill:</span>
+                          <span className="text-white font-bold">
+                            {w?.availableFormatted || "0.00"} {w?.symbol} (${(w?.availableUsd || 0).toFixed(2)})
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-outline">
+                          <span>Reserved / Floor:</span>
+                          <span>
+                            {w?.reservedFormatted || "0"} / {w?.minReserveFormatted || "0"} {w?.symbol}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-outline">
+                          <span>Gas Tank ({w?.gasSymbol || "Native"}):</span>
+                          <span className={w?.gasHealthy ? "text-success font-bold" : "text-warning font-bold"}>
+                            {w?.gasBalanceFormatted || "0.0000"} {w?.gasSymbol}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Top-Up Deposit Address */}
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-outline block">
+                          Top-Up Deposit Address
+                        </span>
+                        {w?.address ? (
+                          <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-between gap-2">
+                            <span className="text-[11px] text-white font-mono truncate">
+                              {w.address}
+                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(w.address, `liq_${ak}`)}
+                                className="text-primary hover:text-white"
+                                title="Copy Top-Up Address"
+                              >
+                                {copiedKey === `liq_${ak}` ? (
+                                  <Check className="w-3.5 h-3.5 text-success" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                              {w.explorerAddressUrl && (
+                                <a
+                                  href={w.explorerAddressUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-outline hover:text-white"
+                                  title="View on Explorer"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-2.5 rounded-xl bg-warning/10 border border-warning/25 text-[11px] text-warning">
+                            Set <span className="font-mono font-bold">{envVarName}</span> in environment variables
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Card Actions */}
+                    <div className="pt-2 border-t border-white/10 flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={!w?.configured || isSavingLiquidityConfig}
+                        onClick={() => handleToggleAssetPause(ak)}
+                        className="flex-1 py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-[11px] transition-colors disabled:opacity-40"
+                      >
+                        {isPaused ? "Resume Asset" : "Pause Asset"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!w?.configured || Number(w?.availableFormatted || 0) <= 0}
+                        onClick={() => {
+                          setWithdrawModalAsset(w);
+                          setWithdrawActionType("withdraw");
+                          setWithdrawAmountInput(w?.availableFormatted || "");
+                          setWithdrawDestInput("treasury");
+                          setWithdrawLiquidityError(null);
+                        }}
+                        className="flex-1 py-2 px-3 rounded-xl bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary font-bold text-[11px] transition-colors disabled:opacity-40"
+                      >
+                        Withdraw / Fees
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Internal Swaps & Transfers Ledger */}
+            <div className="obsidian-glass rounded-2xl p-5 sm:p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setLiquiditySubTab("swaps")}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-sans tabular-nums font-bold transition-colors ${
+                      liquiditySubTab === "swaps"
+                        ? "bg-white/15 text-white border border-white/20"
+                        : "bg-white/5 text-outline hover:text-white"
+                    }`}
+                  >
+                    Pool Swaps ({liquidityData?.swaps?.length || 0})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLiquiditySubTab("transfers")}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-sans tabular-nums font-bold transition-colors ${
+                      liquiditySubTab === "transfers"
+                        ? "bg-white/15 text-white border border-white/20"
+                        : "bg-white/5 text-outline hover:text-white"
+                    }`}
+                  >
+                    Fund Movements & Withdrawals ({liquidityData?.transfers?.length || 0})
+                  </button>
+                </div>
+              </div>
+
+              {liquiditySubTab === "swaps" ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs font-sans tabular-nums">
+                    <thead>
+                      <tr className="border-b border-white/10 text-[10px] font-bold text-outline uppercase">
+                        <th className="pb-3 pr-3">Swap / Date</th>
+                        <th className="pb-3 pr-3">Route & Amount</th>
+                        <th className="pb-3 pr-3">Fee Earned</th>
+                        <th className="pb-3 pr-3">Status</th>
+                        <th className="pb-3 pr-3">Deposit Sweep</th>
+                        <th className="pb-3 text-right">On-Chain Links</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {(liquidityData?.swaps || []).length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-10 text-center text-outline">
+                            No internal liquidity pool swaps yet. Eligible LTC, SOL, and Polygon USDT swaps will appear here automatically.
+                          </td>
+                        </tr>
+                      ) : (
+                        (liquidityData?.swaps || []).map((sw: any) => (
+                          <tr key={sw.swapId} className="hover:bg-white/[0.02] transition-colors">
+                            <td className="py-3 pr-3">
+                              <div className="font-bold text-white font-mono">
+                                {sw.swapId.slice(0, 14)}…
+                              </div>
+                              <div className="text-[10px] text-outline">
+                                {new Date(sw.createdAt).toLocaleDateString()}{" "}
+                                {new Date(sw.createdAt).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </div>
+                            </td>
+                            <td className="py-3 pr-3">
+                              <div className="font-bold text-white">
+                                {sw.amountInFormatted} {sw.fromAsset} → {sw.amountOutFormatted} {sw.toAsset}
+                              </div>
+                              <div className="text-[10px] text-outline">
+                                {sw.chain.toUpperCase()} → {sw.destinationChain.toUpperCase()} (${(sw.amountUsd || 0).toFixed(2)})
+                              </div>
+                            </td>
+                            <td className="py-3 pr-3">
+                              <div className="font-bold text-success">
+                                +${(sw.zkpayNetFeeUsd || 0).toFixed(4)} ZkPay
+                              </div>
+                              <div className="text-[10px] text-outline">
+                                {sw.grossFeeFormatted}
+                                {sw.partnerFeeUsd > 0 ? ` • Partner: $${sw.partnerFeeUsd.toFixed(4)}` : ""}
+                              </div>
+                            </td>
+                            <td className="py-3 pr-3">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  sw.status === "SETTLED"
+                                    ? "bg-success/20 text-success"
+                                    : sw.status === "REFUNDED"
+                                    ? "bg-warning/20 text-warning"
+                                    : sw.status === "FAILED" || sw.status === "REFUND_PENDING"
+                                    ? "bg-error/20 text-error"
+                                    : "bg-primary/20 text-primary"
+                                }`}
+                              >
+                                {sw.status}
+                              </span>
+                              {sw.error && (
+                                <div className="text-[10px] text-error max-w-[200px] truncate mt-0.5" title={sw.error}>
+                                  {sw.error}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-3 pr-3">
+                              {sw.sweepStatus === "SWEPT" ? (
+                                <span className="text-[11px] text-success font-bold">✓ Swept to Pool</span>
+                              ) : sw.status === "SETTLED" ? (
+                                <button
+                                  type="button"
+                                  disabled={retryingSweepId === sw.swapId}
+                                  onClick={() => handleRetryInternalSweep(sw.swapId)}
+                                  className="px-2.5 py-1 rounded-lg bg-warning/20 hover:bg-warning/30 border border-warning/30 text-warning text-[10px] font-bold"
+                                >
+                                  {retryingSweepId === sw.swapId ? "Sweeping…" : "Retry Sweep"}
+                                </button>
+                              ) : (
+                                <span className="text-outline text-[11px]">{sw.sweepStatus}</span>
+                              )}
+                            </td>
+                            <td className="py-3 text-right space-x-2 whitespace-nowrap">
+                              {sw.destinationExplorerUrl && (
+                                <a
+                                  href={sw.destinationExplorerUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-success hover:underline inline-flex items-center gap-0.5 font-bold"
+                                >
+                                  <span>Payout</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              )}
+                              {sw.sweepExplorerUrl && (
+                                <a
+                                  href={sw.sweepExplorerUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-primary hover:underline inline-flex items-center gap-0.5 font-bold"
+                                >
+                                  <span>Sweep</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              )}
+                              {sw.refundExplorerUrl && (
+                                <a
+                                  href={sw.refundExplorerUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-warning hover:underline inline-flex items-center gap-0.5 font-bold"
+                                >
+                                  <span>Refund</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs font-sans tabular-nums">
+                    <thead>
+                      <tr className="border-b border-white/10 text-[10px] font-bold text-outline uppercase">
+                        <th className="pb-3 pr-3">Time</th>
+                        <th className="pb-3 pr-3">Type</th>
+                        <th className="pb-3 pr-3">Asset & Amount</th>
+                        <th className="pb-3 pr-3">Destination</th>
+                        <th className="pb-3 pr-3">Note</th>
+                        <th className="pb-3 text-right">Explorer</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {(liquidityData?.transfers || []).length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-10 text-center text-outline">
+                            No pool fund movements recorded yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        (liquidityData?.transfers || []).map((tr: any) => (
+                          <tr key={tr.id} className="hover:bg-white/[0.02] transition-colors">
+                            <td className="py-3 pr-3 text-outline">
+                              {new Date(tr.createdAt).toLocaleDateString()}{" "}
+                              {new Date(tr.createdAt).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </td>
+                            <td className="py-3 pr-3">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  tr.type === "SWEEP_IN"
+                                    ? "bg-success/20 text-success"
+                                    : tr.type === "PAYOUT_OUT"
+                                    ? "bg-primary/20 text-primary"
+                                    : tr.type === "AUTO_REFUND"
+                                    ? "bg-warning/20 text-warning"
+                                    : "bg-white/15 text-white"
+                                }`}
+                              >
+                                {tr.type}
+                              </span>
+                            </td>
+                            <td className="py-3 pr-3 font-bold text-white">
+                              {tr.amountFormatted} {tr.symbol}{" "}
+                              <span className="text-outline font-normal text-[10px]">
+                                (${(tr.amountUsd || 0).toFixed(2)})
+                              </span>
+                            </td>
+                            <td className="py-3 pr-3 font-mono text-[11px] text-outline truncate max-w-[160px]">
+                              {tr.toAddress}
+                            </td>
+                            <td className="py-3 pr-3 text-outline truncate max-w-[220px]">
+                              {tr.note || "—"}
+                            </td>
+                            <td className="py-3 text-right">
+                              {tr.explorerUrl && (
+                                <a
+                                  href={tr.explorerUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-primary hover:underline inline-flex items-center gap-1 font-bold"
+                                >
+                                  <span>View Tx</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Withdraw / Harvest Fees Modal */}
+            {withdrawModalAsset && (
+              <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+                <div className="w-full max-w-md bg-surface border border-white/15 rounded-3xl p-6 space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                    <h4 className="text-sm font-bold text-white font-sans tabular-nums">
+                      Withdraw / Harvest — {withdrawModalAsset.name}
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setWithdrawModalAsset(null)}
+                      className="text-outline hover:text-white"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleExecuteLiquidityWithdraw} className="space-y-3 text-xs font-sans tabular-nums">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWithdrawActionType("harvest_fees");
+                          setWithdrawDestInput("treasury");
+                        }}
+                        className={`py-2 px-3 rounded-xl font-bold border ${
+                          withdrawActionType === "harvest_fees"
+                            ? "bg-success/20 text-success border-success/30"
+                            : "bg-white/5 text-outline border-white/10"
+                        }`}
+                      >
+                        Harvest Fees to Treasury
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setWithdrawActionType("withdraw")}
+                        className={`py-2 px-3 rounded-xl font-bold border ${
+                          withdrawActionType === "withdraw"
+                            ? "bg-primary/20 text-primary border-primary/30"
+                            : "bg-white/5 text-outline border-white/10"
+                        }`}
+                      >
+                        Custom Withdrawal
+                      </button>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-[10px] font-bold text-outline mb-1">
+                        <span>Amount ({withdrawModalAsset.symbol})</span>
+                        <button
+                          type="button"
+                          onClick={() => setWithdrawAmountInput(withdrawModalAsset.availableFormatted || "0")}
+                          className="text-primary hover:underline"
+                        >
+                          Max Available: {withdrawModalAsset.availableFormatted} {withdrawModalAsset.symbol}
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={withdrawAmountInput}
+                        onChange={(e) => setWithdrawAmountInput(e.target.value)}
+                        placeholder={`e.g. ${withdrawModalAsset.availableFormatted}`}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/15 text-white text-xs outline-none focus:border-primary"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-outline block mb-1">
+                        Destination Address (or &quot;treasury&quot;)
+                      </label>
+                      <input
+                        type="text"
+                        value={withdrawDestInput}
+                        onChange={(e) => setWithdrawDestInput(e.target.value)}
+                        placeholder="treasury or on-chain address"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/15 text-white text-xs outline-none focus:border-primary"
+                      />
+                    </div>
+
+                    {withdrawLiquidityError && (
+                      <div className="p-3 rounded-xl bg-error/15 border border-error/30 text-error text-xs">
+                        {withdrawLiquidityError}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setWithdrawModalAsset(null)}
+                        className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-outline font-bold"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isWithdrawingLiquidity || !withdrawAmountInput.trim()}
+                        className="flex-1 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold disabled:opacity-50"
+                      >
+                        {isWithdrawingLiquidity ? "Sending…" : "Confirm Transfer"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ────────────── TAB 4: TOOLS & SWEEPER ────────────── */}
         {activeTab === "tools" && (
           <div className="space-y-6 animate-in fade-in duration-300">
@@ -2029,7 +2867,7 @@ export default function AdminPage() {
                     Automated Proxy Forwarder Relayer
                   </h3>
                   <p className="text-xs text-outline font-sans tabular-nums mt-0.5">
-                    Background EVM proxy sweeper routing user deposits through Treasury fee splits to NEAR Intents
+                    Background EVM proxy sweeper routing user deposits through Treasury fee splits to Solver
                   </p>
                 </div>
               </div>

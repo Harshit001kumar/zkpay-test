@@ -7,11 +7,16 @@ export interface LtcUtxo {
   vout: number;
   value: bigint; // in satoshis (1 LTC = 100_000_000 satoshis)
   scriptPubKey?: string;
+  confirmed?: boolean;
+  confirmations?: number;
 }
 
 export interface LtcBalanceResult {
   balanceSatoshis: bigint;
+  confirmedBalanceSatoshis: bigint;
+  unconfirmedBalanceSatoshis: bigint;
   utxos: LtcUtxo[];
+  confirmedUtxos: LtcUtxo[];
 }
 
 // Standard Litecoin network definition for bitcoinjs-lib
@@ -46,20 +51,39 @@ export async function getLtcBalanceAndUtxos(address: string): Promise<LtcBalance
     if (utxoRes.ok) {
       const rawUtxos = await utxoRes.json();
       let total = 0n;
+      let confirmedTotal = 0n;
+      let unconfirmedTotal = 0n;
       const utxos: LtcUtxo[] = [];
+      const confirmedUtxos: LtcUtxo[] = [];
       if (Array.isArray(rawUtxos)) {
         for (const u of rawUtxos) {
           const val = BigInt(u.value || 0);
+          const isConfirmed = Boolean(u?.status?.confirmed);
           total += val;
-          utxos.push({
+          const item: LtcUtxo = {
             txid: u.txid,
             vout: Number(u.vout),
             value: val,
-          });
+            confirmed: isConfirmed,
+            confirmations: isConfirmed ? 1 : 0,
+          };
+          utxos.push(item);
+          if (isConfirmed) {
+            confirmedTotal += val;
+            confirmedUtxos.push(item);
+          } else {
+            unconfirmedTotal += val;
+          }
         }
       }
       if (utxos.length > 0) {
-        return { balanceSatoshis: total, utxos };
+        return {
+          balanceSatoshis: total,
+          confirmedBalanceSatoshis: confirmedTotal,
+          unconfirmedBalanceSatoshis: unconfirmedTotal,
+          utxos,
+          confirmedUtxos,
+        };
       }
     }
   } catch (e) {
@@ -87,13 +111,37 @@ export async function getLtcBalanceAndUtxos(address: string): Promise<LtcBalance
           });
           if (utxoRes.ok) {
             const rawUtxos = await utxoRes.json();
-            const utxos: LtcUtxo[] = (Array.isArray(rawUtxos) ? rawUtxos : []).map((u: any) => ({
-              txid: u.txid,
-              vout: Number(u.vout),
-              value: BigInt(u.value || "0"),
-            }));
+            let confSum = 0n;
+            let unconfSum = 0n;
+            const utxos: LtcUtxo[] = [];
+            const confirmedUtxos: LtcUtxo[] = [];
+            for (const u of Array.isArray(rawUtxos) ? rawUtxos : []) {
+              const val = BigInt(u.value || "0");
+              const confs = Number(u.confirmations ?? 0);
+              const isConfirmed = Number.isFinite(confs) && confs >= 1;
+              const item: LtcUtxo = {
+                txid: u.txid,
+                vout: Number(u.vout),
+                value: val,
+                confirmed: isConfirmed,
+                confirmations: Number.isFinite(confs) && confs >= 0 ? confs : 0,
+              };
+              utxos.push(item);
+              if (isConfirmed) {
+                confSum += val;
+                confirmedUtxos.push(item);
+              } else {
+                unconfSum += val;
+              }
+            }
             if (utxos.length > 0) {
-              return { balanceSatoshis, utxos };
+              return {
+                balanceSatoshis,
+                confirmedBalanceSatoshis: confSum,
+                unconfirmedBalanceSatoshis: unconfSum,
+                utxos,
+                confirmedUtxos,
+              };
             }
           }
         }
@@ -111,19 +159,62 @@ export async function getLtcBalanceAndUtxos(address: string): Promise<LtcBalance
     if (bcRes.ok) {
       const data = await bcRes.json();
       const balanceSatoshis = BigInt(data.final_balance || 0);
-      const txrefs = data.txrefs || [];
-      const utxos: LtcUtxo[] = txrefs.map((u: any) => ({
-        txid: u.tx_hash,
-        vout: Number(u.tx_output_n),
-        value: BigInt(u.value || 0),
-      }));
-      return { balanceSatoshis, utxos };
+      const confirmedRefs = Array.isArray(data.txrefs) ? data.txrefs : [];
+      const unconfirmedRefs = Array.isArray(data.unconfirmed_txrefs) ? data.unconfirmed_txrefs : [];
+      let confSum = 0n;
+      let unconfSum = 0n;
+      const utxos: LtcUtxo[] = [];
+      const confirmedUtxos: LtcUtxo[] = [];
+      for (const u of confirmedRefs) {
+        const val = BigInt(u.value || 0);
+        const confs = Number(u.confirmations ?? 0);
+        const isConfirmed = Number.isFinite(confs) && confs >= 1;
+        const item: LtcUtxo = {
+          txid: u.tx_hash,
+          vout: Number(u.tx_output_n),
+          value: val,
+          confirmed: isConfirmed,
+          confirmations: Number.isFinite(confs) && confs >= 0 ? confs : 0,
+        };
+        utxos.push(item);
+        if (isConfirmed) {
+          confSum += val;
+          confirmedUtxos.push(item);
+        } else {
+          unconfSum += val;
+        }
+      }
+      for (const u of unconfirmedRefs) {
+        const val = BigInt(u.value || 0);
+        const item: LtcUtxo = {
+          txid: u.tx_hash,
+          vout: Number(u.tx_output_n),
+          value: val,
+          confirmed: false,
+          confirmations: 0,
+        };
+        utxos.push(item);
+        unconfSum += val;
+      }
+      return {
+        balanceSatoshis,
+        confirmedBalanceSatoshis: confSum,
+        unconfirmedBalanceSatoshis: unconfSum,
+        utxos,
+        confirmedUtxos,
+      };
     }
   } catch (e) {
     console.warn("[LTC] BlockCypher query warning:", e);
   }
 
-  return { balanceSatoshis: 0n, utxos: [] };
+  return {
+    balanceSatoshis: 0n,
+    confirmedBalanceSatoshis: 0n,
+    unconfirmedBalanceSatoshis: 0n,
+    utxos: [],
+    confirmedUtxos: [],
+  };
 }
 
 /**
@@ -195,6 +286,7 @@ export async function sweepLtcDeposit(params: {
   partnerAddress?: string | null;
   zkpayFeeSatoshis: bigint;
   partnerFeeSatoshis?: bigint;
+  confirmedOnly?: boolean;
 }): Promise<string> {
   const {
     proxyAddress,
@@ -204,11 +296,14 @@ export async function sweepLtcDeposit(params: {
     partnerAddress,
     zkpayFeeSatoshis,
     partnerFeeSatoshis = 0n,
+    confirmedOnly = false,
   } = params;
 
-  const { balanceSatoshis, utxos } = await getLtcBalanceAndUtxos(proxyAddress);
+  const balInfo = await getLtcBalanceAndUtxos(proxyAddress);
+  const utxos = confirmedOnly ? balInfo.confirmedUtxos : balInfo.utxos;
+  const balanceSatoshis = confirmedOnly ? balInfo.confirmedBalanceSatoshis : balInfo.balanceSatoshis;
   if (utxos.length === 0 || balanceSatoshis <= 0n) {
-    throw new Error(`No UTXOs found on LTC proxy address ${proxyAddress}.`);
+    throw new Error(`No ${confirmedOnly ? "confirmed " : ""}UTXOs found on LTC proxy address ${proxyAddress}.`);
   }
 
   // Standard LTC miner fee (~2000-5000 satoshis is plenty for LTC's ~1 sat/vB)
@@ -333,16 +428,21 @@ export async function sweepLtcDeposit(params: {
     });
   }
 
+  const normalizeLtcOutAddr = (a: string) => {
+    const t = a.trim();
+    return t.toLowerCase().startsWith("ltc1") ? t.toLowerCase() : t;
+  };
+
   // Output 1: Solver transfer
   psbt.addOutput({
-    address: solverAddress,
+    address: normalizeLtcOutAddr(solverAddress),
     value: Number(netSolverSatoshis),
   });
 
   // Output 2: ZkPay Treasury fee (if >= dust threshold and not solver address)
   if (effectiveZkpayFee >= LTC_DUST_THRESHOLD_SATOSHIS && treasuryAddress.toLowerCase() !== solverAddress.toLowerCase()) {
     psbt.addOutput({
-      address: treasuryAddress,
+      address: normalizeLtcOutAddr(treasuryAddress),
       value: Number(effectiveZkpayFee),
     });
   }
@@ -350,7 +450,7 @@ export async function sweepLtcDeposit(params: {
   // Output 3: Partner fee (if >= dust threshold)
   if (partnerAddress && effectivePartnerFee >= LTC_DUST_THRESHOLD_SATOSHIS) {
     psbt.addOutput({
-      address: partnerAddress,
+      address: normalizeLtcOutAddr(partnerAddress),
       value: Number(effectivePartnerFee),
     });
   }
@@ -369,5 +469,237 @@ export async function sweepLtcDeposit(params: {
   console.log(`[LTC] Broadcasting raw transaction: ${rawTxHex.slice(0, 100)}...`);
   const txid = await broadcastLtcTransaction(rawTxHex);
   console.log(`[LTC] ✓ Broadcast success, txid: ${txid}`);
+  return txid;
+}
+
+const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+function encodeBase58Ltc(source: Uint8Array | Buffer): string {
+  if (source.length === 0) return "";
+  let x = 0n;
+  for (let i = 0; i < source.length; i++) {
+    x = (x << 8n) | BigInt(source[i]);
+  }
+  let str = "";
+  while (x > 0n) {
+    const mod = Number(x % 58n);
+    x = x / 58n;
+    str = BASE58_ALPHABET[mod] + str;
+  }
+  for (let i = 0; i < source.length && source[i] === 0; i++) {
+    str = "1" + str;
+  }
+  return str;
+}
+
+function decodeBase58Ltc(str: string): Buffer {
+  if (str.length === 0) return Buffer.alloc(0);
+  let x = 0n;
+  for (let i = 0; i < str.length; i++) {
+    const val = BASE58_ALPHABET.indexOf(str[i]);
+    if (val === -1) throw new Error(`Invalid Base58 character: ${str[i]}`);
+    x = x * 58n + BigInt(val);
+  }
+  const bytes: number[] = [];
+  while (x > 0n) {
+    bytes.push(Number(x & 0xffn));
+    x >>= 8n;
+  }
+  bytes.reverse();
+  let leadingZeros = 0;
+  for (let i = 0; i < str.length && str[i] === "1"; i++) leadingZeros++;
+  const result = Buffer.alloc(leadingZeros + bytes.length);
+  for (let i = 0; i < bytes.length; i++) result[leadingZeros + i] = bytes[i];
+  return result;
+}
+
+/**
+ * Parses a Litecoin private key from either 32-byte hex (with/without 0x) or Base58Check WIF.
+ */
+export function parseLtcPrivateKeyHex(privKeyInput: string): string {
+  let clean = (privKeyInput || "").trim();
+  if ((clean.startsWith('"') && clean.endsWith('"')) || (clean.startsWith("'") && clean.endsWith("'"))) {
+    clean = clean.slice(1, -1).trim();
+  }
+  const noPrefix = clean.replace(/^0x/i, "");
+  if (/^[0-9a-fA-F]{64}$/.test(noPrefix)) {
+    return noPrefix.toLowerCase();
+  }
+
+  // Decode WIF (1 byte version 0xb0 or 0x80 + 32 byte key + optional 0x01 compressed flag + 4 byte checksum)
+  const decoded = decodeBase58Ltc(clean);
+  if (decoded.length !== 37 && decoded.length !== 38) {
+    throw new Error("Invalid Litecoin private key format (expected 64-char hex or WIF).");
+  }
+  const payload = decoded.subarray(0, decoded.length - 4);
+  const checksum = decoded.subarray(decoded.length - 4);
+  const h1 = crypto.createHash("sha256").update(payload).digest();
+  const h2 = crypto.createHash("sha256").update(h1).digest();
+  if (!h2.subarray(0, 4).equals(checksum)) {
+    throw new Error("Invalid Litecoin WIF checksum.");
+  }
+  return payload.subarray(1, 33).toString("hex");
+}
+
+/**
+ * Derives the Litecoin mainnet P2PKH ('L...') address from a 32-byte hex or WIF private key.
+ */
+export function deriveLtcAddressFromPrivKey(privKeyInput: string): string {
+  const hex = parseLtcPrivateKeyHex(privKeyInput);
+  const privBuf = Buffer.from(hex, "hex");
+  const ecdh = crypto.createECDH("secp256k1");
+  ecdh.setPrivateKey(privBuf);
+  const compressedPub = Buffer.from(ecdh.getPublicKey(null, "compressed"));
+  const sha = crypto.createHash("sha256").update(compressedPub).digest();
+  const ripemd = crypto.createHash("ripemd160").update(sha).digest();
+  const payload = Buffer.concat([Buffer.from([0x30]), ripemd]);
+  const check1 = crypto.createHash("sha256").update(payload).digest();
+  const check2 = crypto.createHash("sha256").update(check1).digest();
+  return encodeBase58Ltc(Buffer.concat([payload, check2.subarray(0, 4)]));
+}
+
+/**
+ * Sends a specific amount of LTC from the Liquidity Hot Wallet to `toAddress`,
+ * returning remaining change back to `fromAddress`.
+ */
+export async function sendLtcFromLiquidityWallet(params: {
+  fromAddress: string;
+  privKeyInput: string;
+  toAddress: string;
+  amountSatoshis: bigint;
+}): Promise<string> {
+  const { fromAddress, privKeyInput, toAddress, amountSatoshis } = params;
+  if (amountSatoshis < LTC_DUST_THRESHOLD_SATOSHIS) {
+    throw new Error(
+      `LTC payout amount (${amountSatoshis} sats) is below dust limit (${LTC_DUST_THRESHOLD_SATOSHIS} sats).`
+    );
+  }
+
+  const privKeyHex = parseLtcPrivateKeyHex(privKeyInput);
+  const { balanceSatoshis, utxos, confirmedUtxos } = await getLtcBalanceAndUtxos(fromAddress);
+  if (utxos.length === 0 || balanceSatoshis < amountSatoshis) {
+    throw new Error(
+      `Insufficient LTC balance in liquidity wallet (${balanceSatoshis} sats < ${amountSatoshis} sats).`
+    );
+  }
+
+  // Prefer confirmed UTXOs first, then unconfirmed change UTXOs from our own hot wallet if needed
+  const orderedPool = [
+    ...confirmedUtxos.slice().sort((a, b) => (b.value > a.value ? 1 : -1)),
+    ...utxos.filter((u) => !u.confirmed).sort((a, b) => (b.value > a.value ? 1 : -1)),
+  ];
+
+  const selected: LtcUtxo[] = [];
+  let selectedSum = 0n;
+  let minerFee = 3000n;
+
+  for (const u of orderedPool) {
+    selected.push(u);
+    selectedSum += u.value;
+    minerFee = BigInt(selected.length) * 350n + 2650n;
+    if (selectedSum >= amountSatoshis + minerFee) {
+      break;
+    }
+  }
+
+  if (selectedSum < amountSatoshis + minerFee) {
+    throw new Error(
+      `Insufficient spendable LTC after miner fee (${selectedSum} sats < ${amountSatoshis + minerFee} sats).`
+    );
+  }
+
+  const changeSatoshis = selectedSum - amountSatoshis - minerFee;
+
+  const bitcoin = await import("bitcoinjs-lib");
+  const { ECPairFactory } = await import("ecpair");
+  const { pureSecp256k1 } = await import("./pureSecp256k1");
+
+  try {
+    if (typeof (bitcoin as any).initEccLib === "function") {
+      (bitcoin as any).initEccLib(pureSecp256k1);
+    }
+  } catch {}
+
+  const ECPair = ECPairFactory(pureSecp256k1 as any);
+  const keyPair = ECPair.fromPrivateKey(Buffer.from(privKeyHex, "hex"), {
+    network: LITECOIN_NETWORK,
+  });
+  const psbt = new bitcoin.Psbt({ network: LITECOIN_NETWORK });
+  const nowNodesKey = getNowNodesApiKey();
+
+  for (const utxo of selected) {
+    let nonWitnessUtxo: Buffer | undefined;
+    if (nowNodesKey) {
+      try {
+        const rawRes = await fetch(`https://ltc.nownodes.io/api/v2/tx-specific/${utxo.txid}`, {
+          headers: { "api-key": nowNodesKey },
+        });
+        if (rawRes.ok) {
+          const d = await rawRes.json();
+          if (d?.hex) nonWitnessUtxo = Buffer.from(d.hex, "hex");
+        }
+      } catch {}
+    }
+    if (!nonWitnessUtxo) {
+      try {
+        const rawRes = await fetch(`https://litecoinspace.org/api/tx/${utxo.txid}/hex`);
+        if (rawRes.ok) {
+          const hex = await rawRes.text();
+          if (hex) nonWitnessUtxo = Buffer.from(hex.trim(), "hex");
+        }
+      } catch {}
+    }
+    if (!nonWitnessUtxo) {
+      try {
+        const bcRes = await fetch(
+          `https://api.blockcypher.com/v1/ltc/main/txs/${utxo.txid}?includeHex=true`
+        );
+        if (bcRes.ok) {
+          const d = await bcRes.json();
+          if (d?.hex) nonWitnessUtxo = Buffer.from(d.hex, "hex");
+        }
+      } catch {}
+    }
+    if (!nonWitnessUtxo) {
+      throw new Error(`Unable to fetch raw transaction hex for LTC UTXO ${utxo.txid}.`);
+    }
+
+    psbt.addInput({
+      hash: utxo.txid,
+      index: utxo.vout,
+      nonWitnessUtxo,
+    });
+  }
+
+  const normalizeLtcOutAddr = (a: string) => {
+    const t = a.trim();
+    return t.toLowerCase().startsWith("ltc1") ? t.toLowerCase() : t;
+  };
+
+  psbt.addOutput({
+    address: normalizeLtcOutAddr(toAddress),
+    value: Number(amountSatoshis),
+  });
+
+  if (changeSatoshis >= LTC_DUST_THRESHOLD_SATOSHIS) {
+    psbt.addOutput({
+      address: normalizeLtcOutAddr(fromAddress),
+      value: Number(changeSatoshis),
+    });
+  }
+
+  for (let i = 0; i < selected.length; i++) {
+    psbt.signInput(i, keyPair);
+    psbt.validateSignaturesOfInput(i, (pubkey, msghash, signature) =>
+      pureSecp256k1.verify(msghash, pubkey, signature)
+    );
+  }
+
+  psbt.finalizeAllInputs();
+  const rawTxHex = psbt.extractTransaction().toHex();
+  const txid = await broadcastLtcTransaction(rawTxHex);
+  console.log(
+    `[LTC Liquidity] ✓ Sent ${amountSatoshis} sats to ${toAddress} (change: ${changeSatoshis} sats), txid: ${txid}`
+  );
   return txid;
 }

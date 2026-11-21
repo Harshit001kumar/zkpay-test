@@ -218,3 +218,96 @@ export async function calculateTokenUsdValue(
     return { humanAmount: "0", pricePerToken: 0, usdValue: 0 };
   }
 }
+
+const VERIFIED_POOL_PRICE_CACHE = new Map<string, { priceUsd: number; timestamp: number }>();
+
+/**
+ * Fetches an independent spot price from Coinbase and Binance US in parallel for multi-oracle cross-verification.
+ */
+async function fetchIndependentSpotPricesUsd(normSym: string): Promise<number[]> {
+  const cbSymbol =
+    normSym === "MATIC"
+      ? "POL"
+      : normSym === "WSOL"
+      ? "SOL"
+      : normSym === "WETH"
+      ? "ETH"
+      : normSym === "WBTC"
+      ? "BTC"
+      : normSym;
+
+  const [cbPrice, binancePrice] = await Promise.all([
+    fetch(`https://api.coinbase.com/v2/prices/${cbSymbol}-USD/spot`, {
+      headers: { Accept: "application/json", "User-Agent": "ZkPay/1.0" },
+      signal: AbortSignal.timeout(3000),
+    })
+      .then(async (r) => (r.ok ? parseFloat((await r.json())?.data?.amount) : 0))
+      .catch(() => 0),
+    fetch(`https://api.binance.us/api/v3/ticker/price?symbol=${cbSymbol}USDT`, {
+      signal: AbortSignal.timeout(3000),
+    })
+      .then(async (r) => (r.ok ? parseFloat((await r.json())?.price) : 0))
+      .catch(() => 0),
+  ]);
+
+  return [cbPrice, binancePrice].filter((p) => Number.isFinite(p) && p > 0);
+}
+
+/**
+ * Returns a fresh, multi-oracle cross-verified USD price for liquidity pool quoting & payout checks.
+ * Requires at least 2 independent price sources agreeing within 2.5% spread.
+ * Returns 0 if stale or if oracles diverge (safely falling back to external Solver).
+ */
+export async function getFreshTokenPriceUsd(symbol: string, maxAgeMs = 60_000): Promise<number> {
+  const normSym = (symbol || "").trim().toUpperCase();
+  if (STABLECOIN_SYMBOLS.has(normSym) || normSym.includes("USD")) {
+    return 1.0;
+  }
+
+  const effectiveTtl = Math.min(maxAgeMs, 30_000);
+  const verifiedCached = VERIFIED_POOL_PRICE_CACHE.get(normSym);
+  if (verifiedCached && Date.now() - verifiedCached.timestamp <= effectiveTtl) {
+    return verifiedCached.priceUsd;
+  }
+
+  const [primary, independentSpots] = await Promise.all([
+    fetchTokenPriceInternal(normSym, undefined),
+    fetchIndependentSpotPricesUsd(normSym),
+  ]);
+
+  const afterPrimary = PRICE_CACHE.get(normSym);
+  const primaryFresh =
+    primary > 0 && afterPrimary && Date.now() - afterPrimary.timestamp <= maxAgeMs ? primary : 0;
+
+  const samples: number[] = [];
+  if (primaryFresh > 0) samples.push(primaryFresh);
+  for (const s of independentSpots) {
+    // Avoid counting an identical number twice if primary happened to fall through to Coinbase/Binance
+    if (!samples.some((existing) => Math.abs(existing - s) < 1e-9)) {
+      samples.push(s);
+    }
+  }
+  // If primary fell through to Coinbase and Binance also matched within 2.5%, independentSpots already has 2 distinct endpoints
+  const allValid = independentSpots.length >= 2 ? independentSpots : samples;
+
+  if (allValid.length < 2) {
+    console.warn(
+      `[PriceService] Liquidity pool oracle requires >=2 independent feeds for ${normSym} (got ${allValid.length}); falling back.`
+    );
+    return 0;
+  }
+
+  const minP = Math.min(...allValid);
+  const maxP = Math.max(...allValid);
+  const spread = minP > 0 ? (maxP - minP) / minP : 1;
+  if (spread > 0.025) {
+    console.warn(
+      `[PriceService] Liquidity pool oracle divergence for ${normSym}: min=$${minP}, max=$${maxP} (spread ${(spread * 100).toFixed(2)}% > 2.5%).`
+    );
+    return 0;
+  }
+
+  const verifiedPrice = allValid.reduce((acc, v) => acc + v, 0) / allValid.length;
+  VERIFIED_POOL_PRICE_CACHE.set(normSym, { priceUsd: verifiedPrice, timestamp: Date.now() });
+  return verifiedPrice;
+}
