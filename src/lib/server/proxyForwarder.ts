@@ -32,6 +32,7 @@ import {
   getResilientPublicClientForChain,
   fetchResilientSolanaRpc,
   getEvmRpcConfig,
+  buildOneClickHeaders,
 } from "./rpcConfig";
 
 const ERC20_ABI = parseAbi([
@@ -101,7 +102,7 @@ export async function notifyNearIntentsDepositSubmit(
   try {
     const res = await fetch("https://1click.chaindefuser.com/v0/deposit/submit", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: buildOneClickHeaders(true),
       body: JSON.stringify({
         txHash,
         depositAddress,
@@ -3484,15 +3485,18 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
               continue;
             }
             const solverUrl = `https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(order.solverDepositAddress.trim())}`;
-            const headers: Record<string, string> = { Accept: "application/json" };
-            if (process.env.NEAR_INTENTS_API_KEY) {
-              headers["X-API-Key"] = process.env.NEAR_INTENTS_API_KEY;
-            }
-            const res = await fetch(solverUrl, { headers, signal: AbortSignal.timeout(5000) }).catch(() => null);
-            if (res && res.ok) {
+            const res = await fetch(solverUrl, {
+              headers: buildOneClickHeaders(),
+              signal: AbortSignal.timeout(5000),
+            }).catch(() => null);
+            if (res && !res.ok) {
+              console.warn(
+                `[ProxySweeperDaemon] 1Click status returned ${res.status} for ${order.swapId} (${order.solverDepositAddress})`
+              );
+            } else if (res && res.ok) {
               const data = await res.json().catch(() => null);
-              const rawSt = data?.status;
-              if (rawSt === "SUCCESS") {
+              const rawSt = String(data?.status || "").toUpperCase();
+              if (rawSt === "SUCCESS" || rawSt === "SETTLED") {
                 const rawOriginHash = data?.swapDetails?.originChainTxHashes?.[0]?.hash;
                 const updatedOrder =
                   (await updateProxySwapOrder(order.swapId, {

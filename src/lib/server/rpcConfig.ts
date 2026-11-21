@@ -501,3 +501,25 @@ export function getResilientPublicClientForChain(chainStr: string) {
     transport: fallback(transports, { rank: false, retryCount: 2 }),
   });
 }
+
+/**
+ * Shared headers for NEAR Intents 1Click API requests.
+ * Sends User-Agent + Authorization Bearer + X-API-Key consistently so Cloudflare / 1Click
+ * do not reject bare Node fetch requests with 403 during background reconciliation.
+ */
+export function buildOneClickHeaders(includeJsonContentType = false): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 ZkPay/1.0",
+  };
+  if (includeJsonContentType) {
+    headers["Content-Type"] = "application/json";
+  }
+  const apiKey = cleanEnvString(process.env.NEAR_INTENTS_API_KEY);
+  if (apiKey) {
+    headers["X-API-Key"] = apiKey;
+    headers["Authorization"] = `Bearer ${apiKey}`;
+  }
+  return headers;
+}

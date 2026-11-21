@@ -15,6 +15,7 @@ import { CONTRACTS, SWAP_ALLOWED_TOKENS, getTreasuryAddressForChain } from "@/li
 import { getResilientPublicClientForChain, fetchResilientSolanaRpc } from "@/lib/server/rpcConfig";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const ERC20_BALANCE_ABI = parseAbi(["function balanceOf(address account) view returns (uint256)"]);
 
@@ -234,10 +235,10 @@ export async function GET(req: Request) {
       if (k.userId) partnerUserIds.add(k.userId);
     }
 
-    // Reconcile partner swaps so all settled partner swaps are credited & repaired
-    for (const uid of partnerUserIds) {
-      await reconcilePartnerSwaps(uid).catch(() => {});
-    }
+    // Reconcile partner swaps in parallel so all settled partner swaps are credited & repaired
+    await Promise.all(
+      Array.from(partnerUserIds).map((uid) => reconcilePartnerSwaps(uid).catch(() => {}))
+    );
 
     // Load all proxy swap orders, partner balances, and partner fee credits
     let allOrders: ProxySwapOrder[] = [];

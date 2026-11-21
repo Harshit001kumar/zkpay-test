@@ -88,12 +88,9 @@ async function fetchTokenPriceInternal(
 
   // 1. Primary Bulk Feed: NEAR Intents 1Click Public Tokens API (populates ALL tokens in 1 single HTTP request!)
   try {
-    const headers: Record<string, string> = { Accept: "application/json" };
-    if (process.env.NEAR_INTENTS_API_KEY) {
-      headers["X-API-Key"] = process.env.NEAR_INTENTS_API_KEY;
-    }
+    const { buildOneClickHeaders } = await import("./rpcConfig");
     const oneClickRes = await fetch("https://1click.chaindefuser.com/v0/tokens", {
-      headers,
+      headers: buildOneClickHeaders(),
       signal: AbortSignal.timeout(3500),
     });
     if (oneClickRes.ok) {

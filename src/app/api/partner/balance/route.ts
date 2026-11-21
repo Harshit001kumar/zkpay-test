@@ -3,6 +3,7 @@ import { verifyUserRequest } from "@/lib/server/userAuth";
 import { getPartnerBalance } from "@/lib/server/partnerBalanceStore";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function GET(req: Request) {
   const auth = await verifyUserRequest(req);

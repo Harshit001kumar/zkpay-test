@@ -2,6 +2,7 @@ import { getMongoDb } from "./mongodb";
 import { ProxySwapOrder, updateProxySwapOrder } from "./proxySwapStore";
 import { calculateTokenUsdValue } from "./priceService";
 import { getApiKeyById, listApiKeysForUser, findUserIdByWalletAddress } from "./apiKeysStore";
+import { buildOneClickHeaders } from "./rpcConfig";
 import { SWAP_ALLOWED_TOKENS } from "@/lib/constants";
 
 export const MIN_PAYOUT_AMOUNT_USD = 1.0;
@@ -162,23 +163,38 @@ export async function reconcilePartnerSwaps(userId: string): Promise<void> {
       .limit(30)
       .toArray()) as ProxySwapOrder[];
 
-    for (const ord of uncreditedOrders) {
-      if (!ord.partnerUserId) {
-        ord.partnerUserId = userId;
-      }
-      if (ord.status === "SETTLED") {
-        await creditPartnerFeeOnSettlement(ord);
-      } else if (ord.status === "FORWARDED" && ord.solverDepositAddress) {
-        try {
-          const solverUrl = `https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(ord.solverDepositAddress.trim())}`;
-          const headers: Record<string, string> = { Accept: "application/json" };
-          if (process.env.NEAR_INTENTS_API_KEY) {
-            headers["X-API-Key"] = process.env.NEAR_INTENTS_API_KEY;
-          }
-          const res = await fetch(solverUrl, { headers, signal: AbortSignal.timeout(3500) }).catch(() => null);
-          if (res && res.ok) {
+    const settledOrders = uncreditedOrders.filter((ord) => ord.status === "SETTLED");
+    for (const ord of settledOrders) {
+      if (!ord.partnerUserId) ord.partnerUserId = userId;
+      await creditPartnerFeeOnSettlement(ord);
+    }
+
+    const forwardedOrders = uncreditedOrders.filter(
+      (ord) => ord.status === "FORWARDED" && Boolean(ord.solverDepositAddress)
+    );
+    const solverHeaders = buildOneClickHeaders();
+    const BATCH_SIZE = 6;
+    for (let i = 0; i < forwardedOrders.length; i += BATCH_SIZE) {
+      const batch = forwardedOrders.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        batch.map(async (ord) => {
+          try {
+            if (!ord.partnerUserId) ord.partnerUserId = userId;
+            const solverUrl = `https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(ord.solverDepositAddress.trim())}`;
+            const res = await fetch(solverUrl, {
+              headers: solverHeaders,
+              signal: AbortSignal.timeout(5000),
+            }).catch(() => null);
+            if (!res) return;
+            if (!res.ok) {
+              console.warn(
+                `[PartnerBalanceStore] 1Click status returned ${res.status} for ${ord.swapId} (${ord.solverDepositAddress})`
+              );
+              return;
+            }
             const data = await res.json().catch(() => null);
-            if (data?.status === "SUCCESS") {
+            const rawSt = String(data?.status || "").toUpperCase();
+            if (rawSt === "SUCCESS" || rawSt === "SETTLED") {
               const rawOriginHash = data?.swapDetails?.originChainTxHashes?.[0]?.hash;
               const updatedOrder =
                 (await updateProxySwapOrder(ord.swapId, {
@@ -187,12 +203,16 @@ export async function reconcilePartnerSwaps(userId: string): Promise<void> {
                   ...(rawOriginHash && !ord.forwardTxHash ? { forwardTxHash: rawOriginHash } : {}),
                 })) || { ...ord, status: "SETTLED" as const, partnerUserId: userId };
               await creditPartnerFeeOnSettlement(updatedOrder);
+            } else if (rawSt === "REFUNDED") {
+              await updateProxySwapOrder(ord.swapId, { status: "REFUNDED" });
+            } else if (rawSt === "FAILED") {
+              await updateProxySwapOrder(ord.swapId, { status: "FAILED" });
             }
+          } catch {
+            // non-fatal
           }
-        } catch {
-          // non-fatal
-        }
-      }
+        })
+      );
     }
 
     // Also repair any existing credits that were saved with hardcoded fallback rates (e.g. 150 for SOL)
