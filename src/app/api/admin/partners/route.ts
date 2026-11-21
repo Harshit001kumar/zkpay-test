@@ -269,53 +269,16 @@ export async function GET(req: Request) {
       balanceRecords = balDocs as PartnerBalanceRecord[];
       creditRecords = credDocs as PartnerFeeCreditRecord[];
 
-      // Directly reconcile any remaining FORWARDED orders in the top 50 (including orders where feeCredited was already set)
+      // Directly reconcile any remaining FORWARDED orders in the top 50 via shared reconcileForwardedSolverOrder
       const stillForwarded = allOrders
         .slice(0, 50)
         .filter((o) => o.status === "FORWARDED" && Boolean(o.solverDepositAddress));
       if (stillForwarded.length > 0) {
-        const solverHeaders = buildOneClickHeaders();
+        const { reconcileForwardedSolverOrder } = await import("@/lib/server/proxyForwarder");
         await Promise.all(
           stillForwarded.slice(0, 10).map(async (ord) => {
-            try {
-              const solverUrl = `https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(ord.solverDepositAddress.trim())}`;
-              const res = await fetch(solverUrl, {
-                headers: solverHeaders,
-                signal: AbortSignal.timeout(5000),
-              }).catch(() => null);
-              if (!res || !res.ok) {
-                const { reconcileStuckForwardedOrder } = await import("@/lib/server/proxyForwarder");
-                const healed = await reconcileStuckForwardedOrder(ord, "HTTP_ERROR");
-                if (healed) ord.status = healed.status;
-                return;
-              }
-              const data = await res.json().catch(() => null);
-              const rawSt = String(data?.status || "").toUpperCase();
-              if (rawSt === "SUCCESS" || rawSt === "SETTLED") {
-                ord.status = "SETTLED";
-                await db
-                  .collection("proxy_swap_orders")
-                  .updateOne({ swapId: ord.swapId } as any, { $set: { status: "SETTLED" } });
-              } else if (rawSt === "REFUNDED") {
-                ord.status = "REFUNDED";
-                await db
-                  .collection("proxy_swap_orders")
-                  .updateOne({ swapId: ord.swapId } as any, { $set: { status: "REFUNDED" } });
-              } else if (rawSt === "FAILED" || rawSt === "INCOMPLETE_DEPOSIT") {
-                ord.status = "FAILED";
-                await db
-                  .collection("proxy_swap_orders")
-                  .updateOne({ swapId: ord.swapId } as any, { $set: { status: "FAILED" } });
-              } else {
-                const { reconcileStuckForwardedOrder } = await import("@/lib/server/proxyForwarder");
-                const healed = await reconcileStuckForwardedOrder(ord, rawSt);
-                if (healed) {
-                  ord.status = healed.status;
-                }
-              }
-            } catch {
-              // non-fatal
-            }
+            const updated = await reconcileForwardedSolverOrder(ord).catch(() => ord);
+            ord.status = updated.status;
           })
         );
       }

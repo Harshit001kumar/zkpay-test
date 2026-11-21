@@ -3370,14 +3370,16 @@ function canCheckWithCooldown(key: string, cooldownMs: number): boolean {
  * 4. Checks FORWARDED orders against NEAR Intents solver status and automatically credits partner fees upon SETTLED status!
  */
 /**
- * Checks whether an expired proxy account currently holds deposited funds.
+ * Checks whether a proxy account currently holds deposited funds.
+ * Returns `null` if the RPC check itself failed (so callers never confuse an RPC error with an empty wallet).
  */
-async function hasProxyDepositFunds(order: ProxySwapOrder): Promise<boolean> {
+async function checkProxyDepositFundsTriState(order: ProxySwapOrder): Promise<boolean | null> {
   const normChain = normalizeChain(order.chain) || order.chain.toLowerCase();
   try {
     if (normChain === "sol") {
       const balanceRes = await fetchSolanaRpc("getBalance", [order.proxyDepositAddress]);
-      const lamports = BigInt(balanceRes?.value || 0);
+      if (balanceRes?.value === undefined) return null;
+      const lamports = BigInt(balanceRes.value || 0);
       return lamports > 5000n;
     } else if (normChain === "ltc") {
       const { getLtcBalanceAndUtxos } = await import("./ltcClient");
@@ -3387,7 +3389,7 @@ async function hasProxyDepositFunds(order: ProxySwapOrder): Promise<boolean> {
       const publicClient = getPublicClientForChain(order.chain);
       if (!isAddress(order.proxyDepositAddress)) return false;
       const cleanAddress = getAddress(order.proxyDepositAddress as `0x${string}`);
-      const nativeBal = await publicClient.getBalance({ address: cleanAddress }).catch(() => 0n);
+      const nativeBal = await publicClient.getBalance({ address: cleanAddress });
       if (nativeBal > 100_000_000_000_000n) {
         return true;
       }
@@ -3405,145 +3407,159 @@ async function hasProxyDepositFunds(order: ProxySwapOrder): Promise<boolean> {
           if (match) tokenAddress = getAddress(match[0] as `0x${string}`);
         }
         if (tokenAddress) {
-          const tokenBal = (await publicClient
-            .readContract({
-              address: tokenAddress,
-              abi: ERC20_ABI,
-              functionName: "balanceOf",
-              args: [cleanAddress],
-            })
-            .catch(() => 0n)) as bigint;
+          const tokenBal = (await publicClient.readContract({
+            address: tokenAddress,
+            abi: ERC20_ABI,
+            functionName: "balanceOf",
+            args: [cleanAddress],
+          })) as bigint;
           if (tokenBal > 0n) return true;
         }
       }
+      return false;
     }
   } catch (e) {
-    console.warn(`[ProxySweeperDaemon] Error checking balance for expired order ${order.swapId}:`, e);
+    console.warn(`[ProxySweeperDaemon] Error checking balance for order ${order.swapId}:`, e);
+    return null;
   }
-  return false;
+}
+
+async function hasProxyDepositFunds(order: ProxySwapOrder): Promise<boolean> {
+  return (await checkProxyDepositFundsTriState(order)) === true;
 }
 
 /**
- * Reconciles a FORWARDED order when the upstream Solver returns PENDING_DEPOSIT or INCOMPLETE_DEPOSIT:
- * 1. If INCOMPLETE_DEPOSIT -> marks FAILED.
- * 2. If PENDING_DEPOSIT -> re-submits `forwardTxHash` to Solver `/v0/deposit/submit`, and if the forward tx
- *    was dropped on-chain (funds still in `proxyDepositAddress`), either re-forwards (if active) or 100% auto-refunds (if expired).
+ * Single source of truth for reconciling a FORWARDED order against the external Solver:
+ * - Only marks SETTLED (and credits partner fee) when the Solver explicitly reports SUCCESS / SETTLED.
+ * - Marks REFUNDED / FAILED when the Solver reports REFUNDED / FAILED / INCOMPLETE_DEPOSIT.
+ * - If the Solver reports PENDING_DEPOSIT / KNOWN_DEPOSIT_TX:
+ *   1) Re-submits `forwardTxHash` to `/v0/deposit/submit` and re-checks status once.
+ *   2) If the forward tx was dropped on-chain (`stillInProxy === true`), re-forwards (if active) or 100% auto-refunds (if expired).
+ *   3) If the proxy wallet is confirmed empty (`stillInProxy === false`) and the order expired >30m ago without Solver settlement, marks FAILED (never fake-SETTLED).
  */
-export async function reconcileStuckForwardedOrder(
+export async function reconcileForwardedSolverOrder(
   order: ProxySwapOrder,
-  rawSolverStatus: string
-): Promise<ProxySwapOrder | null> {
-  const rawSt = (rawSolverStatus || "").toUpperCase();
-  if (rawSt === "INCOMPLETE_DEPOSIT") {
-    return updateProxySwapOrder(order.swapId, {
-      status: "FAILED",
-      error: "Solver reported INCOMPLETE_DEPOSIT",
-    });
+  partnerUserIdHint?: string
+): Promise<ProxySwapOrder> {
+  if (!order.solverDepositAddress) return order;
+
+  const solverUrl = `https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(order.solverDepositAddress.trim())}`;
+  const res = await fetch(solverUrl, {
+    headers: buildOneClickHeaders(),
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => null);
+
+  if (!res || !res.ok) {
+    return order;
   }
 
-  if (
-    rawSt !== "PENDING_DEPOSIT" &&
-    rawSt !== "KNOWN_DEPOSIT_TX" &&
-    rawSt !== "PROCESSING" &&
-    rawSt !== "HTTP_ERROR"
-  ) {
-    return null;
-  }
+  let data = await res.json().catch(() => null);
+  let rawSt = String(data?.status || "").toUpperCase();
 
-  // 1. Re-submit forwardTxHash to Solver in case pre-confirmation submit was ignored, then re-check status once
+  // If Solver still says PENDING_DEPOSIT or KNOWN_DEPOSIT_TX, re-submit forwardTxHash once and re-query
   if (
     (rawSt === "PENDING_DEPOSIT" || rawSt === "KNOWN_DEPOSIT_TX") &&
-    order.forwardTxHash &&
-    order.solverDepositAddress
+    order.forwardTxHash
   ) {
     const submitted = await notifyNearIntentsDepositSubmit(
       order.solverDepositAddress,
       order.forwardTxHash
     ).catch(() => false);
     if (submitted) {
-      const recheckUrl = `https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(order.solverDepositAddress.trim())}`;
-      const reRes = await fetch(recheckUrl, {
+      const reRes = await fetch(solverUrl, {
         headers: buildOneClickHeaders(),
         signal: AbortSignal.timeout(5000),
       }).catch(() => null);
       if (reRes && reRes.ok) {
-        const reData = await reRes.json().catch(() => null);
-        const reSt = String(reData?.status || "").toUpperCase();
-        if (reSt === "SUCCESS" || reSt === "SETTLED") {
-          const settled =
-            (await updateProxySwapOrder(order.swapId, {
-              status: "SETTLED",
-            })) || { ...order, status: "SETTLED" as const };
-          await creditPartnerFeeOnSettlement(settled).catch(() => {});
-          return settled;
-        }
-        if (reSt === "REFUNDED") {
-          return updateProxySwapOrder(order.swapId, { status: "REFUNDED" });
-        }
-        if (reSt === "FAILED" || reSt === "INCOMPLETE_DEPOSIT") {
-          return updateProxySwapOrder(order.swapId, { status: "FAILED" });
-        }
+        data = await reRes.json().catch(() => data);
+        rawSt = String(data?.status || "").toUpperCase();
       }
     }
   }
 
-  const ageMs = Date.now() - (Number(order.createdAt) || 0);
-  // Wait at least 2 minutes after order creation before diagnosing a dropped forward tx
-  if (ageMs < 120_000) {
-    return null;
-  }
-
-  // 2. Check if the forward tx was dropped on-chain (funds still sitting in proxyDepositAddress)
-  const stillInProxy = await hasProxyDepositFunds(order);
-  const effectiveExpiresAt = Number(order.expiresAt) || Number(order.createdAt) + 15 * 60_000;
-  if (stillInProxy) {
-    if (Date.now() > effectiveExpiresAt) {
-      console.warn(
-        `[ProxyForwarder] Stuck FORWARDED order ${order.swapId} expired with funds still in proxy (${order.proxyDepositAddress}); triggering 100% auto-refund.`
-      );
-      const refundRes = await recoverProxyDeposit(order.proxyDepositAddress, { action: "refund" });
-      if (refundRes.success) {
-        return updateProxySwapOrder(order.swapId, {
-          status: "REFUNDED",
-          refundTxHash: refundRes.txHash,
-          error: `Dropped forward transaction recovered; automatically refunded 100% to ${order.refundTo}.`,
-        });
-      }
-      return updateProxySwapOrder(order.swapId, {
-        status: "REFUND_PENDING",
-        error: refundRes.message || "Forward tx dropped; queued for automatic refund.",
-      });
-    } else {
-      console.warn(
-        `[ProxyForwarder] Stuck FORWARDED order ${order.swapId} still holds funds in proxy (${order.proxyDepositAddress}); re-forwarding now.`
-      );
-      const reset =
-        (await updateProxySwapOrder(order.swapId, {
-          status: "PENDING_DEPOSIT",
-          forwardTxHash: undefined,
-        })) || { ...order, status: "PENDING_DEPOSIT" as const };
-      return checkAndForwardProxyDeposit(reset);
-    }
-  }
-
-  // 3. Proxy wallet is empty (funds confirmed forwarded on-chain!) and order is > 15m old:
-  // If Solver still reports KNOWN_DEPOSIT_TX / PENDING_DEPOSIT / PROCESSING / HTTP_ERROR after 15m, finalize as SETTLED
-  if (ageMs > 15 * 60_000) {
-    const needsFeeRecredit = Boolean(order.feeCredited && (!order.partnerFeeUsd || order.partnerFeeUsd === 0));
-    const settled =
+  if (rawSt === "SUCCESS" || rawSt === "SETTLED") {
+    const rawOriginHash = data?.swapDetails?.originChainTxHashes?.[0]?.hash;
+    const updatedOrder =
       (await updateProxySwapOrder(order.swapId, {
         status: "SETTLED",
-        ...(needsFeeRecredit ? { feeCredited: false } : {}),
+        ...(partnerUserIdHint && !order.partnerUserId ? { partnerUserId: partnerUserIdHint } : {}),
+        ...(rawOriginHash && !order.forwardTxHash ? { forwardTxHash: rawOriginHash } : {}),
       })) || {
         ...order,
         status: "SETTLED" as const,
-        ...(needsFeeRecredit ? { feeCredited: false } : {}),
+        ...(partnerUserIdHint && !order.partnerUserId ? { partnerUserId: partnerUserIdHint } : {}),
       };
-    await creditPartnerFeeOnSettlement(settled).catch(() => {});
-    return settled;
+    await creditPartnerFeeOnSettlement(updatedOrder).catch(() => {});
+    return updatedOrder;
   }
 
-  return null;
+  if (rawSt === "REFUNDED") {
+    return (await updateProxySwapOrder(order.swapId, { status: "REFUNDED" })) || {
+      ...order,
+      status: "REFUNDED",
+    };
+  }
+
+  if (rawSt === "FAILED" || rawSt === "INCOMPLETE_DEPOSIT") {
+    return (
+      (await updateProxySwapOrder(order.swapId, {
+        status: "FAILED",
+        error: `Solver reported ${rawSt}`,
+      })) || { ...order, status: "FAILED" }
+    );
+  }
+
+  // For PENDING_DEPOSIT / KNOWN_DEPOSIT_TX on orders older than 2 minutes, check if forward tx dropped on-chain
+  const ageMs = Date.now() - (Number(order.createdAt) || 0);
+  if (
+    (rawSt === "PENDING_DEPOSIT" || rawSt === "KNOWN_DEPOSIT_TX") &&
+    ageMs >= 120_000
+  ) {
+    const stillInProxy = await checkProxyDepositFundsTriState(order);
+    const effectiveExpiresAt =
+      Number(order.expiresAt) || Number(order.createdAt) + 15 * 60_000;
+
+    if (stillInProxy === true) {
+      if (Date.now() > effectiveExpiresAt) {
+        const refundRes = await recoverProxyDeposit(order.proxyDepositAddress, {
+          action: "refund",
+        });
+        if (refundRes.success) {
+          return (
+            (await updateProxySwapOrder(order.swapId, {
+              status: "REFUNDED",
+              refundTxHash: refundRes.txHash,
+              error: `Dropped forward transaction recovered; automatically refunded 100% to ${order.refundTo}.`,
+            })) || { ...order, status: "REFUNDED" }
+          );
+        }
+        return (
+          (await updateProxySwapOrder(order.swapId, {
+            status: "REFUND_PENDING",
+            error: refundRes.message || "Forward tx dropped; queued for automatic refund.",
+          })) || { ...order, status: "REFUND_PENDING" }
+        );
+      } else {
+        const reset =
+          (await updateProxySwapOrder(order.swapId, {
+            status: "PENDING_DEPOSIT",
+            forwardTxHash: undefined,
+          })) || { ...order, status: "PENDING_DEPOSIT" as const };
+        return checkAndForwardProxyDeposit(reset);
+      }
+    }
+
+    if (stillInProxy === false && Date.now() > effectiveExpiresAt + 1800_000) {
+      return (
+        (await updateProxySwapOrder(order.swapId, {
+          status: "FAILED",
+          error: `Solver remained in ${rawSt} >30m past expiry with empty proxy wallet.`,
+        })) || { ...order, status: "FAILED" }
+      );
+    }
+  }
+
+  return order;
 }
 
 /**
@@ -3672,43 +3688,9 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
             ) {
               continue;
             }
-            const solverUrl = `https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(order.solverDepositAddress.trim())}`;
-            const res = await fetch(solverUrl, {
-              headers: buildOneClickHeaders(),
-              signal: AbortSignal.timeout(5000),
-            }).catch(() => null);
-            if (!res || !res.ok) {
-              console.warn(
-                `[ProxySweeperDaemon] 1Click status returned ${res?.status || "timeout"} for ${order.swapId} (${order.solverDepositAddress})`
-              );
-              const healed = await reconcileStuckForwardedOrder(order, "HTTP_ERROR");
-              if (healed && healed.status !== "FORWARDED") {
-                processed++;
-              }
-            } else if (res && res.ok) {
-              const data = await res.json().catch(() => null);
-              const rawSt = String(data?.status || "").toUpperCase();
-              if (rawSt === "SUCCESS" || rawSt === "SETTLED") {
-                const rawOriginHash = data?.swapDetails?.originChainTxHashes?.[0]?.hash;
-                const updatedOrder =
-                  (await updateProxySwapOrder(order.swapId, {
-                    status: "SETTLED",
-                    ...(rawOriginHash && !order.forwardTxHash ? { forwardTxHash: rawOriginHash } : {}),
-                  })) || { ...order, status: "SETTLED" as const };
-                await creditPartnerFeeOnSettlement(updatedOrder);
-                processed++;
-              } else if (rawSt === "REFUNDED") {
-                await updateProxySwapOrder(order.swapId, { status: "REFUNDED" });
-                processed++;
-              } else if (rawSt === "FAILED") {
-                await updateProxySwapOrder(order.swapId, { status: "FAILED" });
-                processed++;
-              } else {
-                const healed = await reconcileStuckForwardedOrder(order, rawSt);
-                if (healed && healed.status !== "FORWARDED") {
-                  processed++;
-                }
-              }
+            const reconciled = await reconcileForwardedSolverOrder(order);
+            if (reconciled.status !== "FORWARDED") {
+              processed++;
             }
           }
         } catch (settleErr) {

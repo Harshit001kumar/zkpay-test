@@ -182,51 +182,15 @@ export async function reconcilePartnerSwaps(userId: string): Promise<void> {
         (ord.status === "FORWARDED" || ord.status === "FORWARDING") &&
         Boolean(ord.solverDepositAddress)
     );
-    const solverHeaders = buildOneClickHeaders();
-    const BATCH_SIZE = 6;
-    for (let i = 0; i < forwardedOrders.length; i += BATCH_SIZE) {
-      const batch = forwardedOrders.slice(i, i + BATCH_SIZE);
-      await Promise.all(
-        batch.map(async (ord) => {
-          try {
-            if (!ord.partnerUserId) ord.partnerUserId = userId;
-            const solverUrl = `https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(ord.solverDepositAddress.trim())}`;
-            const res = await fetch(solverUrl, {
-              headers: solverHeaders,
-              signal: AbortSignal.timeout(5000),
-            }).catch(() => null);
-            if (!res || !res.ok) {
-              console.warn(
-                `[PartnerBalanceStore] 1Click status returned ${res?.status || "timeout"} for ${ord.swapId} (${ord.solverDepositAddress})`
-              );
-              const { reconcileStuckForwardedOrder } = await import("./proxyForwarder");
-              await reconcileStuckForwardedOrder(ord, "HTTP_ERROR");
-              return;
-            }
-            const data = await res.json().catch(() => null);
-            const rawSt = String(data?.status || "").toUpperCase();
-            if (rawSt === "SUCCESS" || rawSt === "SETTLED") {
-              const rawOriginHash = data?.swapDetails?.originChainTxHashes?.[0]?.hash;
-              const updatedOrder =
-                (await updateProxySwapOrder(ord.swapId, {
-                  status: "SETTLED",
-                  partnerUserId: userId,
-                  ...(rawOriginHash && !ord.forwardTxHash ? { forwardTxHash: rawOriginHash } : {}),
-                })) || { ...ord, status: "SETTLED" as const, partnerUserId: userId };
-              await creditPartnerFeeOnSettlement(updatedOrder);
-            } else if (rawSt === "REFUNDED") {
-              await updateProxySwapOrder(ord.swapId, { status: "REFUNDED" });
-            } else if (rawSt === "FAILED") {
-              await updateProxySwapOrder(ord.swapId, { status: "FAILED" });
-            } else {
-              const { reconcileStuckForwardedOrder } = await import("./proxyForwarder");
-              await reconcileStuckForwardedOrder(ord, rawSt);
-            }
-          } catch {
-            // non-fatal
-          }
-        })
-      );
+    if (forwardedOrders.length > 0) {
+      const { reconcileForwardedSolverOrder } = await import("./proxyForwarder");
+      const BATCH_SIZE = 6;
+      for (let i = 0; i < forwardedOrders.length; i += BATCH_SIZE) {
+        const batch = forwardedOrders.slice(i, i + BATCH_SIZE);
+        await Promise.all(
+          batch.map((ord) => reconcileForwardedSolverOrder(ord, userId).catch(() => ord))
+        );
+      }
     }
 
     // Also repair any existing credits that were saved with hardcoded fallback rates (e.g. 150 for SOL)
