@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isAddress, parseAbi } from "viem";
 import { CONTRACTS } from "@/lib/constants";
 import { getResilientPublicClientForChain } from "@/lib/server/rpcConfig";
+import { enforceRateLimit } from "@/lib/server/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,9 @@ const ERC20_ABI = parseAbi([
 ]);
 
 export async function GET(req: Request) {
+  const { response: rateLimitResp, rateLimit } = enforceRateLimit(req, "default");
+  if (rateLimitResp) return rateLimitResp;
+
   try {
     const { searchParams } = new URL(req.url);
     const address = searchParams.get("address")?.trim();
@@ -18,7 +22,7 @@ export async function GET(req: Request) {
     if (!address || !isAddress(address)) {
       return NextResponse.json(
         { success: false, error: "Valid smart wallet 'address' query param required." },
-        { status: 400 }
+        { status: 400, headers: rateLimit.headers }
       );
     }
 
@@ -35,20 +39,23 @@ export async function GET(req: Request) {
 
     const numBal = Number(rawBal) / 1_000_000;
 
-    return NextResponse.json({
-      success: true,
-      address,
-      balanceUsdc: numBal,
-      totalAvailableUsdc: numBal,
-      formattedUsdc: numBal.toFixed(2),
-      rawBalance: rawBal.toString(),
-      network: "Base Mainnet",
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        address,
+        balanceUsdc: numBal,
+        totalAvailableUsdc: numBal,
+        formattedUsdc: numBal.toFixed(2),
+        rawBalance: rawBal.toString(),
+        network: "Base Mainnet",
+      },
+      { headers: rateLimit.headers }
+    );
   } catch (err: any) {
     console.warn("[WalletBalanceAPI] Error fetching Base USDC balance:", err?.message || err);
     return NextResponse.json(
       { success: false, error: err?.message || "Failed to fetch on-chain balance" },
-      { status: 500 }
+      { status: 500, headers: rateLimit.headers }
     );
   }
 }

@@ -145,6 +145,7 @@ export async function POST(req: Request) {
       tokenAddress,
       tokenType,
       amount,
+      adminOverride: true,
     });
 
     if (!result.success) {

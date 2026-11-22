@@ -32,12 +32,20 @@ function makeId(): string {
 }
 
 function getKeySalt(): string {
-  return (
+  const salt =
     process.env.ZKPAY_API_KEY_HASH_SALT ||
     process.env.PAYIN_MASTER_SECRET ||
     process.env.AUTH_SECRET ||
-    ""
-  );
+    "";
+  if (!salt && process.env.NODE_ENV === "production") {
+    throw new Error("Missing ZKPAY_API_KEY_HASH_SALT (or PAYIN_MASTER_SECRET) in production.");
+  }
+  return salt;
+}
+
+function hashEqualHex(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(a, "utf8"), Buffer.from(b, "utf8"));
 }
 
 function hashApiKey(key: string): string {
@@ -266,22 +274,11 @@ export async function revokeApiKeyForUser(userId: string, keyId: string): Promis
 }
 
 export async function findActiveApiKey(rawKey: string): Promise<ApiKeyRecord | null> {
-  await hydrate();
   const clean = rawKey.trim();
   const keyHash = hashApiKey(clean);
   const legacyHash = hashApiKeyUnsalted(clean);
 
-  // Check in-memory first
-  for (const rec of apiKeys.values()) {
-    if (
-      rec.status === "ACTIVE" &&
-      (rec.keyHash === keyHash || rec.keyHash === legacyHash)
-    ) {
-      return rec;
-    }
-  }
-
-  // Check MongoDB directly when key is not found in memory (prevents multi-instance desync)
+  // Query MongoDB first so key revocations propagate immediately across all instances.
   try {
     const db = await getMongoDb();
     if (db) {
@@ -306,9 +303,25 @@ export async function findActiveApiKey(rawKey: string): Promise<ApiKeyRecord | n
         apiKeys.set(record.id, record);
         return record;
       }
+      for (const [id, rec] of apiKeys.entries()) {
+        if (hashEqualHex(rec.keyHash, keyHash) || hashEqualHex(rec.keyHash, legacyHash)) {
+          apiKeys.delete(id);
+        }
+      }
+      return null;
     }
   } catch (err) {
     console.warn("[ApiKeysStore] Mongo findActiveApiKey warning:", err);
+  }
+
+  await hydrate();
+  for (const rec of apiKeys.values()) {
+    if (
+      rec.status === "ACTIVE" &&
+      (hashEqualHex(rec.keyHash, keyHash) || hashEqualHex(rec.keyHash, legacyHash))
+    ) {
+      return rec;
+    }
   }
 
   return null;

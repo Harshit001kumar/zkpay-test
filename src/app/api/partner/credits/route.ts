@@ -12,7 +12,8 @@ export async function GET(req: Request) {
 
   try {
     const { searchParams } = new URL(req.url);
-    const limit = parseInt(searchParams.get("limit") || "50", 10);
+    const rawLimit = parseInt(searchParams.get("limit") || "50", 10);
+    const limit = Number.isFinite(rawLimit) ? Math.min(100, Math.max(1, rawLimit)) : 50;
     const credits = await listPartnerFeeCredits(auth.userId, limit);
 
     return NextResponse.json({

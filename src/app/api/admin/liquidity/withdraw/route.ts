@@ -11,7 +11,7 @@ import {
   sendFromLiquidityWallet,
 } from "@/lib/server/liquidityWallets";
 import { sweepInternalProxyToLiquidityWallet } from "@/lib/server/liquidityEngine";
-import { getProxyOrderBySwapId } from "@/lib/server/proxySwapStore";
+import { getProxyOrderBySwapId, getActiveReservedLiquidityByAsset } from "@/lib/server/proxySwapStore";
 import { creditPartnerFeeOnSettlement } from "@/lib/server/partnerBalanceStore";
 import { getTreasuryAddressForChain } from "@/lib/constants";
 import { isValidAddressForOriginAsset } from "@/lib/refundAddress";
@@ -83,11 +83,18 @@ export async function POST(req: Request) {
       );
     }
 
-    const availableAtomic = BigInt(status.availableAtomic || "0");
+    const confirmedReservedMap = await getActiveReservedLiquidityByAsset({ confirmedOnly: true });
+    const confirmedReserved = confirmedReservedMap[assetKey] || 0n;
+    const onChainAtomic = BigInt(status.confirmedBalanceAtomic || status.onChainBalanceAtomic || "0");
+    const minResAtomic = BigInt(status.minReserveAtomic || "0");
+    const availableAtomic =
+      onChainAtomic > confirmedReserved + minResAtomic
+        ? onChainAtomic - confirmedReserved - minResAtomic
+        : 0n;
     if (amountAtomic > availableAtomic) {
       return NextResponse.json(
         {
-          error: `Requested amount (${amountHuman} ${def.symbol}) exceeds unreserved available liquidity (${status.availableFormatted} ${def.symbol}). Active swap reservations and minimum reserve floors are protected.`,
+          error: `Requested amount (${amountHuman} ${def.symbol}) exceeds confirmed unreserved liquidity (${formatUnits(availableAtomic, def.decimals)} ${def.symbol}). In-flight confirmed swaps and minimum reserve floors are protected.`,
         },
         { status: 400 }
       );

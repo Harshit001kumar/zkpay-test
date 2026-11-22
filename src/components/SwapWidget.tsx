@@ -830,7 +830,7 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
             {showQr && (
               <div className="flex justify-center pt-1 animate-fade-in-up">
                 <div className="w-52 h-52 rounded-xl bg-white p-2">
-                  <img src={qrUrl} alt="Deposit address QR code" className="w-full h-full object-contain" />
+                  <img src={qrUrl} alt="Deposit address QR code" referrerPolicy="no-referrer" className="w-full h-full object-contain" />
                 </div>
               </div>
             )}

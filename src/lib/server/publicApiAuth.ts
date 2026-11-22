@@ -37,16 +37,10 @@ export interface PublicApiAuthResult {
  *   4. Privy user session tokens via Authorization: Bearer <privyAccessToken>
  */
 export async function resolvePublicApiAuth(req: Request): Promise<PublicApiAuthResult> {
-  let queryKey: string | null = null;
-  try {
-    const { searchParams } = new URL(req.url);
-    queryKey = searchParams.get("apiKey")?.trim() || searchParams.get("api_key")?.trim() || null;
-  } catch {}
-
   const directKey =
     req.headers.get("x-api-key")?.trim() ||
     req.headers.get("api-key")?.trim() ||
-    queryKey;
+    null;
   const authHeader = req.headers.get("authorization")?.trim();
   const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
 

@@ -45,6 +45,7 @@ interface WindowEntry {
   timestamps: number[];
 }
 
+// shortcut: in-memory Map per serverless/Node instance; upgrade to Redis/Upstash for multi-instance enforcement
 const windowStore = new Map<string, WindowEntry>();
 
 // Garbage collection every 5 minutes
@@ -81,7 +82,13 @@ function purgeExpiredWindows(now: number) {
  * Extracts a client identifier from IP headers or fallback.
  */
 export function getClientIp(req: Request): string {
-  // 1. Standard X-Forwarded-For appended by reverse proxy (Render / Cloudflare)
+  // Prefer platform-set headers before generic X-Forwarded-For
+  const vercelIp = req.headers.get("x-vercel-forwarded-for");
+  if (vercelIp && vercelIp.trim()) return vercelIp.split(",")[0].trim().slice(0, 64);
+
+  const cfIp = req.headers.get("cf-connecting-ip");
+  if (cfIp && cfIp.trim()) return cfIp.trim().slice(0, 64);
+
   const forwarded = req.headers.get("x-forwarded-for");
   if (forwarded) {
     const ips = forwarded.split(",").map((ip) => ip.trim()).filter(Boolean);
@@ -90,11 +97,6 @@ export function getClientIp(req: Request): string {
     }
   }
 
-  // 2. Cloudflare connecting IP
-  const cfIp = req.headers.get("cf-connecting-ip");
-  if (cfIp && cfIp.trim()) return cfIp.trim().slice(0, 64);
-
-  // 3. Standard single reverse proxy IP
   const realIp = req.headers.get("x-real-ip");
   if (realIp && realIp.trim()) return realIp.trim().slice(0, 64);
 

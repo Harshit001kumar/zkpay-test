@@ -39,6 +39,7 @@ export interface ProxySwapOrder {
     | "FAILED"
     | "REFUNDED"
     | "EXPIRED"
+    | "REFUNDING"
     | "REFUND_PENDING";
   depositTxHash?: string;
   feeTxHash?: string;
@@ -65,6 +66,7 @@ export interface ProxySwapOrder {
   partnerFeeUsd?: number; // USD value credited to partner
   source?: "api" | "app";
   swapType?: "FLEX_INPUT";
+  creatorKey?: string;
   paylinkId?: string;
   paylinkSlug?: string;
   createdAt: number;
@@ -288,7 +290,7 @@ export async function getPendingProxyOrders(): Promise<ProxySwapOrder[]> {
       const activeCutoff = Date.now() - 60_000;
       const [inFlightOrRefund, activePending, expiredPending] = await Promise.all([
         collection
-          .find({ status: { $in: ["FORWARDING", "REFUND_PENDING", "PAYING_OUT"] } })
+          .find({ status: { $in: ["FORWARDING", "REFUNDING", "REFUND_PENDING", "PAYING_OUT"] } })
           .sort({ createdAt: 1 })
           .limit(50)
           .toArray(),
@@ -326,7 +328,10 @@ export async function getPendingProxyOrders(): Promise<ProxySwapOrder[]> {
     .filter(
       (o) =>
         o.status === "PENDING_DEPOSIT" ||
+        o.status === "DETECTED" ||
         o.status === "FORWARDING" ||
+        o.status === "PAYING_OUT" ||
+        o.status === "REFUNDING" ||
         o.status === "REFUND_PENDING"
     )
     .sort((a, b) => a.createdAt - b.createdAt);
@@ -536,8 +541,8 @@ export function getDecryptedProxyPrivateKey(order: ProxySwapOrder): `0x${string}
 }
 
 /**
- * Atomically transitions an INTERNAL_POOL order from PENDING_DEPOSIT/DETECTED -> PAYING_OUT.
- * Guarantees at-most-once payout across concurrent serverless instances or sweeper ticks.
+ * Atomically transitions an INTERNAL_POOL order from PENDING_DEPOSIT/DETECTED -> PAYING_OUT,
+ * and refuses expired orders so payout and expired-order auto-refund can never race.
  */
 export async function claimOrderForPayout(swapId: string): Promise<ProxySwapOrder | null> {
   const clean = swapId.trim();
@@ -550,6 +555,7 @@ export async function claimOrderForPayout(swapId: string): Promise<ProxySwapOrde
         {
           swapId: clean,
           status: { $in: ["PENDING_DEPOSIT", "DETECTED"] },
+          expiresAt: { $gt: now },
         } as any,
         {
           $set: {
@@ -575,7 +581,11 @@ export async function claimOrderForPayout(swapId: string): Promise<ProxySwapOrde
 
   await hydrateCache();
   const existing = ordersBySwapId.get(clean);
-  if (!existing || (existing.status !== "PENDING_DEPOSIT" && existing.status !== "DETECTED")) {
+  if (
+    !existing ||
+    (existing.status !== "PENDING_DEPOSIT" && existing.status !== "DETECTED") ||
+    (existing.expiresAt && existing.expiresAt <= now)
+  ) {
     return null;
   }
   return updateProxySwapOrder(clean, {
@@ -586,12 +596,139 @@ export async function claimOrderForPayout(swapId: string): Promise<ProxySwapOrde
 }
 
 /**
+ * Atomically claims an order for expired/failed refund, blocking PAYING_OUT and SETTLED orders.
+ */
+export async function claimOrderForRefund(swapId: string): Promise<ProxySwapOrder | null> {
+  const clean = swapId.trim();
+  const now = Date.now();
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const res = await db.collection<ProxySwapOrder>("proxy_swap_orders").findOneAndUpdate(
+        {
+          swapId: clean,
+          status: { $in: ["PENDING_DEPOSIT", "DETECTED", "REFUND_PENDING"] },
+        } as any,
+        { $set: { status: "REFUNDING", lastAttemptAt: now } },
+        { returnDocument: "after" }
+      );
+      const doc = (res && typeof res === "object" && "value" in res ? (res as any).value : res) as ProxySwapOrder | null;
+      if (doc) {
+        ordersBySwapId.set(doc.swapId, doc);
+        ordersByAddress.set(doc.proxyDepositAddress.toLowerCase(), doc);
+        ordersByAddress.set(doc.proxyDepositAddress, doc);
+        return doc;
+      }
+      return null;
+    }
+  } catch (err) {
+    console.warn("[ProxySwapStore] claimOrderForRefund MongoDB warning:", err);
+  }
+
+  await hydrateCache();
+  const existing = ordersBySwapId.get(clean);
+  if (
+    !existing ||
+    (existing.status !== "PENDING_DEPOSIT" &&
+      existing.status !== "DETECTED" &&
+      existing.status !== "REFUND_PENDING")
+  ) {
+    return null;
+  }
+  return updateProxySwapOrder(clean, { status: "REFUNDING", lastAttemptAt: now });
+}
+
+/**
+ * Atomically claims a non-pool proxy order for forwarding across serverless instances.
+ */
+export async function claimOrderForForwarding(swapId: string): Promise<ProxySwapOrder | null> {
+  const clean = swapId.trim();
+  const now = Date.now();
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const res = await db.collection<ProxySwapOrder>("proxy_swap_orders").findOneAndUpdate(
+        {
+          swapId: clean,
+          fulfillmentMode: { $ne: "INTERNAL_POOL" },
+          $or: [
+            { status: "PENDING_DEPOSIT" },
+            { status: "FORWARDING", lastAttemptAt: { $lt: now - 120_000 } },
+          ],
+        } as any,
+        { $set: { status: "FORWARDING", lastAttemptAt: now } },
+        { returnDocument: "after" }
+      );
+      const doc = (res && typeof res === "object" && "value" in res ? (res as any).value : res) as ProxySwapOrder | null;
+      if (doc) {
+        ordersBySwapId.set(doc.swapId, doc);
+        ordersByAddress.set(doc.proxyDepositAddress.toLowerCase(), doc);
+        ordersByAddress.set(doc.proxyDepositAddress, doc);
+        return doc;
+      }
+      return null;
+    }
+  } catch (err) {
+    console.warn("[ProxySwapStore] claimOrderForForwarding MongoDB warning:", err);
+  }
+
+  await hydrateCache();
+  const existing = ordersBySwapId.get(clean);
+  if (!existing || existing.fulfillmentMode === "INTERNAL_POOL") return null;
+  const staleForward = existing.status === "FORWARDING" && (!existing.lastAttemptAt || now - existing.lastAttemptAt > 120_000);
+  if (existing.status !== "PENDING_DEPOSIT" && !staleForward) {
+    return null;
+  }
+  return updateProxySwapOrder(clean, { status: "FORWARDING", lastAttemptAt: now });
+}
+
+/**
+ * Counts currently open unpaid INTERNAL_POOL orders created by a given caller/IP.
+ */
+export async function countActiveUnpaidPoolOrdersForCaller(creatorKey: string): Promise<number> {
+  const cleanKey = (creatorKey || "").trim();
+  if (!cleanKey) return 0;
+  const now = Date.now();
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      return await db.collection<ProxySwapOrder>("proxy_swap_orders").countDocuments({
+        fulfillmentMode: "INTERNAL_POOL",
+        status: "PENDING_DEPOSIT",
+        creatorKey: cleanKey,
+        expiresAt: { $gt: now },
+      } as any);
+    }
+  } catch (err) {
+    console.warn("[ProxySwapStore] countActiveUnpaidPoolOrdersForCaller warning:", err);
+  }
+
+  await hydrateCache();
+  let count = 0;
+  for (const o of ordersBySwapId.values()) {
+    if (
+      o.fulfillmentMode === "INTERNAL_POOL" &&
+      o.status === "PENDING_DEPOSIT" &&
+      o.creatorKey === cleanKey &&
+      o.expiresAt > now
+    ) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/**
  * Sums currently reserved destination liquidity across active unfulfilled INTERNAL_POOL orders.
  * Keyed by destinationChain:toAsset (e.g. "ltc:LTC", "sol:SOL", "polygon:USDT").
  */
-export async function getActiveReservedLiquidityByAsset(): Promise<Record<string, bigint>> {
+export async function getActiveReservedLiquidityByAsset(options?: {
+  confirmedOnly?: boolean;
+}): Promise<Record<string, bigint>> {
   const totals: Record<string, bigint> = {};
   const now = Date.now();
+  const confirmedOnly = Boolean(options?.confirmedOnly);
+  const unpaidHoldMs = 5 * 60_000; // shortcut: 5m unpaid reservation window limits zero-cost pool lockout; upgrade to deposit-only reservation at higher volume
 
   const accumulate = (list: ProxySwapOrder[]) => {
     for (const o of list) {
@@ -601,6 +738,10 @@ export async function getActiveReservedLiquidityByAsset(): Promise<Record<string
         o.status !== "DETECTED" &&
         o.status !== "PAYING_OUT"
       ) {
+        continue;
+      }
+      if (confirmedOnly && o.status === "PENDING_DEPOSIT") continue;
+      if (o.status === "PENDING_DEPOSIT" && o.createdAt && now - o.createdAt > unpaidHoldMs) {
         continue;
       }
       if (o.status !== "PAYING_OUT" && o.expiresAt < now) continue;

@@ -28,6 +28,7 @@ import {
   type PoolAssetDefinition,
   getLiquidityPoolConfig,
 } from "./liquidityConfig";
+import { getMongoDb } from "./mongodb";
 import { getActiveReservedLiquidityByAsset } from "./proxySwapStore";
 import { getLiveTokenPriceUsd } from "./priceService";
 import {
@@ -618,6 +619,74 @@ export async function verifyLiquidityPayoutOnChain(
   return "pending";
 }
 
+const hotWalletQueues = new Map<string, Promise<unknown>>();
+
+async function withHotWalletLock<T>(
+  assetKey: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  const prev = hotWalletQueues.get(assetKey) || Promise.resolve();
+  let releaseLocal!: () => void;
+  const gate = new Promise<void>((res) => {
+    releaseLocal = res;
+  });
+  const chained = prev.then(() => gate);
+  hotWalletQueues.set(assetKey, chained);
+
+  await prev.catch(() => {});
+  const lockToken = crypto.randomBytes(8).toString("hex");
+  let mongoLocked = false;
+  let dbRef: Awaited<ReturnType<typeof getMongoDb>> = null;
+
+  try {
+    dbRef = await getMongoDb();
+    if (dbRef) {
+      const col = dbRef.collection("liquidity_locks");
+      for (let attempt = 0; attempt < 16; attempt++) {
+        const now = Date.now();
+        try {
+          await col.findOneAndUpdate(
+            {
+              _id: assetKey as any,
+              $or: [{ expiresAt: { $lte: now } }, { ownerToken: lockToken }],
+            } as any,
+            {
+              $set: {
+                ownerToken: lockToken,
+                expiresAt: now + 45_000,
+              },
+            },
+            { upsert: true }
+          );
+          mongoLocked = true;
+          break;
+        } catch (err: any) {
+          if (err?.code === 11000) {
+            await new Promise((r) => setTimeout(r, 500));
+            continue;
+          }
+          break;
+        }
+      }
+      if (!mongoLocked) {
+        throw new Error(`Liquidity hot wallet busy for ${assetKey}; please retry.`);
+      }
+    }
+    return await fn();
+  } finally {
+    if (mongoLocked && dbRef) {
+      await dbRef
+        .collection("liquidity_locks")
+        .deleteOne({ _id: assetKey as any, ownerToken: lockToken })
+        .catch(() => {});
+    }
+    releaseLocal();
+    if (hotWalletQueues.get(assetKey) === chained) {
+      hotWalletQueues.delete(assetKey);
+    }
+  }
+}
+
 /**
  * Dispatches an on-chain payout or withdrawal from the specified Liquidity Hot Wallet.
  * Verifies transaction confirmation before returning `{ txHash, explorerUrl }`.
@@ -638,158 +707,160 @@ export async function sendFromLiquidityWallet(params: {
     throw new Error("Transfer amount must be greater than zero.");
   }
 
-  let minReserveAtomic = 0n;
-  if (enforceMinReserve) {
-    const cfg = await getLiquidityPoolConfig();
-    const minReserveHuman =
-      cfg.minReserveByAsset?.[def.assetKey] || def.defaultMinReserveHuman;
-    minReserveAtomic = parseHumanToAtomic(minReserveHuman, def.decimals);
-  }
-
-  const cleanTo = (toAddress || "").trim();
-
-  if (assetKey === "polygon:USDT") {
-    const w = getEvmLiquidityWallet();
-    if (!w.configured || !w.account || !w.address) {
-      throw new Error("Polygon liquidity wallet is not configured.");
-    }
-    if (!isAddress(cleanTo)) {
-      throw new Error(`Invalid Polygon recipient address: ${cleanTo}`);
-    }
-    const publicClient = getResilientPublicClientForChain("polygon");
+  return withHotWalletLock(assetKey, async () => {
+    let minReserveAtomic = 0n;
     if (enforceMinReserve) {
-      const liveBal = (await publicClient.readContract({
-        address: def.tokenAddress!,
-        abi: ERC20_BALANCE_ABI,
-        functionName: "balanceOf",
-        args: [w.address],
-      })) as bigint;
-      if (liveBal < amountAtomic + minReserveAtomic) {
-        throw new Error(
-          `Polygon USDT payout would breach minimum reserve floor (balance=${liveBal}, required=${amountAtomic + minReserveAtomic}).`
-        );
+      const cfg = await getLiquidityPoolConfig();
+      const minReserveHuman =
+        cfg.minReserveByAsset?.[def.assetKey] || def.defaultMinReserveHuman;
+      minReserveAtomic = parseHumanToAtomic(minReserveHuman, def.decimals);
+    }
+
+    const cleanTo = (toAddress || "").trim();
+
+    if (assetKey === "polygon:USDT") {
+      const w = getEvmLiquidityWallet();
+      if (!w.configured || !w.account || !w.address) {
+        throw new Error("Polygon liquidity wallet is not configured.");
       }
-    }
-    const { chain, transports } = getEvmRpcConfig("polygon");
-    const walletClient = createWalletClient({
-      account: w.account,
-      chain,
-      transport: fallback(transports, { rank: false, retryCount: 2 }),
-    });
-
-    const res = await sendResilientErc20Transfer({
-      chainKey: "polygon",
-      publicClient,
-      walletClient,
-      proxyAccount: w.account,
-      tokenAddress: def.tokenAddress!,
-      to: getAddress(cleanTo as `0x${string}`),
-      amount: amountAtomic,
-    });
-
-    if (!res.txHash) {
-      throw new Error(res.error || "Polygon USDT transfer failed to broadcast.");
-    }
-
-    const receipt = await publicClient
-      .waitForTransactionReceipt({ hash: res.txHash, timeout: 45_000 })
-      .catch(() => null);
-    if (!receipt || receipt.status !== "success") {
-      const isReverted = Boolean(receipt && receipt.status !== "success");
-      const err: any = new Error(
-        isReverted
-          ? `Polygon USDT transfer ${res.txHash} reverted on-chain.`
-          : `Polygon USDT transfer ${res.txHash} confirmation timed out.`
-      );
-      err.txHash = res.txHash;
-      err.broadcasted = true;
-      err.reverted = isReverted;
-      throw err;
-    }
-
-    return {
-      txHash: res.txHash,
-      explorerUrl: getExplorerTxUrl("polygon", res.txHash),
-      fromAddress: w.address,
-    };
-  }
-
-  if (assetKey === "sol:SOL") {
-    const w = getSolLiquidityWallet();
-    if (!w.configured || !w.address || !w.privKeySeedHex) {
-      throw new Error("Solana liquidity wallet is not configured.");
-    }
-    if (amountAtomic < 10_000n) {
-      throw new Error("Solana payout amount is below minimum transfer threshold.");
-    }
-    if (enforceMinReserve) {
-      const balRes = await fetchResilientSolanaRpc("getBalance", [
-        w.address,
-        { commitment: "confirmed" },
-      ]);
-      const liveLamports = BigInt(balRes?.value || 0);
-      if (liveLamports < amountAtomic + minReserveAtomic + 15_000n) {
-        throw new Error(
-          `Solana SOL payout would breach minimum reserve floor (balance=${liveLamports}, required=${amountAtomic + minReserveAtomic + 15_000n}).`
-        );
+      if (!isAddress(cleanTo)) {
+        throw new Error(`Invalid Polygon recipient address: ${cleanTo}`);
       }
-    }
+      const publicClient = getResilientPublicClientForChain("polygon");
+      if (enforceMinReserve) {
+        const liveBal = (await publicClient.readContract({
+          address: def.tokenAddress!,
+          abi: ERC20_BALANCE_ABI,
+          functionName: "balanceOf",
+          args: [w.address],
+        })) as bigint;
+        if (liveBal < amountAtomic + minReserveAtomic) {
+          throw new Error(
+            `Polygon USDT payout would breach minimum reserve floor (balance=${liveBal}, required=${amountAtomic + minReserveAtomic}).`
+          );
+        }
+      }
+      const { chain, transports } = getEvmRpcConfig("polygon");
+      const walletClient = createWalletClient({
+        account: w.account,
+        chain,
+        transport: fallback(transports, { rank: false, retryCount: 2 }),
+      });
 
-    const txSig = await sendSolanaMultiTransfer({
-      fromPubkeyBase58: w.address,
-      fromPrivKeyHex: w.privKeySeedHex,
-      outputs: [{ toBase58: cleanTo, lamports: amountAtomic }],
-    });
+      const res = await sendResilientErc20Transfer({
+        chainKey: "polygon",
+        publicClient,
+        walletClient,
+        proxyAccount: w.account,
+        tokenAddress: def.tokenAddress!,
+        to: getAddress(cleanTo as `0x${string}`),
+        amount: amountAtomic,
+      });
 
-    try {
-      const conf = await waitForSolanaSignature(txSig, 25_000);
-      if (conf === "timeout") {
-        const err: any = new Error(`Solana payout ${txSig} confirmation timed out.`);
-        err.txHash = txSig;
+      if (!res.txHash) {
+        throw new Error(res.error || "Polygon USDT transfer failed to broadcast.");
+      }
+
+      const receipt = await publicClient
+        .waitForTransactionReceipt({ hash: res.txHash, timeout: 45_000 })
+        .catch(() => null);
+      if (!receipt || receipt.status !== "success") {
+        const isReverted = Boolean(receipt && receipt.status !== "success");
+        const err: any = new Error(
+          isReverted
+            ? `Polygon USDT transfer ${res.txHash} reverted on-chain.`
+            : `Polygon USDT transfer ${res.txHash} confirmation timed out.`
+        );
+        err.txHash = res.txHash;
         err.broadcasted = true;
-        err.reverted = false;
+        err.reverted = isReverted;
         throw err;
       }
-    } catch (waitErr: any) {
-      if (!waitErr.broadcasted) {
-        waitErr.txHash = txSig;
-        waitErr.broadcasted = true;
-        waitErr.reverted = true;
-      }
-      throw waitErr;
+
+      return {
+        txHash: res.txHash,
+        explorerUrl: getExplorerTxUrl("polygon", res.txHash),
+        fromAddress: w.address,
+      };
     }
+
+    if (assetKey === "sol:SOL") {
+      const w = getSolLiquidityWallet();
+      if (!w.configured || !w.address || !w.privKeySeedHex) {
+        throw new Error("Solana liquidity wallet is not configured.");
+      }
+      if (amountAtomic < 10_000n) {
+        throw new Error("Solana payout amount is below minimum transfer threshold.");
+      }
+      if (enforceMinReserve) {
+        const balRes = await fetchResilientSolanaRpc("getBalance", [
+          w.address,
+          { commitment: "confirmed" },
+        ]);
+        const liveLamports = BigInt(balRes?.value || 0);
+        if (liveLamports < amountAtomic + minReserveAtomic + 15_000n) {
+          throw new Error(
+            `Solana SOL payout would breach minimum reserve floor (balance=${liveLamports}, required=${amountAtomic + minReserveAtomic + 15_000n}).`
+          );
+        }
+      }
+
+      const txSig = await sendSolanaMultiTransfer({
+        fromPubkeyBase58: w.address,
+        fromPrivKeyHex: w.privKeySeedHex,
+        outputs: [{ toBase58: cleanTo, lamports: amountAtomic }],
+      });
+
+      try {
+        const conf = await waitForSolanaSignature(txSig, 25_000);
+        if (conf === "timeout") {
+          const err: any = new Error(`Solana payout ${txSig} confirmation timed out.`);
+          err.txHash = txSig;
+          err.broadcasted = true;
+          err.reverted = false;
+          throw err;
+        }
+      } catch (waitErr: any) {
+        if (!waitErr.broadcasted) {
+          waitErr.txHash = txSig;
+          waitErr.broadcasted = true;
+          waitErr.reverted = true;
+        }
+        throw waitErr;
+      }
+
+      return {
+        txHash: txSig,
+        explorerUrl: getExplorerTxUrl("sol", txSig),
+        fromAddress: w.address,
+      };
+    }
+
+    // Litecoin (ltc:LTC)
+    const w = getLtcLiquidityWallet();
+    if (!w.configured || !w.address || !w.privKeyHex) {
+      throw new Error("Litecoin liquidity wallet is not configured.");
+    }
+    if (enforceMinReserve) {
+      const ltcBal = await getLtcBalanceAndUtxos(w.address);
+      if (ltcBal.confirmedBalanceSatoshis < amountAtomic + minReserveAtomic + 3000n) {
+        throw new Error(
+          `Litecoin LTC payout would breach minimum reserve floor (confirmed=${ltcBal.confirmedBalanceSatoshis}, required=${amountAtomic + minReserveAtomic + 3000n}).`
+        );
+      }
+    }
+
+    const txid = await sendLtcFromLiquidityWallet({
+      fromAddress: w.address,
+      privKeyInput: w.privKeyHex,
+      toAddress: cleanTo,
+      amountSatoshis: amountAtomic,
+    });
 
     return {
-      txHash: txSig,
-      explorerUrl: getExplorerTxUrl("sol", txSig),
+      txHash: txid,
+      explorerUrl: getExplorerTxUrl("ltc", txid),
       fromAddress: w.address,
     };
-  }
-
-  // Litecoin (ltc:LTC)
-  const w = getLtcLiquidityWallet();
-  if (!w.configured || !w.address || !w.privKeyHex) {
-    throw new Error("Litecoin liquidity wallet is not configured.");
-  }
-  if (enforceMinReserve) {
-    const ltcBal = await getLtcBalanceAndUtxos(w.address);
-    if (ltcBal.confirmedBalanceSatoshis < amountAtomic + minReserveAtomic + 3000n) {
-      throw new Error(
-        `Litecoin LTC payout would breach minimum reserve floor (confirmed=${ltcBal.confirmedBalanceSatoshis}, required=${amountAtomic + minReserveAtomic + 3000n}).`
-      );
-    }
-  }
-
-  const txid = await sendLtcFromLiquidityWallet({
-    fromAddress: w.address,
-    privKeyInput: w.privKeyHex,
-    toAddress: cleanTo,
-    amountSatoshis: amountAtomic,
   });
-
-  return {
-    txHash: txid,
-    explorerUrl: getExplorerTxUrl("ltc", txid),
-    fromAddress: w.address,
-  };
 }

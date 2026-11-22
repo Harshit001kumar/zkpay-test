@@ -426,6 +426,12 @@ export async function getAdminSystemTransactions(
   };
 }
 
+export function csvCell(val: unknown): string {
+  const s = String(val ?? "");
+  const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+  return `"${safe.replace(/"/g, '""')}"`;
+}
+
 export async function exportAdminTransactionsCsv(
   options: GetAdminTransactionsOptions = {}
 ): Promise<string> {
@@ -446,18 +452,18 @@ export async function exportAdminTransactionsCsv(
   ];
   const rows = transactions.map((tx) =>
     [
-      tx.id,
-      tx.status,
-      tx.channel,
-      `"${tx.title.replace(/"/g, '""')}"`,
-      tx.chain,
-      tx.destinationChain,
-      `"${tx.amountHuman}"`,
-      tx.amountUsdEstimate.toFixed(2),
-      tx.recipient,
-      tx.depositAddress || "",
-      tx.txHash || "",
-      new Date(tx.createdAt).toISOString(),
+      csvCell(tx.id),
+      csvCell(tx.status),
+      csvCell(tx.channel),
+      csvCell(tx.title),
+      csvCell(tx.chain),
+      csvCell(tx.destinationChain),
+      csvCell(tx.amountHuman),
+      csvCell(tx.amountUsdEstimate.toFixed(2)),
+      csvCell(tx.recipient),
+      csvCell(tx.depositAddress || ""),
+      csvCell(tx.txHash || ""),
+      csvCell(new Date(tx.createdAt).toISOString()),
     ].join(",")
   );
   return [headers.join(","), ...rows].join("\n");

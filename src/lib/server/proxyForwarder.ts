@@ -24,6 +24,8 @@ import {
   getPendingInternalSweeps,
   getRecentProxyOrders,
   updateProxySwapOrder,
+  claimOrderForForwarding,
+  claimOrderForRefund,
   getDecryptedProxyPrivateKey,
 } from "./proxySwapStore";
 import { creditPartnerFeeOnSettlement } from "./partnerBalanceStore";
@@ -598,6 +600,10 @@ const PENDING_FORWARD_STALE_MS = 10 * 60 * 1000;
  * the upfront fee split and forward to Near Intents solvers.
  */
 export async function checkAndForwardProxyDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
+  if (order.fulfillmentMode === "INTERNAL_POOL") {
+    return order;
+  }
+
   if (
     order.status === "FORWARDED" ||
     order.status === "SETTLED" ||
@@ -725,10 +731,8 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       `[ProxyForwarder] Native deposit detected for order ${order.swapId}: ${formatUnits(balanceWei, 18)} ${upperSymbol}`
     );
 
-    await updateProxySwapOrder(order.swapId, {
-      status: "FORWARDING",
-      lastAttemptAt: Date.now(),
-    });
+    const claimedFwd = await claimOrderForForwarding(order.swapId);
+    if (!claimedFwd) return order;
 
     let forwardTxHash = "";
     let feeTxHash = "";
@@ -1038,7 +1042,8 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       `[ProxyForwarder] Token deposit detected for order ${order.swapId}: ${tokenBalance.toString()} ${upperSymbol} on ${order.chain}`
     );
 
-    await updateProxySwapOrder(order.swapId, { status: "FORWARDING" });
+    const claimedFwd = await claimOrderForForwarding(order.swapId);
+    if (!claimedFwd) return order;
 
     const rawKey = getDecryptedProxyPrivateKey(order);
     const proxyAccount = privateKeyToAccount(rawKey);
@@ -1706,7 +1711,8 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
       `[ProxyForwarder] Solana deposit detected for order ${order.swapId}: ${lamports} lamports (address: ${order.proxyDepositAddress})`
     );
 
-    await updateProxySwapOrder(order.swapId, { status: "FORWARDING", lastAttemptAt: Date.now() });
+    const claimedFwd = await claimOrderForForwarding(order.swapId);
+    if (!claimedFwd) return order;
 
     const privKeyHex = getDecryptedProxyPrivateKey(order);
 
@@ -1880,7 +1886,8 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       `[ProxyForwarder] LTC deposit detected for order ${order.swapId}: ${balanceSatoshis} satoshis (${utxos.length} UTXOs on ${order.proxyDepositAddress})`
     );
 
-    await updateProxySwapOrder(order.swapId, { status: "FORWARDING" });
+    const claimedFwd = await claimOrderForForwarding(order.swapId);
+    if (!claimedFwd) return order;
 
     const privKeyHex = getDecryptedProxyPrivateKey(order);
 
@@ -2210,6 +2217,8 @@ export interface RecoverOptions {
   tokenAddress?: string; // "native" or specific 0x... address
   tokenType?: "native" | "token" | "auto";
   amount?: string;
+  allowFromPayingOut?: boolean;
+  adminOverride?: boolean;
 }
 
 /**
@@ -2254,6 +2263,23 @@ export async function recoverProxyDeposit(
   sweepLocks.add(lockKey);
   try {
     const action = options?.action || "forward";
+
+    if (action === "refund" && !options?.adminOverride) {
+      if (order.status === "SETTLED" || order.status === "REFUNDED") {
+        return {
+          success: false,
+          message: `Refusing automated refund on ${order.status} order ${order.swapId}.`,
+          order,
+        };
+      }
+      if (order.status === "PAYING_OUT" && !options?.allowFromPayingOut) {
+        return {
+          success: false,
+          message: `Order ${order.swapId} is currently PAYING_OUT; automated refund blocked.`,
+          order,
+        };
+      }
+    }
 
     // Determine recipient destination address
     let destination = options?.customRecipient?.trim();
@@ -3638,6 +3664,17 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
             continue;
           }
 
+          if (order.status === "REFUNDING") {
+            const startedAt = order.lastAttemptAt || order.createdAt;
+            if (Date.now() - startedAt > 180_000) {
+              await updateProxySwapOrder(order.swapId, {
+                status: "REFUND_PENDING",
+                error: "Refund worker timed out; re-queued for automatic refund.",
+              });
+            }
+            continue;
+          }
+
           const isExpired = Date.now() > order.expiresAt + 60_000;
 
           if (isExpired) {
@@ -3653,8 +3690,10 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
             // Single tri-state balance check: if confirmed empty (false), mark EXPIRED immediately so we never poll abandoned addresses for another hour!
             const hasFundsState = await checkProxyDepositFundsTriState(order);
             if (hasFundsState === false) {
-              await updateProxySwapOrder(order.swapId, { status: "EXPIRED" });
-              processed++;
+              if (order.status === "PENDING_DEPOSIT" || order.status === "DETECTED") {
+                await updateProxySwapOrder(order.swapId, { status: "EXPIRED" });
+                processed++;
+              }
               continue;
             }
             if (hasFundsState === null) {
@@ -3662,17 +3701,30 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
               continue;
             }
 
-            // hasFundsState === true: late deposit arrived on an expired quote -> automatic 100% refund to user!
-            const refundRes = await recoverProxyDeposit(order.proxyDepositAddress, { action: "refund" });
-            if (refundRes.success) {
-              console.log(
-                `[ProxySweeperDaemon] Automatically refunded expired deposit for order ${order.swapId} to user ${order.refundTo}. Tx: ${refundRes.txHash}`
-              );
-              processed++;
-            } else {
+            // Atomically claim order for refund so expired-order auto-refund cannot race with payout
+            const claimedRefund = await claimOrderForRefund(order.swapId);
+            if (!claimedRefund) {
+              continue;
+            }
+
+            try {
+              // hasFundsState === true: late deposit arrived on an expired quote -> automatic 100% refund to user!
+              const refundRes = await recoverProxyDeposit(claimedRefund.proxyDepositAddress, { action: "refund" });
+              if (refundRes.success) {
+                console.log(
+                  `[ProxySweeperDaemon] Automatically refunded expired deposit for order ${order.swapId} to user ${order.refundTo}. Tx: ${refundRes.txHash}`
+                );
+                processed++;
+              } else {
+                await updateProxySwapOrder(order.swapId, {
+                  status: "REFUND_PENDING",
+                  error: refundRes.message || "Proxy holds deposited funds requiring refund",
+                });
+              }
+            } catch (refundErr: any) {
               await updateProxySwapOrder(order.swapId, {
                 status: "REFUND_PENDING",
-                error: refundRes.message || "Proxy holds deposited funds requiring refund",
+                error: refundErr?.message || "Automatic refund failed; queued for retry",
               });
             }
           } else {
@@ -3820,9 +3872,18 @@ export async function sweepAllProxyDustToRelayer(
   const nativeSym = normChain === "polygon" ? "POL" : normChain === "bsc" ? "BNB" : "ETH";
 
   const orders = await getRecentProxyOrders(limit);
-  const chainOrders = orders.filter(
-    (o) => (normalizeChain(o.chain) || o.chain.toLowerCase()) === normChain && o.encryptedPrivateKey
-  );
+  const TERMINAL_DUST_STATUSES = new Set(["SETTLED", "FORWARDED", "EXPIRED", "REFUNDED"]);
+  const NATIVE_ASSETS = new Set(["ETH", "BNB", "POL", "MATIC"]);
+  const nowMs = Date.now();
+  const chainOrders = orders.filter((o) => {
+    if ((normalizeChain(o.chain) || o.chain.toLowerCase()) !== normChain || !o.encryptedPrivateKey) {
+      return false;
+    }
+    if (!TERMINAL_DUST_STATUSES.has(o.status)) return false;
+    if (nowMs - (o.createdAt || 0) < 30 * 60_000) return false;
+    if (NATIVE_ASSETS.has(normalizeOrderFromAsset(o))) return false;
+    return true;
+  });
 
   let totalSweptWei = 0n;
   let sweptCount = 0;
@@ -3836,6 +3897,7 @@ export async function sweepAllProxyDustToRelayer(
   const effectiveGasPrice = calculatedGasPrice > minGasFloor ? calculatedGasPrice : minGasFloor;
   const txGasCost = sweepGas * effectiveGasPrice;
   const minThreshold = (txGasCost * 13n) / 10n; // Needs at least 1.3x gas cost to be worth sweeping
+  const maxDustWei = normChain === "polygon" ? parseUnits("0.25", 18) : parseUnits("0.01", 18);
 
   for (const order of chainOrders) {
     try {
@@ -3843,7 +3905,7 @@ export async function sweepAllProxyDustToRelayer(
       const proxyAccount = privateKeyToAccount(rawKey);
       const balance = await publicClient.getBalance({ address: proxyAccount.address });
 
-      if (balance <= minThreshold) {
+      if (balance <= minThreshold || balance > maxDustWei) {
         skippedCount++;
         continue;
       }

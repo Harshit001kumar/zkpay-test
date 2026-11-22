@@ -148,23 +148,14 @@ export async function verifyAdminToken(rawToken?: string | null): Promise<AdminA
 
 /**
  * Cryptographically verifies that an incoming request is from an authorized Admin.
- * 1. Checks Authorization: Bearer <privy-access-token> header.
- * 2. Uses PrivyClient cryptographic token verification.
- * 3. Inspects server-verified linked accounts against ADMIN_PRIVY_DIDS and ADMIN_WALLETS.
+ * Strictly requires an explicit `Authorization: Bearer <privy-access-token>` header (no cookie fallback to prevent CSRF).
  */
 export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult> {
   const authHeader = req.headers.get("authorization");
-  let token = "";
-
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    token = authHeader.replace("Bearer ", "").trim();
-  } else {
-    const cookieHeader = req.headers.get("cookie") || "";
-    const match = cookieHeader.match(/privy-token=([^;]+)/);
-    if (match) {
-      token = decodeURIComponent(match[1]);
-    }
-  }
+  const token =
+    authHeader && authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7).trim()
+      : "";
 
   return verifyAdminToken(token);
 }

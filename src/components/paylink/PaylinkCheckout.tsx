@@ -736,6 +736,7 @@ export function PaylinkCheckout({ slug }: { slug: string }) {
                           <img
                             src={qrUrl}
                             alt="Deposit QR code"
+                            referrerPolicy="no-referrer"
                             className="w-full h-full object-contain"
                           />
                         </div>
@@ -1008,6 +1009,7 @@ export function PaylinkCheckout({ slug }: { slug: string }) {
                           paylink.recipientAddress
                         )}&color=090A0E&bgcolor=ffffff&margin=8`}
                         alt="Recipient wallet QR code"
+                        referrerPolicy="no-referrer"
                         className="w-full h-full object-contain"
                       />
                     </div>

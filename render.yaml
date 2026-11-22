@@ -13,7 +13,7 @@ services:
         sync: false
       - key: PRIVY_APP_SECRET
         sync: false
-      - key: NEXT_PUBLIC_INFURA_API_KEY
+      - key: INFURA_API_KEY
         sync: false
       - key: NEAR_INTENTS_API_KEY
         sync: false
@@ -25,6 +25,8 @@ services:
         sync: false
       - key: SWEEPER_IDLE_INTERVAL_MS
         value: "120000"
+      - key: CRON_SECRET
+        generateValue: true
       - key: PAYIN_MASTER_SECRET
         generateValue: true
       - key: ZKPAY_API_KEY_HASH_SALT

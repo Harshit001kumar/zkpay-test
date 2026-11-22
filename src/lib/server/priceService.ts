@@ -228,6 +228,8 @@ const KRAKEN_PAIR_MAP: Record<string, { pair: string; keyHint: string }> = {
   ETH: { pair: "ETHUSD", keyHint: "ETH" },
   POL: { pair: "POLUSD", keyHint: "POL" },
   MATIC: { pair: "POLUSD", keyHint: "POL" },
+  USDT: { pair: "USDTUSD", keyHint: "USDT" },
+  USDC: { pair: "USDCUSD", keyHint: "USDC" },
 };
 
 /**
@@ -272,11 +274,13 @@ async function fetchIndependentSpotPricesUsd(
           })
           .catch(() => 0)
       : Promise.resolve(0),
-    fetch(`https://api.binance.us/api/v3/ticker/price?symbol=${cbSymbol}USDT`, {
-      signal: AbortSignal.timeout(3000),
-    })
-      .then(async (r) => (r.ok ? parseFloat((await r.json())?.price) : 0))
-      .catch(() => 0),
+    cbSymbol === "USDT" || cbSymbol === "USDC"
+      ? Promise.resolve(0)
+      : fetch(`https://api.binance.us/api/v3/ticker/price?symbol=${cbSymbol}USDT`, {
+          signal: AbortSignal.timeout(3000),
+        })
+          .then(async (r) => (r.ok ? parseFloat((await r.json())?.price) : 0))
+          .catch(() => 0),
   ]);
 
   const out: Array<{ provider: string; price: number }> = [];
@@ -291,18 +295,35 @@ async function fetchIndependentSpotPricesUsd(
 /**
  * Returns a fresh, multi-oracle cross-verified USD price for liquidity pool quoting & payout checks.
  * Requires at least 2 independent price feeds agreeing within 2.5% spread.
- * Returns 0 if stale or if oracles diverge (safely falling back to external Solver).
+ * Stablecoins are verified against live USD markets within [0.985, 1.015] so depegs trigger Solver fallback.
+ * Returns 0 if stale, depegged, or if oracles diverge (safely falling back to external Solver).
  */
 export async function getFreshTokenPriceUsd(symbol: string, maxAgeMs = 60_000): Promise<number> {
   const normSym = (symbol || "").trim().toUpperCase();
-  if (STABLECOIN_SYMBOLS.has(normSym) || normSym.includes("USD")) {
-    return 1.0;
-  }
-
   const effectiveTtl = Math.min(maxAgeMs, 30_000);
   const verifiedCached = VERIFIED_POOL_PRICE_CACHE.get(normSym);
   if (verifiedCached && Date.now() - verifiedCached.timestamp <= effectiveTtl) {
     return verifiedCached.priceUsd;
+  }
+
+  if (STABLECOIN_SYMBOLS.has(normSym) || normSym.includes("USD")) {
+    const spots = await fetchIndependentSpotPricesUsd(normSym);
+    if (spots.length === 0) {
+      console.warn(`[PriceService] Live stablecoin price unavailable for ${normSym}; falling back.`);
+      return 0;
+    }
+    const prices = spots.map((s) => s.price);
+    const minP = Math.min(...prices);
+    const maxP = Math.max(...prices);
+    if (minP < 0.985 || maxP > 1.015 || (minP > 0 && (maxP - minP) / minP > 0.025)) {
+      console.warn(
+        `[PriceService] Stablecoin depeg or oracle divergence for ${normSym}: min=$${minP}, max=$${maxP}; falling back.`
+      );
+      return 0;
+    }
+    const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
+    VERIFIED_POOL_PRICE_CACHE.set(normSym, { priceUsd: avg, timestamp: Date.now() });
+    return avg;
   }
 
   const [independentSpots, primary] = await Promise.all([

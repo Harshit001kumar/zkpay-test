@@ -1,5 +1,5 @@
 import { corsJson, corsOptions } from "@/lib/server/cors";
-import { enforceRateLimit } from "@/lib/server/rateLimit";
+import { enforceRateLimit, getClientIp } from "@/lib/server/rateLimit";
 import { createSwapOrder } from "@/lib/server/swapRouter";
 import { resolvePublicApiAuth } from "@/lib/server/publicApiAuth";
 
@@ -71,9 +71,16 @@ export async function POST(req: Request) {
       );
     }
 
+    // Only verified Partner API keys receive partner attribution or custom fee overrides.
+    const isPartnerApi = Boolean(auth.apiKeyRecord);
     const apiKeyId = auth.apiKeyRecord?.id || undefined;
-    const partnerUserId = auth.apiKeyRecord?.userId || auth.userId || undefined;
-    const source: "api" | "app" = auth.apiKeyRecord ? "api" : "app";
+    const partnerUserId = auth.apiKeyRecord?.userId || undefined;
+    const source: "api" | "app" = isPartnerApi ? "api" : "app";
+    const effectiveFeeRecipient = isPartnerApi
+      ? (resolvedFeeRecipient || auth.apiKeyRecord?.walletAddress || undefined)
+      : undefined;
+    const effectiveFeeBps = isPartnerApi || auth.isEnvKey ? resolvedFeeBps : undefined;
+    const callerId = validatedKeyId || getClientIp(req);
 
     const order = await createSwapOrder({
       fromAsset: sourceAsset,
@@ -84,12 +91,13 @@ export async function POST(req: Request) {
       amount: String(amount),
       recipient,
       refundTo,
-      feeRecipient: resolvedFeeRecipient || (auth.apiKeyRecord?.walletAddress || undefined),
-      totalFeeBps: resolvedFeeBps,
+      feeRecipient: effectiveFeeRecipient,
+      totalFeeBps: effectiveFeeBps,
       slippageBps: typeof slippageBps === "number" ? slippageBps : undefined,
       apiKeyId,
       partnerUserId,
       source,
+      callerId,
       swapType: "FLEX_INPUT",
     });
 

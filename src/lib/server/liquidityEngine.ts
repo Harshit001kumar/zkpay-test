@@ -407,6 +407,7 @@ export async function processInternalLiquidityOrder(
     // receiptState === "reverted": payout confirmed reverted on-chain -> safe to 100% auto-refund
     const refundRes = await recoverProxyDeposit(order.proxyDepositAddress, {
       action: "refund",
+      allowFromPayingOut: true,
     });
     const refunded = await updateProxySwapOrder(order.swapId, {
       status: refundRes.success ? "REFUNDED" : "REFUND_PENDING",
@@ -421,8 +422,15 @@ export async function processInternalLiquidityOrder(
   if (
     order.status === "FAILED" ||
     order.status === "REFUNDED" ||
+    order.status === "REFUNDING" ||
+    order.status === "REFUND_PENDING" ||
     order.status === "EXPIRED"
   ) {
+    return order;
+  }
+
+  // Expired orders must only go through the sweeper refund path (prevents payout + refund race).
+  if (order.expiresAt && Date.now() > order.expiresAt) {
     return order;
   }
 
@@ -492,6 +500,7 @@ export async function processInternalLiquidityOrder(
     );
     const refundRes = await recoverProxyDeposit(claimed.proxyDepositAddress, {
       action: "refund",
+      allowFromPayingOut: true,
     });
     const updated = await updateProxySwapOrder(claimed.swapId, {
       status: refundRes.success ? "REFUNDED" : "REFUND_PENDING",
@@ -536,6 +545,7 @@ export async function processInternalLiquidityOrder(
   if (liveOriginPrice <= 0 || liveDestPrice <= 0) {
     const refundRes = await recoverProxyDeposit(claimed.proxyDepositAddress, {
       action: "refund",
+      allowFromPayingOut: true,
     });
     const updated = await updateProxySwapOrder(claimed.swapId, {
       status: refundRes.success ? "REFUNDED" : "REFUND_PENDING",
@@ -574,6 +584,7 @@ export async function processInternalLiquidityOrder(
         : "Market price moved >3% beyond quote slippage tolerance during confirmation";
     const refundRes = await recoverProxyDeposit(claimed.proxyDepositAddress, {
       action: "refund",
+      allowFromPayingOut: true,
     });
     const updated = await updateProxySwapOrder(claimed.swapId, {
       status: refundRes.success ? "REFUNDED" : "REFUND_PENDING",
@@ -616,6 +627,7 @@ export async function processInternalLiquidityOrder(
     );
     const refundRes = await recoverProxyDeposit(claimed.proxyDepositAddress, {
       action: "refund",
+      allowFromPayingOut: true,
     });
     if (refundRes.success && refundRes.txHash) {
       const originPrice = await getLiveTokenPriceUsd(originDef.symbol);

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { corsJson, corsOptions } from "@/lib/server/cors";
 import { verifyAdminRequest } from "@/lib/server/adminAuth";
 import { sanitizeProxyOrder } from "@/lib/server/proxySwapStore";
 import {
@@ -10,29 +9,10 @@ import {
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-export async function OPTIONS() {
-  return corsOptions();
-}
-
-/**
- * POST /api/v1/swap/recover
- * 
- * Permanent emergency recovery for any stuck cross-chain proxy deposit.
- * Sweeps stuck funds directly to Near Intents solver address or refunds 100% to user.
- * Protected by administrator authentication.
- * 
- * Body:
- * - depositAddress (required): The proxy deposit address or swap ID
- * - action (optional): "forward" (sweeps to solver) | "refund" (refunds to user) | "custom"
- * - customRecipient (optional): Custom destination address override
- * - tokenAddress (optional): Specific ERC-20 contract address to sweep
- * - tokenType (optional): "native" | "token" | "auto"
- * - amount (optional): Specific amount to sweep
- */
 export async function POST(req: Request) {
   const auth = await verifyAdminRequest(req);
   if (!auth.authorized) {
-    return corsJson(
+    return NextResponse.json(
       {
         success: false,
         error: auth.error || "Unauthorized",
@@ -51,7 +31,7 @@ export async function POST(req: Request) {
     const amount = body.amount?.trim() || undefined;
 
     if (!depositAddress || typeof depositAddress !== "string") {
-      return corsJson(
+      return NextResponse.json(
         {
           success: false,
           error: "Missing required 'depositAddress' (or 'swapId') in request body.",
@@ -68,10 +48,11 @@ export async function POST(req: Request) {
       tokenAddress,
       tokenType,
       amount,
+      adminOverride: true,
     });
 
     if (!result.success) {
-      return corsJson(
+      return NextResponse.json(
         {
           success: false,
           error: result.message,
@@ -81,7 +62,7 @@ export async function POST(req: Request) {
       );
     }
 
-    return corsJson({
+    return NextResponse.json({
       success: true,
       message: result.message,
       txHash: result.txHash,
@@ -92,7 +73,7 @@ export async function POST(req: Request) {
     });
   } catch (err: any) {
     console.error("[SwapRecover] Recovery execution error:", err);
-    return corsJson(
+    return NextResponse.json(
       {
         success: false,
         error: err.message || "Failed to recover deposit.",
@@ -102,17 +83,10 @@ export async function POST(req: Request) {
   }
 }
 
-/**
- * GET /api/v1/swap/recover?depositAddress=...
- * 
- * Inspect on-chain balances across native gas and ERC-20 tokens.
- * State-mutating recovery execution requires POST to prevent CSRF / unintended execution.
- * Protected by administrator authentication.
- */
 export async function GET(req: Request) {
   const auth = await verifyAdminRequest(req);
   if (!auth.authorized) {
-    return corsJson(
+    return NextResponse.json(
       {
         success: false,
         error: auth.error || "Unauthorized",
@@ -127,14 +101,14 @@ export async function GET(req: Request) {
     const customToken = searchParams.get("customToken") || undefined;
 
     if (!depositAddress) {
-      return corsJson(
+      return NextResponse.json(
         { success: false, error: "Missing query parameter 'depositAddress'." },
         { status: 400 }
       );
     }
 
     if (searchParams.get("trigger") === "true" || searchParams.get("action") === "forward") {
-      return corsJson(
+      return NextResponse.json(
         { success: false, error: "State-mutating recovery execution requires a POST request." },
         { status: 405 }
       );
@@ -143,14 +117,14 @@ export async function GET(req: Request) {
     // Default inspection behavior
     const inspectRes = await inspectProxyDepositBalances(depositAddress.trim(), customToken);
     if (!inspectRes.success) {
-      return corsJson({ success: false, error: inspectRes.message }, { status: 404 });
+      return NextResponse.json({ success: false, error: inspectRes.message }, { status: 404 });
     }
 
-    return corsJson({
+    return NextResponse.json({
       success: true,
       report: inspectRes.report,
     });
   } catch (err: any) {
-    return corsJson({ success: false, error: err.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }

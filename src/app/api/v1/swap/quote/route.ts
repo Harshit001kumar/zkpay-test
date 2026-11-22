@@ -103,12 +103,16 @@ async function handleQuote(req: Request) {
       );
     }
 
+    const isPartnerApi = Boolean(auth.apiKeyRecord);
     const apiKeyId = auth.apiKeyRecord?.id || undefined;
-    const partnerUserId = auth.apiKeyRecord?.userId || auth.userId || undefined;
+    const partnerUserId = auth.apiKeyRecord?.userId || undefined;
 
     const quote = await getSwapQuote({
       ...params,
-      feeRecipient: params.feeRecipient || (auth.apiKeyRecord?.walletAddress || undefined),
+      feeRecipient: isPartnerApi
+        ? (params.feeRecipient || auth.apiKeyRecord?.walletAddress || undefined)
+        : undefined,
+      totalFeeBps: isPartnerApi || auth.isEnvKey ? params.totalFeeBps : undefined,
       apiKeyId,
       partnerUserId,
     });

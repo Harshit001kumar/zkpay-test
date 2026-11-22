@@ -23,23 +23,38 @@ export interface WebhookPayload {
 }
 
 /**
- * Checks if an IP string is within a private, loopback, link-local, or reserved range.
+ * Checks if an IP string is within a private, loopback, link-local, CGNAT, ULA, or reserved range.
  */
-function isPrivateIp(ip: string): boolean {
-  if (
-    ip === "127.0.0.1" ||
-    ip === "0.0.0.0" ||
-    ip === "::1" ||
-    ip === "::" ||
-    ip.startsWith("10.") ||
-    ip.startsWith("192.168.") ||
-    ip.startsWith("169.254.") ||
-    ip.startsWith("100.64.") ||
-    ip.startsWith("fc00:") ||
-    ip.startsWith("fe80:") ||
-    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip)
-  ) {
+function isPrivateIp(rawIp: string): boolean {
+  let ip = (rawIp || "").trim().toLowerCase();
+  if (ip.startsWith("::ffff:")) {
+    ip = ip.slice(7);
+  }
+  if (!ip || ip === "::1" || ip === "::" || ip.startsWith("fc") || ip.startsWith("fd")) {
     return true;
+  }
+  // IPv6 link-local fe80::/10 (fe80..febf)
+  if (/^fe[89ab][0-9a-f]:/.test(ip)) {
+    return true;
+  }
+
+  // Handle dotted-quad IPv4
+  const ipv4Match = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4Match) {
+    const a = Number(ipv4Match[1]);
+    const b = Number(ipv4Match[2]);
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT 100.64.0.0/10
+    if (a === 169 && b === 254) return true; // Link-local / cloud metadata
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a >= 224) return true; // Multicast & reserved
+    return false;
+  }
+
+  // Reject hex/octal/integer IPv4 obfuscations or compressed loopback like 0:0:0:0:0:0:0:1
+  if (ip.includes(":")) {
+    return ip.replace(/0+/g, "") === "::1" || ip.startsWith("::");
   }
   return false;
 }
@@ -52,36 +67,25 @@ export function isSafeWebhookUrl(rawUrl: string): boolean {
   try {
     const parsed = new URL(rawUrl);
 
-    // Enforce HTTPS
     if (parsed.protocol !== "https:") {
       return false;
     }
 
     const hostname = parsed.hostname.toLowerCase();
 
+    // Block bracketed IPv6 literals or integer/hex single-label hosts
+    if (hostname.startsWith("[") || /^\d+$/.test(hostname) || /^0x[0-9a-f]+$/.test(hostname)) {
+      return false;
+    }
+
     // Block localhost, loopback, and internal hostnames
     if (
       hostname === "localhost" ||
+      hostname.endsWith(".localhost") ||
       hostname.endsWith(".local") ||
       hostname.endsWith(".internal") ||
       hostname.endsWith(".lan") ||
-      hostname === "127.0.0.1" ||
-      hostname === "0.0.0.0" ||
-      hostname === "::1"
-    ) {
-      return false;
-    }
-
-    // Block AWS / GCP / Azure cloud metadata IP
-    if (hostname === "169.254.169.254" || hostname.startsWith("169.254.")) {
-      return false;
-    }
-
-    // Block Private RFC 1918 IP addresses (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
-    if (
-      hostname.startsWith("10.") ||
-      hostname.startsWith("192.168.") ||
-      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)
+      isPrivateIp(hostname)
     ) {
       return false;
     }
@@ -93,7 +97,8 @@ export function isSafeWebhookUrl(rawUrl: string): boolean {
 }
 
 /**
- * Asynchronously validates URL with DNS lookup to prevent DNS rebinding SSRF attacks.
+ * Asynchronously validates URL with DNS lookup to prevent SSRF to internal networks.
+ * shortcut: validates DNS pre-flight without pinning resolved IP on fetch; add custom undici dispatcher before wiring user-supplied webhooks.
  */
 export async function isSafeWebhookUrlAsync(rawUrl: string): Promise<boolean> {
   if (!isSafeWebhookUrl(rawUrl)) {

@@ -307,6 +307,7 @@ export default function WalletAddressPage() {
                     <img
                       src={qrCodeUrl}
                       alt="Base USDC Wallet QR"
+                      referrerPolicy="no-referrer"
                       className="w-full h-full object-contain"
                       onLoad={() => setQrLoaded(true)}
                     />

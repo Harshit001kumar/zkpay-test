@@ -913,6 +913,7 @@ export function InAppPaylinks() {
                         <img
                           src={qrImgUrl}
                           alt={`QR code for /pay/${item.slug}`}
+                          referrerPolicy="no-referrer"
                           className="w-full h-full object-contain"
                         />
                       </div>

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { enforceRateLimit } from "@/lib/server/rateLimit";
+import { enforceRateLimit, getClientIp } from "@/lib/server/rateLimit";
 import {
   getPaylinkBySlug,
   resolveAllowedToken,
@@ -135,6 +135,7 @@ export async function POST(
       slippageBps: Math.max(10, Math.min(500, rawSlippageBps)),
       source: "app",
       swapType: "FLEX_INPUT",
+      callerId: getClientIp(req),
       paylinkId: paylink.id,
       paylinkSlug: paylink.slug,
     });

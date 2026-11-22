@@ -1,5 +1,5 @@
 import { getMongoDb } from "./mongodb";
-import { ProxySwapOrder, updateProxySwapOrder } from "./proxySwapStore";
+import { type ProxySwapOrder, updateProxySwapOrder } from "./proxySwapStore";
 import { calculateTokenUsdValue } from "./priceService";
 import { getApiKeyById, listApiKeysForUser, findUserIdByWalletAddress } from "./apiKeysStore";
 import { buildOneClickHeaders } from "./rpcConfig";
@@ -290,6 +290,12 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
     return false; // Already credited
   }
 
+  // Regular in-app / Paylink swaps without an API key must never accrue partner kickbacks
+  if (order.source === "app" && !order.apiKeyId) {
+    await updateProxySwapOrder(order.swapId, { feeCredited: true }).catch(() => {});
+    return false;
+  }
+
   // Guard against any order that was refunded instead of settled
   if (order.error && order.error.toLowerCase().includes("refund")) {
     await updateProxySwapOrder(order.swapId, {
@@ -474,7 +480,7 @@ export async function requestPartnerPayout(params: {
 }): Promise<PartnerPayoutRequest> {
   const { userId, partnerWalletAddress, amountUsd, payoutOption, destinationAddress } = params;
 
-  if (typeof amountUsd !== "number" || isNaN(amountUsd) || amountUsd < MIN_PAYOUT_AMOUNT_USD) {
+  if (typeof amountUsd !== "number" || !Number.isFinite(amountUsd) || amountUsd < MIN_PAYOUT_AMOUNT_USD) {
     throw new Error(`Minimum payout request is $${MIN_PAYOUT_AMOUNT_USD.toFixed(2)} USD.`);
   }
 

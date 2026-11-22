@@ -10,6 +10,7 @@ const DESTINATION_ASSET = "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda0291
 import { resolveRefundAddress } from "@/lib/refundAddress";
 import {
   DEPOSIT_FEE_BPS,
+  SWAP_ALLOWED_TOKENS,
   resolveChainFromAssetId,
   getTreasuryAddressForChain,
 } from "@/lib/constants";
@@ -33,6 +34,15 @@ export async function GET(req: Request) {
 
     if (!originAssetId || !amount || !recipientAddress) {
       return NextResponse.json({ error: "Missing required fields: originAssetId, amount, recipientAddress" }, { status: 400 });
+    }
+    if (!SWAP_ALLOWED_TOKENS.some((t) => t.assetId === originAssetId)) {
+      return NextResponse.json({ error: "Unsupported originAssetId" }, { status: 400 });
+    }
+    if (!/^0x[a-fA-F0-9]{40}$/.test(recipientAddress.trim())) {
+      return NextResponse.json({ error: "Invalid Base recipientAddress" }, { status: 400 });
+    }
+    if (!/^\d+$/.test(amount.trim()) || BigInt(amount.trim()) <= 0n) {
+      return NextResponse.json({ error: "Invalid positive atomic amount" }, { status: 400 });
     }
 
     const effectiveRefundTo = resolveRefundAddress(originAssetId, userRefundTo, recipientAddress, { isDryRun: true });

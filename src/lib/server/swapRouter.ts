@@ -34,6 +34,7 @@ import {
   saveProxySwapOrder,
   getProxyOrderByAddress,
   updateProxySwapOrder,
+  countActiveUnpaidPoolOrdersForCaller,
   type ProxySwapOrder,
 } from "./proxySwapStore";
 import {
@@ -1030,6 +1031,7 @@ export interface CreateSwapParams {
   partnerUserId?: string | null;
   source?: "api" | "app";
   swapType?: "FLEX_INPUT";
+  callerId?: string | null;
   paylinkId?: string | null;
   paylinkSlug?: string | null;
 }
@@ -1077,7 +1079,9 @@ export async function createSwapOrder(params: CreateSwapParams) {
 
   // Fee split is resolved per ORIGIN chain
   const originSymbol = getOriginTokenMeta(originAssetId)?.symbol || fromAsset;
-  const hasPartnerAttribution = Boolean(params.partnerUserId || params.apiKeyId || feeRecipient);
+  const hasPartnerAttribution = Boolean(
+    params.apiKeyId || (params.source === "api" && (params.partnerUserId || feeRecipient))
+  );
   const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain, originSymbol, hasPartnerAttribution);
 
   // Compute upfront fee deduction (single source of truth)
@@ -1090,7 +1094,11 @@ export async function createSwapOrder(params: CreateSwapParams) {
   const clampedSlippage = Math.max(10, Math.min(500, slippageBps || 100));
 
   // Attempt internal liquidity pool fulfillment first; automatically fall back to Solver if ineligible
-  if (!feeSplit.isDirectRoute && isProxySupportedChain(resolvedOriginChain, originSymbol)) {
+  const callerKey = params.callerId ? String(params.callerId).slice(0, 64) : undefined;
+  const unpaidPoolCount = callerKey
+    ? await countActiveUnpaidPoolOrdersForCaller(callerKey).catch(() => 0)
+    : 0;
+  if (unpaidPoolCount < 2 && !feeSplit.isDirectRoute && isProxySupportedChain(resolvedOriginChain, originSymbol)) {
     try {
       const internalQuote = await quoteInternalLiquiditySwap({
         originAssetId,
@@ -1148,6 +1156,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
           apiKeyId: params.apiKeyId || undefined,
           partnerUserId: params.partnerUserId || undefined,
           source: params.source || (params.apiKeyId ? "api" : "app"),
+          ...(callerKey ? { creatorKey: callerKey } : {}),
           swapType: "FLEX_INPUT",
           ...(params.paylinkId
             ? { paylinkId: params.paylinkId, paylinkSlug: params.paylinkSlug || undefined }

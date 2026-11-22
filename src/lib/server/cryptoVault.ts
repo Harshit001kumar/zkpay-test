@@ -40,6 +40,9 @@ export function encryptKey(plainKey: string): string {
  */
 export function decryptKey(cipherPayload: string): string {
   if (cipherPayload.startsWith("0x") && !cipherPayload.includes(":")) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("Unencrypted proxy key format rejected in production");
+    }
     return cipherPayload;
   }
   const parts = cipherPayload.split(":");
