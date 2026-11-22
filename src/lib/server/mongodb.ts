@@ -142,6 +142,7 @@ export async function initMongoIndexes(db: Db): Promise<void> {
       await coll.createIndex({ apiKeyId: 1, createdAt: -1 }).catch(() => {});
       await coll.createIndex({ fulfillmentMode: 1, status: 1, expiresAt: 1 }).catch(() => {});
       await coll.createIndex({ sweepStatus: 1 }).catch(() => {});
+      await coll.createIndex({ paylinkId: 1, createdAt: -1 }, { sparse: true }).catch(() => {});
     }
 
     // liquidity_transfers audit ledger
@@ -155,7 +156,18 @@ export async function initMongoIndexes(db: Db): Promise<void> {
       const coll = db.collection(name);
       await coll.createIndex({ swapId: 1 }, { unique: true, sparse: true }).catch(() => {});
       await coll.createIndex({ depositAddress: 1 }).catch(() => {});
+      await coll.createIndex({ paylinkId: 1, createdAt: -1 }, { sparse: true }).catch(() => {});
     }
+
+    // paylinks & paylink_addresses
+    const paylinks = db.collection("paylinks");
+    await paylinks.createIndex({ slug: 1 }, { unique: true, sparse: true }).catch(() => {});
+    await paylinks.createIndex({ creatorUserId: 1, createdAt: -1 }).catch(() => {});
+    const paylinkAddresses = db.collection("paylink_addresses");
+    await paylinkAddresses.createIndex({ userId: 1, chain: 1 }).catch(() => {});
+    await paylinkAddresses
+      .createIndex({ userId: 1, chain: 1, address: 1 }, { unique: true, sparse: true })
+      .catch(() => {});
 
     // api_keys (keyHash unique, userId)
     const apiKeys = db.collection("api_keys");

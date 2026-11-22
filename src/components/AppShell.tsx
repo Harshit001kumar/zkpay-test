@@ -8,12 +8,14 @@ import LandingPage from "./LandingPage";
 import Dashboard from "./Dashboard";
 import Profile from "./Profile";
 import { InAppActivity } from "./inapp/InAppActivity";
+import { InAppPaylinks } from "./inapp/InAppPaylinks";
 import { InAppPartner } from "./inapp/InAppPartner";
 
-export type NavTab = "swap" | "activity" | "partner" | "account";
+export type NavTab = "swap" | "paylinks" | "activity" | "partner" | "account";
 
 const NAV_TABS: { id: NavTab; label: string }[] = [
   { id: "swap", label: "Swap" },
+  { id: "paylinks", label: "Paylinks" },
   { id: "activity", label: "Track" },
   { id: "partner", label: "Partner" },
   { id: "account", label: "Account" },
@@ -46,8 +48,8 @@ export default function AppShell() {
         onClick={() => setActiveTab(tab.id)}
         aria-current={isActive ? "page" : undefined}
         className={`relative h-8 ${
-          mobile ? "w-full rounded-lg" : "px-4 rounded-full"
-        } text-xs font-semibold inline-flex items-center justify-center transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
+          mobile ? "w-full rounded-lg text-[11px]" : "px-4 rounded-full text-xs"
+        } font-semibold inline-flex items-center justify-center transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
           isActive
             ? "text-on-secondary"
             : "text-on-surface-variant hover:text-on-surface"
@@ -116,7 +118,7 @@ export default function AppShell() {
         <div className="md:hidden px-3 pb-2.5">
           <nav
             aria-label="Mobile workspace switcher"
-            className="grid grid-cols-4 p-1 rounded-xl bg-surface-container-low border border-outline-variant gap-1"
+            className="grid grid-cols-5 p-1 rounded-xl bg-surface-container-low border border-outline-variant gap-0.5"
           >
             {NAV_TABS.map((t) => renderTabButton(t, true))}
           </nav>
@@ -127,6 +129,9 @@ export default function AppShell() {
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 pt-6 sm:pt-10 pb-12 pb-safe">
         <div className={activeTab === "swap" ? "block animate-fade-in" : "hidden"}>
           <Dashboard onSelectTab={setActiveTab} />
+        </div>
+        <div className={activeTab === "paylinks" ? "block animate-fade-in" : "hidden"}>
+          <InAppPaylinks />
         </div>
         <div className={activeTab === "activity" ? "block animate-fade-in" : "hidden"}>
           <InAppActivity onNewSwap={() => setActiveTab("swap")} />

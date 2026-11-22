@@ -391,6 +391,11 @@ export async function processInternalLiquidityOrder(
           forwardTxHash: order.forwardTxHash || order.destinationTxHash,
           error: undefined,
         })) || { ...order, status: "SETTLED" as const };
+      if (reconciledOrder.paylinkId) {
+        import("./paylinkStore")
+          .then((m) => m.markPaylinkPaidIfSingleUse(reconciledOrder.paylinkId!, reconciledOrder.swapId))
+          .catch(() => {});
+      }
       const sweepRes = await sweepInternalProxyToLiquidityWallet(reconciledOrder);
       if (sweepRes.swept) {
         await creditPartnerFeeOnSettlement(reconciledOrder).catch((e) =>
@@ -689,6 +694,11 @@ export async function processInternalLiquidityOrder(
 
   // SECURITY GUARD 4: Single-sweep 100% of proxy deposit into our Origin Liquidity Hot Wallet FIRST,
   // and only credit partner withdrawable USD fee balance after the origin deposit sweep succeeds.
+  if (settledOrder.paylinkId) {
+    import("./paylinkStore")
+      .then((m) => m.markPaylinkPaidIfSingleUse(settledOrder.paylinkId!, settledOrder.swapId))
+      .catch(() => {});
+  }
   const sweepRes = await sweepInternalProxyToLiquidityWallet(settledOrder);
   if (sweepRes.swept) {
     await creditPartnerFeeOnSettlement(settledOrder).catch((e) =>

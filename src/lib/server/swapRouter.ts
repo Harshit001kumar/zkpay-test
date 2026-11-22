@@ -36,7 +36,11 @@ import {
   updateProxySwapOrder,
   type ProxySwapOrder,
 } from "./proxySwapStore";
-import { saveDirectSwapOrder } from "./directSwapStore";
+import {
+  saveDirectSwapOrder,
+  getDirectSwapByDepositAddress,
+  updateDirectSwapStatus,
+} from "./directSwapStore";
 import { checkAndForwardProxyDeposit, wakeProxySweeperDaemon } from "./proxyForwarder";
 import { creditPartnerFeeOnSettlement } from "./partnerBalanceStore";
 import {
@@ -1026,6 +1030,8 @@ export interface CreateSwapParams {
   partnerUserId?: string | null;
   source?: "api" | "app";
   swapType?: "FLEX_INPUT";
+  paylinkId?: string | null;
+  paylinkSlug?: string | null;
 }
 
 /**
@@ -1143,6 +1149,9 @@ export async function createSwapOrder(params: CreateSwapParams) {
           partnerUserId: params.partnerUserId || undefined,
           source: params.source || (params.apiKeyId ? "api" : "app"),
           swapType: "FLEX_INPUT",
+          ...(params.paylinkId
+            ? { paylinkId: params.paylinkId, paylinkSlug: params.paylinkSlug || undefined }
+            : {}),
         };
 
         await saveProxySwapOrder(proxyOrder);
@@ -1290,6 +1299,9 @@ export async function createSwapOrder(params: CreateSwapParams) {
         partnerUserId: params.partnerUserId || undefined,
         source: params.source || (params.apiKeyId ? "api" : "app"),
         swapType: "FLEX_INPUT",
+        ...(params.paylinkId
+          ? { paylinkId: params.paylinkId, paylinkSlug: params.paylinkSlug || undefined }
+          : {}),
       };
 
       await saveProxySwapOrder(proxyOrder);
@@ -1325,6 +1337,9 @@ export async function createSwapOrder(params: CreateSwapParams) {
         partnerUserId: params.partnerUserId || undefined,
         source: params.source || (params.apiKeyId ? "api" : "app"),
         swapType: "FLEX_INPUT",
+        ...(params.paylinkId
+          ? { paylinkId: params.paylinkId, paylinkSlug: params.paylinkSlug || undefined }
+          : {}),
       });
       console.log(`[SwapRouter] Direct swap order recorded: ${data.correlationId || "direct"}`);
     } catch (directErr) {
@@ -1456,6 +1471,12 @@ export async function getSwapStatus(depositAddress: string) {
         }
       }
 
+      if (currentOrder.status === "SETTLED" && currentOrder.paylinkId) {
+        import("./paylinkStore")
+          .then((m) => m.markPaylinkPaidIfSingleUse(currentOrder.paylinkId!, currentOrder.swapId))
+          .catch(() => {});
+      }
+
       const mappedPoolStatus =
         currentOrder.status === "PENDING_DEPOSIT"
           ? "pending"
@@ -1523,6 +1544,11 @@ export async function getSwapStatus(depositAddress: string) {
           creditPartnerFeeOnSettlement(currentOrder).catch((e) =>
             console.warn("[SwapRouter] Partner fee settlement credit error:", e)
           );
+          if (currentOrder.paylinkId) {
+            import("./paylinkStore")
+              .then((m) => m.markPaylinkPaidIfSingleUse(currentOrder.paylinkId!, currentOrder.swapId))
+              .catch(() => {});
+          }
         } else if (solverStatus.status === "settled" && !currentOrder.feeCredited) {
           creditPartnerFeeOnSettlement(currentOrder).catch((e) =>
             console.warn("[SwapRouter] Partner fee settlement credit retry error:", e)
@@ -1608,7 +1634,32 @@ export async function getSwapStatus(depositAddress: string) {
   }
 
   // 2. Direct route query (Tier 1 ETH/BTC or legacy)
-  return fetchNearIntentsStatus(cleanAddr);
+  const directStatus = await fetchNearIntentsStatus(cleanAddr);
+  const upperMapped =
+    directStatus.status === "settled"
+      ? "SETTLED"
+      : directStatus.status === "refunded"
+      ? "REFUNDED"
+      : directStatus.status === "failed"
+      ? "FAILED"
+      : directStatus.status === "expired"
+      ? "EXPIRED"
+      : null;
+  if (upperMapped) {
+    getDirectSwapByDepositAddress(cleanAddr)
+      .then(async (directOrder) => {
+        if (!directOrder) return;
+        if (directOrder.lastKnownStatus !== upperMapped) {
+          await updateDirectSwapStatus(directOrder.swapId, upperMapped);
+        }
+        if (upperMapped === "SETTLED" && directOrder.paylinkId) {
+          const m = await import("./paylinkStore");
+          await m.markPaylinkPaidIfSingleUse(directOrder.paylinkId, directOrder.swapId);
+        }
+      })
+      .catch(() => {});
+  }
+  return directStatus;
 }
 
 async function fetchNearIntentsStatus(depositAddress: string) {

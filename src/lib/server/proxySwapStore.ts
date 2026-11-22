@@ -65,6 +65,8 @@ export interface ProxySwapOrder {
   partnerFeeUsd?: number; // USD value credited to partner
   source?: "api" | "app";
   swapType?: "FLEX_INPUT";
+  paylinkId?: string;
+  paylinkSlug?: string;
   createdAt: number;
   expiresAt: number;
 }

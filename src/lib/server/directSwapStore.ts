@@ -24,6 +24,8 @@ export interface DirectSwapOrder {
   partnerUserId?: string | null;
   source?: "api" | "app";
   swapType?: "FLEX_INPUT";
+  paylinkId?: string;
+  paylinkSlug?: string;
   lastKnownStatus?: string;
   createdAt: number;
   expiresAt: number;
@@ -96,6 +98,31 @@ export async function getDirectSwapById(swapId: string): Promise<DirectSwapOrder
     const db = await getMongoDb();
     if (db) {
       return await db.collection<DirectSwapOrder>(COLLECTION).findOne({ swapId }, { projection: { _id: 0 } });
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+export async function getDirectSwapByDepositAddress(
+  depositAddress: string
+): Promise<DirectSwapOrder | null> {
+  const clean = (depositAddress || "").trim();
+  if (!clean) return null;
+  const lower = clean.toLowerCase();
+  for (const ord of memory.values()) {
+    if (ord.depositAddress && ord.depositAddress.toLowerCase() === lower) {
+      return ord;
+    }
+  }
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      return await db.collection<DirectSwapOrder>(COLLECTION).findOne(
+        { $or: [{ depositAddress: clean }, { depositAddress: lower }] } as any,
+        { projection: { _id: 0 } }
+      );
     }
   } catch {
     // ignore
