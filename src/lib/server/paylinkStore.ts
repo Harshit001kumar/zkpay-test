@@ -7,7 +7,7 @@ import {
 } from "@/lib/constants";
 import type { SwapTokenItem } from "@/lib/types";
 import { isValidAddressForOriginAsset } from "@/lib/refundAddress";
-import { getMongoDb } from "./mongodb";
+import { getMongoDb, isMongoConfigured } from "./mongodb";
 import { getLiveTokenPriceUsd } from "./priceService";
 import { isProxySupportedChain } from "./proxyWallets";
 import { getRecentProxyOrders, type ProxySwapOrder } from "./proxySwapStore";
