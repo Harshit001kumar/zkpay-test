@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { parseUnits, formatUnits } from "viem";
-import { verifyAdminRequest } from "@/lib/server/adminAuth";
+import {
+  verifyAdminRequest,
+  isAllowedWithdrawDestination,
+  recordAdminAudit,
+} from "@/lib/server/adminAuth";
+import { enforceRateLimit, getClientIp } from "@/lib/server/rateLimit";
 import {
   POOL_SUPPORTED_ASSETS,
   type PoolAssetDefinition,
@@ -26,6 +31,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: auth.status });
   }
 
+  const { response: rateLimitResp } = enforceRateLimit(req, "admin_write", auth.userId, { cors: false });
+  if (rateLimitResp) return rateLimitResp;
+
+  const clientIp = getClientIp(req);
+  const adminUserId = auth.userId;
+  const adminWallet = auth.walletAddress;
+
   try {
     const body = await req.json();
     const action = body.action || "withdraw";
@@ -41,6 +53,15 @@ export async function POST(req: Request) {
       }
       const res = await sweepInternalProxyToLiquidityWallet(order);
       if (!res.swept) {
+        await recordAdminAudit({
+          adminUserId,
+          adminWallet,
+          clientIp,
+          action: "LIQUIDITY_RETRY_SWEEP",
+          target: swapId,
+          status: "ERROR",
+          error: res.error || "Sweep retry did not complete.",
+        });
         return NextResponse.json(
           { success: false, error: res.error || "Sweep retry did not complete." },
           { status: 400 }
@@ -48,6 +69,15 @@ export async function POST(req: Request) {
       }
       const refreshed = (await getProxyOrderBySwapId(swapId)) || order;
       await creditPartnerFeeOnSettlement(refreshed).catch(() => {});
+      await recordAdminAudit({
+        adminUserId,
+        adminWallet,
+        clientIp,
+        action: "LIQUIDITY_RETRY_SWEEP",
+        target: swapId,
+        txHash: res.txHash,
+        status: "SUCCESS",
+      });
       return NextResponse.json({
         success: true,
         txHash: res.txHash,
@@ -56,6 +86,9 @@ export async function POST(req: Request) {
     }
 
     // action: "withdraw" | "harvest_fees"
+    if (action !== "withdraw" && action !== "harvest_fees") {
+      return NextResponse.json({ error: "Invalid action." }, { status: 400 });
+    }
     const assetKey = (body.assetKey || "").trim() as PoolAssetDefinition["assetKey"];
     const def = POOL_SUPPORTED_ASSETS[assetKey];
     if (!def) {
@@ -100,9 +133,10 @@ export async function POST(req: Request) {
       );
     }
 
+    // Hard-lock harvest_fees to configured Treasury; restrict withdraw to Treasury + ADMIN_WITHDRAW_ALLOWLIST
     const rawDest = (body.destination || "treasury").trim();
     const destination =
-      rawDest.toLowerCase() === "treasury"
+      action === "harvest_fees" || rawDest.toLowerCase() === "treasury"
         ? getTreasuryAddressForChain(def.chain)
         : rawDest;
 
@@ -113,10 +147,45 @@ export async function POST(req: Request) {
       );
     }
 
+    if (!isAllowedWithdrawDestination(def.chain, destination)) {
+      await recordAdminAudit({
+        adminUserId,
+        adminWallet,
+        clientIp,
+        action: "LIQUIDITY_WITHDRAW",
+        target: assetKey,
+        amount: amountHuman,
+        destination,
+        status: "DENIED",
+        error: "DESTINATION_NOT_ALLOWLISTED",
+      });
+      return NextResponse.json(
+        {
+          error:
+            "DESTINATION_NOT_ALLOWLISTED: Hot-wallet withdrawals are locked to ZkPay Treasury and ADMIN_WITHDRAW_ALLOWLIST.",
+        },
+        { status: 403 }
+      );
+    }
+
     const txRes = await sendFromLiquidityWallet({
       assetKey,
       toAddress: destination,
       amountAtomic,
+      enforceMinReserve: true,
+      enforceConfirmedUnreserved: true,
+    });
+
+    await recordAdminAudit({
+      adminUserId,
+      adminWallet,
+      clientIp,
+      action: action === "harvest_fees" ? "FEE_HARVEST" : "LIQUIDITY_WITHDRAW",
+      target: assetKey,
+      amount: `${amountHuman} ${def.symbol}`,
+      destination,
+      txHash: txRes.txHash,
+      status: "SUCCESS",
     });
 
     const priceUsd = await getLiveTokenPriceUsd(def.symbol);

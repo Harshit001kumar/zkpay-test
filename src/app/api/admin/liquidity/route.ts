@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/lib/server/adminAuth";
+import { verifyAdminRequest, recordAdminAudit } from "@/lib/server/adminAuth";
+import { enforceRateLimit, getClientIp } from "@/lib/server/rateLimit";
 import {
   getLiquidityPoolConfig,
   updateLiquidityPoolConfig,
@@ -181,6 +182,7 @@ export async function GET(req: Request) {
       }
 
       if (internalOrders.length < 75) {
+        const isSettled = o.status === "SETTLED";
         internalOrders.push({
           swapId: o.swapId,
           chain: o.chain,
@@ -191,10 +193,12 @@ export async function GET(req: Request) {
           amountOutFormatted:
             o.settledAmountFormatted || o.expectedAmountOutFormatted || "—",
           amountUsd,
-          grossFeeFormatted: `${grossFeeTokens.toFixed(6).replace(/\.?0+$/, "")} ${sym}`,
-          grossFeeUsd,
-          zkpayNetFeeUsd: zkpayFeeUsd,
-          partnerFeeUsd,
+          grossFeeFormatted: isSettled
+            ? `${grossFeeTokens.toFixed(6).replace(/\.?0+$/, "")} ${sym}`
+            : "—",
+          grossFeeUsd: isSettled ? grossFeeUsd : 0,
+          zkpayNetFeeUsd: isSettled ? zkpayFeeUsd : 0,
+          partnerFeeUsd: isSettled ? partnerFeeUsd : 0,
           status: o.status,
           sweepStatus: o.sweepStatus || (o.status === "SETTLED" ? "PENDING_SWEEP" : "—"),
           proxyDepositAddress: o.proxyDepositAddress,
@@ -262,6 +266,9 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: auth.status });
   }
 
+  const { response: rateLimitResp } = enforceRateLimit(req, "admin_write", auth.userId, { cors: false });
+  if (rateLimitResp) return rateLimitResp;
+
   try {
     const body = await req.json();
     const updated = await updateLiquidityPoolConfig(
@@ -271,6 +278,14 @@ export async function PATCH(req: Request) {
         maxSwapUsd:
           typeof body.maxSwapUsd === "number" && body.maxSwapUsd > 0
             ? body.maxSwapUsd
+            : undefined,
+        maxHourlyOutflowUsd:
+          typeof body.maxHourlyOutflowUsd === "number" && body.maxHourlyOutflowUsd > 0
+            ? body.maxHourlyOutflowUsd
+            : undefined,
+        maxDailyOutflowUsd:
+          typeof body.maxDailyOutflowUsd === "number" && body.maxDailyOutflowUsd > 0
+            ? body.maxDailyOutflowUsd
             : undefined,
         spreadBufferBps:
           typeof body.spreadBufferBps === "number" && body.spreadBufferBps >= 0
@@ -283,6 +298,15 @@ export async function PATCH(req: Request) {
       },
       auth.walletAddress || auth.userId || "admin"
     );
+
+    await recordAdminAudit({
+      adminUserId: auth.userId,
+      adminWallet: auth.walletAddress,
+      clientIp: getClientIp(req),
+      action: "LIQUIDITY_CONFIG_UPDATE",
+      target: `enabled=${updated.enabled},paused=${updated.pausedAssets.join("|")},maxSwapUsd=${updated.maxSwapUsd}`,
+      status: "SUCCESS",
+    });
 
     return NextResponse.json({
       success: true,

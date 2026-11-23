@@ -10,6 +10,7 @@ import { saveTransaction, updateTransactionStatus } from "@/lib/history";
 import { isValidAddressForOriginAsset } from "@/lib/refundAddress";
 import { chainVisual, tokenColor, POPULAR_PAIRS, type PopularPair } from "@/lib/chainVisuals";
 import { CryptoIcon } from "@/components/ui/CryptoIcon";
+import { LocalQrCode } from "@/components/ui/LocalQrCode";
 import {
   ArrowDownUp,
   ArrowLeft,
@@ -692,8 +693,6 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
     const destExplorer: string | null = orderStatus?.destinationExplorerUrl || null;
     const deliveredOut = orderStatus?.settledAmount || orderStatus?.swapDetails?.amountOutFormatted || expectedOut;
 
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(depAddr)}&color=090A0E&bgcolor=ffffff&margin=8`;
-
     const steps = [
       { label: "Awaiting deposit", hint: `Send ${fromToken.symbol} on ${chainName(fromToken.blockchain)}` },
       { label: "Deposit detected", hint: `Waiting for ${fromChainMeta?.finalityLabel || "network"} confirmation` },
@@ -830,7 +829,7 @@ export default function SwapWidget({ compact = false, onSwapCreated, pair = null
             {showQr && (
               <div className="flex justify-center pt-1 animate-fade-in-up">
                 <div className="w-52 h-52 rounded-xl bg-white p-2">
-                  <img src={qrUrl} alt="Deposit address QR code" referrerPolicy="no-referrer" className="w-full h-full object-contain" />
+                  <LocalQrCode value={depAddr} size={240} alt="Deposit address QR code" />
                 </div>
               </div>
             )}

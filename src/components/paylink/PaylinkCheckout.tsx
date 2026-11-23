@@ -7,6 +7,7 @@ import { SWAP_ALLOWED_TOKENS, TEMPORARILY_DISABLED_CHAINS } from "@/lib/constant
 import { CHAIN_METADATA, SupportedChainId, SwapTokenItem } from "@/lib/types";
 import { isValidAddressForOriginAsset } from "@/lib/refundAddress";
 import { CryptoIcon } from "@/components/ui/CryptoIcon";
+import { LocalQrCode } from "@/components/ui/LocalQrCode";
 import {
   ArrowRight,
   Copy,
@@ -557,9 +558,6 @@ export function PaylinkCheckout({ slug }: { slug: string }) {
             const isSettled = stepIndex === 3;
             const deliveredOut = orderStatus?.settledAmount || expectedOut;
             const destExplorer: string | null = orderStatus?.destinationExplorerUrl || null;
-            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(
-              depAddr
-            )}&color=090A0E&bgcolor=ffffff&margin=8`;
 
             const steps = [
               {
@@ -733,12 +731,7 @@ export function PaylinkCheckout({ slug }: { slug: string }) {
                     {showQr && (
                       <div className="flex justify-center pt-1 animate-fade-in-up">
                         <div className="w-52 h-52 rounded-xl bg-white p-2">
-                          <img
-                            src={qrUrl}
-                            alt="Deposit QR code"
-                            referrerPolicy="no-referrer"
-                            className="w-full h-full object-contain"
-                          />
+                          <LocalQrCode value={depAddr} size={240} alt="Deposit QR code" />
                         </div>
                       </div>
                     )}
@@ -1004,13 +997,10 @@ export function PaylinkCheckout({ slug }: { slug: string }) {
                 {showQr && (
                   <div className="flex justify-center pt-1 animate-fade-in-up">
                     <div className="w-52 h-52 rounded-xl bg-white p-2">
-                      <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(
-                          paylink.recipientAddress
-                        )}&color=090A0E&bgcolor=ffffff&margin=8`}
+                      <LocalQrCode
+                        value={paylink.recipientAddress}
+                        size={240}
                         alt="Recipient wallet QR code"
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-contain"
                       />
                     </div>
                   </div>

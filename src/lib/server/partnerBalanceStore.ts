@@ -1,9 +1,14 @@
-import { getMongoDb } from "./mongodb";
+import crypto from "crypto";
+import { getMongoDb, isMongoConfigured } from "./mongodb";
 import { type ProxySwapOrder, updateProxySwapOrder } from "./proxySwapStore";
 import { calculateTokenUsdValue } from "./priceService";
 import { getApiKeyById, listApiKeysForUser, findUserIdByWalletAddress } from "./apiKeysStore";
 import { buildOneClickHeaders } from "./rpcConfig";
 import { SWAP_ALLOWED_TOKENS } from "@/lib/constants";
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 export const MIN_PAYOUT_AMOUNT_USD = 1.0;
 
@@ -148,7 +153,7 @@ export async function reconcilePartnerSwaps(userId: string): Promise<void> {
     }
     if (walletAddrs.length > 0) {
       for (const w of walletAddrs) {
-        orConditions.push({ partnerFeeRecipient: new RegExp(`^${w}$`, "i") });
+        orConditions.push({ partnerFeeRecipient: new RegExp(`^${escapeRegex(w)}$`, "i") });
       }
     }
 
@@ -192,49 +197,6 @@ export async function reconcilePartnerSwaps(userId: string): Promise<void> {
         await Promise.all(
           batch.map((ord) => reconcileForwardedSolverOrder(ord, userId).catch(() => ord))
         );
-      }
-    }
-
-    // Also repair any existing credits that were saved with hardcoded fallback rates (e.g. 150 for SOL)
-    const fallbackCredits = (await db
-      .collection<PartnerFeeCreditRecord>("partner_fee_credits")
-      .find({
-        partnerUserId: userId,
-        usdRate: { $in: [150, 2500, 70, 600, 0.089] },
-      } as any)
-      .limit(20)
-      .toArray()) as PartnerFeeCreditRecord[];
-
-    for (const cred of fallbackCredits) {
-      try {
-        const decimals = getDecimalsForAsset(cred.fromAsset);
-        const { pricePerToken, usdValue } = await calculateTokenUsdValue(
-          cred.tokenAmount,
-          cred.fromAsset,
-          decimals
-        );
-        if (pricePerToken > 0 && Math.abs(pricePerToken - cred.usdRate) > 0.01) {
-          const deltaUsd = Math.round((usdValue - cred.feeUsd) * 10000) / 10000;
-          await db.collection("partner_fee_credits").updateOne(
-            { id: cred.id } as any,
-            { $set: { usdRate: pricePerToken, feeUsd: usdValue } }
-          );
-          await updateProxySwapOrder(cred.swapId, { partnerFeeUsd: usdValue });
-          if (deltaUsd !== 0) {
-            await db.collection("partner_balances").updateOne(
-              { userId } as any,
-              {
-                $inc: {
-                  availableBalanceUsd: deltaUsd,
-                  totalEarnedUsd: deltaUsd,
-                },
-                $set: { updatedAt: Date.now() },
-              }
-            );
-          }
-        }
-      } catch {
-        // non-fatal
       }
     }
   } catch (err) {
@@ -290,6 +252,10 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
     return false; // Already credited
   }
 
+  if (order.status !== "SETTLED") {
+    return false;
+  }
+
   // Regular in-app / Paylink swaps without an API key must never accrue partner kickbacks
   if (order.source === "app" && !order.apiKeyId) {
     await updateProxySwapOrder(order.swapId, { feeCredited: true }).catch(() => {});
@@ -308,6 +274,17 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
     return false;
   }
 
+  // Verify on-chain fee collection before crediting withdrawable partner USD
+  if (order.fulfillmentMode === "INTERNAL_POOL") {
+    if (order.sweepStatus !== "SWEPT" || !order.sweepTxHash) {
+      return false;
+    }
+  } else {
+    if (!order.feeTxHash || order.feeConfirmedOnChain === false) {
+      return false;
+    }
+  }
+
   // 1. Identify partner user ID (via partnerUserId, apiKeyId, or partnerFeeRecipient wallet)
   let targetUserId = order.partnerUserId || null;
   if (!targetUserId && order.apiKeyId) {
@@ -321,32 +298,22 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
   }
 
   if (!targetUserId) {
-    // Mark feeCredited so unlinked non-partner orders don't block the 12s sweeper queue
     await updateProxySwapOrder(order.swapId, { feeCredited: true }).catch(() => {});
     return false;
   }
 
-  // 2. Resolve partner fee atomic amount (with automatic 50/50 percentage fee recovery if order was created without feeRecipient)
-  let effectivePartnerFeeAtomic = order.partnerFeeAmount || "0";
+  // 2. Credit strictly the recorded partner fee amount (never fabricate 50% on 0-partner-fee orders)
+  let effectivePartnerFeeAtomic = "0";
   try {
-    if (!effectivePartnerFeeAtomic || BigInt(effectivePartnerFeeAtomic) <= 0n) {
-      const totalFee = BigInt(order.feeAmount || "0");
-      const fixedFee = BigInt(order.fixedFeeAmount || "0");
-      if (totalFee > fixedFee) {
-        const percentageFee = totalFee - fixedFee;
-        const partnerHalf = percentageFee - percentageFee / 2n;
-        if (partnerHalf > 0n) {
-          effectivePartnerFeeAtomic = partnerHalf.toString();
-        }
-      }
+    const rawPartnerFee = BigInt(order.partnerFeeAmount || "0");
+    if (rawPartnerFee > 0n) {
+      effectivePartnerFeeAtomic = rawPartnerFee.toString();
     }
   } catch {
     effectivePartnerFeeAtomic = "0";
   }
 
   if (!effectivePartnerFeeAtomic || effectivePartnerFeeAtomic === "0") {
-    // Legitimate 0-fee settled swap (e.g. fee was below Solana rent-exempt minimum or LTC dust):
-    // mark feeCredited = true so the 12s daemon does not re-scan this order forever.
     await updateProxySwapOrder(order.swapId, {
       feeCredited: true,
       partnerUserId: targetUserId,
@@ -365,12 +332,16 @@ export async function creditPartnerFeeOnSettlement(order: ProxySwapOrder): Promi
 
   if (pricePerToken <= 0) {
     console.warn(
-      `[PartnerBalanceStore] Live USD price unavailable for ${canonicalSymbol} on swap ${order.swapId}; will retry on next sweep.`
+      `[PartnerBalanceStore] Multi-oracle USD price unavailable for ${canonicalSymbol} on swap ${order.swapId}; will retry on next sweep.`
     );
     return false;
   }
 
+  const strictDb = process.env.NODE_ENV === "production" || isMongoConfigured();
   const db = await getMongoDb();
+  if (!db && strictDb) {
+    return false;
+  }
 
   // MongoDB atomic lock: lock feeCredited = true so concurrent queries don't double-credit
   if (db) {
@@ -495,10 +466,21 @@ export async function requestPartnerPayout(params: {
     throw new Error(validation.error || "Invalid destination address.");
   }
 
+  const strictDb = process.env.NODE_ENV === "production" || isMongoConfigured();
   const db = await getMongoDb();
+  if (!db && strictDb) {
+    throw new Error("Database temporarily unavailable. Please retry shortly.");
+  }
   const roundedAmount = Math.round(amountUsd * 10000) / 10000;
 
   if (db) {
+    const activePendingCount = await db
+      .collection("partner_payout_requests")
+      .countDocuments({ partnerUserId: userId, status: { $in: ["PENDING", "PROCESSING"] } });
+    if (activePendingCount >= 3) {
+      throw new Error("Maximum of 3 pending payout requests allowed at a time.");
+    }
+
     // Atomic deduction guard (with 0.0001 epsilon for IEEE-754 float precision)
     const updateRes = await db.collection("partner_balances").updateOne(
       { userId, availableBalanceUsd: { $gte: roundedAmount - 0.0001 } },
@@ -530,7 +512,7 @@ export async function requestPartnerPayout(params: {
     memBal.updatedAt = Date.now();
   }
 
-  const payoutId = `payout_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  const payoutId = `payout_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`;
   const ticket: PartnerPayoutRequest = {
     id: payoutId,
     partnerUserId: userId,
@@ -545,7 +527,25 @@ export async function requestPartnerPayout(params: {
   };
 
   if (db) {
-    await db.collection<PartnerPayoutRequest>("partner_payout_requests").insertOne(ticket as any);
+    try {
+      await db.collection<PartnerPayoutRequest>("partner_payout_requests").insertOne(ticket as any);
+    } catch (insertErr) {
+      // Compensating rollback if ticket insertion fails after deducting availableBalanceUsd
+      await db
+        .collection("partner_balances")
+        .updateOne(
+          { userId },
+          {
+            $inc: {
+              availableBalanceUsd: roundedAmount,
+              pendingPayoutUsd: -roundedAmount,
+            },
+            $set: { updatedAt: Date.now() },
+          }
+        )
+        .catch(() => {});
+      throw insertErr;
+    }
   }
   memoryPayouts.set(payoutId, ticket);
 

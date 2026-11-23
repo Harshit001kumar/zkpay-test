@@ -18,6 +18,10 @@ import {
   getExplorerTxUrl,
 } from "../partnerTypes";
 
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function getDecimalsForAsset(assetId?: string, symbol?: string): number {
   const sym = (symbol || "").toUpperCase();
   if (sym.includes("USDC") || sym.includes("USDT")) return 6;
@@ -43,6 +47,7 @@ function normalizeProxySwapStatus(raw: string): PartnerTxStatus {
       return "COMPLETED";
     case "PENDING_DEPOSIT":
     case "DETECTED":
+    case "PAYING_OUT":
     case "FORWARDING":
       return "PENDING";
     case "EXPIRED":
@@ -86,29 +91,30 @@ function mapProxySwapToTx(
 
   const decimals = getDecimalsForAsset(o.originAssetId, o.fromAsset);
 
-  // Resolve partner fee atomic amount (including 50% recovery if created without feeRecipient)
-  let rawPartnerFeeAtomic = o.partnerFeeAmount || "0";
-  try {
-    if (!rawPartnerFeeAtomic || BigInt(rawPartnerFeeAtomic) <= 0n) {
-      const totalFee = BigInt(o.feeAmount || "0");
-      const fixedFee = BigInt(o.fixedFeeAmount || "0");
-      if (totalFee > fixedFee) {
-        const pctFee = totalFee - fixedFee;
-        rawPartnerFeeAtomic = (pctFee - pctFee / 2n).toString();
+  // Resolve strict partner fee amount only on completed swaps (never fabricate 50% when 0)
+  let rawPartnerFeeAtomic = "0";
+  if (normStatus === "COMPLETED") {
+    try {
+      const raw = BigInt(o.partnerFeeAmount || "0");
+      if (raw > 0n) {
+        rawPartnerFeeAtomic = raw.toString();
       }
+    } catch {
+      rawPartnerFeeAtomic = "0";
     }
-  } catch {
-    rawPartnerFeeAtomic = "0";
   }
 
-  const partnerFeeFormatted = formatAtomicToHuman(rawPartnerFeeAtomic, decimals);
+  const partnerFeeFormatted =
+    normStatus === "COMPLETED" ? formatAtomicToHuman(rawPartnerFeeAtomic, decimals) : "0";
   const isUsdPegged = (o.fromAsset || "").toUpperCase().includes("USD");
 
   const amountNumber = parseFloat(o.totalAmountFormatted) || (Number(o.totalAmountIn) / Math.pow(10, decimals));
   const amountUsdEstimate = isUsdPegged ? amountNumber : amountNumber;
-  const partnerFeeNumber = parseFloat(partnerFeeFormatted);
+  const partnerFeeNumber = normStatus === "COMPLETED" ? parseFloat(partnerFeeFormatted) : 0;
   const partnerFeeUsdEstimate =
-    typeof o.partnerFeeUsd === "number" && o.partnerFeeUsd > 0
+    normStatus !== "COMPLETED"
+      ? 0
+      : typeof o.partnerFeeUsd === "number" && o.partnerFeeUsd > 0
       ? o.partnerFeeUsd
       : isUsdPegged
       ? partnerFeeNumber
@@ -245,7 +251,7 @@ export async function getPartnerMetrics(
         new Set(userKeys.map((k) => k.walletAddress?.toLowerCase()).filter(Boolean) as string[])
       );
       for (const w of walletAddrs) {
-        swapOr.push({ partnerFeeRecipient: new RegExp(`^${w}$`, "i") });
+        swapOr.push({ partnerFeeRecipient: new RegExp(`^${escapeRegex(w)}$`, "i") });
       }
       swapFilter.$or = swapOr;
     }
@@ -271,14 +277,18 @@ export async function getPartnerMetrics(
   let swapsUsd = 0;
 
   for (const tx of allTx) {
-    if (tx.status === "COMPLETED") successfulTransactions++;
-    else if (tx.status === "PENDING") pendingTransactions++;
-    else failedTransactions++;
+    if (tx.status === "COMPLETED") {
+      successfulTransactions++;
+      totalVolumeUsd += tx.amountUsdEstimate;
+      estimatedPartnerEarningsUsd += tx.partnerFeeUsdEstimate;
+      swapsUsd += tx.amountUsdEstimate;
+    } else if (tx.status === "PENDING") {
+      pendingTransactions++;
+    } else {
+      failedTransactions++;
+    }
 
-    totalVolumeUsd += tx.amountUsdEstimate;
-    estimatedPartnerEarningsUsd += tx.partnerFeeUsdEstimate;
     swapsCount++;
-    swapsUsd += tx.amountUsdEstimate;
   }
 
   const successRate =
@@ -338,7 +348,7 @@ export async function getPartnerTransactions(params: {
         new Set(userKeys.map((k) => k.walletAddress?.toLowerCase()).filter(Boolean) as string[])
       );
       for (const w of walletAddrs) {
-        swapOr.push({ partnerFeeRecipient: new RegExp(`^${w}$`, "i") });
+        swapOr.push({ partnerFeeRecipient: new RegExp(`^${escapeRegex(w)}$`, "i") });
       }
       swapFilter.$or = swapOr;
     }

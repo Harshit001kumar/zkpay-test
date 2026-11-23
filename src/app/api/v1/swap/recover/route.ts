@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/lib/server/adminAuth";
+import { verifyAdminRequest, recordAdminAudit } from "@/lib/server/adminAuth";
+import { enforceRateLimit, getClientIp } from "@/lib/server/rateLimit";
 import { sanitizeProxyOrder } from "@/lib/server/proxySwapStore";
 import {
   recoverProxyDeposit,
@@ -21,6 +22,9 @@ export async function POST(req: Request) {
     );
   }
 
+  const { response: rateLimitResp } = enforceRateLimit(req, "admin_write", auth.userId, { cors: false });
+  if (rateLimitResp) return rateLimitResp;
+
   try {
     const body = await req.json();
     const depositAddress = body.depositAddress || body.address || body.swapId;
@@ -29,6 +33,13 @@ export async function POST(req: Request) {
     const tokenAddress = body.tokenAddress?.trim() || undefined;
     const tokenType = body.tokenType;
     const amount = body.amount?.trim() || undefined;
+
+    if (!["forward", "refund", "custom"].includes(action)) {
+      return NextResponse.json({ success: false, error: "Invalid recovery action." }, { status: 400 });
+    }
+    if (amount && (!/^\d+(\.\d+)?$/.test(amount) || Number(amount) <= 0)) {
+      return NextResponse.json({ success: false, error: "Invalid recovery amount." }, { status: 400 });
+    }
 
     if (!depositAddress || typeof depositAddress !== "string") {
       return NextResponse.json(
@@ -49,6 +60,19 @@ export async function POST(req: Request) {
       tokenType,
       amount,
       adminOverride: true,
+    });
+
+    await recordAdminAudit({
+      adminUserId: auth.userId,
+      adminWallet: auth.walletAddress,
+      clientIp: getClientIp(req),
+      action: `V1_RECOVER_${String(action).toUpperCase()}`,
+      target: depositAddress.trim(),
+      amount: result.recoveredAmount || amount,
+      destination: result.destination || customRecipient,
+      txHash: result.txHash,
+      status: result.success ? "SUCCESS" : "ERROR",
+      error: result.success ? undefined : result.message,
     });
 
     if (!result.success) {

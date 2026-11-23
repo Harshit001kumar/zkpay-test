@@ -13,6 +13,7 @@
  * - In-memory caching for token metadata
  */
 
+import crypto from "crypto";
 import {
   SWAP_ALLOWED_TOKENS,
   SWAP_ALLOWED_CHAINS,
@@ -29,7 +30,9 @@ import {
   normalizeChain,
 } from "@/lib/constants";
 import { resolveRefundAddress, isValidAddressForOriginAsset } from "@/lib/refundAddress";
-import { generateProxyDepositWallet, isProxySupportedChain } from "./proxyWallets";
+import { generateProxyDepositWallet, isProxySupportedChain, isValidBase58CheckAddress } from "./proxyWallets";
+import { getLiquidityWalletAddress } from "./liquidityWallets";
+import { getRelayerAddress } from "./relayer";
 import {
   saveProxySwapOrder,
   getProxyOrderByAddress,
@@ -774,6 +777,83 @@ export interface SwapQuoteParams {
   swapType?: "FLEX_INPUT";
 }
 
+const ALLOWED_EXPLORER_HOSTS = new Set([
+  "basescan.org",
+  "etherscan.io",
+  "arbiscan.io",
+  "polygonscan.com",
+  "bscscan.com",
+  "solscan.io",
+  "explorer.solana.com",
+  "solana.fm",
+  "litecoinspace.org",
+  "blockchair.com",
+  "tronscan.org",
+  "mempool.space",
+  "nearblocks.io",
+  "explorer.near-intents.org",
+  "optimistic.etherscan.io",
+  "snowtrace.io",
+  "gnosisscan.io",
+  "lineascan.build",
+  "scrollscan.com",
+]);
+
+function sanitizeExplorerUrl(rawUrl: unknown): string | null {
+  if (typeof rawUrl !== "string" || !rawUrl.trim()) return null;
+  try {
+    const parsed = new URL(rawUrl.trim());
+    if (parsed.protocol !== "https:") return null;
+    const host = parsed.hostname.toLowerCase();
+    const isAllowed =
+      ALLOWED_EXPLORER_HOSTS.has(host) ||
+      Array.from(ALLOWED_EXPLORER_HOSTS).some((allowed) => host.endsWith(`.${allowed}`));
+    return isAllowed ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function validateAddressStrictForAsset(assetId: string, address: string): boolean {
+  const trimmed = (address || "").trim();
+  if (!isValidAddressForOriginAsset(assetId, trimmed)) return false;
+
+  if (assetId.includes(":ltc") && !trimmed.toLowerCase().startsWith("ltc1")) {
+    return isValidBase58CheckAddress(trimmed, [0x30, 0x32]);
+  }
+  if (assetId.includes(":btc") && !trimmed.toLowerCase().startsWith("bc1")) {
+    return isValidBase58CheckAddress(trimmed, [0x00, 0x05]);
+  }
+  if (assetId.includes(":tron")) {
+    return isValidBase58CheckAddress(trimmed, [0x41]);
+  }
+  return true;
+}
+
+function isReservedSystemAddress(address?: string | null): boolean {
+  const clean = (address || "").trim();
+  if (!clean) return false;
+  const cleanLower = clean.toLowerCase();
+
+  const reserved: string[] = [];
+  for (const key of ["polygon:USDT", "sol:SOL", "ltc:LTC"] as const) {
+    const addr = getLiquidityWalletAddress(key);
+    if (addr) reserved.push(addr);
+  }
+  try {
+    const relayerAddr = getRelayerAddress();
+    if (relayerAddr) reserved.push(relayerAddr);
+  } catch {
+    // Relayer env not required for quote-only or direct routes
+  }
+
+  return reserved.some((sysAddr) =>
+    clean.startsWith("0x") || sysAddr.startsWith("0x")
+      ? sysAddr.toLowerCase() === cleanLower
+      : sysAddr === clean
+  );
+}
+
 /**
  * Creates dry quote for previewing rates and fees.
  */
@@ -785,6 +865,45 @@ export async function getSwapQuote(params: SwapQuoteParams) {
   const destinationAssetId = params.toAsset
     ? await resolveAssetId(params.toAsset, params.destinationChain)
     : TARGET_ASSET.assetId;
+
+  if (originAssetId === destinationAssetId) {
+    const err: any = new Error("Origin and destination assets cannot be identical.");
+    err.code = "SAME_ASSET_SWAP";
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (params.recipientAddress && params.recipientAddress.trim()) {
+    const trimmedRecipient = params.recipientAddress.trim();
+    if (!validateAddressStrictForAsset(destinationAssetId, trimmedRecipient)) {
+      const err: any = new Error("Destination recipient address is invalid for the target blockchain.");
+      err.code = "INVALID_RECIPIENT";
+      err.statusCode = 400;
+      throw err;
+    }
+    if (isReservedSystemAddress(trimmedRecipient)) {
+      const err: any = new Error("Reserved protocol address cannot be used as swap recipient.");
+      err.code = "RESERVED_SYSTEM_ADDRESS";
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  if (params.refundTo && params.refundTo.trim()) {
+    const trimmedRefund = params.refundTo.trim();
+    if (!validateAddressStrictForAsset(originAssetId, trimmedRefund)) {
+      const err: any = new Error("Refund address is invalid for the origin blockchain.");
+      err.code = "INVALID_REFUND_ADDRESS";
+      err.statusCode = 400;
+      throw err;
+    }
+    if (isReservedSystemAddress(trimmedRefund)) {
+      const err: any = new Error("Reserved protocol address cannot be used as refund address.");
+      err.code = "RESERVED_SYSTEM_ADDRESS";
+      err.statusCode = 400;
+      throw err;
+    }
+  }
 
   // Resolve chains for both origin (fee routing) and destination (settlement)
   const resolvedOriginChain = params.originChain || params.chain || resolveChainFromAssetId(originAssetId) || "base";
@@ -1054,11 +1173,41 @@ export async function createSwapOrder(params: CreateSwapParams) {
     ? await resolveAssetId(params.toAsset, params.destinationChain)
     : TARGET_ASSET.assetId;
 
-  if (!isValidAddressForOriginAsset(destinationAssetId, recipient.trim())) {
+  if (originAssetId === destinationAssetId) {
+    const err: any = new Error("Origin and destination assets cannot be identical.");
+    err.code = "SAME_ASSET_SWAP";
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (!validateAddressStrictForAsset(destinationAssetId, recipient.trim())) {
     const err: any = new Error("Destination recipient address is invalid for the target blockchain.");
     err.code = "INVALID_RECIPIENT";
     err.statusCode = 400;
     throw err;
+  }
+
+  if (isReservedSystemAddress(recipient.trim())) {
+    const err: any = new Error("Reserved protocol address cannot be used as swap recipient.");
+    err.code = "RESERVED_SYSTEM_ADDRESS";
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (params.refundTo && params.refundTo.trim()) {
+    const trimmedRefund = params.refundTo.trim();
+    if (!validateAddressStrictForAsset(originAssetId, trimmedRefund)) {
+      const err: any = new Error("Refund address is invalid for the origin blockchain.");
+      err.code = "INVALID_REFUND_ADDRESS";
+      err.statusCode = 400;
+      throw err;
+    }
+    if (isReservedSystemAddress(trimmedRefund)) {
+      const err: any = new Error("Reserved protocol address cannot be used as refund address.");
+      err.code = "RESERVED_SYSTEM_ADDRESS";
+      err.statusCode = 400;
+      throw err;
+    }
   }
 
   // Resolve chains for origin (fee routing) and destination (settlement)
@@ -1119,7 +1268,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
         const proxyWallet = generateProxyDepositWallet(resolvedOriginChain);
         const finalDepositAddress = proxyWallet.depositAddress;
         const finalDepositAmount = formatHumanAmount(normalizedAmount, originAssetId);
-        const swapId = `swp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const swapId = `swp_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`;
         const poolDeadlineIso = new Date(Date.now() + 20 * 60_000).toISOString();
 
         const proxyOrder: ProxySwapOrder = {
@@ -1261,6 +1410,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
   }
 
   const quote = data.quote;
+  const resolvedSwapId = data.correlationId || `swp_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`;
 
   // Single-transfer Proxy System:
   // For Tier 2 (L2s: Base, Arbitrum, Polygon, BSC) and Tier 3 (Solana):
@@ -1276,7 +1426,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
       finalDepositAmount = formatHumanAmount(normalizedAmount, originAssetId);
 
       const proxyOrder: ProxySwapOrder = {
-        swapId: data.correlationId || `swp_${Date.now()}`,
+        swapId: resolvedSwapId,
         proxyDepositAddress: proxyWallet.depositAddress,
         encryptedPrivateKey: proxyWallet.encryptedPrivateKey,
         chain: normalizeChain(resolvedOriginChain) || resolvedOriginChain,
@@ -1327,7 +1477,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
   if (!proxySaved) {
     try {
       await saveDirectSwapOrder({
-        swapId: data.correlationId || `swp_${Date.now()}`,
+        swapId: resolvedSwapId,
         depositAddress: quote.depositAddress,
         originAssetId,
         fromAsset: getOriginTokenMeta(originAssetId)?.symbol || fromAsset,
@@ -1389,7 +1539,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
   };
 
   return {
-    swapId: data.correlationId || `swp_${Date.now()}`,
+    swapId: resolvedSwapId,
     swapType: "FLEX_INPUT",
     status: "PENDING_DEPOSIT",
     deposit: {
@@ -1491,9 +1641,9 @@ export async function getSwapStatus(depositAddress: string) {
           ? "pending"
           : currentOrder.status === "SETTLED"
           ? "settled"
-          : currentOrder.status === "REFUNDED"
+          : currentOrder.status === "REFUNDED" || currentOrder.status === "RECOVERED"
           ? "refunded"
-          : currentOrder.status === "FAILED"
+          : currentOrder.status === "FAILED" || currentOrder.status === "NEEDS_MANUAL_REVIEW"
           ? "failed"
           : currentOrder.status === "EXPIRED"
           ? currentOrder.error?.toLowerCase().includes("refund")
@@ -1614,9 +1764,9 @@ export async function getSwapStatus(depositAddress: string) {
         ? "pending"
         : currentOrder.status === "SETTLED"
         ? "settled"
-        : currentOrder.status === "REFUNDED"
+        : currentOrder.status === "REFUNDED" || currentOrder.status === "RECOVERED"
         ? "refunded"
-        : currentOrder.status === "FAILED"
+        : currentOrder.status === "FAILED" || currentOrder.status === "NEEDS_MANUAL_REVIEW"
         ? "failed"
         : currentOrder.status === "EXPIRED"
         ? currentOrder.error?.toLowerCase().includes("refund")
@@ -1689,10 +1839,7 @@ async function fetchNearIntentsStatus(depositAddress: string) {
     typeof rawDestHash === "string" && /^[a-zA-Z0-9x_-]{8,128}$/.test(rawDestHash)
       ? rawDestHash
       : null;
-  const safeExplorerUrl =
-    typeof rawDestExplorer === "string" && rawDestExplorer.startsWith("https://")
-      ? rawDestExplorer
-      : null;
+  const safeExplorerUrl = sanitizeExplorerUrl(rawDestExplorer);
   const safeOriginHash =
     typeof rawOriginHash === "string" && /^[a-zA-Z0-9x_-]{8,128}$/.test(rawOriginHash)
       ? rawOriginHash

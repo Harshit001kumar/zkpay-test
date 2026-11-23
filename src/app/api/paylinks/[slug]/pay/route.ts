@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { enforceRateLimit, getClientIp } from "@/lib/server/rateLimit";
 import {
   getPaylinkBySlug,
+  hasInFlightSingleUsePayment,
   resolveAllowedToken,
   computePaylinkQuote,
   resolveOpenPaylinkInputAtomic,
@@ -39,6 +40,20 @@ export async function POST(
         { success: false, error: "PAYLINK_ALREADY_PAID", message: "This single-use Paylink has already been paid." },
         { status: 400, headers: rateLimit.headers }
       );
+    }
+
+    if (paylink.singleUse) {
+      const inFlight = await hasInFlightSingleUsePayment(paylink.id);
+      if (inFlight) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "PAYLINK_PAYMENT_IN_PROGRESS",
+            message: "A payment for this single-use Paylink is already in progress.",
+          },
+          { status: 409, headers: rateLimit.headers }
+        );
+      }
     }
 
     // Tamper protection: ONLY read origin asset/amount/refund from client.

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/lib/server/adminAuth";
+import { verifyAdminRequest, recordAdminAudit } from "@/lib/server/adminAuth";
 import { rejectAdminPayout } from "@/lib/server/partnerBalanceStore";
+import { enforceRateLimit, getClientIp } from "@/lib/server/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,9 @@ export async function POST(
     return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: auth.status });
   }
 
+  const { response: rateLimitResp } = enforceRateLimit(req, "admin_write", auth.userId, { cors: false });
+  if (rateLimitResp) return rateLimitResp;
+
   try {
     const id = params?.id;
     if (!id) {
@@ -23,6 +27,16 @@ export async function POST(
 
     const adminIdentifier = auth.walletAddress || auth.userId || "admin";
     const ticket = await rejectAdminPayout(id, reason || "Rejected by admin", adminIdentifier);
+
+    await recordAdminAudit({
+      adminUserId: auth.userId,
+      adminWallet: auth.walletAddress,
+      clientIp: getClientIp(req),
+      action: "PAYOUT_REJECT",
+      target: id,
+      amount: `$${ticket.amountUsd}`,
+      status: "SUCCESS",
+    });
 
     return NextResponse.json({
       success: true,

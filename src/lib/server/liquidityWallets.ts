@@ -28,7 +28,7 @@ import {
   type PoolAssetDefinition,
   getLiquidityPoolConfig,
 } from "./liquidityConfig";
-import { getMongoDb } from "./mongodb";
+import { getMongoDb, isMongoConfigured } from "./mongodb";
 import { getActiveReservedLiquidityByAsset } from "./proxySwapStore";
 import { getLiveTokenPriceUsd } from "./priceService";
 import {
@@ -606,20 +606,21 @@ export async function verifyLiquidityPayoutOnChain(
     }
   }
 
-  // ltc:LTC
+  // ltc:LTC — require explicit block confirmation
   try {
     const res = await fetch(`https://litecoinspace.org/api/tx/${cleanHash}`, {
       signal: AbortSignal.timeout(4000),
     });
     if (res.ok) {
       const data = await res.json();
-      if (data?.txid) return "confirmed";
+      if (data?.status?.confirmed === true) return "confirmed";
     }
   } catch {}
   return "pending";
 }
 
 const hotWalletQueues = new Map<string, Promise<unknown>>();
+const HOT_WALLET_LOCK_TTL_MS = 90_000;
 
 async function withHotWalletLock<T>(
   assetKey: string,
@@ -637,43 +638,68 @@ async function withHotWalletLock<T>(
   const lockToken = crypto.randomBytes(8).toString("hex");
   let mongoLocked = false;
   let dbRef: Awaited<ReturnType<typeof getMongoDb>> = null;
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  const strictDb = process.env.NODE_ENV === "production" || isMongoConfigured();
 
   try {
     dbRef = await getMongoDb();
-    if (dbRef) {
-      const col = dbRef.collection("liquidity_locks");
-      for (let attempt = 0; attempt < 16; attempt++) {
-        const now = Date.now();
-        try {
-          await col.findOneAndUpdate(
-            {
-              _id: assetKey as any,
-              $or: [{ expiresAt: { $lte: now } }, { ownerToken: lockToken }],
-            } as any,
-            {
-              $set: {
-                ownerToken: lockToken,
-                expiresAt: now + 45_000,
-              },
-            },
-            { upsert: true }
-          );
-          mongoLocked = true;
-          break;
-        } catch (err: any) {
-          if (err?.code === 11000) {
-            await new Promise((r) => setTimeout(r, 500));
-            continue;
-          }
-          break;
-        }
+    if (!dbRef) {
+      if (strictDb) {
+        throw new Error(`Database unavailable for hot wallet lock (${assetKey}).`);
       }
-      if (!mongoLocked) {
-        throw new Error(`Liquidity hot wallet busy for ${assetKey}; please retry.`);
+      return await fn();
+    }
+
+    const col = dbRef.collection("liquidity_locks");
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const now = Date.now();
+      try {
+        await col.findOneAndUpdate(
+          {
+            _id: assetKey as any,
+            $or: [{ expiresAt: { $lte: now } }, { ownerToken: lockToken }],
+          } as any,
+          {
+            $set: {
+              ownerToken: lockToken,
+              expiresAt: now + HOT_WALLET_LOCK_TTL_MS,
+            },
+          },
+          { upsert: true }
+        );
+        mongoLocked = true;
+        break;
+      } catch (err: any) {
+        if (err?.code === 11000) {
+          await new Promise((r) => setTimeout(r, 500));
+          continue;
+        }
+        break;
       }
     }
+    if (!mongoLocked) {
+      throw new Error(`Liquidity hot wallet busy for ${assetKey}; please retry.`);
+    }
+
+    // Renew lock TTL every 20s so slow confirmations never allow overlapping payouts
+    heartbeat = setInterval(() => {
+      dbRef
+        ?.collection("liquidity_locks")
+        .updateOne(
+          { _id: assetKey as any, ownerToken: lockToken },
+          { $set: { expiresAt: Date.now() + HOT_WALLET_LOCK_TTL_MS } }
+        )
+        .catch(() => {});
+    }, 20_000);
+    if (typeof (heartbeat as any).unref === "function") {
+      (heartbeat as any).unref();
+    }
+
     return await fn();
   } finally {
+    if (heartbeat) {
+      clearInterval(heartbeat);
+    }
     if (mongoLocked && dbRef) {
       await dbRef
         .collection("liquidity_locks")
@@ -689,16 +715,24 @@ async function withHotWalletLock<T>(
 
 /**
  * Dispatches an on-chain payout or withdrawal from the specified Liquidity Hot Wallet.
- * Verifies transaction confirmation before returning `{ txHash, explorerUrl }`.
- * Attaches `{ txHash, broadcasted: true, reverted: boolean }` to thrown errors if failure occurs post-broadcast.
+ * Invokes `onBroadcast` immediately after RPC broadcast acceptance (before receipt wait) so crash recovery never double-pays.
  */
 export async function sendFromLiquidityWallet(params: {
   assetKey: PoolAssetDefinition["assetKey"];
   toAddress: string;
   amountAtomic: bigint;
   enforceMinReserve?: boolean;
+  enforceConfirmedUnreserved?: boolean;
+  onBroadcast?: (txHash: string, fromAddress: string) => Promise<void>;
 }): Promise<{ txHash: string; explorerUrl: string; fromAddress: string }> {
-  const { assetKey, toAddress, amountAtomic, enforceMinReserve = false } = params;
+  const {
+    assetKey,
+    toAddress,
+    amountAtomic,
+    enforceMinReserve = false,
+    enforceConfirmedUnreserved = false,
+    onBroadcast,
+  } = params;
   const def = POOL_SUPPORTED_ASSETS[assetKey];
   if (!def) {
     throw new Error(`Unsupported liquidity pool asset: ${assetKey}`);
@@ -709,11 +743,16 @@ export async function sendFromLiquidityWallet(params: {
 
   return withHotWalletLock(assetKey, async () => {
     let minReserveAtomic = 0n;
-    if (enforceMinReserve) {
+    let reservedAtomic = 0n;
+    if (enforceMinReserve || enforceConfirmedUnreserved) {
       const cfg = await getLiquidityPoolConfig();
       const minReserveHuman =
         cfg.minReserveByAsset?.[def.assetKey] || def.defaultMinReserveHuman;
       minReserveAtomic = parseHumanToAtomic(minReserveHuman, def.decimals);
+    }
+    if (enforceConfirmedUnreserved) {
+      const reservedMap = await getActiveReservedLiquidityByAsset({ confirmedOnly: true });
+      reservedAtomic = reservedMap[assetKey] || 0n;
     }
 
     const cleanTo = (toAddress || "").trim();
@@ -727,16 +766,17 @@ export async function sendFromLiquidityWallet(params: {
         throw new Error(`Invalid Polygon recipient address: ${cleanTo}`);
       }
       const publicClient = getResilientPublicClientForChain("polygon");
-      if (enforceMinReserve) {
+      if (enforceMinReserve || enforceConfirmedUnreserved) {
         const liveBal = (await publicClient.readContract({
           address: def.tokenAddress!,
           abi: ERC20_BALANCE_ABI,
           functionName: "balanceOf",
           args: [w.address],
         })) as bigint;
-        if (liveBal < amountAtomic + minReserveAtomic) {
+        const required = amountAtomic + minReserveAtomic + reservedAtomic;
+        if (liveBal < required) {
           throw new Error(
-            `Polygon USDT payout would breach minimum reserve floor (balance=${liveBal}, required=${amountAtomic + minReserveAtomic}).`
+            `Polygon USDT payout would breach reserve/reservation floor (balance=${liveBal}, required=${required}).`
           );
         }
       }
@@ -759,6 +799,10 @@ export async function sendFromLiquidityWallet(params: {
 
       if (!res.txHash) {
         throw new Error(res.error || "Polygon USDT transfer failed to broadcast.");
+      }
+
+      if (onBroadcast) {
+        await onBroadcast(res.txHash, w.address).catch(() => {});
       }
 
       const receipt = await publicClient
@@ -792,15 +836,16 @@ export async function sendFromLiquidityWallet(params: {
       if (amountAtomic < 10_000n) {
         throw new Error("Solana payout amount is below minimum transfer threshold.");
       }
-      if (enforceMinReserve) {
+      if (enforceMinReserve || enforceConfirmedUnreserved) {
         const balRes = await fetchResilientSolanaRpc("getBalance", [
           w.address,
           { commitment: "confirmed" },
         ]);
         const liveLamports = BigInt(balRes?.value || 0);
-        if (liveLamports < amountAtomic + minReserveAtomic + 15_000n) {
+        const required = amountAtomic + minReserveAtomic + reservedAtomic + 15_000n;
+        if (liveLamports < required) {
           throw new Error(
-            `Solana SOL payout would breach minimum reserve floor (balance=${liveLamports}, required=${amountAtomic + minReserveAtomic + 15_000n}).`
+            `Solana SOL payout would breach reserve/reservation floor (balance=${liveLamports}, required=${required}).`
           );
         }
       }
@@ -810,6 +855,10 @@ export async function sendFromLiquidityWallet(params: {
         fromPrivKeyHex: w.privKeySeedHex,
         outputs: [{ toBase58: cleanTo, lamports: amountAtomic }],
       });
+
+      if (onBroadcast) {
+        await onBroadcast(txSig, w.address).catch(() => {});
+      }
 
       try {
         const conf = await waitForSolanaSignature(txSig, 25_000);
@@ -841,11 +890,12 @@ export async function sendFromLiquidityWallet(params: {
     if (!w.configured || !w.address || !w.privKeyHex) {
       throw new Error("Litecoin liquidity wallet is not configured.");
     }
-    if (enforceMinReserve) {
+    if (enforceMinReserve || enforceConfirmedUnreserved) {
       const ltcBal = await getLtcBalanceAndUtxos(w.address);
-      if (ltcBal.confirmedBalanceSatoshis < amountAtomic + minReserveAtomic + 3000n) {
+      const required = amountAtomic + minReserveAtomic + reservedAtomic + 3000n;
+      if (ltcBal.confirmedBalanceSatoshis < required) {
         throw new Error(
-          `Litecoin LTC payout would breach minimum reserve floor (confirmed=${ltcBal.confirmedBalanceSatoshis}, required=${amountAtomic + minReserveAtomic + 3000n}).`
+          `Litecoin LTC payout would breach reserve/reservation floor (confirmed=${ltcBal.confirmedBalanceSatoshis}, required=${required}).`
         );
       }
     }
@@ -856,6 +906,10 @@ export async function sendFromLiquidityWallet(params: {
       toAddress: cleanTo,
       amountSatoshis: amountAtomic,
     });
+
+    if (onBroadcast) {
+      await onBroadcast(txid, w.address).catch(() => {});
+    }
 
     return {
       txHash: txid,

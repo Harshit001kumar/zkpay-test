@@ -59,6 +59,28 @@ export function decodeBase58(str: string): Buffer {
   return result;
 }
 
+const SECP256K1_N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
+
+/**
+ * Validates Base58Check version + double-SHA256 checksum (BTC/LTC/Tron legacy & P2SH addresses).
+ */
+export function isValidBase58CheckAddress(address: string, expectedVersions: number[]): boolean {
+  try {
+    const clean = (address || "").trim();
+    if (!clean) return false;
+    const decoded = decodeBase58(clean);
+    if (decoded.length !== 25) return false;
+    if (!expectedVersions.includes(decoded[0])) return false;
+    const payload = decoded.subarray(0, 21);
+    const checksum = decoded.subarray(21, 25);
+    const h1 = crypto.createHash("sha256").update(payload).digest();
+    const h2 = crypto.createHash("sha256").update(h1).digest();
+    return h2.subarray(0, 4).equals(checksum);
+  } catch {
+    return false;
+  }
+}
+
 export interface GeneratedProxyWallet {
   chain: string;
   depositAddress: string;
@@ -92,8 +114,13 @@ export function generateProxyDepositWallet(chain: string): GeneratedProxyWallet 
 
   // 2. Litecoin (secp256k1 P2PKH mainnet address starting with 'L')
   if (normChain === "ltc") {
-    // Generate 32-byte private key
-    const privKey = crypto.randomBytes(32);
+    // Generate valid 32-byte secp256k1 private key in (0, n)
+    let privKey: Buffer;
+    let scalar: bigint;
+    do {
+      privKey = crypto.randomBytes(32);
+      scalar = BigInt("0x" + privKey.toString("hex"));
+    } while (scalar <= 0n || scalar >= SECP256K1_N);
     const ecdh = crypto.createECDH("secp256k1");
     ecdh.setPrivateKey(privKey);
     const compressedPub = Buffer.from(ecdh.getPublicKey(null, "compressed"));

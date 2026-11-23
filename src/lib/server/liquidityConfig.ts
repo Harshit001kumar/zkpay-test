@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { getMongoDb } from "./mongodb";
+import { getMongoDb, isMongoConfigured } from "./mongodb";
 
 export interface PoolAssetDefinition {
   assetKey: "ltc:LTC" | "sol:SOL" | "polygon:USDT";
@@ -86,6 +86,8 @@ export interface LiquidityPoolConfig {
   enabled: boolean;
   pausedAssets: string[];
   maxSwapUsd: number;
+  maxHourlyOutflowUsd: number;
+  maxDailyOutflowUsd: number;
   minReserveByAsset: Record<string, string>;
   spreadBufferBps: number;
   updatedAt: number;
@@ -122,12 +124,14 @@ const DEFAULT_CONFIG: LiquidityPoolConfig = {
   enabled: true,
   pausedAssets: [],
   maxSwapUsd: 500,
+  maxHourlyOutflowUsd: 1500,
+  maxDailyOutflowUsd: 5000,
   minReserveByAsset: {
     "ltc:LTC": "0.001",
     "sol:SOL": "0.002",
     "polygon:USDT": "0",
   },
-  spreadBufferBps: 0,
+  spreadBufferBps: 25,
   updatedAt: Date.now(),
 };
 
@@ -177,20 +181,42 @@ export async function updateLiquidityPoolConfig(
   updatedBy?: string
 ): Promise<LiquidityPoolConfig> {
   const current = await getLiquidityPoolConfig(true);
+  const validAssetKeys = new Set(Object.keys(POOL_SUPPORTED_ASSETS));
+
+  const cleanPausedAssets = Array.isArray(patch.pausedAssets)
+    ? Array.from(new Set(patch.pausedAssets.filter((k) => typeof k === "string" && validAssetKeys.has(k))))
+    : current.pausedAssets;
+
+  const cleanMinReserves = { ...current.minReserveByAsset };
+  if (patch.minReserveByAsset && typeof patch.minReserveByAsset === "object") {
+    for (const [k, v] of Object.entries(patch.minReserveByAsset)) {
+      if (validAssetKeys.has(k) && typeof v === "string" && /^\d+(\.\d{1,8})?$/.test(v.trim())) {
+        cleanMinReserves[k] = v.trim();
+      }
+    }
+  }
+
   const next: LiquidityPoolConfig = {
     ...current,
     ...(typeof patch.enabled === "boolean" ? { enabled: patch.enabled } : {}),
-    ...(Array.isArray(patch.pausedAssets) ? { pausedAssets: patch.pausedAssets } : {}),
-    ...(typeof patch.maxSwapUsd === "number" && patch.maxSwapUsd > 0
-      ? { maxSwapUsd: patch.maxSwapUsd }
-      : {}),
-    ...(typeof patch.spreadBufferBps === "number" && patch.spreadBufferBps >= 0
-      ? { spreadBufferBps: patch.spreadBufferBps }
-      : {}),
-    minReserveByAsset: {
-      ...current.minReserveByAsset,
-      ...(patch.minReserveByAsset || {}),
-    },
+    pausedAssets: cleanPausedAssets,
+    maxSwapUsd:
+      typeof patch.maxSwapUsd === "number" && Number.isFinite(patch.maxSwapUsd)
+        ? Math.min(2500, Math.max(10, patch.maxSwapUsd))
+        : current.maxSwapUsd,
+    maxHourlyOutflowUsd:
+      typeof patch.maxHourlyOutflowUsd === "number" && Number.isFinite(patch.maxHourlyOutflowUsd)
+        ? Math.min(25000, Math.max(50, patch.maxHourlyOutflowUsd))
+        : current.maxHourlyOutflowUsd,
+    maxDailyOutflowUsd:
+      typeof patch.maxDailyOutflowUsd === "number" && Number.isFinite(patch.maxDailyOutflowUsd)
+        ? Math.min(100000, Math.max(100, patch.maxDailyOutflowUsd))
+        : current.maxDailyOutflowUsd,
+    spreadBufferBps:
+      typeof patch.spreadBufferBps === "number" && Number.isFinite(patch.spreadBufferBps)
+        ? Math.min(500, Math.max(0, Math.round(patch.spreadBufferBps)))
+        : current.spreadBufferBps,
+    minReserveByAsset: cleanMinReserves,
     updatedAt: Date.now(),
     ...(updatedBy ? { updatedBy } : {}),
   };
@@ -211,6 +237,49 @@ export async function updateLiquidityPoolConfig(
   }
 
   return next;
+}
+
+/**
+ * Computes rolling 1h and 24h PAYOUT_OUT USD outflow totals from liquidity_transfers.
+ * Fails closed (throws) if MongoDB is unavailable in production or when configured.
+ */
+export async function getRecentLiquidityOutflowUsd(): Promise<{
+  hourlyUsd: number;
+  dailyUsd: number;
+}> {
+  const now = Date.now();
+  const hourAgo = now - 3600_000;
+  const dayAgo = now - 24 * 3600_000;
+  const strictDb = process.env.NODE_ENV === "production" || isMongoConfigured();
+
+  const db = await getMongoDb();
+  if (!db) {
+    if (strictDb) {
+      throw new Error("Database unavailable for liquidity outflow circuit-breaker check.");
+    }
+    let hourlyUsd = 0;
+    let dailyUsd = 0;
+    for (const t of memoryTransfers) {
+      if (t.type !== "PAYOUT_OUT" || t.createdAt < dayAgo) continue;
+      dailyUsd += Number(t.amountUsd) || 0;
+      if (t.createdAt >= hourAgo) hourlyUsd += Number(t.amountUsd) || 0;
+    }
+    return { hourlyUsd, dailyUsd };
+  }
+
+  const docs = await db
+    .collection<LiquidityTransferRecord>("liquidity_transfers")
+    .find({ type: "PAYOUT_OUT", createdAt: { $gte: dayAgo } } as any)
+    .toArray();
+
+  let hourlyUsd = 0;
+  let dailyUsd = 0;
+  for (const t of docs) {
+    const usd = Number(t.amountUsd) || 0;
+    dailyUsd += usd;
+    if (t.createdAt >= hourAgo) hourlyUsd += usd;
+  }
+  return { hourlyUsd, dailyUsd };
 }
 
 export async function recordLiquidityTransfer(

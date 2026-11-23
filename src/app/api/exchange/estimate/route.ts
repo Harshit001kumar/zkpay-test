@@ -1,127 +1,15 @@
 import { NextResponse } from "next/server";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-const ONECLICK_API = "https://1click.chaindefuser.com/v0";
-
-// Base USDC destination asset (NEAR Intents assetId)
-const DESTINATION_ASSET = "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near";
-
-import { resolveRefundAddress } from "@/lib/refundAddress";
-import {
-  DEPOSIT_FEE_BPS,
-  SWAP_ALLOWED_TOKENS,
-  resolveChainFromAssetId,
-  getTreasuryAddressForChain,
-} from "@/lib/constants";
-import {
-  getQuoteDeadline,
-  calculateFeeSplit,
-  computeUpfrontFees,
-} from "@/lib/server/swapRouter";
-import { enforceRateLimit } from "@/lib/server/rateLimit";
-
-export async function GET(req: Request) {
-  const { response: rateLimitResp } = enforceRateLimit(req, "quote");
-  if (rateLimitResp) return rateLimitResp;
-
-  try {
-    const { searchParams } = new URL(req.url);
-    const originAssetId = searchParams.get("originAssetId");
-    const amount = searchParams.get("amount"); // smallest units (satoshis, wei, etc.)
-    const recipientAddress = searchParams.get("recipientAddress");
-    const userRefundTo = searchParams.get("refundTo");
-
-    if (!originAssetId || !amount || !recipientAddress) {
-      return NextResponse.json({ error: "Missing required fields: originAssetId, amount, recipientAddress" }, { status: 400 });
-    }
-    if (!SWAP_ALLOWED_TOKENS.some((t) => t.assetId === originAssetId)) {
-      return NextResponse.json({ error: "Unsupported originAssetId" }, { status: 400 });
-    }
-    if (!/^0x[a-fA-F0-9]{40}$/.test(recipientAddress.trim())) {
-      return NextResponse.json({ error: "Invalid Base recipientAddress" }, { status: 400 });
-    }
-    if (!/^\d+$/.test(amount.trim()) || BigInt(amount.trim()) <= 0n) {
-      return NextResponse.json({ error: "Invalid positive atomic amount" }, { status: 400 });
-    }
-
-    const effectiveRefundTo = resolveRefundAddress(originAssetId, userRefundTo, recipientAddress, { isDryRun: true });
-
-    const originChain = resolveChainFromAssetId(originAssetId) || "base";
-    const { isZeroFeeChain } = await import("@/lib/constants");
-    const { isProxySupportedChain } = await import("@/lib/server/proxyWallets");
-    const isDirect = isZeroFeeChain(originChain) || !isProxySupportedChain(originChain, originAssetId);
-
-    let netSwapAmount = String(amount).trim();
-    if (!isDirect) {
-      const feeSplit = calculateFeeSplit(DEPOSIT_FEE_BPS, null, originChain, originAssetId);
-      const fees = computeUpfrontFees(BigInt(String(amount).trim()), feeSplit, originAssetId);
-      netSwapAmount = fees.netSwapAmount.toString();
-    }
-
-    const deadline = getQuoteDeadline(originChain);
-
-    const payload = {
-      dry: true,
-      swapType: "FLEX_INPUT",
-      slippageTolerance: 100, // 1% slippage
-      originAsset: originAssetId,
-      depositType: "ORIGIN_CHAIN",
-      destinationAsset: DESTINATION_ASSET,
-      recipientType: "DESTINATION_CHAIN",
-      amount: netSwapAmount,
-      recipient: recipientAddress,
-      refundTo: effectiveRefundTo,
-      refundType: "ORIGIN_CHAIN",
-      deadline,
-      appFees: [], // ZERO appFees to NEAR Intents — consistent with wet execution
-    };
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-
-    // API key is optional — without it 1Click adds 25 bps overhead
-    if (process.env.NEAR_INTENTS_API_KEY) {
-      headers["X-API-Key"] = process.env.NEAR_INTENTS_API_KEY;
-    }
-
-    console.log("[NEAR Intents Estimate] Calling dry quote, origin:", originAssetId, "amount:", amount);
-
-    const response = await fetch(`${ONECLICK_API}/quote`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
-    });
-
-    const responseText = await response.text();
-    console.log("[NEAR Intents Estimate] Status:", response.status, "Body:", responseText.slice(0, 500));
-
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch {
-      return NextResponse.json({ error: `API returned non-JSON: ${responseText.slice(0, 200)}` }, { status: 502 });
-    }
-
-    if (!response.ok) {
-      return NextResponse.json({ error: data.message || JSON.stringify(data) }, { status: response.status });
-    }
-
-    // Extract the quote details from the response
-    const quote = data.quote;
-    if (!quote) {
-      return NextResponse.json({ error: "No quote data in response" }, { status: 502 });
-    }
-
-    return NextResponse.json({
-      estimatedAmount: quote.amountOutFormatted,
-      amountOut: quote.amountOut,
-      minAmountOut: quote.minAmountOut,
-      timeEstimate: quote.timeEstimate,
-    });
-  } catch (error: any) {
-    console.error("[NEAR Intents Estimate] Exception:", error);
-    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
-  }
+// Retired legacy endpoint — use /api/v1/swap/quote instead.
+export async function GET() {
+  return NextResponse.json(
+    {
+      success: false,
+      error: "ENDPOINT_RETIRED",
+      message: "This legacy endpoint has been retired. Use /api/v1/swap/quote instead.",
+    },
+    { status: 410 }
+  );
 }

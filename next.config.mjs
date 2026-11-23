@@ -28,7 +28,52 @@ const nextConfig = {
           {
             key: "Content-Security-Policy",
             value:
-              "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://auth.privy.io https://*.privy.io https://challenges.cloudflare.com; frame-src 'self' https://auth.privy.io https://*.privy.io https://challenges.cloudflare.com https://verify.walletconnect.com https://verify.walletconnect.org; connect-src 'self' https: wss:;",
+              `default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' ${process.env.NODE_ENV === "production" ? "" : "'unsafe-eval' "}https://auth.privy.io https://*.privy.io https://challenges.cloudflare.com; frame-src 'self' https://auth.privy.io https://*.privy.io https://challenges.cloudflare.com https://verify.walletconnect.com https://verify.walletconnect.org; connect-src 'self' https: wss:;`,
+          },
+        ],
+      },
+      {
+        source: "/api/admin/(.*)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-store, no-cache, must-revalidate, private",
+          },
+        ],
+      },
+      {
+        source: "/api/partner/(.*)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-store, no-cache, must-revalidate, private",
+          },
+        ],
+      },
+      {
+        source: "/api/profile/(.*)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-store, no-cache, must-revalidate, private",
+          },
+        ],
+      },
+      {
+        source: "/api/v1/swap/create",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-store, no-cache, must-revalidate, private",
+          },
+        ],
+      },
+      {
+        source: "/api/v1/swap/recover",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-store, no-cache, must-revalidate, private",
           },
         ],
       },

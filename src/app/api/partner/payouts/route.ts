@@ -6,10 +6,14 @@ import {
   SUPPORTED_PAYOUT_OPTIONS,
   MIN_PAYOUT_AMOUNT_USD,
 } from "@/lib/server/partnerBalanceStore";
+import { enforceRateLimit } from "@/lib/server/rateLimit";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  const { response: rlResp } = enforceRateLimit(req, "partner_read", undefined, { cors: false });
+  if (rlResp) return rlResp;
+
   const auth = await verifyUserRequest(req);
   if (!auth.authorized || !auth.userId) {
     return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: auth.status });
@@ -33,6 +37,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const { response: rlResp } = enforceRateLimit(req, "partner_write", undefined, { cors: false });
+  if (rlResp) return rlResp;
+
   const auth = await verifyUserRequest(req);
   if (!auth.authorized || !auth.userId) {
     return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: auth.status });

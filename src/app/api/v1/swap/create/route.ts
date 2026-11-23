@@ -25,6 +25,13 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json().catch(() => ({}));
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return corsJson(
+        { success: false, error: "INVALID_BODY", message: "Request body must be a JSON object." },
+        { status: 400, headers: rateLimit.headers }
+      );
+    }
+
     const {
       fromAsset,
       originAsset,
@@ -60,7 +67,27 @@ export async function POST(req: Request) {
     const resolvedFeeRecipient = rawFeeRecipient || partnerAddress || partnerFeeRecipient;
     const resolvedFeeBps = typeof totalFeeBps === "number" ? totalFeeBps : (feeBps ? Number(feeBps) : undefined);
 
-    if (!sourceAsset || !amount || !recipient) {
+    if (
+      typeof sourceAsset !== "string" ||
+      typeof recipient !== "string" ||
+      (targetAsset !== undefined && targetAsset !== null && typeof targetAsset !== "string") ||
+      (refundTo !== undefined && refundTo !== null && typeof refundTo !== "string") ||
+      (resolvedChain !== undefined && typeof resolvedChain !== "string") ||
+      (resolvedDestinationChain !== undefined && typeof resolvedDestinationChain !== "string") ||
+      (resolvedFeeRecipient !== undefined && resolvedFeeRecipient !== null && typeof resolvedFeeRecipient !== "string") ||
+      (typeof amount !== "string" && typeof amount !== "number")
+    ) {
+      return corsJson(
+        {
+          success: false,
+          error: "INVALID_INPUT_TYPE",
+          message: "All asset, chain, and address parameters must be strings.",
+        },
+        { status: 400, headers: rateLimit.headers }
+      );
+    }
+
+    if (!sourceAsset.trim() || !String(amount).trim() || !recipient.trim()) {
       return corsJson(
         {
           success: false,

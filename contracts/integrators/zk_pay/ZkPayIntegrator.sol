@@ -8,11 +8,13 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 
+// @notice LEGACY TESTNET CONTRACT — retained for historical reference; not used in production settlement flows.
 contract ZkPayIntegrator is IP2PIntegrator {
     using SafeERC20 for IERC20;
 
     error OnlyDiamond();
     error InvalidAddress();
+    error InvalidFee();
     error ExceedsTxLimit(uint256 amount, uint256 limit);
     error ExceedsDailyLimit(address user, uint256 count, uint256 limit);
 
@@ -43,7 +45,8 @@ contract ZkPayIntegrator is IP2PIntegrator {
         uint256 _dailyTxCountLimit,
         uint256 _platformFeeBps
     ) {
-        if (_diamond == address(0) || _usdc == address(0)) revert InvalidAddress();
+        if (_diamond == address(0) || _usdc == address(0) || _treasury == address(0)) revert InvalidAddress();
+        if (_platformFeeBps > 1000) revert InvalidFee();
         diamond = _diamond;
         usdc = IERC20(_usdc);
         treasury = _treasury;

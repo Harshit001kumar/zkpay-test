@@ -30,9 +30,7 @@ export function getInfuraApiKey(): string | undefined {
   return (
     cleanEnvString(process.env.INFURA_API_KEY) ||
     cleanEnvString(process.env.INFURA_PROJECT_ID) ||
-    cleanEnvString(process.env.INFURA_KEY) ||
-    cleanEnvString(process.env.NEXT_PUBLIC_INFURA_API_KEY) ||
-    cleanEnvString(process.env.NEXT_PUBLIC_INFURA_KEY)
+    cleanEnvString(process.env.INFURA_KEY)
   );
 }
 
@@ -41,8 +39,7 @@ export function getNowNodesApiKey(): string | undefined {
     cleanEnvString(process.env.NOWNODES_API_KEY) ||
     cleanEnvString(process.env.NOWNODES_KEY) ||
     cleanEnvString(process.env.NOW_NODES_KEY) ||
-    cleanEnvString(process.env.NOW_NODES_API_KEY) ||
-    cleanEnvString(process.env.NEXT_PUBLIC_NOWNODES_API_KEY)
+    cleanEnvString(process.env.NOW_NODES_API_KEY)
   );
 }
 
@@ -56,17 +53,12 @@ export function getAlchemyApiKey(): string | undefined {
     cleanEnvString(process.env["ALCHEMY-KEY"]) ||
     cleanEnvString(process.env["alchemy_key"]) ||
     cleanEnvString(process.env["alchamy-key"]) ||
-    cleanEnvString(process.env["ALCHAMY_KEY"]) ||
-    cleanEnvString(process.env.NEXT_PUBLIC_ALCHEMY_API_KEY) ||
-    cleanEnvString(process.env.NEXT_PUBLIC_ALCHEMY_KEY)
+    cleanEnvString(process.env["ALCHAMY_KEY"])
   );
 }
 
 export function getHeliusApiKey(): string | undefined {
-  return (
-    cleanEnvString(process.env.HELIUS_API_KEY) ||
-    cleanEnvString(process.env.NEXT_PUBLIC_HELIUS_API_KEY)
-  );
+  return cleanEnvString(process.env.HELIUS_API_KEY);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -82,12 +74,11 @@ export interface SolanaEndpoint {
 export function getSolanaRpcEndpoints(): SolanaEndpoint[] {
   const endpoints: SolanaEndpoint[] = [];
 
-  // 1. Custom Solana RPC from environment (server-only env vars prioritized)
+  // 1. Custom Solana RPC from environment (server-only)
   const custom =
     cleanEnvString(process.env.SOLANA_RPC_URL) ||
     cleanEnvString(process.env.SOL_RPC_URL) ||
-    cleanEnvString(process.env.SOLANA_RPC) ||
-    cleanEnvString(process.env.NEXT_PUBLIC_SOLANA_RPC_URL);
+    cleanEnvString(process.env.SOLANA_RPC);
   if (custom) {
     endpoints.push({ url: custom, name: "Custom Solana RPC" });
   }
@@ -266,12 +257,9 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
       const custom =
         cleanEnvString(process.env.POLYGON_RPC_URL) ||
         cleanEnvString(process.env.POL_RPC_URL) ||
-        cleanEnvString(process.env.MATIC_RPC_URL) ||
-        cleanEnvString(process.env.NEXT_PUBLIC_POLYGON_RPC_URL);
+        cleanEnvString(process.env.MATIC_RPC_URL);
       if (custom) customUrls.push(custom);
 
-      // Put high-availability public Polygon Bor RPCs ahead of generic multi-chain keys
-      // that may not have Polygon add-on enabled (avoiding 403/401 stalls).
       publicUrls.push(
         "https://polygon-bor-rpc.publicnode.com",
         "https://polygon.drpc.org",
@@ -303,8 +291,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
 
       const custom =
         cleanEnvString(process.env.ARBITRUM_RPC_URL) ||
-        cleanEnvString(process.env.ARB_RPC_URL) ||
-        cleanEnvString(process.env.NEXT_PUBLIC_ARBITRUM_RPC_URL);
+        cleanEnvString(process.env.ARB_RPC_URL);
       if (custom) customUrls.push(custom);
 
       if (infuraKey) {
@@ -337,8 +324,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
 
       const custom =
         cleanEnvString(process.env.BSC_RPC_URL) ||
-        cleanEnvString(process.env.BNB_RPC_URL) ||
-        cleanEnvString(process.env.NEXT_PUBLIC_BSC_RPC_URL);
+        cleanEnvString(process.env.BNB_RPC_URL);
       if (custom) customUrls.push(custom);
 
       if (infuraKey) {
@@ -369,9 +355,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
 
       const custom =
         cleanEnvString(process.env.ETH_RPC_URL) ||
-        cleanEnvString(process.env.ETHEREUM_RPC_URL) ||
-        cleanEnvString(process.env.NEXT_PUBLIC_ETH_RPC_URL) ||
-        cleanEnvString(process.env.NEXT_PUBLIC_ETHEREUM_RPC_URL);
+        cleanEnvString(process.env.ETHEREUM_RPC_URL);
       if (custom) customUrls.push(custom);
 
       if (infuraKey) {
@@ -402,10 +386,7 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
       targetChain = base;
       key = "base";
 
-      const custom =
-        cleanEnvString(process.env.BASE_RPC_URL) ||
-        cleanEnvString(process.env.NEXT_PUBLIC_BASE_RPC_URL) ||
-        cleanEnvString(process.env.NEXT_PUBLIC_RPC_URL);
+      const custom = cleanEnvString(process.env.BASE_RPC_URL);
       if (custom) customUrls.push(custom);
 
       if (infuraKey) {
@@ -443,10 +424,9 @@ export function getEvmRpcConfig(chainStr: string): EvmRpcConfig {
     transports.push(http(u, { timeout: 6500, retryCount: 1 }));
   }
 
-  // On Polygon, generic INFURA_API_KEY / ALCHEMY_API_KEY configured for Base often return HTTP 403 Forbidden
-  // unless the Polygon add-on is explicitly enabled on that key. Prioritize verified Bor public nodes first
-  // (after any explicit POLYGON_RPC_URL), followed by premium keys.
-  if (key === "polygon") {
+  // Prioritize authenticated server-only RPCs first when configured on all chains (including Polygon if POLYGON_USE_PUBLIC_FIRST !== "1")
+  const polygonPublicFirst = key === "polygon" && process.env.POLYGON_USE_PUBLIC_FIRST === "1";
+  if (polygonPublicFirst) {
     for (const u of publicUrls) {
       urls.push(u);
       endpoints.push({ url: u });
@@ -499,6 +479,27 @@ export function getResilientPublicClientForChain(chainStr: string) {
   return createPublicClient({
     chain,
     transport: fallback(transports, { rank: false, retryCount: 2 }),
+  });
+}
+
+/**
+ * Secondary independent Polygon RPC client for multi-RPC finality verification.
+ */
+export function getSecondaryPolygonPublicClient() {
+  const { chain, endpoints } = getEvmRpcConfig("polygon");
+  const secondary = endpoints.slice(1).map((ep) =>
+    http(ep.url, {
+      fetchOptions: ep.headers ? { headers: ep.headers } : undefined,
+      timeout: 6000,
+      retryCount: 1,
+    })
+  );
+  return createPublicClient({
+    chain,
+    transport: fallback(secondary.length > 0 ? secondary : [http("https://polygon.drpc.org")], {
+      rank: false,
+      retryCount: 1,
+    }),
   });
 }
 

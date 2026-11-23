@@ -1,5 +1,8 @@
+import crypto from "crypto";
 import { PrivyClient } from "@privy-io/node";
 import { fetchPrivyUser } from "./privyUsers";
+import { getMongoDb } from "./mongodb";
+import { getTreasuryAddressForChain, normalizeChain } from "@/lib/constants";
 
 let _privyClient: any = null;
 
@@ -158,4 +161,62 @@ export async function verifyAdminRequest(req: Request): Promise<AdminAuthResult>
       : "";
 
   return verifyAdminToken(token);
+}
+
+const EVM_CHAINS = new Set(["base", "eth", "arb", "polygon", "bsc"]);
+
+function normDestForChain(chain: string, addr: string): string {
+  const clean = addr.trim();
+  const c = normalizeChain(chain) || chain.toLowerCase();
+  if (EVM_CHAINS.has(c) || clean.toLowerCase().startsWith("ltc1") || clean.toLowerCase().startsWith("bc1")) {
+    return clean.toLowerCase();
+  }
+  return clean;
+}
+
+/**
+ * Checks whether a hot-wallet withdrawal destination is the configured Treasury
+ * or explicitly listed in server-only ADMIN_WITHDRAW_ALLOWLIST.
+ */
+export function isAllowedWithdrawDestination(chain: string, destination: string): boolean {
+  const target = normDestForChain(chain, destination);
+  if (!target) return false;
+  const treasury = normDestForChain(chain, getTreasuryAddressForChain(chain));
+  if (treasury && target === treasury) return true;
+
+  const allowlist = (process.env.ADMIN_WITHDRAW_ALLOWLIST || "")
+    .split(",")
+    .map((s) => s.trim().replace(/^["']|["']$/g, ""))
+    .filter(Boolean);
+  return allowlist.some((a) => normDestForChain(chain, a) === target);
+}
+
+/**
+ * Writes an immutable audit log record for every sensitive admin mutation.
+ */
+export async function recordAdminAudit(entry: {
+  adminUserId?: string;
+  adminWallet?: string;
+  clientIp?: string;
+  action: string;
+  target?: string;
+  amount?: string;
+  destination?: string;
+  txHash?: string;
+  status: "SUCCESS" | "DENIED" | "ERROR";
+  error?: string;
+}): Promise<void> {
+  const doc = {
+    id: `aud_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`,
+    createdAt: Date.now(),
+    ...entry,
+  };
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      await db.collection("admin_audit_logs").insertOne(doc);
+    }
+  } catch (err) {
+    console.error("[AdminAudit] Failed to persist audit record:", doc, err);
+  }
 }

@@ -187,8 +187,8 @@ async function fetchTokenPriceInternal(
     // Ignore and fallback
   }
 
-  // 5. Fallback: Existing expired cache if available (still a real historical market price)
-  if (cached && cached.priceUsd > 0) {
+  // 5. Fallback: Existing expired cache if <= 10m old (prevents unbounded stale prices)
+  if (cached && cached.priceUsd > 0 && Date.now() - cached.timestamp <= 10 * 60_000) {
     return cached.priceUsd;
   }
 
@@ -197,6 +197,7 @@ async function fetchTokenPriceInternal(
 
 /**
  * Calculates human token amount and converted USD value from atomic token units.
+ * Uses multi-oracle cross-verified pricing so single-feed spikes cannot inflate partner USD credits.
  */
 export async function calculateTokenUsdValue(
   atomicUnits: string | bigint,
@@ -207,7 +208,7 @@ export async function calculateTokenUsdValue(
     const atomic = BigInt(atomicUnits.toString());
     const rawTokens = Number(atomic) / Math.pow(10, decimals);
     const humanAmount = rawTokens.toFixed(Math.min(6, decimals)).replace(/\.?0+$/, "");
-    const pricePerToken = await getLiveTokenPriceUsd(symbol);
+    const pricePerToken = await getFreshTokenPriceUsd(symbol, 60_000);
     if (pricePerToken <= 0) {
       return { humanAmount, pricePerToken: 0, usdValue: 0 };
     }
@@ -233,8 +234,8 @@ const KRAKEN_PAIR_MAP: Record<string, { pair: string; keyHint: string }> = {
 };
 
 /**
- * Fetches independent spot prices from Coinbase, Kraken, and Binance US in parallel for multi-oracle cross-verification.
- * Each valid price is tagged by provider name so two exchanges agreeing to the exact cent are both counted.
+ * Fetches independent spot prices from Coinbase, Kraken, CoinGecko, and Binance US in parallel.
+ * Each feed is uniquely named so no provider is ever counted twice.
  */
 async function fetchIndependentSpotPricesUsd(
   normSym: string
@@ -251,8 +252,16 @@ async function fetchIndependentSpotPricesUsd(
       : normSym;
 
   const krakenInfo = KRAKEN_PAIR_MAP[cbSymbol];
+  const cgId = COINGECKO_ID_MAP[normSym] || COINGECKO_ID_MAP[cbSymbol];
+  const cgHeaders: Record<string, string> = {
+    Accept: "application/json",
+    "User-Agent": "ZkPay/1.0",
+  };
+  if (process.env.COINGECKO_API_KEY) {
+    cgHeaders["x-cg-demo-api-key"] = process.env.COINGECKO_API_KEY;
+  }
 
-  const [cbPrice, krakenPrice, binancePrice] = await Promise.all([
+  const [cbPrice, krakenPrice, binancePrice, cgPrice] = await Promise.all([
     fetch(`https://api.coinbase.com/v2/prices/${cbSymbol}-USD/spot`, {
       headers: { Accept: "application/json", "User-Agent": "ZkPay/1.0" },
       signal: AbortSignal.timeout(3000),
@@ -281,6 +290,14 @@ async function fetchIndependentSpotPricesUsd(
         })
           .then(async (r) => (r.ok ? parseFloat((await r.json())?.price) : 0))
           .catch(() => 0),
+    cgId
+      ? fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cgId}&vs_currencies=usd`, {
+          headers: cgHeaders,
+          signal: AbortSignal.timeout(3000),
+        })
+          .then(async (r) => (r.ok ? Number((await r.json())?.[cgId]?.usd || 0) : 0))
+          .catch(() => 0)
+      : Promise.resolve(0),
   ]);
 
   const out: Array<{ provider: string; price: number }> = [];
@@ -289,14 +306,15 @@ async function fetchIndependentSpotPricesUsd(
     out.push({ provider: "kraken", price: krakenPrice });
   if (Number.isFinite(binancePrice) && binancePrice > 0)
     out.push({ provider: "binance", price: binancePrice });
+  if (Number.isFinite(cgPrice) && cgPrice > 0)
+    out.push({ provider: "coingecko", price: cgPrice });
   return out;
 }
 
 /**
  * Returns a fresh, multi-oracle cross-verified USD price for liquidity pool quoting & payout checks.
- * Requires at least 2 independent price feeds agreeing within 2.5% spread.
+ * Requires at least 2 distinct independent price feeds agreeing within 2.5% spread.
  * Stablecoins are verified against live USD markets within [0.985, 1.015] so depegs trigger Solver fallback.
- * Returns 0 if stale, depegged, or if oracles diverge (safely falling back to external Solver).
  */
 export async function getFreshTokenPriceUsd(symbol: string, maxAgeMs = 60_000): Promise<number> {
   const normSym = (symbol || "").trim().toUpperCase();
@@ -306,47 +324,39 @@ export async function getFreshTokenPriceUsd(symbol: string, maxAgeMs = 60_000): 
     return verifiedCached.priceUsd;
   }
 
-  if (STABLECOIN_SYMBOLS.has(normSym) || normSym.includes("USD")) {
-    const spots = await fetchIndependentSpotPricesUsd(normSym);
-    if (spots.length === 0) {
-      console.warn(`[PriceService] Live stablecoin price unavailable for ${normSym}; falling back.`);
-      return 0;
-    }
-    const prices = spots.map((s) => s.price);
-    const minP = Math.min(...prices);
-    const maxP = Math.max(...prices);
-    if (minP < 0.985 || maxP > 1.015 || (minP > 0 && (maxP - minP) / minP > 0.025)) {
-      console.warn(
-        `[PriceService] Stablecoin depeg or oracle divergence for ${normSym}: min=$${minP}, max=$${maxP}; falling back.`
-      );
-      return 0;
-    }
-    const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
-    VERIFIED_POOL_PRICE_CACHE.set(normSym, { priceUsd: avg, timestamp: Date.now() });
-    return avg;
-  }
-
-  const [independentSpots, primary] = await Promise.all([
-    fetchIndependentSpotPricesUsd(normSym),
-    fetchTokenPriceInternal(normSym, undefined),
-  ]);
-
+  const independentSpots = await fetchIndependentSpotPricesUsd(normSym);
   const byProvider = new Map<string, number>();
   for (const item of independentSpots) {
     byProvider.set(item.provider, item.price);
   }
 
-  const afterPrimary = PRICE_CACHE.get(normSym);
-  const primaryFresh =
-    primary > 0 && afterPrimary && Date.now() - afterPrimary.timestamp <= maxAgeMs ? primary : 0;
-  if (primaryFresh > 0 && byProvider.size < 2) {
-    byProvider.set("primary", primaryFresh);
+  // Fallback distinct source (1Click tokens feed) only if < 2 direct exchange feeds answered
+  if (byProvider.size < 2) {
+    try {
+      const { buildOneClickHeaders } = await import("./rpcConfig");
+      const res = await fetch("https://1click.chaindefuser.com/v0/tokens", {
+        headers: buildOneClickHeaders(),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (res.ok) {
+        const raw = await res.json();
+        const list: any[] = Array.isArray(raw) ? raw : raw?.tokens || [];
+        for (const t of list) {
+          const sym = (t?.symbol || "").trim().toUpperCase();
+          const p = typeof t?.price === "number" ? t.price : parseFloat(t?.price);
+          if (sym === normSym && Number.isFinite(p) && p > 0) {
+            byProvider.set("1click", p);
+            break;
+          }
+        }
+      }
+    } catch {}
   }
 
   const allValid = Array.from(byProvider.values());
   if (allValid.length < 2) {
     console.warn(
-      `[PriceService] Liquidity pool oracle requires >=2 independent feeds for ${normSym} (got ${allValid.length}); falling back.`
+      `[PriceService] Multi-oracle check requires >=2 distinct feeds for ${normSym} (got ${allValid.length}); falling back.`
     );
     return 0;
   }
@@ -354,7 +364,15 @@ export async function getFreshTokenPriceUsd(symbol: string, maxAgeMs = 60_000): 
   const minP = Math.min(...allValid);
   const maxP = Math.max(...allValid);
   const spread = minP > 0 ? (maxP - minP) / minP : 1;
-  if (spread > 0.025) {
+
+  if (STABLECOIN_SYMBOLS.has(normSym) || normSym.includes("USD")) {
+    if (minP < 0.985 || maxP > 1.015 || spread > 0.025) {
+      console.warn(
+        `[PriceService] Stablecoin depeg or oracle divergence for ${normSym}: min=$${minP}, max=$${maxP}; falling back.`
+      );
+      return 0;
+    }
+  } else if (spread > 0.025) {
     console.warn(
       `[PriceService] Liquidity pool oracle divergence for ${normSym}: min=$${minP}, max=$${maxP} (spread ${(spread * 100).toFixed(2)}% > 2.5%).`
     );

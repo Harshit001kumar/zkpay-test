@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { Buffer } from "buffer";
 import { getNowNodesApiKey } from "./rpcConfig";
+import { getMongoDb } from "./mongodb";
 
 export interface LtcUtxo {
   txid: string;
@@ -36,19 +37,47 @@ export const LITECOIN_NETWORK = {
 // Any transaction output below this threshold is rejected by Litecoin Core nodes with 'dust (code 64)'.
 export const LTC_DUST_THRESHOLD_SATOSHIS = 5460n;
 
+let cachedLtcTip: { height: number; fetchedAt: number } | null = null;
+
+async function getLtcTipHeight(): Promise<number | null> {
+  if (cachedLtcTip && Date.now() - cachedLtcTip.fetchedAt < 30_000) {
+    return cachedLtcTip.height;
+  }
+  try {
+    const res = await fetch("https://litecoinspace.org/api/blocks/tip/height", {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (res.ok) {
+      const h = parseInt((await res.text()).trim(), 10);
+      if (Number.isFinite(h) && h > 0) {
+        cachedLtcTip = { height: h, fetchedAt: Date.now() };
+        return h;
+      }
+    }
+  } catch {}
+  return cachedLtcTip?.height ?? null;
+}
+
 /**
- * Queries LTC address balance and UTXOs using NowNodes with failovers to LitecoinSpace and BlockCypher.
+ * Queries LTC address balance and UTXOs using LitecoinSpace, NOWNodes, and BlockCypher.
+ * Throws if every provider fails so callers never treat an indexer outage as a zero balance.
  */
 export async function getLtcBalanceAndUtxos(address: string): Promise<LtcBalanceResult> {
   const cleanAddr = address.trim();
   const nowNodesKey = getNowNodesApiKey();
+  let anyProviderSucceeded = false;
 
   // 1. Try LitecoinSpace first (real-time mempool.space indexer for LTC, detects unconfirmed txs instantly)
   try {
-    const utxoRes = await fetch(`https://litecoinspace.org/api/address/${cleanAddr}/utxo`, {
-      method: "GET",
-    });
+    const [utxoRes, tipHeight] = await Promise.all([
+      fetch(`https://litecoinspace.org/api/address/${cleanAddr}/utxo`, {
+        method: "GET",
+        signal: AbortSignal.timeout(5000),
+      }),
+      getLtcTipHeight(),
+    ]);
     if (utxoRes.ok) {
+      anyProviderSucceeded = true;
       const rawUtxos = await utxoRes.json();
       let total = 0n;
       let confirmedTotal = 0n;
@@ -59,13 +88,19 @@ export async function getLtcBalanceAndUtxos(address: string): Promise<LtcBalance
         for (const u of rawUtxos) {
           const val = BigInt(u.value || 0);
           const isConfirmed = Boolean(u?.status?.confirmed);
+          const blockHeight = Number(u?.status?.block_height || 0);
+          const confs = isConfirmed
+            ? tipHeight && blockHeight > 0 && tipHeight >= blockHeight
+              ? tipHeight - blockHeight + 1
+              : 1
+            : 0;
           total += val;
           const item: LtcUtxo = {
             txid: u.txid,
             vout: Number(u.vout),
             value: val,
             confirmed: isConfirmed,
-            confirmations: isConfirmed ? 1 : 0,
+            confirmations: confs,
           };
           utxos.push(item);
           if (isConfirmed) {
@@ -96,18 +131,21 @@ export async function getLtcBalanceAndUtxos(address: string): Promise<LtcBalance
       const res = await fetch(`https://ltc.nownodes.io/api/v2/address/${cleanAddr}?details=basic`, {
         method: "GET",
         headers: { "api-key": nowNodesKey },
+        signal: AbortSignal.timeout(5000),
       });
       if (res.ok) {
+        anyProviderSucceeded = true;
         const data = await res.json();
         const confirmedBal = BigInt(data.balance || "0");
         const unconfirmedBal = BigInt(data.unconfirmedBalance || "0");
         const balanceSatoshis = confirmedBal + (unconfirmedBal > 0n ? unconfirmedBal : 0n);
-        
+
         // If balance > 0, fetch UTXOs from NOWNodes
         if (balanceSatoshis > 0n) {
           const utxoRes = await fetch(`https://ltc.nownodes.io/api/v2/utxo/${cleanAddr}`, {
             method: "GET",
             headers: { "api-key": nowNodesKey },
+            signal: AbortSignal.timeout(5000),
           });
           if (utxoRes.ok) {
             const rawUtxos = await utxoRes.json();
@@ -155,8 +193,10 @@ export async function getLtcBalanceAndUtxos(address: string): Promise<LtcBalance
   try {
     const bcRes = await fetch(`https://api.blockcypher.com/v1/ltc/main/addrs/${cleanAddr}?unspentOnly=true`, {
       method: "GET",
+      signal: AbortSignal.timeout(5000),
     });
     if (bcRes.ok) {
+      anyProviderSucceeded = true;
       const data = await bcRes.json();
       const balanceSatoshis = BigInt(data.final_balance || 0);
       const confirmedRefs = Array.isArray(data.txrefs) ? data.txrefs : [];
@@ -206,6 +246,10 @@ export async function getLtcBalanceAndUtxos(address: string): Promise<LtcBalance
     }
   } catch (e) {
     console.warn("[LTC] BlockCypher query warning:", e);
+  }
+
+  if (!anyProviderSucceeded) {
+    throw new Error(`All LTC indexers unavailable while querying ${cleanAddr}.`);
   }
 
   return {
@@ -306,8 +350,8 @@ export async function sweepLtcDeposit(params: {
     throw new Error(`No ${confirmedOnly ? "confirmed " : ""}UTXOs found on LTC proxy address ${proxyAddress}.`);
   }
 
-  // Standard LTC miner fee (~2000-5000 satoshis is plenty for LTC's ~1 sat/vB)
-  const MINER_FEE_SATOSHIS = 3000n;
+  // Dynamic LTC miner fee scales with input UTXO count (~148 vB/input + ~100 vB outputs)
+  const MINER_FEE_SATOSHIS = BigInt(utxos.length) * 350n + 2650n;
 
   let effectiveZkpayFee = zkpayFeeSatoshis;
   let effectivePartnerFee = partnerFeeSatoshis;
@@ -577,7 +621,25 @@ export async function sendLtcFromLiquidityWallet(params: {
 
   const privKeyHex = parseLtcPrivateKeyHex(privKeyInput);
   const { balanceSatoshis, utxos, confirmedUtxos } = await getLtcBalanceAndUtxos(fromAddress);
-  if (utxos.length === 0 || balanceSatoshis < amountSatoshis) {
+
+  // Exclude recently spent UTXOs that indexers may not have evicted yet
+  const spentSet = new Set<string>();
+  const db = await getMongoDb();
+  if (db) {
+    const activeSpent = await db
+      .collection("liquidity_spent_utxos")
+      .find({ expiresAt: { $gt: new Date() } })
+      .toArray()
+      .catch(() => []);
+    for (const s of activeSpent) {
+      if (s?.outpoint) spentSet.add(String(s.outpoint));
+    }
+  }
+
+  const unspentUtxos = utxos.filter((u) => !spentSet.has(`${u.txid}:${u.vout}`));
+  const unspentConfirmed = confirmedUtxos.filter((u) => !spentSet.has(`${u.txid}:${u.vout}`));
+
+  if (unspentUtxos.length === 0 || balanceSatoshis < amountSatoshis) {
     throw new Error(
       `Insufficient LTC balance in liquidity wallet (${balanceSatoshis} sats < ${amountSatoshis} sats).`
     );
@@ -585,8 +647,8 @@ export async function sendLtcFromLiquidityWallet(params: {
 
   // Prefer confirmed UTXOs first, then unconfirmed change UTXOs from our own hot wallet if needed
   const orderedPool = [
-    ...confirmedUtxos.slice().sort((a, b) => (b.value > a.value ? 1 : -1)),
-    ...utxos.filter((u) => !u.confirmed).sort((a, b) => (b.value > a.value ? 1 : -1)),
+    ...unspentConfirmed.slice().sort((a, b) => (b.value > a.value ? 1 : -1)),
+    ...unspentUtxos.filter((u) => !u.confirmed).sort((a, b) => (b.value > a.value ? 1 : -1)),
   ];
 
   const selected: LtcUtxo[] = [];
@@ -698,6 +760,21 @@ export async function sendLtcFromLiquidityWallet(params: {
   psbt.finalizeAllInputs();
   const rawTxHex = psbt.extractTransaction().toHex();
   const txid = await broadcastLtcTransaction(rawTxHex);
+  if (db) {
+    const expiresAt = new Date(Date.now() + 10 * 60_000);
+    await Promise.all(
+      selected.map((u) =>
+        db
+          .collection("liquidity_spent_utxos")
+          .updateOne(
+            { outpoint: `${u.txid}:${u.vout}` },
+            { $set: { outpoint: `${u.txid}:${u.vout}`, txid, expiresAt } },
+            { upsert: true }
+          )
+          .catch(() => {})
+      )
+    );
+  }
   console.log(
     `[LTC Liquidity] ✓ Sent ${amountSatoshis} sats to ${toAddress} (change: ${changeSatoshis} sats), txid: ${txid}`
   );

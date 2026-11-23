@@ -8,9 +8,20 @@
  * - Periodically cleans up expired timestamp windows to prevent memory leaks
  */
 
+import { NextResponse } from "next/server";
 import { corsJson } from "./cors";
 
-export type RateLimitAction = "tokens" | "quote" | "create" | "status" | "default";
+export type RateLimitAction =
+  | "tokens"
+  | "quote"
+  | "create"
+  | "status"
+  | "auth"
+  | "partner_read"
+  | "partner_write"
+  | "admin_write"
+  | "api_keys"
+  | "default";
 
 interface RateLimitTier {
   limit: number;      // max requests per window
@@ -34,6 +45,26 @@ const LIMITS: Record<RateLimitAction, { ip: RateLimitTier; key: RateLimitTier }>
   status: {
     ip: { limit: 60, windowMs: 60 * 1000 },       // 60 req/min for IP (1/sec polling)
     key: { limit: 240, windowMs: 60 * 1000 },     // 240 req/min for API Key
+  },
+  auth: {
+    ip: { limit: 15, windowMs: 60 * 1000 },
+    key: { limit: 30, windowMs: 60 * 1000 },
+  },
+  partner_read: {
+    ip: { limit: 30, windowMs: 60 * 1000 },
+    key: { limit: 60, windowMs: 60 * 1000 },
+  },
+  partner_write: {
+    ip: { limit: 5, windowMs: 60 * 1000 },
+    key: { limit: 10, windowMs: 60 * 1000 },
+  },
+  admin_write: {
+    ip: { limit: 10, windowMs: 60 * 1000 },
+    key: { limit: 10, windowMs: 60 * 1000 },
+  },
+  api_keys: {
+    ip: { limit: 10, windowMs: 60 * 1000 },
+    key: { limit: 15, windowMs: 60 * 1000 },
   },
   default: {
     ip: { limit: 60, windowMs: 60 * 1000 },
@@ -82,13 +113,18 @@ function purgeExpiredWindows(now: number) {
  * Extracts a client identifier from IP headers or fallback.
  */
 export function getClientIp(req: Request): string {
-  // Prefer platform-set headers before generic X-Forwarded-For
-  const vercelIp = req.headers.get("x-vercel-forwarded-for");
-  if (vercelIp && vercelIp.trim()) return vercelIp.split(",")[0].trim().slice(0, 64);
+  // Only trust Vercel/Cloudflare headers when actually running behind those platforms (not spoofable on Render)
+  if (process.env.VERCEL === "1") {
+    const vercelIp = req.headers.get("x-vercel-forwarded-for");
+    if (vercelIp && vercelIp.trim()) return vercelIp.split(",")[0].trim().slice(0, 64);
+  }
 
-  const cfIp = req.headers.get("cf-connecting-ip");
-  if (cfIp && cfIp.trim()) return cfIp.trim().slice(0, 64);
+  if (process.env.TRUST_CLOUDFLARE === "1") {
+    const cfIp = req.headers.get("cf-connecting-ip");
+    if (cfIp && cfIp.trim()) return cfIp.trim().slice(0, 64);
+  }
 
+  // Render's reverse proxy appends the real client IP on the right of x-forwarded-for
   const forwarded = req.headers.get("x-forwarded-for");
   if (forwarded) {
     const ips = forwarded.split(",").map((ip) => ip.trim()).filter(Boolean);
@@ -190,7 +226,8 @@ export function checkRateLimit(
 export function enforceRateLimit(
   req: Request,
   action: RateLimitAction,
-  apiKey?: string | null
+  apiKey?: string | null,
+  options?: { cors?: boolean }
 ): { response: Response | null; rateLimit: RateLimitResult } {
   const result = checkRateLimit(req, action, apiKey);
 
@@ -202,10 +239,10 @@ export function enforceRateLimit(
       retryAfterSeconds: result.retryAfterSeconds,
     };
 
-    const response = corsJson(errorBody, {
-      status: 429,
-      headers: result.headers,
-    });
+    const response =
+      options?.cors === false
+        ? NextResponse.json(errorBody, { status: 429, headers: result.headers })
+        : corsJson(errorBody, { status: 429, headers: result.headers });
 
     return { response, rateLimit: result };
   }

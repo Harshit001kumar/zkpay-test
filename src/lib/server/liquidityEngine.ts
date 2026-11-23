@@ -4,6 +4,7 @@ import {
   type PoolAssetDefinition,
   resolvePoolAsset,
   getLiquidityPoolConfig,
+  getRecentLiquidityOutflowUsd,
   recordLiquidityTransfer,
 } from "./liquidityConfig";
 import {
@@ -23,6 +24,7 @@ import { getFreshTokenPriceUsd, getLiveTokenPriceUsd } from "./priceService";
 import { getLtcBalanceAndUtxos, sweepLtcDeposit, LTC_DUST_THRESHOLD_SATOSHIS } from "./ltcClient";
 import {
   getResilientPublicClientForChain,
+  getSecondaryPolygonPublicClient,
   fetchResilientSolanaRpc,
   getEvmRpcConfig,
 } from "./rpcConfig";
@@ -39,6 +41,39 @@ import { creditPartnerFeeOnSettlement } from "./partnerBalanceStore";
 const ERC20_BALANCE_ABI = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
 ]);
+
+const POLYGON_FINALITY_CONFIRMATIONS = 32n;
+
+/**
+ * Pure BigInt fixed-point output calculation (10^8 USD scaling) to avoid JS float overflow on 18-dec tokens.
+ */
+export function computeOutputAtomicBigInt(
+  netInAtomic: bigint,
+  originDecimals: number,
+  originPriceUsd: number,
+  destDecimals: number,
+  destPriceUsd: number,
+  spreadBps: number
+): bigint {
+  if (
+    netInAtomic <= 0n ||
+    !Number.isFinite(originPriceUsd) ||
+    !Number.isFinite(destPriceUsd) ||
+    originPriceUsd <= 0 ||
+    destPriceUsd <= 0
+  ) {
+    return 0n;
+  }
+  const origPriceE8 = BigInt(Math.round(originPriceUsd * 1e8));
+  const destPriceE8 = BigInt(Math.round(destPriceUsd * 1e8));
+  if (origPriceE8 <= 0n || destPriceE8 <= 0n) return 0n;
+
+  const clampedSpread = BigInt(Math.min(500, Math.max(0, Math.round(spreadBps))));
+  const numerator =
+    netInAtomic * origPriceE8 * (10000n - clampedSpread) * 10n ** BigInt(destDecimals);
+  const denominator = destPriceE8 * 10000n * 10n ** BigInt(originDecimals);
+  return numerator / denominator;
+}
 
 function formatCleanHuman(atomic: bigint, decimals: number, maxFrac = 6): string {
   const raw = formatUnits(atomic, decimals);
@@ -126,17 +161,31 @@ export async function quoteInternalLiquiditySwap(params: {
     return { eligible: false, reason: "EXCEEDS_MAX_SWAP_USD" };
   }
 
-  const spreadBps = Math.min(500, Math.max(0, Number(config.spreadBufferBps) || 0));
-  const netUsdAfterSpread = (netInTokens * originPriceUsd * (10000 - spreadBps)) / 10000;
-  const rawOutTokens = netUsdAfterSpread / destPriceUsd;
-
-  if (!Number.isFinite(rawOutTokens) || rawOutTokens <= 0) {
-    return { eligible: false, reason: "ZERO_OUTPUT" };
+  try {
+    const outflow = await getRecentLiquidityOutflowUsd();
+    if (
+      outflow.hourlyUsd + orderUsd > config.maxHourlyOutflowUsd ||
+      outflow.dailyUsd + orderUsd > config.maxDailyOutflowUsd
+    ) {
+      return { eligible: false, reason: "VELOCITY_LIMIT_REACHED" };
+    }
+  } catch {
+    return { eligible: false, reason: "VELOCITY_CHECK_UNAVAILABLE" };
   }
 
-  const amountOutAtomic = BigInt(
-    Math.floor(rawOutTokens * Math.pow(10, destDef.decimals))
+  const spreadBps = Math.min(500, Math.max(0, Number(config.spreadBufferBps) || 0));
+  const amountOutAtomic = computeOutputAtomicBigInt(
+    netInAtomic,
+    originDef.decimals,
+    originPriceUsd,
+    destDef.decimals,
+    destPriceUsd,
+    spreadBps
   );
+
+  if (amountOutAtomic <= 0n) {
+    return { eligible: false, reason: "ZERO_OUTPUT" };
+  }
 
   // Enforce network dust floors on destination output
   if (destDef.assetKey === "ltc:LTC" && amountOutAtomic < LTC_DUST_THRESHOLD_SATOSHIS) {
@@ -232,7 +281,7 @@ export async function sweepInternalProxyToLiquidityWallet(
     } else if (originDef.assetKey === "sol:SOL") {
       const balRes = await fetchResilientSolanaRpc("getBalance", [
         order.proxyDepositAddress,
-        { commitment: "confirmed" },
+        { commitment: "finalized" },
       ]);
       const lamports = BigInt(balRes?.value || 0);
       if (lamports <= 5000n) {
@@ -248,7 +297,16 @@ export async function sweepInternalProxyToLiquidityWallet(
         fromPrivKeyHex: rawKey,
         outputs: [{ toBase58: poolAddress, lamports: sweptAtomic }],
       });
-      await waitForSolanaSignature(sweepTxHash, 20_000).catch(() => "timeout");
+      const sigState = await waitForSolanaSignature(sweepTxHash, 25_000);
+      if (sigState === "timeout") {
+        const postBal = await fetchResilientSolanaRpc("getBalance", [
+          order.proxyDepositAddress,
+          { commitment: "confirmed" },
+        ]).catch(() => null);
+        if (!postBal || BigInt(postBal?.value || 0) > 5000n) {
+          return { swept: false, error: "SOL sweep confirmation timed out; will retry." };
+        }
+      }
     } else {
       // polygon:USDT
       const publicClient = getResilientPublicClientForChain("polygon");
@@ -290,9 +348,25 @@ export async function sweepInternalProxyToLiquidityWallet(
         throw new Error(res.error || "Failed sweeping Polygon USDT to liquidity wallet.");
       }
       sweepTxHash = res.txHash;
-      await publicClient
+      const receipt = await publicClient
         .waitForTransactionReceipt({ hash: res.txHash, timeout: 40_000 })
         .catch(() => null);
+      if (receipt && receipt.status !== "success") {
+        throw new Error(`Polygon USDT sweep tx ${res.txHash} reverted on-chain.`);
+      }
+      if (!receipt) {
+        const postBal = (await publicClient
+          .readContract({
+            address: originDef.tokenAddress!,
+            abi: ERC20_BALANCE_ABI,
+            functionName: "balanceOf",
+            args: [proxyAddress],
+          })
+          .catch(() => tokenBal)) as bigint;
+        if (postBal > 0n) {
+          return { swept: false, error: `Polygon USDT sweep ${res.txHash} awaiting confirmation.` };
+        }
+      }
     }
 
     await updateProxySwapOrder(order.swapId, {
@@ -397,12 +471,13 @@ export async function processInternalLiquidityOrder(
           .catch(() => {});
       }
       const sweepRes = await sweepInternalProxyToLiquidityWallet(reconciledOrder);
+      const refreshed = (await getProxyOrderBySwapId(order.swapId)) || reconciledOrder;
       if (sweepRes.swept) {
-        await creditPartnerFeeOnSettlement(reconciledOrder).catch((e) =>
+        await creditPartnerFeeOnSettlement(refreshed).catch((e) =>
           console.warn("[LiquidityEngine] Partner fee settlement credit warning:", e)
         );
       }
-      return (await getProxyOrderBySwapId(order.swapId)) || reconciledOrder;
+      return refreshed;
     }
     // receiptState === "reverted": payout confirmed reverted on-chain -> safe to 100% auto-refund
     const refundRes = await recoverProxyDeposit(order.proxyDepositAddress, {
@@ -441,10 +516,18 @@ export async function processInternalLiquidityOrder(
   try {
     if (originDef.assetKey === "ltc:LTC") {
       const ltcBal = await getLtcBalanceAndUtxos(order.proxyDepositAddress);
-      if (ltcBal.confirmedBalanceSatoshis < minThreshold) {
-        // Strict 1-confirmation policy: if 0-conf UTXO is visible, mark DETECTED while awaiting 1st block
+      const ltcPrice = await getFreshTokenPriceUsd("LTC", 60_000).catch(() => 0);
+      const estUsd =
+        ltcPrice > 0 ? Number(formatUnits(expectedAtomic, 8)) * ltcPrice : 0;
+      // Require 2 confirmations for >= $100 LTC deposits (or when price oracle unavailable), else 1 conf
+      const requiredConfs = estUsd >= 100 || ltcPrice <= 0 ? 2 : 1;
+      const deeplyConfirmed = ltcBal.confirmedUtxos
+        .filter((u) => (u.confirmations ?? (u.confirmed ? 1 : 0)) >= requiredConfs)
+        .reduce((acc, u) => acc + u.value, 0n);
+
+      if (deeplyConfirmed < minThreshold) {
         if (
-          ltcBal.unconfirmedBalanceSatoshis >= minThreshold &&
+          ltcBal.balanceSatoshis >= minThreshold &&
           order.status === "PENDING_DEPOSIT"
         ) {
           const detected = await updateProxySwapOrder(order.swapId, {
@@ -454,31 +537,89 @@ export async function processInternalLiquidityOrder(
         }
         return order;
       }
-      confirmedDepositAtomic = ltcBal.confirmedBalanceSatoshis;
+      confirmedDepositAtomic = deeplyConfirmed;
     } else if (originDef.assetKey === "sol:SOL") {
-      const balRes = await fetchResilientSolanaRpc("getBalance", [
-        order.proxyDepositAddress,
-        { commitment: "confirmed" },
+      const [finalizedRes, confirmedRes] = await Promise.all([
+        fetchResilientSolanaRpc("getBalance", [
+          order.proxyDepositAddress,
+          { commitment: "finalized" },
+        ]),
+        order.status === "PENDING_DEPOSIT"
+          ? fetchResilientSolanaRpc("getBalance", [
+              order.proxyDepositAddress,
+              { commitment: "confirmed" },
+            ]).catch(() => null)
+          : Promise.resolve(null),
       ]);
-      const lamports = BigInt(balRes?.value || 0);
-      if (lamports < minThreshold || lamports <= 5000n) {
+      const finalizedLamports = BigInt(finalizedRes?.value || 0);
+      if (finalizedLamports < minThreshold || finalizedLamports <= 5000n) {
+        const confLamports = BigInt(confirmedRes?.value || 0);
+        if (
+          confLamports >= minThreshold &&
+          confLamports > 5000n &&
+          order.status === "PENDING_DEPOSIT"
+        ) {
+          const detected = await updateProxySwapOrder(order.swapId, { status: "DETECTED" });
+          return detected || { ...order, status: "DETECTED" };
+        }
         return order;
       }
-      confirmedDepositAtomic = lamports;
+      confirmedDepositAtomic = finalizedLamports;
     } else {
-      // polygon:USDT
+      // polygon:USDT — require 32 block finality (~64s) to prevent Bor reorg drains
       const publicClient = getResilientPublicClientForChain("polygon");
       const proxyAddress = getAddress(order.proxyDepositAddress as `0x${string}`);
-      const tokenBal = (await publicClient.readContract({
-        address: originDef.tokenAddress!,
-        abi: ERC20_BALANCE_ABI,
-        functionName: "balanceOf",
-        args: [proxyAddress],
-      })) as bigint;
-      if (tokenBal < minThreshold || tokenBal <= 0n) {
+      const latestBlock = await publicClient.getBlockNumber();
+      const safeBlock =
+        latestBlock > POLYGON_FINALITY_CONFIRMATIONS
+          ? latestBlock - POLYGON_FINALITY_CONFIRMATIONS
+          : 0n;
+
+      const [latestBal, finalizedBal] = await Promise.all([
+        publicClient.readContract({
+          address: originDef.tokenAddress!,
+          abi: ERC20_BALANCE_ABI,
+          functionName: "balanceOf",
+          args: [proxyAddress],
+        }) as Promise<bigint>,
+        safeBlock > 0n
+          ? (publicClient.readContract({
+              address: originDef.tokenAddress!,
+              abi: ERC20_BALANCE_ABI,
+              functionName: "balanceOf",
+              args: [proxyAddress],
+              blockNumber: safeBlock,
+            }) as Promise<bigint>)
+          : Promise.resolve(0n),
+      ]);
+
+      if (finalizedBal < minThreshold || finalizedBal <= 0n) {
+        if (latestBal >= minThreshold && order.status === "PENDING_DEPOSIT") {
+          const detected = await updateProxySwapOrder(order.swapId, { status: "DETECTED" });
+          return detected || { ...order, status: "DETECTED" };
+        }
         return order;
       }
-      confirmedDepositAtomic = tokenBal;
+
+      // Cross-check orders >= $50 USDT on an independent secondary Polygon RPC at the same finalized block
+      if (finalizedBal >= 50_000_000n) {
+        const secondaryClient = getSecondaryPolygonPublicClient();
+        const secondaryBal = (await secondaryClient.readContract({
+          address: originDef.tokenAddress!,
+          abi: ERC20_BALANCE_ABI,
+          functionName: "balanceOf",
+          args: [proxyAddress],
+          blockNumber: safeBlock,
+        })) as bigint;
+        if (secondaryBal < minThreshold || secondaryBal < finalizedBal) {
+          console.warn(
+            `[LiquidityEngine] Polygon dual-RPC mismatch at block ${safeBlock} for ${order.swapId}: primary=${finalizedBal}, secondary=${secondaryBal}`
+          );
+          return order;
+        }
+      }
+
+      confirmedDepositAtomic = latestBal < finalizedBal ? latestBal : finalizedBal;
     }
   } catch (checkErr) {
     console.warn(`[LiquidityEngine] Deposit balance check warning for ${order.swapId}:`, checkErr);
@@ -557,15 +698,49 @@ export async function processInternalLiquidityOrder(
     return updated || claimed;
   }
 
-  const spreadBps = Math.max(0, Math.min(500, Number(poolCfg.spreadBufferBps ?? 35)));
-  const actualNetInNum = Number(formatUnits(actualNetIn, originDef.decimals));
-  const liveGrossOutUsd = actualNetInNum * liveOriginPrice;
-  const liveAfterSpreadUsd = liveGrossOutUsd * ((10000 - spreadBps) / 10000);
-  const liveOutHuman = liveAfterSpreadUsd / liveDestPrice;
-  const liveSpotOutAtomic =
-    liveOutHuman > 0
-      ? BigInt(Math.floor(liveOutHuman * Math.pow(10, destDef.decimals)))
-      : 0n;
+  const spreadBps = Math.max(0, Math.min(500, Number(poolCfg.spreadBufferBps ?? 25)));
+  const liveSpotOutAtomic = computeOutputAtomicBigInt(
+    actualNetIn,
+    originDef.decimals,
+    liveOriginPrice,
+    destDef.decimals,
+    liveDestPrice,
+    spreadBps
+  );
+
+  // SECURITY GUARD 2B: Enforce emergency kill switch & velocity circuit breakers immediately before payout
+  const depositUsd = Number(formatUnits(confirmedDepositAtomic, originDef.decimals)) * liveOriginPrice;
+  const outflow = await getRecentLiquidityOutflowUsd().catch(() => null);
+  const poolPausedOrBlocked =
+    !poolCfg.enabled ||
+    poolCfg.pausedAssets.includes(originDef.assetKey) ||
+    poolCfg.pausedAssets.includes(destDef.assetKey) ||
+    depositUsd > poolCfg.maxSwapUsd ||
+    !outflow ||
+    outflow.hourlyUsd + depositUsd > poolCfg.maxHourlyOutflowUsd ||
+    outflow.dailyUsd + depositUsd > poolCfg.maxDailyOutflowUsd;
+
+  if (poolPausedOrBlocked) {
+    const reason =
+      !poolCfg.enabled ||
+      poolCfg.pausedAssets.includes(originDef.assetKey) ||
+      poolCfg.pausedAssets.includes(destDef.assetKey)
+        ? "Internal liquidity pool paused by security control"
+        : "Liquidity pool velocity limit reached";
+    console.warn(`[LiquidityEngine] Blocking payout for ${claimed.swapId}: ${reason}. Auto-refunding.`);
+    const refundRes = await recoverProxyDeposit(claimed.proxyDepositAddress, {
+      action: "refund",
+      allowFromPayingOut: true,
+    });
+    const updated = await updateProxySwapOrder(claimed.swapId, {
+      status: refundRes.success ? "REFUNDED" : "REFUND_PENDING",
+      refundTxHash: refundRes.txHash,
+      error: refundRes.success
+        ? `${reason}; automatically refunded 100% to ${claimed.refundTo}.`
+        : `${reason}; auto-refund pending: ${refundRes.message}`,
+    });
+    return updated || claimed;
+  }
 
   // Never pay more than the quoted rate OR the live spot rate, and hard-cap at 105% of original quote
   const hardCapOutAtomic = (baseExpectedOut * 105n) / 100n;
@@ -596,7 +771,7 @@ export async function processInternalLiquidityOrder(
     return updated || claimed;
   }
 
-  // Dispatch destination payout from our Liquidity Hot Wallet (enforcing minimum reserve floor)
+  // Dispatch destination payout from our Liquidity Hot Wallet (persisting destinationTxHash immediately on broadcast)
   let payoutRes: { txHash: string; explorerUrl: string; fromAddress: string };
   try {
     payoutRes = await sendFromLiquidityWallet({
@@ -604,6 +779,13 @@ export async function processInternalLiquidityOrder(
       toAddress: claimed.recipient,
       amountAtomic: actualOutAtomic,
       enforceMinReserve: true,
+      onBroadcast: async (txHash) => {
+        await updateProxySwapOrder(claimed.swapId, {
+          status: "PAYING_OUT",
+          destinationTxHash: txHash,
+          destinationExplorerUrl: getExplorerTxUrl(destDef.chain, txHash),
+        });
+      },
     });
   } catch (payoutErr: any) {
     // SECURITY GUARD 3: If payout was already broadcast on-chain and only confirmation timed out,
@@ -712,11 +894,12 @@ export async function processInternalLiquidityOrder(
       .catch(() => {});
   }
   const sweepRes = await sweepInternalProxyToLiquidityWallet(settledOrder);
+  const refreshed = (await getProxyOrderBySwapId(claimed.swapId)) || settledOrder;
   if (sweepRes.swept) {
-    await creditPartnerFeeOnSettlement(settledOrder).catch((e) =>
+    await creditPartnerFeeOnSettlement(refreshed).catch((e) =>
       console.warn("[LiquidityEngine] Partner fee settlement credit warning:", e)
     );
   }
 
-  return (await getProxyOrderBySwapId(claimed.swapId)) || settledOrder;
+  return refreshed;
 }

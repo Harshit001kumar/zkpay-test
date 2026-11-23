@@ -5,10 +5,14 @@ import {
   revokeApiKeyForUser,
 } from "@/lib/server/apiKeysStore";
 import { verifyUserRequest } from "@/lib/server/userAuth";
+import { enforceRateLimit } from "@/lib/server/rateLimit";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  const { response: rlResp } = enforceRateLimit(req, "api_keys", undefined, { cors: false });
+  if (rlResp) return rlResp;
+
   const auth = await verifyUserRequest(req);
   if (!auth.authorized || !auth.userId) {
     return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: auth.status });
@@ -30,6 +34,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const { response: rlResp } = enforceRateLimit(req, "api_keys", undefined, { cors: false });
+  if (rlResp) return rlResp;
+
   const auth = await verifyUserRequest(req);
   if (!auth.authorized || !auth.userId) {
     return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: auth.status });
@@ -72,6 +79,9 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  const { response: rlResp } = enforceRateLimit(req, "api_keys", undefined, { cors: false });
+  if (rlResp) return rlResp;
+
   const auth = await verifyUserRequest(req);
   if (!auth.authorized || !auth.userId) {
     return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: auth.status });

@@ -37,3 +37,7 @@ next-env.d.ts
 cache/
 artifacts/
 typechain-types/
+
+# local data & secrets
+data/
+*.key

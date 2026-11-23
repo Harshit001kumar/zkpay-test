@@ -5,10 +5,14 @@ import {
   upsertSavedAddressForUser,
   deleteSavedAddressForUser,
 } from "@/lib/server/paylinkStore";
+import { enforceRateLimit } from "@/lib/server/rateLimit";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  const { response: rlResp } = enforceRateLimit(req, "default", undefined, { cors: false });
+  if (rlResp) return rlResp;
+
   const auth = await verifyUserRequest(req);
   if (!auth.authorized || !auth.userId) {
     return NextResponse.json(
@@ -29,6 +33,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const { response: rlResp } = enforceRateLimit(req, "create", undefined, { cors: false });
+  if (rlResp) return rlResp;
+
   const auth = await verifyUserRequest(req);
   if (!auth.authorized || !auth.userId) {
     return NextResponse.json(
@@ -60,6 +67,9 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  const { response: rlResp } = enforceRateLimit(req, "default", undefined, { cors: false });
+  if (rlResp) return rlResp;
+
   const auth = await verifyUserRequest(req);
   if (!auth.authorized || !auth.userId) {
     return NextResponse.json(

@@ -174,9 +174,28 @@ export async function initMongoIndexes(db: Db): Promise<void> {
     await apiKeys.createIndex({ keyHash: 1 }, { unique: true, sparse: true }).catch(() => {});
     await apiKeys.createIndex({ userId: 1 }).catch(() => {});
 
-    // partner_balances (partnerUserId unique)
+    // partner_balances (userId unique)
     const partnerBalances = db.collection("partner_balances");
-    await partnerBalances.createIndex({ partnerUserId: 1 }, { unique: true, sparse: true }).catch(() => {});
+    await partnerBalances.createIndex({ userId: 1 }, { unique: true, sparse: true }).catch(() => {});
+
+    // partner_fee_credits (id and swapId unique to prevent double-credit)
+    const partnerFeeCredits = db.collection("partner_fee_credits");
+    await partnerFeeCredits.createIndex({ id: 1 }, { unique: true, sparse: true }).catch(() => {});
+    await partnerFeeCredits.createIndex({ swapId: 1 }, { unique: true, sparse: true }).catch(() => {});
+
+    // partner_payout_requests
+    const partnerPayouts = db.collection("partner_payout_requests");
+    await partnerPayouts.createIndex({ id: 1 }, { unique: true, sparse: true }).catch(() => {});
+    await partnerPayouts.createIndex({ partnerUserId: 1, status: 1 }).catch(() => {});
+
+    // admin_audit_logs
+    const adminAudits = db.collection("admin_audit_logs");
+    await adminAudits.createIndex({ createdAt: -1 }).catch(() => {});
+
+    // liquidity_spent_utxos (prevents concurrent LTC hot-wallet UTXO double-spends; TTL cleanup)
+    const spentUtxos = db.collection("liquidity_spent_utxos");
+    await spentUtxos.createIndex({ outpoint: 1 }, { unique: true }).catch(() => {});
+    await spentUtxos.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }).catch(() => {});
 
     indexesInitialized = true;
   } catch (err: any) {

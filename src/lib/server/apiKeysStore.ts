@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import { getMongoDb } from "./mongodb";
+import { getMongoDb, isMongoConfigured } from "./mongodb";
 
 export interface ApiKeyRecord {
   id: string;
@@ -31,21 +31,44 @@ function makeId(): string {
   return `ak_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
 }
 
+let warnedSaltFallback = false;
+
 function getKeySalt(): string {
-  const salt =
-    process.env.ZKPAY_API_KEY_HASH_SALT ||
-    process.env.PAYIN_MASTER_SECRET ||
-    process.env.AUTH_SECRET ||
-    "";
-  if (!salt && process.env.NODE_ENV === "production") {
-    throw new Error("Missing ZKPAY_API_KEY_HASH_SALT (or PAYIN_MASTER_SECRET) in production.");
+  const dedicated = process.env.ZKPAY_API_KEY_HASH_SALT?.trim();
+  if (dedicated) return dedicated;
+
+  const fallback = (process.env.PAYIN_MASTER_SECRET || process.env.AUTH_SECRET || "").trim();
+  if (!fallback && process.env.NODE_ENV === "production") {
+    throw new Error("Missing ZKPAY_API_KEY_HASH_SALT in production.");
   }
-  return salt;
+  if (!warnedSaltFallback) {
+    warnedSaltFallback = true;
+    console.warn("[ApiKeysStore] ZKPAY_API_KEY_HASH_SALT unset; deriving domain-separated HMAC key via HKDF.");
+  }
+  return fallback;
+}
+
+function getHmacKeyBytes(): Buffer {
+  const dedicated = process.env.ZKPAY_API_KEY_HASH_SALT?.trim();
+  const base = dedicated || getKeySalt();
+  return Buffer.from(
+    crypto.hkdfSync(
+      "sha256",
+      Buffer.from(base, "utf8"),
+      Buffer.from("zkpay-api-key-salt-v2", "utf8"),
+      Buffer.from("api-key-hmac", "utf8"),
+      32
+    )
+  );
 }
 
 function hashEqualHex(a: string, b: string): boolean {
   if (!a || !b || a.length !== b.length) return false;
   return crypto.timingSafeEqual(Buffer.from(a, "utf8"), Buffer.from(b, "utf8"));
+}
+
+function hashApiKeyV2(key: string): string {
+  return crypto.createHmac("sha256", getHmacKeyBytes()).update(key).digest("hex");
 }
 
 function hashApiKey(key: string): string {
@@ -147,10 +170,20 @@ export async function issueApiKey(params: {
 }): Promise<{ record: ApiKeyRecord; plaintextKey: string }> {
   await hydrate();
 
-  const userKeys = await listApiKeysForUser(params.userId);
-  const activeKeys = userKeys.filter((k) => k.status === "ACTIVE");
-  if (activeKeys.length >= 5) {
-    throw new Error("Maximum limit of 5 active API keys reached per user.");
+  const db = await getMongoDb();
+  if (db) {
+    const activeCount = await db
+      .collection("api_keys")
+      .countDocuments({ userId: params.userId, status: "ACTIVE" });
+    if (activeCount >= 5) {
+      throw new Error("Maximum limit of 5 active API keys reached per user.");
+    }
+  } else {
+    const userKeys = await listApiKeysForUser(params.userId);
+    const activeKeys = userKeys.filter((k) => k.status === "ACTIVE");
+    if (activeKeys.length >= 5) {
+      throw new Error("Maximum limit of 5 active API keys reached per user.");
+    }
   }
 
   const plaintextKey = `zkpay_live_${crypto.randomBytes(24).toString("hex")}`;
@@ -165,7 +198,7 @@ export async function issueApiKey(params: {
     label: (params.label || "Default").trim().slice(0, 40) || "Default",
     keyPrefix,
     keyLast4,
-    keyHash: hashApiKey(plaintextKey),
+    keyHash: hashApiKeyV2(plaintextKey),
     status: "ACTIVE",
     createdAt,
   };
@@ -248,9 +281,21 @@ export async function getApiKeyById(keyId: string): Promise<ApiKeyRecord | null>
 }
 
 export async function findUserIdByWalletAddress(walletAddress: string): Promise<string | null> {
-  await hydrate();
   const clean = (walletAddress || "").trim().toLowerCase();
   if (!clean) return null;
+
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const doc = await db.collection("api_keys").findOne({ walletAddress: clean });
+      if (doc?.userId) return String(doc.userId);
+      return null;
+    }
+  } catch (err) {
+    console.warn("[ApiKeysStore] findUserIdByWalletAddress warning:", err);
+  }
+
+  await hydrate();
   for (const rec of apiKeys.values()) {
     if (rec.walletAddress && rec.walletAddress.toLowerCase() === clean && rec.userId) {
       return rec.userId;
@@ -275,15 +320,17 @@ export async function revokeApiKeyForUser(userId: string, keyId: string): Promis
 
 export async function findActiveApiKey(rawKey: string): Promise<ApiKeyRecord | null> {
   const clean = rawKey.trim();
-  const keyHash = hashApiKey(clean);
+  const keyHashV2 = hashApiKeyV2(clean);
+  const keyHashV1 = hashApiKey(clean);
   const legacyHash = hashApiKeyUnsalted(clean);
+  const strictDb = process.env.NODE_ENV === "production" || isMongoConfigured();
 
   // Query MongoDB first so key revocations propagate immediately across all instances.
   try {
     const db = await getMongoDb();
     if (db) {
       const doc = await db.collection("api_keys").findOne({
-        keyHash: { $in: [keyHash, legacyHash] },
+        keyHash: { $in: [keyHashV2, keyHashV1, legacyHash] },
         status: "ACTIVE",
       });
       if (doc && doc.id && doc.userId) {
@@ -304,21 +351,29 @@ export async function findActiveApiKey(rawKey: string): Promise<ApiKeyRecord | n
         return record;
       }
       for (const [id, rec] of apiKeys.entries()) {
-        if (hashEqualHex(rec.keyHash, keyHash) || hashEqualHex(rec.keyHash, legacyHash)) {
+        if (
+          hashEqualHex(rec.keyHash, keyHashV2) ||
+          hashEqualHex(rec.keyHash, keyHashV1) ||
+          hashEqualHex(rec.keyHash, legacyHash)
+        ) {
           apiKeys.delete(id);
         }
       }
       return null;
     }
+    if (strictDb) return null;
   } catch (err) {
     console.warn("[ApiKeysStore] Mongo findActiveApiKey warning:", err);
+    if (strictDb) return null;
   }
 
   await hydrate();
   for (const rec of apiKeys.values()) {
     if (
       rec.status === "ACTIVE" &&
-      (hashEqualHex(rec.keyHash, keyHash) || hashEqualHex(rec.keyHash, legacyHash))
+      (hashEqualHex(rec.keyHash, keyHashV2) ||
+        hashEqualHex(rec.keyHash, keyHashV1) ||
+        hashEqualHex(rec.keyHash, legacyHash))
     ) {
       return rec;
     }
@@ -328,10 +383,19 @@ export async function findActiveApiKey(rawKey: string): Promise<ApiKeyRecord | n
 }
 
 export async function touchApiKeyUsage(keyId: string): Promise<void> {
-  await hydrate();
+  const ts = now();
   const rec = apiKeys.get(keyId);
-  if (!rec) return;
-  rec.lastUsedAt = now();
-  apiKeys.set(rec.id, rec);
-  await persistRecord(rec);
+  if (rec && rec.status === "ACTIVE") {
+    rec.lastUsedAt = ts;
+  }
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      await db
+        .collection("api_keys")
+        .updateOne({ id: keyId, status: "ACTIVE" }, { $set: { lastUsedAt: ts } });
+    }
+  } catch (err) {
+    console.warn("[ApiKeysStore] touchApiKeyUsage warning:", err);
+  }
 }

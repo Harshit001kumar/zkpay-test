@@ -22,7 +22,7 @@ import {
   Code2,
   Smartphone,
 } from "lucide-react";
-import {
+import type {
   AdminSystemTransaction,
   AdminSystemMetrics,
   AdminTxChannel,

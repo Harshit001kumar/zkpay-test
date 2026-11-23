@@ -27,12 +27,22 @@ function timingSafeSecretMatch(provided: string, expected: string): boolean {
 export async function GET(req: Request) {
   let tickResult: { checked: number; processed: number } | undefined;
   let sweepSkipped = false;
+  let sweepAuthorized = false;
   try {
     ensureProxySweeperDaemonRunning();
     const { searchParams } = new URL(req.url);
     if (searchParams.get("sweep") === "1") {
       const cronSecret = process.env.CRON_SECRET?.trim();
-      if (cronSecret) {
+      if (!cronSecret) {
+        if (process.env.NODE_ENV === "production") {
+          return NextResponse.json(
+            { error: "Unauthorized sweep trigger" },
+            { status: 401, headers: { "Cache-Control": "no-store, max-age=0" } }
+          );
+        }
+        const { response: rateLimitResp } = enforceRateLimit(req, "create", undefined, { cors: false });
+        if (rateLimitResp) return rateLimitResp;
+      } else {
         const authHeader = req.headers.get("authorization") || "";
         const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
         const provided = bearer || req.headers.get("x-cron-secret")?.trim() || "";
@@ -42,10 +52,8 @@ export async function GET(req: Request) {
             { status: 401, headers: { "Cache-Control": "no-store, max-age=0" } }
           );
         }
-      } else {
-        const { response: rateLimitResp } = enforceRateLimit(req, "create");
-        if (rateLimitResp) return rateLimitResp;
       }
+      sweepAuthorized = true;
 
       const now = Date.now();
       if (now - lastHealthSweepAt >= HEALTH_SWEEP_MIN_INTERVAL_MS) {
@@ -63,10 +71,8 @@ export async function GET(req: Request) {
     {
       status: "ok",
       timestamp: Date.now(),
-      uptime: process.uptime(),
-      sweeper: process.env.VERCEL === "1" ? "cron" : "active",
-      ...(tickResult ? { tick: tickResult } : {}),
-      ...(sweepSkipped ? { sweepSkipped: true } : {}),
+      ...(sweepAuthorized && tickResult ? { tick: tickResult } : {}),
+      ...(sweepAuthorized && sweepSkipped ? { sweepSkipped: true } : {}),
     },
     { headers: { "Cache-Control": "no-store, max-age=0" } }
   );

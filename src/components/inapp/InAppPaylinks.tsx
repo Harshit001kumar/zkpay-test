@@ -9,6 +9,7 @@ import { SWAP_ALLOWED_TOKENS, TEMPORARILY_DISABLED_CHAINS } from "@/lib/constant
 import { CHAIN_METADATA, SupportedChainId, SwapTokenItem } from "@/lib/types";
 import { isValidAddressForOriginAsset } from "@/lib/refundAddress";
 import { CryptoIcon } from "@/components/ui/CryptoIcon";
+import { LocalQrCode } from "@/components/ui/LocalQrCode";
 import {
   Plus,
   Copy,
@@ -780,9 +781,6 @@ export function InAppPaylinks() {
           <div className="space-y-3">
             {paylinks.map((item) => {
               const linkUrl = fullPayUrl(item.slug);
-              const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
-                linkUrl
-              )}&color=090A0E&bgcolor=ffffff&margin=8`;
               const payments = item.stats?.payments || [];
               const settledCount = item.stats?.settledCount || 0;
               const isQrOpen = openQrId === item.id;
@@ -910,11 +908,10 @@ export function InAppPaylinks() {
                   {isQrOpen && (
                     <div className="pt-2 flex flex-col items-center gap-2 animate-fade-in-up">
                       <div className="w-40 h-40 rounded-xl bg-white p-2">
-                        <img
-                          src={qrImgUrl}
+                        <LocalQrCode
+                          value={linkUrl}
+                          size={200}
                           alt={`QR code for /pay/${item.slug}`}
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-contain"
                         />
                       </div>
                       <span className="text-[11px] font-mono text-on-surface-variant">
@@ -978,7 +975,8 @@ export function InAppPaylinks() {
                                   )}
                                   {p.status}
                                 </span>
-                                {p.destinationExplorerUrl && (
+                                {typeof p.destinationExplorerUrl === "string" &&
+                                  p.destinationExplorerUrl.startsWith("https://") && (
                                   <a
                                     href={p.destinationExplorerUrl}
                                     target="_blank"

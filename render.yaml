@@ -19,9 +19,17 @@ services:
         sync: false
       - key: RELAYER_PRIVATE_KEY
         sync: false
+      - key: LIQUIDITY_EVM_PRIVATE_KEY
+        sync: false
+      - key: LIQUIDITY_SOL_PRIVATE_KEY
+        sync: false
+      - key: LIQUIDITY_LTC_PRIVATE_KEY
+        sync: false
       - key: ADMIN_WALLETS
         sync: false
       - key: ADMIN_PRIVY_DIDS
+        sync: false
+      - key: ADMIN_WITHDRAW_ALLOWLIST
         sync: false
       - key: SWEEPER_IDLE_INTERVAL_MS
         value: "120000"

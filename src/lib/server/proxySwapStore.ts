@@ -1,8 +1,11 @@
 import fs from "fs";
 import path from "path";
-import crypto from "crypto";
-import { getMongoDb } from "./mongodb";
-import { encryptKey } from "./cryptoVault";
+import { getMongoDb, isMongoConfigured } from "./mongodb";
+import { decryptKey } from "./cryptoVault";
+
+function requireDbInProduction(): boolean {
+  return process.env.NODE_ENV === "production" || isMongoConfigured();
+}
 
 export interface ProxySwapOrder {
   swapId: string;
@@ -40,9 +43,13 @@ export interface ProxySwapOrder {
     | "REFUNDED"
     | "EXPIRED"
     | "REFUNDING"
-    | "REFUND_PENDING";
+    | "REFUND_PENDING"
+    | "NEEDS_MANUAL_REVIEW"
+    | "RECOVERED";
   depositTxHash?: string;
   feeTxHash?: string;
+  feeConfirmedOnChain?: boolean;
+  relayerGasAdvanceCount?: number;
   forwardTxHash?: string;
   destinationTxHash?: string;
   destinationExplorerUrl?: string;
@@ -159,8 +166,9 @@ async function hydrateCache() {
   }
 }
 
-// Persist order to MongoDB and fallback file
+// Persist order to MongoDB and fallback file (fail closed in production / when MongoDB is configured)
 async function persistOrder(order: ProxySwapOrder) {
+  const strictDb = requireDbInProduction();
   try {
     const db = await getMongoDb();
     if (db) {
@@ -173,7 +181,13 @@ async function persistOrder(order: ProxySwapOrder) {
       );
       return;
     }
+    if (strictDb) {
+      throw new Error("Database unavailable: refusing to write ephemeral deposit key to local disk.");
+    }
   } catch (err) {
+    if (strictDb) {
+      throw err;
+    }
     console.warn("[ProxySwapStore] MongoDB persist error:", err);
   }
 
@@ -488,55 +502,7 @@ export function getDecryptedProxyPrivateKey(order: ProxySwapOrder): `0x${string}
   if (!order.encryptedPrivateKey) {
     throw new Error(`Proxy swap order ${order.swapId} does not have an encrypted private key.`);
   }
-
-  // Decrypt iv:authTag:ciphertext using AES-256-GCM
-  const parts = order.encryptedPrivateKey.split(":");
-  if (parts.length !== 3) {
-    throw new Error("Invalid encrypted key format. Expected iv:authTag:ciphertext");
-  }
-
-  const [ivHex, authTagHex, encryptedHex] = parts;
-  const iv = Buffer.from(ivHex, "hex");
-  const authTag = Buffer.from(authTagHex, "hex");
-
-  // Candidate secrets to try in order (ensures backward compatibility across server restarts)
-  const candidateSecrets = [
-    process.env.PAYIN_MASTER_SECRET,
-    process.env.AUTH_SECRET,
-    process.env.NEXTAUTH_SECRET,
-    process.env.NODE_ENV !== "production" ? "zkpay_default_secure_proxy_secret_v1" : undefined,
-  ].filter(Boolean) as string[];
-
-  if (candidateSecrets.length === 0) {
-    throw new Error(
-      "Missing PAYIN_MASTER_SECRET (or AUTH_SECRET) in production environment."
-    );
-  }
-
-  let decrypted: string | null = null;
-  let lastErr: any = null;
-
-  for (const secret of candidateSecrets) {
-    try {
-      const key = crypto.createHash("sha256").update(secret).digest();
-      const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
-      decipher.setAuthTag(authTag);
-      let d = decipher.update(encryptedHex, "hex", "utf-8");
-      d += decipher.final("utf-8");
-      decrypted = d;
-      break;
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-
-  if (!decrypted) {
-    throw new Error(
-      `Failed to decrypt proxy private key for order ${order.swapId}: ${lastErr?.message || "Invalid authentication tag"}. Ensure PAYIN_MASTER_SECRET is configured.`
-    );
-  }
-
-  const clean = decrypted.trim();
+  const clean = decryptKey(order.encryptedPrivateKey).trim();
   return (clean.startsWith("0x") ? clean : `0x${clean}`) as `0x${string}`;
 }
 
@@ -547,6 +513,7 @@ export function getDecryptedProxyPrivateKey(order: ProxySwapOrder): `0x${string}
 export async function claimOrderForPayout(swapId: string): Promise<ProxySwapOrder | null> {
   const clean = swapId.trim();
   const now = Date.now();
+  const strictDb = requireDbInProduction();
   try {
     const db = await getMongoDb();
     if (db) {
@@ -575,8 +542,10 @@ export async function claimOrderForPayout(swapId: string): Promise<ProxySwapOrde
       }
       return null;
     }
+    if (strictDb) return null;
   } catch (err) {
     console.warn("[ProxySwapStore] claimOrderForPayout MongoDB warning:", err);
+    if (strictDb) return null;
   }
 
   await hydrateCache();
@@ -601,6 +570,7 @@ export async function claimOrderForPayout(swapId: string): Promise<ProxySwapOrde
 export async function claimOrderForRefund(swapId: string): Promise<ProxySwapOrder | null> {
   const clean = swapId.trim();
   const now = Date.now();
+  const strictDb = requireDbInProduction();
   try {
     const db = await getMongoDb();
     if (db) {
@@ -621,8 +591,10 @@ export async function claimOrderForRefund(swapId: string): Promise<ProxySwapOrde
       }
       return null;
     }
+    if (strictDb) return null;
   } catch (err) {
     console.warn("[ProxySwapStore] claimOrderForRefund MongoDB warning:", err);
+    if (strictDb) return null;
   }
 
   await hydrateCache();
@@ -644,6 +616,7 @@ export async function claimOrderForRefund(swapId: string): Promise<ProxySwapOrde
 export async function claimOrderForForwarding(swapId: string): Promise<ProxySwapOrder | null> {
   const clean = swapId.trim();
   const now = Date.now();
+  const strictDb = requireDbInProduction();
   try {
     const db = await getMongoDb();
     if (db) {
@@ -652,7 +625,7 @@ export async function claimOrderForForwarding(swapId: string): Promise<ProxySwap
           swapId: clean,
           fulfillmentMode: { $ne: "INTERNAL_POOL" },
           $or: [
-            { status: "PENDING_DEPOSIT" },
+            { status: { $in: ["PENDING_DEPOSIT", "DETECTED"] } },
             { status: "FORWARDING", lastAttemptAt: { $lt: now - 120_000 } },
           ],
         } as any,
@@ -668,18 +641,81 @@ export async function claimOrderForForwarding(swapId: string): Promise<ProxySwap
       }
       return null;
     }
+    if (strictDb) return null;
   } catch (err) {
     console.warn("[ProxySwapStore] claimOrderForForwarding MongoDB warning:", err);
+    if (strictDb) return null;
   }
 
   await hydrateCache();
   const existing = ordersBySwapId.get(clean);
   if (!existing || existing.fulfillmentMode === "INTERNAL_POOL") return null;
   const staleForward = existing.status === "FORWARDING" && (!existing.lastAttemptAt || now - existing.lastAttemptAt > 120_000);
-  if (existing.status !== "PENDING_DEPOSIT" && !staleForward) {
+  if (existing.status !== "PENDING_DEPOSIT" && existing.status !== "DETECTED" && !staleForward) {
     return null;
   }
   return updateProxySwapOrder(clean, { status: "FORWARDING", lastAttemptAt: now });
+}
+
+/**
+ * Atomically claims an order for recovery so concurrent auto-forward/payout/refund cannot collide.
+ */
+export async function claimOrderForRecovery(
+  swapId: string,
+  options?: { allowFromPayingOut?: boolean; adminOverride?: boolean }
+): Promise<ProxySwapOrder | null> {
+  const clean = swapId.trim();
+  const now = Date.now();
+  const strictDb = requireDbInProduction();
+  const allowedStatuses = options?.adminOverride
+    ? [
+        "PENDING_DEPOSIT",
+        "DETECTED",
+        "REFUND_PENDING",
+        "REFUNDING",
+        "FORWARDED",
+        "EXPIRED",
+        "FAILED",
+        "NEEDS_MANUAL_REVIEW",
+        ...(options.allowFromPayingOut ? ["PAYING_OUT"] : []),
+      ]
+    : [
+        "PENDING_DEPOSIT",
+        "DETECTED",
+        "REFUND_PENDING",
+        "EXPIRED",
+        ...(options?.allowFromPayingOut ? ["PAYING_OUT"] : []),
+      ];
+
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const res = await db.collection<ProxySwapOrder>("proxy_swap_orders").findOneAndUpdate(
+        {
+          swapId: clean,
+          $or: [
+            { status: { $in: allowedStatuses } },
+            { status: "FORWARDING", lastAttemptAt: { $lt: now - 120_000 } },
+          ],
+        } as any,
+        { $set: { lastAttemptAt: now } },
+        { returnDocument: "after" }
+      );
+      const doc = (res && typeof res === "object" && "value" in res ? (res as any).value : res) as ProxySwapOrder | null;
+      if (doc) {
+        ordersBySwapId.set(doc.swapId, doc);
+        ordersByAddress.set(doc.proxyDepositAddress.toLowerCase(), doc);
+        ordersByAddress.set(doc.proxyDepositAddress, doc);
+        return doc;
+      }
+      return null;
+    }
+    if (strictDb) return null;
+  } catch (err) {
+    console.warn("[ProxySwapStore] claimOrderForRecovery MongoDB warning:", err);
+    if (strictDb) return null;
+  }
+  return ordersBySwapId.get(clean) || null;
 }
 
 /**
@@ -768,7 +804,11 @@ export async function getActiveReservedLiquidityByAsset(options?: {
       accumulate(list as ProxySwapOrder[]);
       return totals;
     }
+    if (requireDbInProduction()) {
+      throw new Error("Database unavailable for liquidity reservation check.");
+    }
   } catch (err) {
+    if (requireDbInProduction()) throw err;
     console.warn("[ProxySwapStore] getActiveReservedLiquidityByAsset warning:", err);
   }
 

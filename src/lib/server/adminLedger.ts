@@ -65,9 +65,9 @@ export type AdminLedgerEntry = AdminSystemTransaction;
 function normalizeStatus(raw: string): AdminTxStatus {
   const s = (raw || "").toUpperCase();
   if (["SETTLED", "SUCCESS", "COMPLETED", "FORWARDED_TO_SOLVER"].includes(s)) return "COMPLETED";
-  if (["REFUNDED"].includes(s)) return "REFUNDED";
+  if (["REFUNDED", "RECOVERED"].includes(s)) return "REFUNDED";
   if (["EXPIRED"].includes(s)) return "EXPIRED";
-  if (["FAILED", "SWEEP_FAILED"].includes(s)) return "FAILED";
+  if (["FAILED", "SWEEP_FAILED", "NEEDS_MANUAL_REVIEW"].includes(s)) return "FAILED";
   return "PENDING";
 }
 
@@ -278,6 +278,7 @@ export async function getAdminSystemTransactions(
       const txHash = o.forwardTxHash || o.depositTxHash || o.feeTxHash || null;
       const { symbol } = resolveLedgerTokenMeta(o.originAssetId, o.fromAsset);
       const priceUsd = priceMap.get(symbol) ?? 0;
+      const normStatus = normalizeStatus(o.status);
       const { amountUsdEstimate, zkpayFeeUsdEstimate, partnerFeeUsdEstimate } =
         computeProxySwapUsdEstimates(o, priceUsd);
       const txChannel: AdminTxChannel = o.apiKeyId || o.source === "api" ? "api" : "app";
@@ -287,7 +288,7 @@ export async function getAdminSystemTransactions(
         category: "swap",
         channel: txChannel,
         title: `${o.fromAsset} → ${o.toAsset} Swap`,
-        status: normalizeStatus(o.status),
+        status: normStatus,
         rawStatus: o.status,
         chain: o.chain,
         destinationChain: o.destinationChain,
@@ -295,8 +296,8 @@ export async function getAdminSystemTransactions(
         toAsset: o.toAsset,
         amountHuman: `${o.totalAmountFormatted} ${o.fromAsset}`,
         amountUsdEstimate,
-        zkpayFeeUsdEstimate,
-        partnerFeeUsdEstimate,
+        zkpayFeeUsdEstimate: normStatus === "COMPLETED" ? zkpayFeeUsdEstimate : 0,
+        partnerFeeUsdEstimate: normStatus === "COMPLETED" ? partnerFeeUsdEstimate : 0,
         recipient: o.recipient,
         depositAddress: o.proxyDepositAddress,
         txHash,
@@ -356,10 +357,11 @@ export async function getAdminSystemTransactions(
   const chainBreakdown: Record<string, number> = {};
 
   for (const tx of entries) {
-    totalVolumeUsd += tx.amountUsdEstimate;
-    totalFeesUsd += tx.zkpayFeeUsdEstimate;
-    if (tx.status === "COMPLETED") completedTransactions++;
-    else if (tx.status === "PENDING") pendingTransactions++;
+    if (tx.status === "COMPLETED") {
+      completedTransactions++;
+      totalVolumeUsd += tx.amountUsdEstimate;
+      totalFeesUsd += tx.zkpayFeeUsdEstimate;
+    } else if (tx.status === "PENDING") pendingTransactions++;
     else if (tx.status === "REFUNDED") refundedTransactions++;
     else failedTransactions++;
 

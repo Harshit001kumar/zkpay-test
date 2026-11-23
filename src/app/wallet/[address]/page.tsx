@@ -10,6 +10,7 @@ import { useReadContract, useBalance } from "wagmi";
 import { CONTRACTS } from "@/lib/constants";
 import { ERC20_ABI } from "@/lib/abi";
 import { floorTo2Decimals } from "@/lib/format";
+import { LocalQrCode } from "@/components/ui/LocalQrCode";
 
 import { 
   ArrowLeft, 
@@ -49,7 +50,6 @@ export default function WalletAddressPage() {
 
   const [activeTab, setActiveTab] = useState<TabType>("receive");
   const [copied, setCopied] = useState(false);
-  const [qrLoaded, setQrLoaded] = useState(false);
 
   // Send state
   const [sendRecipient, setSendRecipient] = useState("");
@@ -105,6 +105,10 @@ export default function WalletAddressPage() {
       setSendError("Please connect your wallet to send funds.");
       return;
     }
+    if (!isOwner) {
+      setSendError("Read-only view: connect the owning wallet to send USDC.");
+      return;
+    }
 
     setSendError(null);
     setSendTxHash(null);
@@ -154,8 +158,15 @@ export default function WalletAddressPage() {
         });
         hash = txHash;
       } else if (connectedWallet) {
-        // Fallback to standard EOA writeContract
+        // Fallback to standard EOA writeContract (verify Base chain 8453 / 0x2105 first)
         const provider = await connectedWallet.getEthereumProvider();
+        const chainHex = await provider.request({ method: "eth_chainId" }).catch(() => null);
+        if (chainHex && String(chainHex).toLowerCase() !== "0x2105") {
+          await provider.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: "0x2105" }],
+          });
+        }
         const client = createWalletClient({
           account: ((connectedWallet as any)?.address || connectedAddress!) as `0x${string}`,
           chain: base,
@@ -180,10 +191,6 @@ export default function WalletAddressPage() {
       setSendError(err?.shortMessage || err?.message || "Transaction rejected or failed.");
     }
   };
-
-  const qrCodeUrl = targetAddress 
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=350x350&data=${encodeURIComponent(targetAddress)}&color=131315&bgcolor=ffffff&margin=10`
-    : "";
 
   return (
     <div className="min-h-screen bg-surface text-on-surface font-sans selection:bg-primary/20 selection:text-white">
@@ -271,11 +278,11 @@ export default function WalletAddressPage() {
           </div>
 
           {/* Dual Tab Switcher */}
-          <div className="grid grid-cols-2 gap-2 p-1.5 rounded-2xl bg-black/40 border border-white/10 mb-6">
+          <div className={`grid ${isOwner ? "grid-cols-2" : "grid-cols-1"} gap-2 p-1.5 rounded-2xl bg-black/40 border border-white/10 mb-6`}>
             <button
               onClick={() => { setActiveTab("receive"); setSendError(null); }}
               className={`py-3 px-4 rounded-xl text-xs font-bold font-label-caps tracking-normal  transition-colors flex items-center justify-center gap-2 ${
-                activeTab === "receive"
+                !isOwner || activeTab === "receive"
                   ? "bg-primary text-surface shadow-lg font-extrabold"
                   : "text-outline hover:text-white"
               }`}
@@ -284,32 +291,32 @@ export default function WalletAddressPage() {
               <span>Receive / Deposit</span>
             </button>
 
-            <button
-              onClick={() => { setActiveTab("send"); setSendError(null); }}
-              className={`py-3 px-4 rounded-xl text-xs font-bold font-label-caps tracking-normal  transition-colors flex items-center justify-center gap-2 ${
-                activeTab === "send"
-                  ? "bg-primary text-surface shadow-lg font-extrabold"
-                  : "text-outline hover:text-white"
-              }`}
-            >
-              <Send className="w-4 h-4" />
-              <span>Send USDC</span>
-            </button>
+            {isOwner && (
+              <button
+                onClick={() => { setActiveTab("send"); setSendError(null); }}
+                className={`py-3 px-4 rounded-xl text-xs font-bold font-label-caps tracking-normal  transition-colors flex items-center justify-center gap-2 ${
+                  activeTab === "send"
+                    ? "bg-primary text-surface shadow-lg font-extrabold"
+                    : "text-outline hover:text-white"
+                }`}
+              >
+                <Send className="w-4 h-4" />
+                <span>Send USDC</span>
+              </button>
+            )}
           </div>
 
           {/* TAB 1: RECEIVE / DEPOSIT */}
-          {activeTab === "receive" && (
+          {(!isOwner || activeTab === "receive") && (
             <div className="space-y-6 animate-in fade-in duration-300">
               {/* High Contrast QR Code Display */}
               <div className="flex flex-col items-center justify-center p-8 rounded-3xl bg-black/50 border border-white/10 relative">
-                {targetAddress && qrCodeUrl ? (
+                {targetAddress ? (
                   <div className="w-56 h-56 rounded-3xl overflow-hidden bg-white p-4 shadow-2xl flex items-center justify-center">
-                    <img
-                      src={qrCodeUrl}
+                    <LocalQrCode
+                      value={targetAddress}
+                      size={350}
                       alt="Base USDC Wallet QR"
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-contain"
-                      onLoad={() => setQrLoaded(true)}
                     />
                   </div>
                 ) : (
@@ -384,7 +391,7 @@ export default function WalletAddressPage() {
           )}
 
           {/* TAB 2: SEND USDC */}
-          {activeTab === "send" && (
+          {isOwner && activeTab === "send" && (
             <form onSubmit={handleSendUsdc} className="space-y-5 animate-in fade-in duration-300">
               <div>
                 <label className="block text-[10px] font-label-caps text-outline tracking-normal  font-bold mb-2">

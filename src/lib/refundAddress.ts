@@ -1,3 +1,38 @@
+const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+const REJECTED_EVM_ADDRESSES = new Set([
+  "0x0000000000000000000000000000000000000000",
+  "0x000000000000000000000000000000000000dead",
+]);
+
+/**
+ * Pure-JS BigInt Base58 decoded byte-length helper (browser-safe, zero Node imports).
+ * Returns -1 on invalid Base58 characters or all-zero payload.
+ */
+function decodedBase58Length(addr: string): number {
+  let num = BigInt(0);
+  const base = BigInt(58);
+  let leadingOnes = 0;
+  let countingLeading = true;
+
+  for (let i = 0; i < addr.length; i++) {
+    const ch = addr[i];
+    if (countingLeading && ch === "1") {
+      leadingOnes++;
+    } else {
+      countingLeading = false;
+    }
+    const idx = BASE58_ALPHABET.indexOf(ch);
+    if (idx < 0) return -1;
+    num = num * base + BigInt(idx);
+  }
+
+  if (num === BigInt(0)) return -1;
+  const hex = num.toString(16);
+  const bodyBytes = Math.ceil(hex.length / 2);
+  return leadingOnes + bodyBytes;
+}
+
 // Helper to validate and resolve a refund address for the origin blockchain
 export function isValidAddressForOriginAsset(
   originAssetId: string,
@@ -9,15 +44,28 @@ export function isValidAddressForOriginAsset(
       ? [address.trim(), originAssetId.trim()]
       : [originAssetId.trim(), address.trim()];
   if (assetId.includes(":sol")) {
-    return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmed);
+    return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmed) && decodedBase58Length(trimmed) === 32;
   } else if (assetId.includes(":tron")) {
-    return /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(trimmed);
+    return /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(trimmed) && decodedBase58Length(trimmed) === 25;
   } else if (assetId.includes(":btc")) {
-    return /^(1[a-km-zA-HJ-NP-Z1-9]{25,34}|3[a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-zA-HJ-NP-Z0-9]{39,59})$/.test(trimmed);
+    if (!/^(1[a-km-zA-HJ-NP-Z1-9]{25,34}|3[a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-zA-HJ-NP-Z0-9]{39,59})$/.test(trimmed)) {
+      return false;
+    }
+    if (trimmed.toLowerCase().startsWith("bc1")) {
+      return trimmed === trimmed.toLowerCase() || trimmed === trimmed.toUpperCase();
+    }
+    return decodedBase58Length(trimmed) === 25;
   } else if (assetId.includes(":ltc")) {
-    return /^(L[a-km-zA-HJ-NP-Z1-9]{26,33}|M[a-km-zA-HJ-NP-Z1-9]{26,33}|ltc1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{39,59})$/i.test(trimmed);
+    if (!/^(L[a-km-zA-HJ-NP-Z1-9]{26,33}|M[a-km-zA-HJ-NP-Z1-9]{26,33}|ltc1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{39,59})$/i.test(trimmed)) {
+      return false;
+    }
+    if (trimmed.toLowerCase().startsWith("ltc1")) {
+      return trimmed === trimmed.toLowerCase() || trimmed === trimmed.toUpperCase();
+    }
+    return decodedBase58Length(trimmed) === 25;
   } else {
-    return /^0x[a-fA-F0-9]{40}$/.test(trimmed);
+    if (!/^0x[a-fA-F0-9]{40}$/.test(trimmed)) return false;
+    return !REJECTED_EVM_ADDRESSES.has(trimmed.toLowerCase());
   }
 }
 

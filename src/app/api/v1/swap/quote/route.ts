@@ -10,7 +10,13 @@ export const dynamic = "force-dynamic";
  */
 async function extractQuoteParams(req: Request): Promise<SwapQuoteParams> {
   if (req.method === "POST") {
-    const body = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      const err: any = new Error("Request body must be a JSON object.");
+      err.code = "INVALID_BODY";
+      err.statusCode = 400;
+      throw err;
+    }
     const resolvedOriginChain = body.originChain || body.fromChain || body.chain || body.origin_chain || body.srcChain || undefined;
     const resolvedDestChain = body.destinationChain || body.toChain || body.destChain || body.targetChain || body.destination_chain || body.to_chain || body.dstChain || undefined;
 
@@ -20,6 +26,27 @@ async function extractQuoteParams(req: Request): Promise<SwapQuoteParams> {
     const targetAsset = (body.destinationAsset && typeof body.destinationAsset === "string" && body.destinationAsset.startsWith("nep"))
       ? body.destinationAsset
       : (body.toAsset || body.destinationAsset);
+    const feeRecipient = body.feeRecipient || body.partnerAddress || body.partnerFeeRecipient;
+    const recipientAddress = body.recipient || body.recipientAddress;
+
+    const optStrings = [
+      targetAsset,
+      resolvedOriginChain,
+      resolvedDestChain,
+      feeRecipient,
+      recipientAddress,
+      body.refundTo,
+    ];
+    if (
+      typeof sourceAsset !== "string" ||
+      optStrings.some((v) => v !== undefined && v !== null && typeof v !== "string") ||
+      (body.amount !== undefined && typeof body.amount !== "string" && typeof body.amount !== "number")
+    ) {
+      const err: any = new Error("Invalid parameter type: asset, chain, and address fields must be strings.");
+      err.code = "INVALID_INPUT_TYPE";
+      err.statusCode = 400;
+      throw err;
+    }
 
     return {
       fromAsset: sourceAsset,
@@ -27,11 +54,11 @@ async function extractQuoteParams(req: Request): Promise<SwapQuoteParams> {
       chain: resolvedOriginChain,
       originChain: resolvedOriginChain,
       destinationChain: resolvedDestChain,
-      amount: String(body.amount || ""),
-      feeRecipient: body.feeRecipient || body.partnerAddress || body.partnerFeeRecipient,
+      amount: body.amount !== undefined && body.amount !== null ? String(body.amount) : "",
+      feeRecipient,
       totalFeeBps: typeof body.totalFeeBps === "number" ? body.totalFeeBps : (body.feeBps ? Number(body.feeBps) : undefined),
       slippageBps: typeof body.slippageBps === "number" ? body.slippageBps : undefined,
-      recipientAddress: body.recipient || body.recipientAddress,
+      recipientAddress,
       refundTo: body.refundTo,
       swapType: "FLEX_INPUT",
     };

@@ -2581,13 +2581,19 @@ export default function AdminPage() {
                               </div>
                             </td>
                             <td className="py-3 pr-3">
-                              <div className="font-bold text-success">
-                                +${(sw.zkpayNetFeeUsd || 0).toFixed(4)} ZkPay
-                              </div>
-                              <div className="text-[10px] text-outline">
-                                {sw.grossFeeFormatted}
-                                {sw.partnerFeeUsd > 0 ? ` • Partner: $${sw.partnerFeeUsd.toFixed(4)}` : ""}
-                              </div>
+                              {sw.status === "SETTLED" ? (
+                                <>
+                                  <div className="font-bold text-success">
+                                    +${(sw.zkpayNetFeeUsd || 0).toFixed(4)} ZkPay
+                                  </div>
+                                  <div className="text-[10px] text-outline">
+                                    {sw.grossFeeFormatted}
+                                    {sw.partnerFeeUsd > 0 ? ` • Partner: $${sw.partnerFeeUsd.toFixed(4)}` : ""}
+                                  </div>
+                                </>
+                              ) : (
+                                <span className="text-outline text-[11px]">—</span>
+                              )}
                             </td>
                             <td className="py-3 pr-3">
                               <span

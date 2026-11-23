@@ -829,6 +829,43 @@ export async function getPaylinkPaymentsByIds(
   return out;
 }
 
+/**
+ * Checks whether a single-use Paylink already has an active funded/in-flight payment
+ * so concurrent payers cannot obtain duplicate active settlement orders before it transitions to PAID.
+ */
+export async function hasInFlightSingleUsePayment(paylinkId: string): Promise<boolean> {
+  if (!paylinkId || !isMongoConfigured()) return false;
+  try {
+    const db = await getMongoDb();
+    if (!db) return false;
+    const cutoff = Date.now() - 15 * 60_000;
+
+    const [activeProxy, activeDirect] = await Promise.all([
+      db.collection("proxy_swap_orders").findOne(
+        {
+          paylinkId,
+          createdAt: { $gt: cutoff },
+          status: { $in: ["DETECTED", "PAYING_OUT", "FORWARDING", "FORWARDED", "SETTLED"] },
+        },
+        { projection: { swapId: 1 } }
+      ),
+      db.collection("direct_swap_orders").findOne(
+        {
+          paylinkId,
+          createdAt: { $gt: cutoff },
+          lastKnownStatus: { $in: ["PROCESSING", "SETTLED"] },
+        },
+        { projection: { swapId: 1 } }
+      ),
+    ]);
+
+    return Boolean(activeProxy || activeDirect);
+  } catch (err) {
+    console.warn("[PaylinkStore] hasInFlightSingleUsePayment failed:", err);
+    return false;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // Shared Quote & Fixed-Amount Reverse Calculation
 // ─────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { verifyAdminRequest } from "@/lib/server/adminAuth";
+import { verifyAdminRequest, recordAdminAudit } from "@/lib/server/adminAuth";
+import { enforceRateLimit, getClientIp } from "@/lib/server/rateLimit";
 import {
   inspectProxyDepositBalances,
   recoverProxyDeposit,
@@ -104,18 +105,35 @@ export async function POST(req: Request) {
     );
   }
 
+  const { response: rateLimitResp } = enforceRateLimit(req, "admin_write", auth.userId, { cors: false });
+  if (rateLimitResp) return rateLimitResp;
+
+  const clientIp = getClientIp(req);
+
   try {
     const body = await req.json();
     const action = body.action || "custom"; // "refund" | "forward" | "custom" | "recycle-dust"
+    if (!["refund", "forward", "custom", "recycle-dust", "sweep-dust"].includes(action)) {
+      return NextResponse.json({ error: "Invalid recovery action." }, { status: 400 });
+    }
 
     // ── Batch Dust Recycling to Relayer Gas Tank ──
     if (action === "recycle-dust" || action === "sweep-dust") {
       const chain = body.chain || "polygon";
-      const limit = typeof body.limit === "number" ? body.limit : 50;
+      const limit = typeof body.limit === "number" ? Math.min(100, Math.max(1, body.limit)) : 50;
       console.log(
         `[AdminProxyRecover] Admin (${auth.userId || auth.walletAddress}) executing batch proxy dust recycling on ${chain} (limit ${limit})`
       );
       const recycleResult = await sweepAllProxyDustToRelayer(chain, limit);
+      await recordAdminAudit({
+        adminUserId: auth.userId,
+        adminWallet: auth.walletAddress,
+        clientIp,
+        action: "DUST_RECYCLE",
+        target: chain,
+        amount: recycleResult.totalSweptFormatted,
+        status: "SUCCESS",
+      });
       return NextResponse.json({
         ...recycleResult,
         message: `Successfully recycled ${recycleResult.totalSweptFormatted} dust back to the relayer across ${recycleResult.sweptCount} proxy wallets (${recycleResult.skippedCount} skipped/empty).`,
@@ -125,7 +143,7 @@ export async function POST(req: Request) {
     const depositAddress = body.depositAddress || body.address || body.swapId;
     const customRecipient = body.customRecipient?.trim() || body.destination?.trim();
     const tokenAddress = body.tokenAddress?.trim();
-    const tokenType = body.tokenType; // "native" | "token" | "auto"
+    const tokenType = body.tokenType;
     const amount = body.amount?.trim();
 
     if (!depositAddress || typeof depositAddress !== "string") {
@@ -133,6 +151,9 @@ export async function POST(req: Request) {
         { error: "Missing required 'depositAddress' (or 'swapId')." },
         { status: 400 }
       );
+    }
+    if (amount && (!/^\d+(\.\d+)?$/.test(amount) || Number(amount) <= 0)) {
+      return NextResponse.json({ error: "Invalid recovery amount." }, { status: 400 });
     }
 
     console.log(
@@ -146,6 +167,19 @@ export async function POST(req: Request) {
       tokenType,
       amount,
       adminOverride: true,
+    });
+
+    await recordAdminAudit({
+      adminUserId: auth.userId,
+      adminWallet: auth.walletAddress,
+      clientIp,
+      action: `PROXY_RECOVER_${String(action).toUpperCase()}`,
+      target: depositAddress.trim(),
+      amount: result.recoveredAmount || amount,
+      destination: result.destination || customRecipient,
+      txHash: result.txHash,
+      status: result.success ? "SUCCESS" : "ERROR",
+      error: result.success ? undefined : result.message,
     });
 
     if (!result.success) {
