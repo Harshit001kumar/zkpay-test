@@ -1621,6 +1621,7 @@ export async function getSwapStatus(depositAddress: string) {
       if (
         proxyOrder.status === "PENDING_DEPOSIT" ||
         proxyOrder.status === "DETECTED" ||
+        (proxyOrder.status === "PAYING_OUT" && Boolean(proxyOrder.destinationTxHash)) ||
         (proxyOrder.status === "SETTLED" && proxyOrder.sweepStatus === "PENDING_SWEEP")
       ) {
         try {
@@ -1671,8 +1672,12 @@ export async function getSwapStatus(depositAddress: string) {
       };
     }
 
-    // If pending or forwarding, trigger active balance check & auto-forward
-    if (proxyOrder.status === "PENDING_DEPOSIT" || proxyOrder.status === "FORWARDING") {
+    // If pending, detected (awaiting finality/conf), or forwarding, trigger active balance check & auto-forward
+    if (
+      proxyOrder.status === "PENDING_DEPOSIT" ||
+      proxyOrder.status === "DETECTED" ||
+      proxyOrder.status === "FORWARDING"
+    ) {
       try {
         currentOrder = await checkAndForwardProxyDeposit(proxyOrder);
       } catch (err) {

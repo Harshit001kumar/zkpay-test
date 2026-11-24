@@ -646,7 +646,10 @@ export async function checkAndForwardProxyDeposit(order: ProxySwapOrder): Promis
     order.status === "FORWARDED" ||
     order.status === "SETTLED" ||
     order.status === "FAILED" ||
-    order.status === "REFUNDED"
+    order.status === "REFUNDED" ||
+    order.status === "EXPIRED" ||
+    order.status === "NEEDS_MANUAL_REVIEW" ||
+    order.status === "RECOVERED"
   ) {
     return order;
   }
