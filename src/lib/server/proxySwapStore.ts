@@ -51,6 +51,7 @@ export interface ProxySwapOrder {
   feeConfirmedOnChain?: boolean;
   relayerGasAdvanceCount?: number;
   forwardTxHash?: string;
+  forwardBroadcastAt?: number;
   destinationTxHash?: string;
   destinationExplorerUrl?: string;
   refundTxHash?: string;
@@ -392,7 +393,7 @@ export async function getForwardedOrUncreditedProxyOrders(limit = 30): Promise<P
       const [forwardedList, uncreditedSettledList] = await Promise.all([
         collection
           .find({ status: "FORWARDED" } as any)
-          .sort({ createdAt: -1 })
+          .sort({ createdAt: 1 })
           .limit(limit)
           .toArray(),
         collection
@@ -405,7 +406,7 @@ export async function getForwardedOrUncreditedProxyOrders(limit = 30): Promise<P
               { partnerFeeRecipient: { $exists: true, $ne: null } },
             ],
           } as any)
-          .sort({ createdAt: -1 })
+          .sort({ createdAt: 1 })
           .limit(limit)
           .toArray(),
       ]);
@@ -662,7 +663,7 @@ export async function claimOrderForForwarding(swapId: string): Promise<ProxySwap
  */
 export async function claimOrderForRecovery(
   swapId: string,
-  options?: { allowFromPayingOut?: boolean; adminOverride?: boolean }
+  options?: { allowFromPayingOut?: boolean; allowFromForwarded?: boolean; adminOverride?: boolean }
 ): Promise<ProxySwapOrder | null> {
   const clean = swapId.trim();
   const now = Date.now();
@@ -685,6 +686,7 @@ export async function claimOrderForRecovery(
         "REFUND_PENDING",
         "EXPIRED",
         ...(options?.allowFromPayingOut ? ["PAYING_OUT"] : []),
+        ...(options?.allowFromForwarded ? ["FORWARDED"] : []),
       ];
 
   try {

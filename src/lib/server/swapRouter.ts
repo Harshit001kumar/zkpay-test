@@ -1702,6 +1702,15 @@ export async function getSwapStatus(depositAddress: string) {
               ...(solverStatus.originTxHash && !currentOrder.forwardTxHash
                 ? { forwardTxHash: solverStatus.originTxHash }
                 : {}),
+              ...(solverStatus.destinationTxHash
+                ? { destinationTxHash: solverStatus.destinationTxHash }
+                : {}),
+              ...(solverStatus.destinationExplorerUrl
+                ? { destinationExplorerUrl: solverStatus.destinationExplorerUrl }
+                : {}),
+              ...(solverStatus.settledAmount
+                ? { settledAmountFormatted: String(solverStatus.settledAmount) }
+                : {}),
             })) || currentOrder;
 
           // Accrue fee to partner off-chain strictly upon settlement!
@@ -1734,7 +1743,12 @@ export async function getSwapStatus(depositAddress: string) {
             (await updateProxySwapOrder(currentOrder.swapId, {
               status: "FAILED",
             })) || currentOrder;
-        } else if (isSolverActiveOrDone && currentOrder.status === "PENDING_DEPOSIT") {
+        } else if (
+          isSolverActiveOrDone &&
+          (currentOrder.status === "PENDING_DEPOSIT" ||
+            currentOrder.status === "DETECTED" ||
+            currentOrder.status === "FORWARDING")
+        ) {
           currentOrder =
             (await updateProxySwapOrder(currentOrder.swapId, {
               status: "FORWARDED",

@@ -147,6 +147,7 @@ export async function notifyNearIntentsDepositSubmit(
         txHash,
         depositAddress,
       }),
+      signal: AbortSignal.timeout(6000),
     });
     if (res.ok) {
       console.log(
@@ -634,6 +635,35 @@ export function getSafeSolverForwardAmount(
 const PENDING_FORWARD_STALE_MS = 10 * 60 * 1000;
 
 /**
+ * Safely parses `order.totalAmountIn` whether stored as integer atomic units or a legacy decimal string.
+ */
+export function parseExpectedAtomic(raw: string | undefined | null, decimals: number): bigint {
+  try {
+    const clean = (raw || "0").trim();
+    if (!clean) return 0n;
+    if (clean.includes(".")) {
+      return parseUnits(clean, decimals);
+    }
+    const val = BigInt(clean);
+    return val > 0n ? val : 0n;
+  } catch {
+    return 0n;
+  }
+}
+
+/**
+ * Checks whether an unconfirmed forwardTxHash has outlived the mempool drop window.
+ * Uses immutable `forwardBroadcastAt` (never `lastAttemptAt`, which gets bumped on every claim/poll).
+ */
+export function isPendingForwardStale(
+  order: Pick<ProxySwapOrder, "forwardBroadcastAt" | "createdAt">,
+  now = Date.now()
+): boolean {
+  const broadcastAt = Number(order.forwardBroadcastAt || order.createdAt || 0);
+  return broadcastAt > 0 && now - broadcastAt > PENDING_FORWARD_STALE_MS;
+}
+
+/**
  * Checks on-chain deposit on the proxy address and automatically executes
  * the upfront fee split and forward to Near Intents solvers.
  */
@@ -751,17 +781,14 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
         }).catch(() => null);
         return reconciled || order;
       }
-      const isStalePending =
-        !priorReceipt &&
-        !!order.lastAttemptAt &&
-        Date.now() - order.lastAttemptAt > PENDING_FORWARD_STALE_MS;
+      const isStalePending = !priorReceipt && isPendingForwardStale(order);
       if (!priorReceipt && !isStalePending) {
         return order;
       }
     }
 
     const balanceWei = await publicClient.getBalance({ address: proxyAddress });
-    const expectedAtomic = BigInt(order.totalAmountIn);
+    const expectedAtomic = parseExpectedAtomic(order.totalAmountIn, 18);
 
     // Minimum 90% threshold to tolerate slight gas fluctuations
     if (balanceWei < (expectedAtomic * 90n) / 100n || balanceWei === 0n) {
@@ -880,11 +907,13 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
         console.log(`[ProxyForwarder] Direct solver forward broadcast: ${forwardTxHash}`);
       }
 
-      // Persist forwardTxHash & cooldown timestamp immediately after broadcast
+      // Persist forwardTxHash & immutable broadcast timestamp immediately after broadcast
+      const broadcastTs = Date.now();
       await updateProxySwapOrder(order.swapId, {
         forwardTxHash,
+        forwardBroadcastAt: broadcastTs,
         ...(feeTxHash ? { feeTxHash } : {}),
-        lastAttemptAt: Date.now(),
+        lastAttemptAt: broadcastTs,
       }).catch(() => {});
 
       notifyNearIntentsDepositSubmit(order.solverDepositAddress, forwardTxHash).catch(() => {});
@@ -909,6 +938,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
           const revertedOrder = await updateProxySwapOrder(order.swapId, {
             status: "PENDING_DEPOSIT",
             forwardTxHash: undefined,
+            forwardBroadcastAt: undefined,
             feeTxHash: undefined,
             lastAttemptAt: Date.now(),
             error: `Native EVM transfer ${forwardTxHash} reverted on-chain.`,
@@ -987,11 +1017,6 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       }
     }
 
-    if (!tokenAddress && chainKey === "polygon") {
-      tokenAddress = tokenMap["USDC"];
-      resolvedSymbol = "USDC";
-    }
-
     if (tokenAddress && order.fromAsset !== resolvedSymbol) {
       updateProxySwapOrder(order.swapId, { fromAsset: resolvedSymbol }).catch(() => {});
       order.fromAsset = resolvedSymbol;
@@ -1002,14 +1027,44 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       return order;
     }
 
-    const tokenBalance = (await publicClient.readContract({
-      address: tokenAddress,
-      abi: ERC20_ABI,
-      functionName: "balanceOf",
-      args: [proxyAddress],
-    })) as bigint;
+    // Check an already-broadcast forwardTxHash BEFORE claiming or advancing relayer gas
+    if (order.forwardTxHash && order.forwardTxHash.startsWith("0x")) {
+      const priorReceipt = await publicClient
+        .getTransactionReceipt({ hash: order.forwardTxHash as `0x${string}` })
+        .catch(() => null);
+      if (!priorReceipt && !isPendingForwardStale(order)) {
+        return order;
+      }
+      if (priorReceipt?.status === "reverted") {
+        await updateProxySwapOrder(order.swapId, {
+          status: "PENDING_DEPOSIT",
+          forwardTxHash: undefined,
+          forwardBroadcastAt: undefined,
+          lastAttemptAt: Date.now(),
+          error: `Prior ERC-20 forward ${order.forwardTxHash} reverted on-chain; ready to retry.`,
+        }).catch(() => {});
+        order.forwardTxHash = undefined;
+        order.forwardBroadcastAt = undefined;
+      }
+    }
 
-    const expectedAtomic = BigInt(order.totalAmountIn);
+    const [tokenBalance, preDecimals] = await Promise.all([
+      publicClient.readContract({
+        address: tokenAddress,
+        abi: ERC20_ABI,
+        functionName: "balanceOf",
+        args: [proxyAddress],
+      }) as Promise<bigint>,
+      publicClient
+        .readContract({
+          address: tokenAddress,
+          abi: ERC20_ABI,
+          functionName: "decimals",
+        })
+        .catch(() => (resolvedSymbol === "USDC" || resolvedSymbol === "USDT" ? 6 : 18)) as Promise<number>,
+    ]);
+
+    const expectedAtomic = parseExpectedAtomic(order.totalAmountIn, Number(preDecimals));
 
     if (tokenBalance < (expectedAtomic * 90n) / 100n || tokenBalance === 0n) {
       // Reconcile ONLY if the recorded forwardTxHash actually succeeded on-chain
@@ -1148,10 +1203,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
           }).catch(() => null);
           return reconciled || latestOrder;
         }
-        const isStalePending =
-          !priorReceipt &&
-          !!latestOrder.lastAttemptAt &&
-          Date.now() - latestOrder.lastAttemptAt > PENDING_FORWARD_STALE_MS;
+        const isStalePending = !priorReceipt && isPendingForwardStale(latestOrder);
         if (!priorReceipt && !isStalePending) {
           return latestOrder;
         }
@@ -1187,9 +1239,11 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
         return revertedOrder || order;
       }
 
+      const gaslessBroadcastTs = Date.now();
       await updateProxySwapOrder(order.swapId, {
         forwardTxHash: bundleTxHash,
-        lastAttemptAt: Date.now(),
+        forwardBroadcastAt: gaslessBroadcastTs,
+        lastAttemptAt: gaslessBroadcastTs,
       }).catch(() => {});
 
       notifyNearIntentsDepositSubmit(order.solverDepositAddress, bundleTxHash).catch(() => {});
@@ -1202,6 +1256,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
         const revertedOrder = await updateProxySwapOrder(order.swapId, {
           status: "PENDING_DEPOSIT",
           forwardTxHash: undefined,
+          forwardBroadcastAt: undefined,
           lastAttemptAt: Date.now(),
           error: `Gasless USDC transfer ${bundleTxHash} reverted on-chain.`,
         }).catch(() => null);
@@ -1317,14 +1372,18 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       const priorReceipt = await publicClient
         .getTransactionReceipt({ hash: latestOrder.forwardTxHash as `0x${string}` })
         .catch(() => null);
-      const isStalePending =
-        !priorReceipt &&
-        !!latestOrder.lastAttemptAt &&
-        Date.now() - latestOrder.lastAttemptAt > PENDING_FORWARD_STALE_MS;
-      if (priorReceipt?.status === "success" || (!priorReceipt && !isStalePending)) {
+      const isStalePending = !priorReceipt && isPendingForwardStale(latestOrder);
+      if (priorReceipt?.status === "success") {
         await updateProxySwapOrder(order.swapId, {
-          status: priorReceipt?.status === "success" ? "FORWARDED" : "PENDING_DEPOSIT",
-          lastAttemptAt: Date.now(),
+          status: "FORWARDED",
+          depositTxHash: latestOrder.depositTxHash || latestOrder.forwardTxHash,
+          error: undefined,
+        }).catch(() => {});
+        return latestOrder;
+      }
+      if (!priorReceipt && !isStalePending) {
+        await updateProxySwapOrder(order.swapId, {
+          status: "PENDING_DEPOSIT",
         }).catch(() => {});
         return latestOrder;
       }
@@ -1364,9 +1423,11 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     const forwardTxHash = forwardRes.txHash;
     console.log(`[ProxyForwarder] Net token forward to solver broadcast FIRST: ${forwardTxHash}`);
 
+    const legacyBroadcastTs = Date.now();
     await updateProxySwapOrder(order.swapId, {
       forwardTxHash,
-      lastAttemptAt: Date.now(),
+      forwardBroadcastAt: legacyBroadcastTs,
+      lastAttemptAt: legacyBroadcastTs,
     }).catch(() => {});
 
     const solverReceipt = await publicClient
@@ -1377,6 +1438,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       await updateProxySwapOrder(order.swapId, {
         status: "PENDING_DEPOSIT",
         forwardTxHash: undefined,
+        forwardBroadcastAt: undefined,
         lastAttemptAt: Date.now(),
         error: `Solver transfer transaction ${forwardTxHash} reverted on-chain.`,
       }).catch(() => {});
@@ -1721,10 +1783,7 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
         }).catch(() => null);
         return reconciled || order;
       }
-      const isStalePending =
-        !priorSt &&
-        !!order.lastAttemptAt &&
-        Date.now() - order.lastAttemptAt > PENDING_FORWARD_STALE_MS;
+      const isStalePending = !priorSt && isPendingForwardStale(order);
       if (!priorSt?.err && !isStalePending) {
         return order;
       }
@@ -1737,29 +1796,16 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
     // Setting network fee to exactly 5,000 lamports ensures 0 lamports remain, cleanly closing the proxy account without rent errors.
     const SOLANA_NETWORK_FEE = 5000n;
 
-    // Safely parse expected atomic units (handles decimal inputs e.g. "0.00339" or atomic units)
-    let expectedAtomic = 0n;
-    try {
-      const clean = (order.totalAmountIn || "0").trim();
-      if (clean.includes(".")) {
-        const { parseUnits } = await import("viem");
-        expectedAtomic = parseUnits(clean, 9); // SOL has 9 decimals
-      } else {
-        expectedAtomic = BigInt(clean);
-      }
-    } catch {
-      expectedAtomic = 0n;
-    }
+    const expectedAtomic = parseExpectedAtomic(order.totalAmountIn, 9);
 
     // Await deposit if balance is zero or cannot cover network gas fee (~5000 lamports).
     if (lamports <= SOLANA_NETWORK_FEE) {
       return order; // Awaiting deposit
     }
 
-    // Prevent Solana Dust Premature Sweep: ensure lamports >= (expectedAtomic - 10000n) before triggering forwarding.
-    // If lamports < (expectedAtomic - 10000n), return order so it keeps awaiting the real deposit.
+    // 90% threshold (matching EVM + 3.5% FLEX_INPUT buffer) so exchange withdrawal fee deductions forward cleanly.
     if (expectedAtomic > 0n) {
-      const minRequiredLamports = expectedAtomic > 10000n ? expectedAtomic - 10000n : expectedAtomic;
+      const minRequiredLamports = (expectedAtomic * 90n) / 100n;
       if (lamports < minRequiredLamports) {
         return order; // Awaiting real deposit
       }
@@ -1868,6 +1914,14 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
       partnerLamports: 0n,
     });
 
+    // Persist forwardTxHash & immutable broadcast timestamp BEFORE awaiting confirmation
+    const solBroadcastTs = Date.now();
+    await updateProxySwapOrder(order.swapId, {
+      forwardTxHash: txHash,
+      forwardBroadcastAt: solBroadcastTs,
+      lastAttemptAt: solBroadcastTs,
+    }).catch(() => {});
+
     notifyNearIntentsDepositSubmit(order.solverDepositAddress, txHash).catch(() => {});
 
     const confirmStatus = await waitForSolanaSignature(txHash, 25_000);
@@ -1880,14 +1934,17 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
         order.proxyDepositAddress,
         { commitment: "confirmed" },
       ]).catch(() => null);
-      const postLamports = postBalRes ? BigInt(postBalRes?.value || 0) : 0n;
+      // Fail safe: if getBalance RPC fails, assume funds are still in proxy instead of falsely marking FORWARDED
+      const postLamports =
+        postBalRes && postBalRes.value !== undefined ? BigInt(postBalRes.value || 0) : lamports;
       if (postLamports > SOLANA_NETWORK_FEE) {
         console.warn(
-          `[ProxyForwarder] Solana transfer ${txHash} timed out and proxy still holds ${postLamports} lamports; keeping PENDING_DEPOSIT for retry.`
+          `[ProxyForwarder] Solana transfer ${txHash} timed out and proxy still holds ${postLamports} lamports; keeping PENDING_DEPOSIT for reconciliation.`
         );
         const pendingOrder = await updateProxySwapOrder(order.swapId, {
           status: "PENDING_DEPOSIT",
           forwardTxHash: txHash,
+          forwardBroadcastAt: solBroadcastTs,
           lastAttemptAt: Date.now(),
           error: `Solana forward tx ${txHash} awaiting confirmation (will retry if dropped).`,
         });
@@ -1937,19 +1994,22 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       order.proxyDepositAddress
     );
 
-    // Safely parse expected atomic units (handles decimal inputs e.g. "0.0035" or atomic units)
-    let expectedAtomic = 0n;
-    try {
-      const clean = (order.totalAmountIn || "0").trim();
-      if (clean.includes(".")) {
-        const { parseUnits } = await import("viem");
-        expectedAtomic = parseUnits(clean, 8); // LTC has 8 decimals
-      } else {
-        expectedAtomic = BigInt(clean);
+    // Reconcile or guard against an already-broadcast LTC forwardTxHash
+    if (order.forwardTxHash && !order.forwardTxHash.startsWith("0x")) {
+      if (balanceSatoshis <= 5000n && confirmedBalanceSatoshis <= 5000n) {
+        const reconciled = await updateProxySwapOrder(order.swapId, {
+          status: "FORWARDED",
+          depositTxHash: order.depositTxHash || order.forwardTxHash,
+          error: undefined,
+        }).catch(() => null);
+        return reconciled || order;
       }
-    } catch {
-      expectedAtomic = 0n;
+      if (!isPendingForwardStale(order)) {
+        return order;
+      }
     }
+
+    const expectedAtomic = parseExpectedAtomic(order.totalAmountIn, 8);
 
     // Strict >= 1 confirmation requirement: prevents 0-conf RBF double-spend + partner credit theft
     const minThreshold = expectedAtomic > 0n ? (expectedAtomic * 80n) / 100n : 5000n;
@@ -2003,6 +2063,7 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     const dustLimit = LTC_DUST_THRESHOLD_SATOSHIS || 5460n;
     const hasFeeOutput = totalFeeSats >= dustLimit;
+    const ltcBroadcastTs = Date.now();
 
     const updated = await updateProxySwapOrder(order.swapId, {
       status: "FORWARDED",
@@ -2014,13 +2075,16 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       feeTxHash: hasFeeOutput ? txHash : undefined,
       feeConfirmedOnChain: hasFeeOutput,
       forwardTxHash: txHash,
+      forwardBroadcastAt: ltcBroadcastTs,
+      lastAttemptAt: ltcBroadcastTs,
+      error: undefined,
     });
 
     return updated || order;
   } catch (err: any) {
     console.error("[ProxyForwarder] LTC balance/sweep error:", err);
     await updateProxySwapOrder(order.swapId, {
-      status: "PENDING_DEPOSIT",
+      status: order.status === "DETECTED" ? "DETECTED" : "PENDING_DEPOSIT",
       error: `LTC sweep error: ${err?.message || err}`,
       lastAttemptAt: Date.now(),
     }).catch(() => {});
@@ -2302,6 +2366,7 @@ export interface RecoverOptions {
   tokenType?: "native" | "token" | "auto";
   amount?: string;
   allowFromPayingOut?: boolean;
+  allowFromForwarded?: boolean;
   adminOverride?: boolean;
 }
 
@@ -2351,6 +2416,7 @@ export async function recoverProxyDeposit(
     const action = options?.action || "forward";
     const claimedRec = await claimOrderForRecovery(order.swapId, {
       allowFromPayingOut: options?.allowFromPayingOut,
+      allowFromForwarded: options?.allowFromForwarded,
       adminOverride: options?.adminOverride,
     });
     if (!claimedRec && !options?.adminOverride && order.status !== "REFUNDING") {
@@ -2416,7 +2482,22 @@ export async function recoverProxyDeposit(
     }
 
     const SOLANA_RENT_EXEMPT_MIN = 890_880n;
-    const effectiveTreasuryFee = totalFeeLamports >= SOLANA_RENT_EXEMPT_MIN ? totalFeeLamports : 0n;
+    const solTreasury = order.treasuryAddress || getTreasuryAddressForChain("sol");
+    let effectiveTreasuryFee = 0n;
+    if (action === "forward" && totalFeeLamports > 0n && solTreasury && solTreasury.trim() !== destination.trim()) {
+      if (totalFeeLamports >= SOLANA_RENT_EXEMPT_MIN) {
+        effectiveTreasuryFee = totalFeeLamports;
+      } else {
+        try {
+          const treasuryBalRes = await fetchSolanaRpc("getBalance", [solTreasury.trim()]);
+          if (BigInt(treasuryBalRes?.value || 0) >= SOLANA_RENT_EXEMPT_MIN) {
+            effectiveTreasuryFee = totalFeeLamports;
+          }
+        } catch {
+          effectiveTreasuryFee = 0n;
+        }
+      }
+    }
     const solverLamports = (action === "forward")
       ? lamports - MIN_NETWORK_FEE - effectiveTreasuryFee
       : lamports - MIN_NETWORK_FEE;
@@ -2426,7 +2507,7 @@ export async function recoverProxyDeposit(
       fromPrivKeyHex: privKeyHex,
       toPubkeyBase58: destination,
       transferLamports: solverLamports,
-      feeRecipientBase58: effectiveTreasuryFee > 0n ? (order.treasuryAddress || getTreasuryAddressForChain("sol")) : null,
+      feeRecipientBase58: effectiveTreasuryFee > 0n ? solTreasury : null,
       feeLamports: effectiveTreasuryFee,
     });
 
@@ -2457,6 +2538,7 @@ export async function recoverProxyDeposit(
           }
         : {
             forwardTxHash: txHash,
+            forwardBroadcastAt: Date.now(),
             feeTxHash: effectiveTreasuryFee > 0n ? txHash : undefined,
             feeConfirmedOnChain: effectiveTreasuryFee > 0n,
             totalAmountIn: lamports.toString(),
@@ -2499,7 +2581,7 @@ export async function recoverProxyDeposit(
 
     const { getLtcBalanceAndUtxos, sweepLtcDeposit } = await import("./ltcClient");
     const { balanceSatoshis, utxos } = await getLtcBalanceAndUtxos(order.proxyDepositAddress);
-    const MINER_FEE_SATOSHIS = 3000n;
+    const MINER_FEE_SATOSHIS = 1000n + 1500n * BigInt(Math.max(1, utxos.length));
 
     if (utxos.length === 0 || balanceSatoshis <= MINER_FEE_SATOSHIS) {
       return {
@@ -2513,11 +2595,7 @@ export async function recoverProxyDeposit(
 
     let totalFeeSats = 0n;
     if (action === "forward") {
-      let parsedTotal = 0n;
-      try {
-        const clean = (order.totalAmountIn || "0").trim();
-        parsedTotal = clean.includes(".") ? parseUnits(clean, 8) : BigInt(clean);
-      } catch {}
+      const parsedTotal = parseExpectedAtomic(order.totalAmountIn, 8);
       if (order.feeAmount && parsedTotal > 0n) {
         totalFeeSats = (balanceSatoshis * BigInt(order.feeAmount)) / parsedTotal;
       } else if (order.zkpayFeeBps !== undefined) {
@@ -2567,6 +2645,7 @@ export async function recoverProxyDeposit(
           }
         : {
             forwardTxHash: txHash,
+            forwardBroadcastAt: Date.now(),
             feeTxHash: effectiveFeeSats > 0n ? txHash : undefined,
             feeConfirmedOnChain: effectiveFeeSats > 0n,
             totalAmountIn: balanceSatoshis.toString(),
@@ -3160,6 +3239,7 @@ export async function recoverProxyDeposit(
               }
             : {
                 forwardTxHash: txHash,
+                forwardBroadcastAt: Date.now(),
                 feeTxHash: totalFeeUnits > 0n ? txHash : undefined,
                 feeConfirmedOnChain: totalFeeUnits > 0n,
                 totalAmountIn: tokenBalance.toString(),
@@ -3453,11 +3533,11 @@ export async function recoverProxyDeposit(
             const feeReceipt = await publicClient
               .waitForTransactionReceipt({ hash: feeRes.txHash as `0x${string}` })
               .catch(() => null);
-            if (!feeReceipt || feeReceipt.status === "success") {
+            if (feeReceipt && feeReceipt.status === "success") {
               feeTxHash = feeRes.txHash;
               console.log(`[Recover] ✓ Token ZkPay Treasury fee confirmed on-chain: ${feeTxHash}`);
             } else {
-              console.warn(`[Recover] ✗ Token ZkPay Treasury fee transfer reverted on-chain: ${feeRes.txHash}`);
+              console.warn(`[Recover] ✗ Token ZkPay Treasury fee transfer unconfirmed/reverted: ${feeRes.txHash}`);
             }
           }
         }
@@ -3518,6 +3598,7 @@ export async function recoverProxyDeposit(
           }
         : {
             forwardTxHash: txHash,
+            forwardBroadcastAt: Date.now(),
             feeTxHash: feeTxHash || undefined,
             feeConfirmedOnChain: Boolean(feeTxHash),
             totalAmountIn: liveTokenBal.toString(),
@@ -3549,6 +3630,8 @@ export async function recoverProxyDeposit(
 let sweeperTimeout: ReturnType<typeof setTimeout> | null = null;
 let sweeperIsIdleMode = false;
 let isSweeperTickActive = false;
+let sweeperTickStartedAt = 0;
+const SWEEPER_WATCHDOG_MS = 5 * 60_000;
 const SWEEPER_ACTIVE_INTERVAL_MS = Math.max(
   10_000,
   Number(process.env.SWEEPER_INTERVAL_MS) || 15_000
@@ -3602,44 +3685,49 @@ async function checkProxyDepositFundsTriState(order: ProxySwapOrder): Promise<bo
       const publicClient = getPublicClientForChain(order.chain);
       if (!isAddress(order.proxyDepositAddress)) return false;
       const cleanAddress = getAddress(order.proxyDepositAddress as `0x${string}`);
-      const nativeBal = await publicClient.getBalance({ address: cleanAddress });
-      if (nativeBal > 100_000_000_000_000n) {
-        return true;
-      }
       const upperSymbol = normalizeOrderFromAsset(order);
       const isNative =
         upperSymbol === "ETH" ||
         upperSymbol === "BNB" ||
         upperSymbol === "POL" ||
         upperSymbol === "MATIC";
-      if (!isNative) {
-        const tokenMap = CHAIN_TOKENS[normChain] || {};
-        let tokenAddress: `0x${string}` | null = tokenMap[upperSymbol] || null;
-        if (!tokenAddress && order.originAssetId?.includes("0x")) {
-          const match = order.originAssetId.match(/0x[a-fA-F0-9]{40}/);
-          if (match) tokenAddress = getAddress(match[0] as `0x${string}`);
-        }
-        if (tokenAddress) {
-          const [tokenBal, tokenDecimals] = await Promise.all([
-            publicClient.readContract({
-              address: tokenAddress,
-              abi: ERC20_ABI,
-              functionName: "balanceOf",
-              args: [cleanAddress],
-            }) as Promise<bigint>,
-            publicClient.readContract({
-              address: tokenAddress,
-              abi: ERC20_ABI,
-              functionName: "decimals",
-            }).catch(() => 6) as Promise<number>,
-          ]);
-          // Require economically viable balance (>= $0.25 or >= 10% of expected order) before sponsoring gas for expired auto-refund
-          const quarterDollar = tokenDecimals >= 2 ? 25n * 10n ** BigInt(tokenDecimals - 2) : 1n;
-          const expectedAtomic = BigInt(order.totalAmountIn || "0");
-          const tenPercent = expectedAtomic > 0n ? expectedAtomic / 10n : quarterDollar;
-          const minRefundFloor = quarterDollar < tenPercent ? quarterDollar : tenPercent;
-          if (tokenBal > 0n && tokenBal >= minRefundFloor) return true;
-        }
+
+      if (isNative) {
+        const nativeBal = await publicClient.getBalance({ address: cleanAddress });
+        const expectedAtomic = parseExpectedAtomic(order.totalAmountIn, 18);
+        const minNativeFloor = 500_000_000_000_000n; // 0.0005 native gas token floor
+        const tenPercent = expectedAtomic > 0n ? expectedAtomic / 10n : minNativeFloor;
+        const threshold = minNativeFloor < tenPercent ? minNativeFloor : tenPercent;
+        return nativeBal > 0n && nativeBal >= threshold;
+      }
+
+      // ERC-20 orders: ONLY inspect the ERC-20 balance (never treat leftover relayer gas dust as deposit funds!)
+      const tokenMap = CHAIN_TOKENS[normChain] || {};
+      let tokenAddress: `0x${string}` | null = tokenMap[upperSymbol] || null;
+      if (!tokenAddress && order.originAssetId?.includes("0x")) {
+        const match = order.originAssetId.match(/0x[a-fA-F0-9]{40}/);
+        if (match) tokenAddress = getAddress(match[0] as `0x${string}`);
+      }
+      if (tokenAddress) {
+        const [tokenBal, tokenDecimals] = await Promise.all([
+          publicClient.readContract({
+            address: tokenAddress,
+            abi: ERC20_ABI,
+            functionName: "balanceOf",
+            args: [cleanAddress],
+          }) as Promise<bigint>,
+          publicClient.readContract({
+            address: tokenAddress,
+            abi: ERC20_ABI,
+            functionName: "decimals",
+          }).catch(() => 6) as Promise<number>,
+        ]);
+        // Require economically viable balance (>= $0.25 or >= 10% of expected order) before sponsoring gas for expired auto-refund
+        const quarterDollar = tokenDecimals >= 2 ? 25n * 10n ** BigInt(tokenDecimals - 2) : 1n;
+        const expectedAtomic = parseExpectedAtomic(order.totalAmountIn, Number(tokenDecimals));
+        const tenPercent = expectedAtomic > 0n ? expectedAtomic / 10n : quarterDollar;
+        const minRefundFloor = quarterDollar < tenPercent ? quarterDollar : tenPercent;
+        if (tokenBal > 0n && tokenBal >= minRefundFloor) return true;
       }
       return false;
     }
@@ -3655,14 +3743,45 @@ async function hasProxyDepositFunds(order: ProxySwapOrder): Promise<boolean> {
 
 const recentForwardReconcileAt = new Map<string, number>();
 
+const SAFE_EXPLORER_HOSTS = new Set([
+  "basescan.org",
+  "etherscan.io",
+  "arbiscan.io",
+  "polygonscan.com",
+  "bscscan.com",
+  "solscan.io",
+  "explorer.solana.com",
+  "solana.fm",
+  "litecoinspace.org",
+  "blockchair.com",
+  "tronscan.org",
+  "mempool.space",
+  "nearblocks.io",
+  "explorer.near-intents.org",
+]);
+
+function sanitizeSolverExplorerUrl(rawUrl: unknown): string | undefined {
+  if (typeof rawUrl !== "string" || !rawUrl.trim()) return undefined;
+  try {
+    const u = new URL(rawUrl.trim());
+    if (u.protocol !== "https:") return undefined;
+    const host = u.hostname.toLowerCase();
+    for (const allowed of SAFE_EXPLORER_HOSTS) {
+      if (host === allowed || host.endsWith(`.${allowed}`)) return u.toString();
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Single source of truth for reconciling a FORWARDED order against the external Solver:
  * - Only marks SETTLED (and credits partner fee) when the Solver explicitly reports SUCCESS / SETTLED.
  * - Marks REFUNDED / FAILED when the Solver reports REFUNDED / FAILED / INCOMPLETE_DEPOSIT.
- * - If the Solver reports PENDING_DEPOSIT:
- *   1) Re-submits `forwardTxHash` to `/v0/deposit/submit` and re-checks status once.
- *   2) If the forward tx was dropped on-chain (`stillInProxy === true`), re-forwards (if active) or 100% auto-refunds (if expired).
- *   3) If the proxy wallet is confirmed empty (`stillInProxy === false`) and the order expired >30m ago without Solver settlement, marks FAILED (never fake-SETTLED).
+ * - On transient HTTP_ERROR (429/5xx/timeout): leaves order untouched so next tick retries cleanly.
+ * - On PROCESSING / KNOWN_DEPOSIT_TX: never resets/refunds; escalates to NEEDS_MANUAL_REVIEW only after 6h.
+ * - On PENDING_DEPOSIT: re-submits `forwardTxHash`, checks on-chain state, and only recovers if tx truly dropped.
  */
 export async function reconcileForwardedSolverOrder(
   order: ProxySwapOrder,
@@ -3676,6 +3795,10 @@ export async function reconcileForwardedSolverOrder(
     return (await getProxyOrderBySwapId(order.swapId)) || order;
   }
   recentForwardReconcileAt.set(order.swapId, Date.now());
+  if (recentForwardReconcileAt.size > 2000) {
+    const oldestKey = recentForwardReconcileAt.keys().next().value;
+    if (oldestKey) recentForwardReconcileAt.delete(oldestKey);
+  }
 
   const solverUrl = `https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(order.solverDepositAddress.trim())}`;
   const res = await fetch(solverUrl, {
@@ -3690,6 +3813,8 @@ export async function reconcileForwardedSolverOrder(
     rawSt = String(data?.status || "").toUpperCase() || "HTTP_ERROR";
   } else {
     recentForwardReconcileAt.delete(order.swapId);
+    // Transient Solver API error (429/5xx/network timeout): retry on next tick, never freeze or reset order
+    return order;
   }
 
   // Only re-submit forwardTxHash when Solver still says PENDING_DEPOSIT (KNOWN_DEPOSIT_TX already has the tx hash)
@@ -3711,7 +3836,20 @@ export async function reconcileForwardedSolverOrder(
   }
 
   if (rawSt === "SUCCESS" || rawSt === "SETTLED") {
-    const rawOriginHash = data?.swapDetails?.originChainTxHashes?.[0]?.hash;
+    const swapDetails = data?.swapDetails || {};
+    const rawOriginHash = swapDetails?.originChainTxHashes?.[0]?.hash;
+    const rawDestHash = swapDetails?.destinationChainTxHashes?.[0]?.hash;
+    const safeDestHash =
+      typeof rawDestHash === "string" && /^[a-zA-Z0-9x_-]{8,128}$/.test(rawDestHash)
+        ? rawDestHash
+        : undefined;
+    const safeDestExplorer = sanitizeSolverExplorerUrl(
+      swapDetails?.destinationChainTxHashes?.[0]?.explorerUrl
+    );
+    const settledAmountFormatted =
+      typeof swapDetails?.amountOutFormatted === "string" && swapDetails.amountOutFormatted.trim()
+        ? swapDetails.amountOutFormatted.trim()
+        : undefined;
     const needsFeeRecredit = Boolean(
       order.feeCredited && (!order.partnerFeeUsd || order.partnerFeeUsd === 0)
     );
@@ -3721,11 +3859,18 @@ export async function reconcileForwardedSolverOrder(
         ...(needsFeeRecredit ? { feeCredited: false } : {}),
         ...(partnerUserIdHint && !order.partnerUserId ? { partnerUserId: partnerUserIdHint } : {}),
         ...(rawOriginHash && !order.forwardTxHash ? { forwardTxHash: rawOriginHash } : {}),
+        ...(safeDestHash ? { destinationTxHash: safeDestHash } : {}),
+        ...(safeDestExplorer ? { destinationExplorerUrl: safeDestExplorer } : {}),
+        ...(settledAmountFormatted ? { settledAmountFormatted } : {}),
+        error: undefined,
       })) || {
         ...order,
         status: "SETTLED" as const,
         ...(needsFeeRecredit ? { feeCredited: false } : {}),
         ...(partnerUserIdHint && !order.partnerUserId ? { partnerUserId: partnerUserIdHint } : {}),
+        ...(safeDestHash ? { destinationTxHash: safeDestHash } : {}),
+        ...(safeDestExplorer ? { destinationExplorerUrl: safeDestExplorer } : {}),
+        ...(settledAmountFormatted ? { settledAmountFormatted } : {}),
       };
     await creditPartnerFeeOnSettlement(updatedOrder).catch(() => {});
     return updatedOrder;
@@ -3747,10 +3892,39 @@ export async function reconcileForwardedSolverOrder(
     );
   }
 
-  // On-chain verification fallback when Solver returns PENDING_DEPOSIT, KNOWN_DEPOSIT_TX, PROCESSING, or HTTP_ERROR (403/429)
-  const ageMs = Date.now() - (Number(order.createdAt) || 0);
-  if (ageMs >= 120_000) {
-    const stillInProxy = await checkProxyDepositFundsTriState(order);
+  const ageMs = Date.now() - (Number(order.forwardBroadcastAt || order.createdAt) || 0);
+
+  // Solver already acknowledged the deposit (KNOWN_DEPOSIT_TX / PROCESSING): never reset or refund!
+  if (rawSt === "KNOWN_DEPOSIT_TX" || rawSt === "PROCESSING") {
+    if (ageMs >= 6 * 60 * 60_000) {
+      return (
+        (await updateProxySwapOrder(order.swapId, {
+          status: "NEEDS_MANUAL_REVIEW",
+          error: `Solver remained in ${rawSt} for >6h without final settlement.`,
+        })) || { ...order, status: "NEEDS_MANUAL_REVIEW" }
+      );
+    }
+    return order;
+  }
+
+  // Only inspect proxy balance for dropped-tx recovery when Solver explicitly still reports PENDING_DEPOSIT
+  if (rawSt === "PENDING_DEPOSIT" && ageMs >= 120_000) {
+    // If EVM forwardTxHash is already confirmed successful on-chain, never reset/refund it as dropped
+    let forwardConfirmedOnChain = false;
+    if (order.forwardTxHash && order.forwardTxHash.startsWith("0x")) {
+      try {
+        const rcpt = await getPublicClientForChain(order.chain)
+          .getTransactionReceipt({ hash: order.forwardTxHash as `0x${string}` })
+          .catch(() => null);
+        if (rcpt?.status === "success") {
+          forwardConfirmedOnChain = true;
+        }
+      } catch {
+        // ignore RPC errors; tri-state check below handles safely
+      }
+    }
+
+    const stillInProxy = forwardConfirmedOnChain ? false : await checkProxyDepositFundsTriState(order);
     const effectiveExpiresAt =
       Number(order.expiresAt) || Number(order.createdAt) + 15 * 60_000;
 
@@ -3758,6 +3932,7 @@ export async function reconcileForwardedSolverOrder(
       if (Date.now() > effectiveExpiresAt) {
         const refundRes = await recoverProxyDeposit(order.proxyDepositAddress, {
           action: "refund",
+          allowFromForwarded: true,
         });
         if (refundRes.success) {
           return (
@@ -3779,7 +3954,8 @@ export async function reconcileForwardedSolverOrder(
           (await updateProxySwapOrder(order.swapId, {
             status: "PENDING_DEPOSIT",
             forwardTxHash: undefined,
-          })) || { ...order, status: "PENDING_DEPOSIT" as const };
+            forwardBroadcastAt: undefined,
+          })) || { ...order, status: "PENDING_DEPOSIT" as const, forwardTxHash: undefined, forwardBroadcastAt: undefined };
         return checkAndForwardProxyDeposit(reset);
       }
     }
@@ -3815,8 +3991,14 @@ export async function reconcileForwardedSolverOrder(
  * Returns the count of checked orders and processed operations.
  */
 export async function runProxySweeperTick(): Promise<{ checked: number; processed: number }> {
-  if (isSweeperTickActive) return { checked: 0, processed: 0 };
+  if (isSweeperTickActive) {
+    if (Date.now() - sweeperTickStartedAt < SWEEPER_WATCHDOG_MS) {
+      return { checked: 0, processed: 0 };
+    }
+    console.warn("[ProxySweeperDaemon] Watchdog resetting hung sweeper tick after 5 minutes.");
+  }
   isSweeperTickActive = true;
+  sweeperTickStartedAt = Date.now();
   let checked = 0;
   let processed = 0;
 
