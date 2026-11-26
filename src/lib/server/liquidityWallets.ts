@@ -27,7 +27,9 @@ import {
   POOL_SUPPORTED_ASSETS,
   type PoolAssetDefinition,
   getLiquidityPoolConfig,
+  resolvePoolAsset,
 } from "./liquidityConfig";
+import { getTreasuryAddressForChain } from "@/lib/constants";
 import { getMongoDb, isMongoConfigured } from "./mongodb";
 import { getActiveReservedLiquidityByAsset } from "./proxySwapStore";
 import { getLiveTokenPriceUsd } from "./priceService";
@@ -159,6 +161,43 @@ export function getLiquidityWalletAddress(assetKey: PoolAssetDefinition["assetKe
   if (assetKey === "sol:SOL") return getSolLiquidityWallet().address;
   if (assetKey === "ltc:LTC") return getLtcLiquidityWallet().address;
   return null;
+}
+
+/**
+ * Resolves where platform fees from NEAR Intents Solver (non-pool) swaps are routed on-chain.
+ * When `solverFeeDestination === "POOL"`, only pool-supported assets (LTC, SOL, Polygon USDT)
+ * with configured hot wallets route to the pool; all other assets automatically fall back to Cold Wallet.
+ */
+export async function resolveSolverFeeDestination(
+  originAssetId: string,
+  originChain?: string | null
+): Promise<{
+  mode: "TREASURY" | "POOL";
+  address: string;
+  poolAssetKey: PoolAssetDefinition["assetKey"] | null;
+}> {
+  const coldAddress = getTreasuryAddressForChain(originChain);
+  const config = await getLiquidityPoolConfig();
+
+  if (config.solverFeeDestination === "POOL") {
+    const poolDef = resolvePoolAsset(originAssetId, originChain);
+    if (poolDef) {
+      const hotAddr = getLiquidityWalletAddress(poolDef.assetKey);
+      if (hotAddr && hotAddr.trim()) {
+        return {
+          mode: "POOL",
+          address: hotAddr.trim(),
+          poolAssetKey: poolDef.assetKey,
+        };
+      }
+    }
+  }
+
+  return {
+    mode: "TREASURY",
+    address: coldAddress,
+    poolAssetKey: null,
+  };
 }
 
 export interface AssetLiquidityStatus {

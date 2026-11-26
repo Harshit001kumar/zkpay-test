@@ -26,6 +26,7 @@ export interface ProxySwapOrder {
   solverDepositAddress: string; // Near Intents single-use address
   solverQuoteAmount?: string; // Amount quoted to solver (net minus 1% FLEX buffer)
   treasuryAddress: string;
+  feeDestination?: "TREASURY" | "POOL";
   partnerFeeRecipient?: string | null;
   partnerFeeAmount?: string;
   zkpayFeeAmount?: string;

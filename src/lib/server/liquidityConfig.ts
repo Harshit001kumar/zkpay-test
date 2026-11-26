@@ -81,9 +81,12 @@ export function resolvePoolAsset(
   return null;
 }
 
+export type SolverFeeDestination = "TREASURY" | "POOL";
+
 export interface LiquidityPoolConfig {
   id: "default";
   enabled: boolean;
+  solverFeeDestination: SolverFeeDestination;
   pausedAssets: string[];
   maxSwapUsd: number;
   maxHourlyOutflowUsd: number;
@@ -96,6 +99,7 @@ export interface LiquidityPoolConfig {
 
 export type LiquidityTransferType =
   | "SWEEP_IN"
+  | "SOLVER_FEE_IN"
   | "PAYOUT_OUT"
   | "ADMIN_WITHDRAW"
   | "FEE_HARVEST"
@@ -122,6 +126,7 @@ export interface LiquidityTransferRecord {
 const DEFAULT_CONFIG: LiquidityPoolConfig = {
   id: "default",
   enabled: true,
+  solverFeeDestination: "TREASURY",
   pausedAssets: [],
   maxSwapUsd: 500,
   maxHourlyOutflowUsd: 1500,
@@ -199,6 +204,9 @@ export async function updateLiquidityPoolConfig(
   const next: LiquidityPoolConfig = {
     ...current,
     ...(typeof patch.enabled === "boolean" ? { enabled: patch.enabled } : {}),
+    ...(patch.solverFeeDestination === "POOL" || patch.solverFeeDestination === "TREASURY"
+      ? { solverFeeDestination: patch.solverFeeDestination }
+      : {}),
     pausedAssets: cleanPausedAssets,
     maxSwapUsd:
       typeof patch.maxSwapUsd === "number" && Number.isFinite(patch.maxSwapUsd)

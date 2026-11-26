@@ -2305,6 +2305,63 @@ export default function AdminPage() {
                 </div>
               </div>
 
+              {/* Solver Swap Fee Routing Toggle (Cold Wallet vs. Liquidity Pool) */}
+              <div className="p-4 rounded-xl bg-black/40 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-sans tabular-nums">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-white">Solver Swap Fee Routing</span>
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        liquidityData?.config?.solverFeeDestination === "POOL"
+                          ? "bg-success/20 text-success border border-success/30"
+                          : "bg-white/10 text-outline border border-white/15"
+                      }`}
+                    >
+                      {liquidityData?.config?.solverFeeDestination === "POOL"
+                        ? "AUTO-REFILL POOL"
+                        : "COLD WALLET"}
+                    </span>
+                    {(liquidityData?.summary?.solverFeesToPoolUsd || 0) > 0 && (
+                      <span className="text-[10px] text-success font-bold">
+                        +${(liquidityData.summary.solverFeesToPoolUsd || 0).toFixed(4)} added to pool
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-outline">
+                    {liquidityData?.config?.solverFeeDestination === "POOL"
+                      ? "Routes LTC, SOL & Polygon USDT fees from Solver swaps into Pool hot wallets; all other chains go to Cold Wallet."
+                      : "Sends all fees from Solver swaps directly to your Cold Wallet (TREASURY_*)."}
+                  </p>
+                </div>
+
+                <div className="inline-flex p-1 rounded-xl bg-black/60 border border-white/15 shrink-0 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    disabled={isSavingLiquidityConfig}
+                    onClick={() => handleUpdateLiquidityConfig({ solverFeeDestination: "TREASURY" })}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-colors ${
+                      (liquidityData?.config?.solverFeeDestination || "TREASURY") === "TREASURY"
+                        ? "bg-primary text-white"
+                        : "text-outline hover:text-white"
+                    }`}
+                  >
+                    Cold Wallet
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSavingLiquidityConfig}
+                    onClick={() => handleUpdateLiquidityConfig({ solverFeeDestination: "POOL" })}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-colors ${
+                      liquidityData?.config?.solverFeeDestination === "POOL"
+                        ? "bg-success text-surface font-extrabold"
+                        : "text-outline hover:text-white"
+                    }`}
+                  >
+                    Liquidity Pool
+                  </button>
+                </div>
+              </div>
+
               {/* Risk Guardrails & Max Swap Control */}
               <div className="p-4 rounded-xl bg-black/40 border border-white/10 flex flex-col sm:flex-row sm:items-end justify-between gap-4 text-xs font-sans tabular-nums">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1">
@@ -2705,7 +2762,7 @@ export default function AdminPage() {
                             <td className="py-3 pr-3">
                               <span
                                 className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  tr.type === "SWEEP_IN"
+                                  tr.type === "SWEEP_IN" || tr.type === "SOLVER_FEE_IN"
                                     ? "bg-success/20 text-success"
                                     : tr.type === "PAYOUT_OUT"
                                     ? "bg-primary/20 text-primary"

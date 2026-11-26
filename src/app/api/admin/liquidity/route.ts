@@ -229,6 +229,23 @@ export async function GET(req: Request) {
       0
     );
 
+    let solverFeesToPoolUsd = 0;
+    if (db) {
+      const feeAgg = await db
+        .collection("liquidity_transfers")
+        .aggregate([
+          { $match: { type: "SOLVER_FEE_IN" } },
+          { $group: { _id: null, total: { $sum: "$amountUsd" } } },
+        ])
+        .toArray()
+        .catch(() => []);
+      solverFeesToPoolUsd = Number(feeAgg[0]?.total || 0);
+    } else {
+      solverFeesToPoolUsd = recentTransfers
+        .filter((t) => t.type === "SOLVER_FEE_IN")
+        .reduce((acc, t) => acc + (Number(t.amountUsd) || 0), 0);
+    }
+
     return NextResponse.json({
       success: true,
       config,
@@ -246,6 +263,7 @@ export async function GET(req: Request) {
         grossPoolFeesUsd: Math.round(grossPoolFeesUsd * 10000) / 10000,
         zkpayNetPoolFeesUsd: Math.round(zkpayNetPoolFeesUsd * 10000) / 10000,
         partnerPoolFeesUsd: Math.round(partnerPoolFeesUsd * 10000) / 10000,
+        solverFeesToPoolUsd: Math.round(solverFeesToPoolUsd * 10000) / 10000,
       },
       feesByAsset: Object.values(feesByAsset),
       swaps: internalOrders,
@@ -274,6 +292,10 @@ export async function PATCH(req: Request) {
     const updated = await updateLiquidityPoolConfig(
       {
         enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
+        solverFeeDestination:
+          body.solverFeeDestination === "POOL" || body.solverFeeDestination === "TREASURY"
+            ? body.solverFeeDestination
+            : undefined,
         pausedAssets: Array.isArray(body.pausedAssets) ? body.pausedAssets : undefined,
         maxSwapUsd:
           typeof body.maxSwapUsd === "number" && body.maxSwapUsd > 0
@@ -304,7 +326,7 @@ export async function PATCH(req: Request) {
       adminWallet: auth.walletAddress,
       clientIp: getClientIp(req),
       action: "LIQUIDITY_CONFIG_UPDATE",
-      target: `enabled=${updated.enabled},paused=${updated.pausedAssets.join("|")},maxSwapUsd=${updated.maxSwapUsd}`,
+      target: `enabled=${updated.enabled},solverFeeDestination=${updated.solverFeeDestination},paused=${updated.pausedAssets.join("|")},maxSwapUsd=${updated.maxSwapUsd}`,
       status: "SUCCESS",
     });
 

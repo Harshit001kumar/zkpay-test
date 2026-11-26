@@ -38,6 +38,11 @@ import {
   getEvmRpcConfig,
   buildOneClickHeaders,
 } from "./rpcConfig";
+import {
+  POOL_SUPPORTED_ASSETS,
+  recordLiquidityTransfer,
+  type PoolAssetDefinition,
+} from "./liquidityConfig";
 
 const ERC20_ABI = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
@@ -744,6 +749,62 @@ function normalizeOrderFromAsset(order: ProxySwapOrder): string {
   return upperSymbol;
 }
 
+async function resolveLiveFeeDestination(order: ProxySwapOrder): Promise<{
+  mode: "TREASURY" | "POOL";
+  address: string;
+  poolAssetKey: PoolAssetDefinition["assetKey"] | null;
+}> {
+  try {
+    const { resolveSolverFeeDestination } = await import("./liquidityWallets");
+    return await resolveSolverFeeDestination(order.originAssetId || order.fromAsset, order.chain);
+  } catch {
+    return {
+      mode: "TREASURY",
+      address: order.treasuryAddress || getTreasuryAddressForChain(order.chain),
+      poolAssetKey: null,
+    };
+  }
+}
+
+async function recordSolverFeeInPool(params: {
+  poolAssetKey: PoolAssetDefinition["assetKey"] | null;
+  mode: "TREASURY" | "POOL";
+  toAddress: string;
+  amountAtomic: bigint;
+  txHash: string;
+  swapId: string;
+  fromAddress: string;
+}): Promise<void> {
+  if (params.mode !== "POOL" || !params.poolAssetKey || params.amountAtomic <= 0n || !params.txHash) {
+    return;
+  }
+  const def = POOL_SUPPORTED_ASSETS[params.poolAssetKey];
+  if (!def) return;
+  try {
+    const { getLiveTokenPriceUsd } = await import("./priceService");
+    const priceUsd = await getLiveTokenPriceUsd(def.symbol).catch(() => 0);
+    const formatted = formatUnits(params.amountAtomic, def.decimals);
+    const amountUsd = Math.round(Number(formatted) * (priceUsd || 0) * 10000) / 10000;
+    await recordLiquidityTransfer({
+      type: "SOLVER_FEE_IN",
+      assetKey: def.assetKey,
+      chain: def.chain,
+      symbol: def.symbol,
+      amountAtomic: params.amountAtomic.toString(),
+      amountFormatted: Number(formatted).toFixed(Math.min(6, def.decimals)).replace(/\.?0+$/, "") || "0",
+      amountUsd,
+      txHash: params.txHash,
+      explorerUrl: getExplorerTxUrl(def.chain, params.txHash),
+      fromAddress: params.fromAddress,
+      toAddress: params.toAddress,
+      swapId: params.swapId,
+      note: `Solver swap fee compounded into ${def.symbol} liquidity pool`,
+    });
+  } catch (err) {
+    console.warn(`[ProxyForwarder] Failed recording SOLVER_FEE_IN for ${params.swapId}:`, err);
+  }
+}
+
 /**
  * Handles EVM deposit detection, Case A (Native) and Case B (Stablecoins / ERC-20).
  */
@@ -751,8 +812,9 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
   const publicClient = getPublicClientForChain(order.chain);
   const proxyAddress = getAddress(order.proxyDepositAddress as `0x${string}`);
   const solverAddress = getAddress(order.solverDepositAddress as `0x${string}`);
+  const liveFeeDest = await resolveLiveFeeDestination(order);
   const treasuryAddress = getAddress(
-    (order.treasuryAddress || CONTRACTS.TREASURY) as `0x${string}`
+    (liveFeeDest.address || order.treasuryAddress || CONTRACTS.TREASURY) as `0x${string}`
   );
 
   const { chain, key: chainKey } = getChainConfig(order.chain);
@@ -1115,8 +1177,17 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
                 feeTxHash = feeRes.txHash;
                 feeConfirmed = true;
                 console.log(
-                  `[ProxyForwarder] ✓ Reconciled & swept remaining fee (${tokenBalance.toString()}) to Treasury: ${feeRes.txHash}`
+                  `[ProxyForwarder] ✓ Reconciled & swept remaining fee (${tokenBalance.toString()}) to ${liveFeeDest.mode}: ${feeRes.txHash}`
                 );
+                await recordSolverFeeInPool({
+                  poolAssetKey: liveFeeDest.poolAssetKey,
+                  mode: liveFeeDest.mode,
+                  toAddress: treasuryAddress,
+                  amountAtomic: tokenBalance,
+                  txHash: feeRes.txHash,
+                  swapId: order.swapId,
+                  fromAddress: order.proxyDepositAddress,
+                });
               }
             }
           } catch (reconcileErr) {
@@ -1125,7 +1196,14 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
         }
         const updated = await updateProxySwapOrder(order.swapId, {
           status: "FORWARDED",
-          ...(feeTxHash ? { feeTxHash, feeConfirmedOnChain: feeConfirmed } : {}),
+          ...(feeTxHash
+            ? {
+                feeTxHash,
+                feeConfirmedOnChain: feeConfirmed,
+                treasuryAddress,
+                feeDestination: liveFeeDest.mode,
+              }
+            : {}),
         });
         return updated || order;
       }
@@ -1552,11 +1630,25 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       fixedFeeAmount: (feeConfirmed ? fixedFeeUnits : 0n).toString(),
       zkpayFeeAmount: (feeConfirmed ? zkpayFeeUnits : 0n).toString(),
       partnerFeeAmount: (feeConfirmed ? partnerFeeUnits : 0n).toString(),
+      treasuryAddress,
+      feeDestination: liveFeeDest.mode,
       depositTxHash: feeTxHash || forwardTxHash,
       feeTxHash,
       feeConfirmedOnChain: feeConfirmed,
       forwardTxHash,
     });
+
+    if (feeConfirmed && feeTxHash) {
+      await recordSolverFeeInPool({
+        poolAssetKey: liveFeeDest.poolAssetKey,
+        mode: liveFeeDest.mode,
+        toAddress: treasuryAddress,
+        amountAtomic: totalFeeUnits,
+        txHash: feeTxHash,
+        swapId: order.swapId,
+        fromAddress: order.proxyDepositAddress,
+      });
+    }
 
     return updated || order;
     } catch (evmTokenErr: any) {
@@ -1862,7 +1954,8 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
     const totalFeeLamports = zkpayFeeLamports + partnerFeeLamports;
     let effectiveZkpayFee = 0n;
     const effectivePartnerFee = 0n;
-    const solTreasury = order.treasuryAddress || getTreasuryAddressForChain("sol");
+    const liveFeeDest = await resolveLiveFeeDestination(order);
+    const solTreasury = liveFeeDest.address || order.treasuryAddress || getTreasuryAddressForChain("sol");
 
     if (
       solTreasury &&
@@ -1961,6 +2054,8 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
       feeAmount: effectiveZkpayFee.toString(),
       zkpayFeeAmount: (effectiveZkpayFee > 0n ? zkpayFeeLamports : 0n).toString(),
       partnerFeeAmount: (effectiveZkpayFee > 0n ? partnerFeeLamports : 0n).toString(),
+      treasuryAddress: solTreasury,
+      feeDestination: liveFeeDest.mode,
       depositTxHash: txHash,
       feeTxHash: (effectiveZkpayFee > 0n || effectivePartnerFee > 0n) ? txHash : undefined,
       feeConfirmedOnChain: effectiveZkpayFee > 0n,
@@ -1969,6 +2064,18 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
       lastAttemptAt: Date.now(),
       error: undefined,
     });
+
+    if (effectiveZkpayFee > 0n) {
+      await recordSolverFeeInPool({
+        poolAssetKey: liveFeeDest.poolAssetKey,
+        mode: liveFeeDest.mode,
+        toAddress: solTreasury,
+        amountAtomic: effectiveZkpayFee,
+        txHash,
+        swapId: order.swapId,
+        fromAddress: order.proxyDepositAddress,
+      });
+    }
 
     return updated || order;
   } catch (err: any) {
@@ -2047,12 +2154,14 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     }
 
     const totalFeeSats = zkpayFeeSats + partnerFeeSats;
+    const liveFeeDest = await resolveLiveFeeDestination(order);
+    const ltcTreasury = liveFeeDest.address || order.treasuryAddress || getTreasuryAddressForChain("ltc");
 
     const txHash = await sweepLtcDeposit({
       proxyAddress: order.proxyDepositAddress,
       privKeyHex,
       solverAddress: order.solverDepositAddress,
-      treasuryAddress: order.treasuryAddress || getTreasuryAddressForChain("ltc"),
+      treasuryAddress: ltcTreasury,
       partnerAddress: undefined,
       zkpayFeeSatoshis: totalFeeSats,
       partnerFeeSatoshis: 0n,
@@ -2071,6 +2180,8 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       feeAmount: (hasFeeOutput ? totalFeeSats : 0n).toString(),
       zkpayFeeAmount: (hasFeeOutput ? zkpayFeeSats : 0n).toString(),
       partnerFeeAmount: (hasFeeOutput ? partnerFeeSats : 0n).toString(),
+      treasuryAddress: ltcTreasury,
+      feeDestination: liveFeeDest.mode,
       depositTxHash: txHash,
       feeTxHash: hasFeeOutput ? txHash : undefined,
       feeConfirmedOnChain: hasFeeOutput,
@@ -2079,6 +2190,18 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       lastAttemptAt: ltcBroadcastTs,
       error: undefined,
     });
+
+    if (hasFeeOutput) {
+      await recordSolverFeeInPool({
+        poolAssetKey: liveFeeDest.poolAssetKey,
+        mode: liveFeeDest.mode,
+        toAddress: ltcTreasury,
+        amountAtomic: totalFeeSats,
+        txHash,
+        swapId: order.swapId,
+        fromAddress: order.proxyDepositAddress,
+      });
+    }
 
     return updated || order;
   } catch (err: any) {
@@ -2482,7 +2605,8 @@ export async function recoverProxyDeposit(
     }
 
     const SOLANA_RENT_EXEMPT_MIN = 890_880n;
-    const solTreasury = order.treasuryAddress || getTreasuryAddressForChain("sol");
+    const liveFeeDest = action === "forward" ? await resolveLiveFeeDestination(order) : null;
+    const solTreasury = liveFeeDest?.address || order.treasuryAddress || getTreasuryAddressForChain("sol");
     let effectiveTreasuryFee = 0n;
     if (action === "forward" && totalFeeLamports > 0n && solTreasury && solTreasury.trim() !== destination.trim()) {
       if (totalFeeLamports >= SOLANA_RENT_EXEMPT_MIN) {
@@ -2539,6 +2663,8 @@ export async function recoverProxyDeposit(
         : {
             forwardTxHash: txHash,
             forwardBroadcastAt: Date.now(),
+            treasuryAddress: solTreasury,
+            feeDestination: liveFeeDest?.mode || "TREASURY",
             feeTxHash: effectiveTreasuryFee > 0n ? txHash : undefined,
             feeConfirmedOnChain: effectiveTreasuryFee > 0n,
             totalAmountIn: lamports.toString(),
@@ -2549,6 +2675,18 @@ export async function recoverProxyDeposit(
               : {}),
           }),
     });
+
+    if (action === "forward" && liveFeeDest && effectiveTreasuryFee > 0n) {
+      await recordSolverFeeInPool({
+        poolAssetKey: liveFeeDest.poolAssetKey,
+        mode: liveFeeDest.mode,
+        toAddress: solTreasury,
+        amountAtomic: effectiveTreasuryFee,
+        txHash,
+        swapId: order.swapId,
+        fromAddress: order.proxyDepositAddress,
+      });
+    }
 
     const explorerUrl = getExplorerTxUrl("sol", txHash);
 
@@ -2608,12 +2746,14 @@ export async function recoverProxyDeposit(
     const solverSats = (action === "forward")
       ? balanceSatoshis - MINER_FEE_SATOSHIS - effectiveFeeSats
       : balanceSatoshis - MINER_FEE_SATOSHIS;
+    const liveLtcFeeDest = action === "forward" ? await resolveLiveFeeDestination(order) : null;
+    const ltcRecTreasury = liveLtcFeeDest?.address || order.treasuryAddress || getTreasuryAddressForChain("ltc");
 
     const txHash = await sweepLtcDeposit({
       proxyAddress: order.proxyDepositAddress,
       privKeyHex,
       solverAddress: destination,
-      treasuryAddress: order.treasuryAddress || getTreasuryAddressForChain("ltc"),
+      treasuryAddress: ltcRecTreasury,
       zkpayFeeSatoshis: effectiveFeeSats,
       partnerFeeSatoshis: 0n,
     });
@@ -2646,6 +2786,8 @@ export async function recoverProxyDeposit(
         : {
             forwardTxHash: txHash,
             forwardBroadcastAt: Date.now(),
+            treasuryAddress: ltcRecTreasury,
+            feeDestination: liveLtcFeeDest?.mode || "TREASURY",
             feeTxHash: effectiveFeeSats > 0n ? txHash : undefined,
             feeConfirmedOnChain: effectiveFeeSats > 0n,
             totalAmountIn: balanceSatoshis.toString(),
@@ -2656,6 +2798,18 @@ export async function recoverProxyDeposit(
               : {}),
           }),
     });
+
+    if (action === "forward" && liveLtcFeeDest && effectiveFeeSats > 0n) {
+      await recordSolverFeeInPool({
+        poolAssetKey: liveLtcFeeDest.poolAssetKey,
+        mode: liveLtcFeeDest.mode,
+        toAddress: ltcRecTreasury,
+        amountAtomic: effectiveFeeSats,
+        txHash,
+        swapId: order.swapId,
+        fromAddress: order.proxyDepositAddress,
+      });
+    }
 
     const explorerUrl = getExplorerTxUrl("ltc", txHash);
 
@@ -2982,7 +3136,10 @@ export async function recoverProxyDeposit(
     let zkpayFeeUnits = 0n;
     let partnerFeeUnits = 0n;
     let totalFeeUnits = 0n;
-    const treasuryAddress = getAddress((order.treasuryAddress || CONTRACTS.TREASURY) as `0x${string}`);
+    const liveEvmRecFeeDest = action === "forward" ? await resolveLiveFeeDestination(order) : null;
+    const treasuryAddress = getAddress(
+      (liveEvmRecFeeDest?.address || order.treasuryAddress || CONTRACTS.TREASURY) as `0x${string}`
+    );
 
     if (action === "forward") {
       let parsedTotal = 0n;
@@ -3599,6 +3756,8 @@ export async function recoverProxyDeposit(
         : {
             forwardTxHash: txHash,
             forwardBroadcastAt: Date.now(),
+            treasuryAddress,
+            feeDestination: liveEvmRecFeeDest?.mode || "TREASURY",
             feeTxHash: feeTxHash || undefined,
             feeConfirmedOnChain: Boolean(feeTxHash),
             totalAmountIn: liveTokenBal.toString(),
@@ -3609,6 +3768,18 @@ export async function recoverProxyDeposit(
             partnerFeeAmount: (feeTxHash ? partnerFeeUnits : 0n).toString(),
           }),
     });
+
+    if (action === "forward" && liveEvmRecFeeDest && feeTxHash) {
+      await recordSolverFeeInPool({
+        poolAssetKey: liveEvmRecFeeDest.poolAssetKey,
+        mode: liveEvmRecFeeDest.mode,
+        toAddress: treasuryAddress,
+        amountAtomic: totalFeeUnits,
+        txHash: feeTxHash,
+        swapId: order.swapId,
+        fromAddress: order.proxyDepositAddress,
+      });
+    }
 
     const explorerUrl = getExplorerTxUrl(order.chain, txHash);
 

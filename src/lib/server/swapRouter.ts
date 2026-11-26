@@ -31,7 +31,7 @@ import {
 } from "@/lib/constants";
 import { resolveRefundAddress, isValidAddressForOriginAsset } from "@/lib/refundAddress";
 import { generateProxyDepositWallet, isProxySupportedChain, isValidBase58CheckAddress } from "./proxyWallets";
-import { getLiquidityWalletAddress } from "./liquidityWallets";
+import { getLiquidityWalletAddress, resolveSolverFeeDestination } from "./liquidityWallets";
 import { getRelayerAddress } from "./relayer";
 import {
   saveProxySwapOrder,
@@ -1062,6 +1062,10 @@ export async function getSwapQuote(params: SwapQuoteParams) {
   }
 
   const quote = data.quote;
+  const solverFeeDest = !feeSplit.isDirectRoute
+    ? await resolveSolverFeeDestination(originAssetId, resolvedOriginChain)
+    : null;
+  const effectiveTreasuryAddr = solverFeeDest?.address || feeSplit.treasuryAddress;
 
   const executionPlan: ExecutionPlan = {
     isDirectRoute: feeSplit.isDirectRoute,
@@ -1070,7 +1074,7 @@ export async function getSwapQuote(params: SwapQuoteParams) {
     netSwapAmount,
     feeAmount,
     feeAsset: originAssetId,
-    treasuryAddress: feeSplit.treasuryAddress || null,
+    treasuryAddress: effectiveTreasuryAddr || null,
     partnerFeeRecipient: feeSplit.partnerFeeRecipient || null,
     depositAddress: quote.depositAddress,
     transfers: feeSplit.isDirectRoute
@@ -1084,7 +1088,7 @@ export async function getSwapQuote(params: SwapQuoteParams) {
       : [
           {
             purpose: "PLATFORM_FEE",
-            recipient: feeSplit.treasuryAddress,
+            recipient: effectiveTreasuryAddr,
             amount: feeAmount,
           },
           {
@@ -1122,7 +1126,7 @@ export async function getSwapQuote(params: SwapQuoteParams) {
         zkpayFeeBps: feeSplit.zkpayFeeBps,
         partnerFeeBps: feeSplit.partnerFeeBps,
         partnerFeeRecipient: feeSplit.partnerFeeRecipient,
-        treasuryAddress: feeSplit.treasuryAddress,
+        treasuryAddress: effectiveTreasuryAddr,
       },
       totalDeductionsBps: feeSplit.totalDeductionsBps,
       feeSettlementNote: feeSplit.feeSettlementNote,
@@ -1411,6 +1415,11 @@ export async function createSwapOrder(params: CreateSwapParams) {
 
   const quote = data.quote;
   const resolvedSwapId = data.correlationId || `swp_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`;
+  const solverFeeDest = !feeSplit.isDirectRoute
+    ? await resolveSolverFeeDestination(originAssetId, resolvedOriginChain)
+    : null;
+  const effectiveTreasuryAddr = solverFeeDest?.address || feeSplit.treasuryAddress;
+  const effectiveFeeDestination: "TREASURY" | "POOL" = solverFeeDest?.mode || "TREASURY";
 
   // Single-transfer Proxy System:
   // For Tier 2 (L2s: Base, Arbitrum, Polygon, BSC) and Tier 3 (Solana):
@@ -1444,7 +1453,8 @@ export async function createSwapOrder(params: CreateSwapParams) {
         gasBufferAmount: "0",
         solverDepositAddress: quote.depositAddress,
         solverQuoteAmount: fees.solverQuoteAmount.toString(),
-        treasuryAddress: feeSplit.treasuryAddress,
+        treasuryAddress: effectiveTreasuryAddr,
+        feeDestination: effectiveFeeDestination,
         partnerFeeRecipient: fees.partnerFee > 0n ? feeSplit.partnerFeeRecipient : null,
         zkpayFeeBps: feeSplit.zkpayFeeBps,
         partnerFeeBps: fees.partnerFee > 0n ? feeSplit.partnerFeeBps : 0,
@@ -1513,7 +1523,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
     netSwapAmount,
     feeAmount,
     feeAsset: originAssetId,
-    treasuryAddress: feeSplit.treasuryAddress || null,
+    treasuryAddress: effectiveTreasuryAddr || null,
     partnerFeeRecipient: feeSplit.partnerFeeRecipient || null,
     depositAddress: finalDepositAddress,
     transfers: feeSplit.isDirectRoute
@@ -1527,7 +1537,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
       : [
           {
             purpose: "PLATFORM_FEE",
-            recipient: feeSplit.treasuryAddress,
+            recipient: effectiveTreasuryAddr,
             amount: feeAmount,
           },
           {
@@ -1569,7 +1579,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
       partnerFeeRecipient: feeSplit.partnerFeeRecipient,
       networkProtocolFeeBps: feeSplit.networkProtocolFeeBps,
       totalDeductionsBps: feeSplit.totalDeductionsBps,
-      treasuryAddress: feeSplit.treasuryAddress,
+      treasuryAddress: effectiveTreasuryAddr,
       feeSettlementNote: feeSplit.feeSettlementNote,
     },
   };
