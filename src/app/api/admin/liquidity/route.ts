@@ -12,6 +12,10 @@ import { getMongoDb } from "@/lib/server/mongodb";
 import { getRecentProxyOrders, type ProxySwapOrder } from "@/lib/server/proxySwapStore";
 import { getLiveTokenPriceUsd } from "@/lib/server/priceService";
 import { getExplorerTxUrl } from "@/lib/server/proxyForwarder";
+import {
+  reconcileActiveRebalances,
+  getRecentRebalances,
+} from "@/lib/server/liquidityRebalance";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -23,10 +27,13 @@ export async function GET(req: Request) {
   }
 
   try {
-    const [config, balances, recentTransfers, db, ltcPrice, solPrice, usdtPrice] = await Promise.all([
+    await reconcileActiveRebalances().catch(() => {});
+
+    const [config, balances, recentTransfers, recentRebalances, db, ltcPrice, solPrice, usdtPrice] = await Promise.all([
       getLiquidityPoolConfig(),
       getLiquidityBalances(),
       getRecentLiquidityTransfers(50),
+      getRecentRebalances(25),
       getMongoDb(),
       getLiveTokenPriceUsd("LTC"),
       getLiveTokenPriceUsd("SOL"),
@@ -268,6 +275,7 @@ export async function GET(req: Request) {
       feesByAsset: Object.values(feesByAsset),
       swaps: internalOrders,
       transfers: recentTransfers,
+      rebalances: recentRebalances,
     });
   } catch (err: any) {
     console.error("[AdminLiquidity] GET error:", err);

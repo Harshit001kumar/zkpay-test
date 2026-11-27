@@ -15,6 +15,7 @@ import {
   Layers,
   Lock,
   ArrowLeft,
+  ArrowRightLeft,
   Zap,
   CheckCircle2,
   AlertCircle,
@@ -94,6 +95,15 @@ export default function AdminPage() {
   const [withdrawLiquidityError, setWithdrawLiquidityError] = useState<string | null>(null);
   const [withdrawLiquidityResult, setWithdrawLiquidityResult] = useState<string | null>(null);
   const [retryingSweepId, setRetryingSweepId] = useState<string | null>(null);
+  const [rebalanceModalOpen, setRebalanceModalOpen] = useState(false);
+  const [rebalanceFromKey, setRebalanceFromKey] = useState<"ltc:LTC" | "sol:SOL" | "polygon:USDT">("polygon:USDT");
+  const [rebalanceToKey, setRebalanceToKey] = useState<"ltc:LTC" | "sol:SOL" | "polygon:USDT">("ltc:LTC");
+  const [rebalanceAmountInput, setRebalanceAmountInput] = useState<string>("");
+  const [rebalanceSlippageBps, setRebalanceSlippageBps] = useState<number>(100);
+  const [rebalanceQuote, setRebalanceQuote] = useState<any | null>(null);
+  const [isQuotingRebalance, setIsQuotingRebalance] = useState(false);
+  const [isExecutingRebalance, setIsExecutingRebalance] = useState(false);
+  const [rebalanceError, setRebalanceError] = useState<string | null>(null);
 
   // Partner Payouts & Partner Analytics State
   const [adminPayouts, setAdminPayouts] = useState<any[]>([]);
@@ -538,6 +548,155 @@ export default function AdminPage() {
       setRetryingSweepId(null);
     }
   };
+
+  const openRebalanceModal = (preferredFrom?: "ltc:LTC" | "sol:SOL" | "polygon:USDT") => {
+    const fromKey = preferredFrom || "polygon:USDT";
+    const toKey = fromKey === "polygon:USDT" ? "ltc:LTC" : "polygon:USDT";
+    setRebalanceFromKey(fromKey);
+    setRebalanceToKey(toKey);
+    setRebalanceAmountInput("");
+    setRebalanceQuote(null);
+    setRebalanceError(null);
+    setRebalanceModalOpen(true);
+  };
+
+  const handleFlipRebalancePair = () => {
+    const prevFrom = rebalanceFromKey;
+    setRebalanceFromKey(rebalanceToKey);
+    setRebalanceToKey(prevFrom);
+    setRebalanceAmountInput("");
+    setRebalanceQuote(null);
+    setRebalanceError(null);
+  };
+
+  const handleSetRebalanceFraction = (fraction: number) => {
+    const rawAvail = String(liquidityData?.balances?.[rebalanceFromKey]?.availableFormatted || "0");
+    const availNum = Number(rawAvail);
+    if (!Number.isFinite(availNum) || availNum <= 0) {
+      setRebalanceAmountInput("0");
+      setRebalanceQuote(null);
+      return;
+    }
+    if (fraction >= 1) {
+      setRebalanceAmountInput(rawAvail);
+    } else {
+      const decimals = rebalanceFromKey === "polygon:USDT" ? 2 : 4;
+      setRebalanceAmountInput((availNum * fraction).toFixed(decimals).replace(/\.?0+$/, ""));
+    }
+    setRebalanceQuote(null);
+    setRebalanceError(null);
+  };
+
+  const handlePreviewRebalanceQuote = async () => {
+    if (!rebalanceAmountInput.trim()) return;
+    setIsQuotingRebalance(true);
+    setRebalanceError(null);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch("/api/admin/liquidity/rebalance", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: "quote",
+          fromAssetKey: rebalanceFromKey,
+          toAssetKey: rebalanceToKey,
+          amount: rebalanceAmountInput.trim(),
+          slippageBps: rebalanceSlippageBps,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || "Failed to fetch 1Click rebalance quote");
+      }
+      setRebalanceQuote(data.quote);
+    } catch (err: any) {
+      setRebalanceQuote(null);
+      setRebalanceError(err?.message || "Failed to fetch 1Click rebalance quote");
+    } finally {
+      setIsQuotingRebalance(false);
+    }
+  };
+
+  const handleExecuteRebalance = async () => {
+    if (!rebalanceQuote || !rebalanceAmountInput.trim()) return;
+    setIsExecutingRebalance(true);
+    setRebalanceError(null);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch("/api/admin/liquidity/rebalance", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: "execute",
+          fromAssetKey: rebalanceFromKey,
+          toAssetKey: rebalanceToKey,
+          amount: rebalanceAmountInput.trim(),
+          slippageBps: rebalanceSlippageBps,
+          previewAmountOutAtomic: rebalanceQuote.estimatedAmountOutAtomic,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || "Failed to execute 1Click rebalance");
+      }
+      const rb = data.rebalance;
+      setWithdrawLiquidityResult(
+        `1Click rebalance submitted: ${rb.amountInFormatted} ${rb.fromSymbol} → ~${rb.estimatedAmountOutFormatted} ${rb.toSymbol} (0% ZkPay fee)`
+      );
+      setRebalanceModalOpen(false);
+      setRebalanceQuote(null);
+      setRebalanceAmountInput("");
+      await loadAdminLiquidity();
+    } catch (err: any) {
+      setRebalanceError(err?.message || "Failed to execute 1Click rebalance");
+    } finally {
+      setIsExecutingRebalance(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isAuthorized || activeTab !== "liquidity") return;
+    const activeList = (liquidityData?.rebalances || []).filter(
+      (r: any) =>
+        r.status === "PENDING_BROADCAST" ||
+        r.status === "SUBMITTED" ||
+        r.status === "PROCESSING"
+    );
+    if (activeList.length === 0) return;
+
+    const timer = setInterval(async () => {
+      try {
+        const token = await getAccessToken();
+        const res = await fetch("/api/admin/liquidity/rebalance", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (!res.ok || !Array.isArray(data?.rebalances)) return;
+
+        const stillActive = data.rebalances.filter(
+          (r: any) =>
+            r.status === "PENDING_BROADCAST" ||
+            r.status === "SUBMITTED" ||
+            r.status === "PROCESSING"
+        );
+        if (stillActive.length < activeList.length) {
+          await loadAdminLiquidity();
+        } else {
+          setLiquidityData((prev: any) =>
+            prev ? { ...prev, rebalances: data.rebalances } : prev
+          );
+        }
+      } catch {}
+    }, 8500);
+
+    return () => clearInterval(timer);
+  }, [isAuthorized, activeTab, liquidityData?.rebalances, getAccessToken, loadAdminLiquidity]);
 
   useEffect(() => {
     if (isAuthorized && (activeTab === "payouts" || activeTab === "overview")) {
@@ -2205,7 +2364,15 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 self-start sm:self-auto">
+                <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => openRebalanceModal()}
+                    className="px-3.5 py-2 rounded-xl bg-primary/20 hover:bg-primary/30 border border-primary/30 text-xs font-sans tabular-nums text-primary font-bold flex items-center gap-1.5 transition-colors"
+                  >
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                    <span>Rebalance</span>
+                  </button>
                   <button
                     type="button"
                     disabled={isSavingLiquidityConfig}
@@ -2247,6 +2414,89 @@ export default function AdminPage() {
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
+                </div>
+              )}
+
+              {/* Active / Recent 1Click Pool Rebalances Strip */}
+              {Array.isArray(liquidityData?.rebalances) && liquidityData.rebalances.length > 0 && (
+                <div className="p-3.5 rounded-xl bg-black/40 border border-white/10 space-y-2 text-xs font-sans tabular-nums">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-outline uppercase tracking-wider">
+                      1Click Pool Rebalances (0% Fee)
+                    </span>
+                    <span className="text-[10px] text-outline">
+                      {liquidityData.rebalances.some(
+                        (r: any) =>
+                          r.status === "PENDING_BROADCAST" ||
+                          r.status === "SUBMITTED" ||
+                          r.status === "PROCESSING"
+                      )
+                        ? "Auto-refreshing every 8s…"
+                        : "Latest"}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {liquidityData.rebalances.slice(0, 3).map((rb: any) => {
+                      const isInFlight =
+                        rb.status === "PENDING_BROADCAST" ||
+                        rb.status === "SUBMITTED" ||
+                        rb.status === "PROCESSING";
+                      return (
+                        <div
+                          key={rb.rebalanceId}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-lg bg-white/[0.03] border border-white/5"
+                        >
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                rb.status === "SETTLED"
+                                  ? "bg-success/20 text-success"
+                                  : isInFlight
+                                  ? "bg-primary/20 text-primary"
+                                  : "bg-warning/20 text-warning"
+                              }`}
+                            >
+                              {rb.status}
+                            </span>
+                            <span className="font-bold text-white">
+                              {rb.amountInFormatted} {rb.fromSymbol} →{" "}
+                              {rb.settledAmountOutFormatted || rb.estimatedAmountOutFormatted}{" "}
+                              {rb.toSymbol}
+                            </span>
+                            {rb.error && (
+                              <span className="text-[11px] text-warning truncate max-w-[220px]">
+                                ({rb.error})
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 text-[11px]">
+                            {rb.originExplorerUrl && (
+                              <a
+                                href={rb.originExplorerUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-outline hover:text-white inline-flex items-center gap-1"
+                              >
+                                <span>Send Tx</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                            {rb.destinationExplorerUrl && (
+                              <a
+                                href={rb.destinationExplorerUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-success hover:underline inline-flex items-center gap-1 font-bold"
+                              >
+                                <span>Receive Tx</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
@@ -2536,14 +2786,22 @@ export default function AdminPage() {
                     </div>
 
                     {/* Card Actions */}
-                    <div className="pt-2 border-t border-white/10 flex items-center gap-2">
+                    <div className="pt-2 border-t border-white/10 flex items-center gap-1.5">
                       <button
                         type="button"
                         disabled={!w?.configured || isSavingLiquidityConfig}
                         onClick={() => handleToggleAssetPause(ak)}
-                        className="flex-1 py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-[11px] transition-colors disabled:opacity-40"
+                        className="flex-1 py-2 px-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-[11px] transition-colors disabled:opacity-40"
                       >
-                        {isPaused ? "Resume Asset" : "Pause Asset"}
+                        {isPaused ? "Resume" : "Pause"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!w?.configured || Number(w?.availableFormatted || 0) <= 0}
+                        onClick={() => openRebalanceModal(ak)}
+                        className="flex-1 py-2 px-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-bold text-[11px] transition-colors disabled:opacity-40"
+                      >
+                        Swap
                       </button>
                       <button
                         type="button"
@@ -2555,9 +2813,9 @@ export default function AdminPage() {
                           setWithdrawDestInput("treasury");
                           setWithdrawLiquidityError(null);
                         }}
-                        className="flex-1 py-2 px-3 rounded-xl bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary font-bold text-[11px] transition-colors disabled:opacity-40"
+                        className="flex-1 py-2 px-2.5 rounded-xl bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary font-bold text-[11px] transition-colors disabled:opacity-40"
                       >
-                        Withdraw / Fees
+                        Withdraw
                       </button>
                     </div>
                   </div>
@@ -2762,9 +3020,11 @@ export default function AdminPage() {
                             <td className="py-3 pr-3">
                               <span
                                 className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  tr.type === "SWEEP_IN" || tr.type === "SOLVER_FEE_IN"
+                                  tr.type === "SWEEP_IN" ||
+                                  tr.type === "SOLVER_FEE_IN" ||
+                                  tr.type === "REBALANCE_IN"
                                     ? "bg-success/20 text-success"
-                                    : tr.type === "PAYOUT_OUT"
+                                    : tr.type === "PAYOUT_OUT" || tr.type === "REBALANCE_OUT"
                                     ? "bg-primary/20 text-primary"
                                     : tr.type === "AUTO_REFUND"
                                     ? "bg-warning/20 text-warning"
@@ -2910,6 +3170,275 @@ export default function AdminPage() {
                       </button>
                     </div>
                   </form>
+                </div>
+              </div>
+            )}
+
+            {/* Internal Liquidity Pool Swap (1Click Rebalance) Modal */}
+            {rebalanceModalOpen && (
+              <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+                <div className="w-full max-w-md bg-surface border border-white/15 rounded-3xl p-5 sm:p-6 space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-bold text-white font-sans tabular-nums">
+                        Rebalance Liquidity (1Click)
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-success/20 text-success border border-success/30">
+                        0% Fee
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setRebalanceModalOpen(false)}
+                      className="text-outline hover:text-white"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-3 text-xs font-sans tabular-nums">
+                    {/* From -> To Pair Selector */}
+                    <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-outline block mb-1">
+                          From Pool Wallet
+                        </label>
+                        <select
+                          value={rebalanceFromKey}
+                          onChange={(e) => {
+                            const nextFrom = e.target.value as
+                              | "ltc:LTC"
+                              | "sol:SOL"
+                              | "polygon:USDT";
+                            setRebalanceFromKey(nextFrom);
+                            if (nextFrom === rebalanceToKey) {
+                              setRebalanceToKey(
+                                nextFrom === "polygon:USDT" ? "ltc:LTC" : "polygon:USDT"
+                              );
+                            }
+                            setRebalanceQuote(null);
+                            setRebalanceError(null);
+                          }}
+                          className="w-full px-3 py-2.5 rounded-xl bg-black/60 border border-white/15 text-white text-xs outline-none focus:border-primary"
+                        >
+                          <option value="polygon:USDT">Polygon USDT</option>
+                          <option value="ltc:LTC">Litecoin (LTC)</option>
+                          <option value="sol:SOL">Solana (SOL)</option>
+                        </select>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleFlipRebalancePair}
+                        title="Flip assets"
+                        className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-white transition-colors"
+                      >
+                        <ArrowRightLeft className="w-3.5 h-3.5" />
+                      </button>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-outline block mb-1">
+                          To Pool Wallet
+                        </label>
+                        <select
+                          value={rebalanceToKey}
+                          onChange={(e) => {
+                            const nextTo = e.target.value as
+                              | "ltc:LTC"
+                              | "sol:SOL"
+                              | "polygon:USDT";
+                            setRebalanceToKey(nextTo);
+                            if (nextTo === rebalanceFromKey) {
+                              setRebalanceFromKey(
+                                nextTo === "polygon:USDT" ? "ltc:LTC" : "polygon:USDT"
+                              );
+                            }
+                            setRebalanceQuote(null);
+                            setRebalanceError(null);
+                          }}
+                          className="w-full px-3 py-2.5 rounded-xl bg-black/60 border border-white/15 text-white text-xs outline-none focus:border-primary"
+                        >
+                          {(
+                            [
+                              ["polygon:USDT", "Polygon USDT"],
+                              ["ltc:LTC", "Litecoin (LTC)"],
+                              ["sol:SOL", "Solana (SOL)"],
+                            ] as const
+                          )
+                            .filter(([k]) => k !== rebalanceFromKey)
+                            .map(([k, label]) => (
+                              <option key={k} value={k}>
+                                {label}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Live Balances Context */}
+                    <div className="flex items-center justify-between text-[11px] text-outline px-1">
+                      <span>
+                        Avail:{" "}
+                        <strong className="text-white">
+                          {liquidityData?.balances?.[rebalanceFromKey]?.availableFormatted || "0"}{" "}
+                          {liquidityData?.balances?.[rebalanceFromKey]?.symbol || ""}
+                        </strong>
+                      </span>
+                      <span>
+                        Dest:{" "}
+                        <strong className="text-white">
+                          {liquidityData?.balances?.[rebalanceToKey]?.onChainBalanceFormatted || "0"}{" "}
+                          {liquidityData?.balances?.[rebalanceToKey]?.symbol || ""}
+                        </strong>
+                      </span>
+                    </div>
+
+                    {/* Amount + Quick Percent Pills */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[10px] font-bold text-outline">
+                          Amount ({liquidityData?.balances?.[rebalanceFromKey]?.symbol || ""})
+                        </label>
+                        <div className="flex items-center gap-1">
+                          {[
+                            { label: "25%", val: 0.25 },
+                            { label: "50%", val: 0.5 },
+                            { label: "Max", val: 1 },
+                          ].map((p) => (
+                            <button
+                              key={p.label}
+                              type="button"
+                              onClick={() => handleSetRebalanceFraction(p.val)}
+                              className="px-2 py-0.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] font-bold text-primary"
+                            >
+                              {p.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={rebalanceAmountInput}
+                        onChange={(e) => {
+                          setRebalanceAmountInput(e.target.value);
+                          setRebalanceQuote(null);
+                        }}
+                        placeholder={`e.g. ${
+                          liquidityData?.balances?.[rebalanceFromKey]?.availableFormatted || "10"
+                        }`}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/15 text-white text-xs outline-none focus:border-primary"
+                      />
+                    </div>
+
+                    {/* Slippage Selector */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-outline">
+                        Max Slippage Tolerance
+                      </span>
+                      <div className="inline-flex p-0.5 rounded-xl bg-black/60 border border-white/10">
+                        {[
+                          { label: "0.5%", bps: 50 },
+                          { label: "1%", bps: 100 },
+                          { label: "2%", bps: 200 },
+                        ].map((s) => (
+                          <button
+                            key={s.bps}
+                            type="button"
+                            onClick={() => {
+                              setRebalanceSlippageBps(s.bps);
+                              setRebalanceQuote(null);
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                              rebalanceSlippageBps === s.bps
+                                ? "bg-primary text-white"
+                                : "text-outline hover:text-white"
+                            }`}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 1Click Quote Preview Card */}
+                    {rebalanceQuote && (
+                      <div className="p-3.5 rounded-2xl bg-black/50 border border-primary/30 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-outline">Estimated Receive</span>
+                          <span className="font-bold text-success text-sm">
+                            ~{rebalanceQuote.estimatedAmountOutFormatted} {rebalanceQuote.toSymbol}
+                            <span className="text-[10px] text-outline font-normal ml-1">
+                              (${(rebalanceQuote.estimatedAmountOutUsd || 0).toFixed(2)})
+                            </span>
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-outline">Minimum Guaranteed</span>
+                          <span className="text-white font-bold">
+                            {rebalanceQuote.minAmountOutFormatted} {rebalanceQuote.toSymbol}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-outline">ZkPay Platform Fee</span>
+                          <span className="text-success font-bold">0% (Direct 1Click)</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-outline">Destination Hot Wallet</span>
+                          <span className="font-mono text-white">
+                            {rebalanceQuote.toWalletAddress.slice(0, 6)}…
+                            {rebalanceQuote.toWalletAddress.slice(-6)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {rebalanceError && (
+                      <div className="p-3 rounded-xl bg-error/15 border border-error/30 text-error text-xs">
+                        {rebalanceError}
+                      </div>
+                    )}
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setRebalanceModalOpen(false)}
+                        className="py-2.5 px-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-outline font-bold"
+                      >
+                        Cancel
+                      </button>
+                      {!rebalanceQuote ? (
+                        <button
+                          type="button"
+                          onClick={handlePreviewRebalanceQuote}
+                          disabled={isQuotingRebalance || !rebalanceAmountInput.trim()}
+                          className="flex-1 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold disabled:opacity-50"
+                        >
+                          {isQuotingRebalance ? "Quoting 1Click…" : "Preview 1Click Quote"}
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={handlePreviewRebalanceQuote}
+                            disabled={isQuotingRebalance || isExecutingRebalance}
+                            className="py-2.5 px-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-white font-bold disabled:opacity-50"
+                          >
+                            {isQuotingRebalance ? "…" : "Refresh"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleExecuteRebalance}
+                            disabled={isExecutingRebalance}
+                            className="flex-1 py-2.5 rounded-xl bg-success hover:bg-success/90 text-surface font-extrabold disabled:opacity-50"
+                          >
+                            {isExecutingRebalance ? "Broadcasting…" : "Confirm Swap"}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

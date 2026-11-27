@@ -103,7 +103,9 @@ export type LiquidityTransferType =
   | "PAYOUT_OUT"
   | "ADMIN_WITHDRAW"
   | "FEE_HARVEST"
-  | "AUTO_REFUND";
+  | "AUTO_REFUND"
+  | "REBALANCE_OUT"
+  | "REBALANCE_IN";
 
 export interface LiquidityTransferRecord {
   id: string;
