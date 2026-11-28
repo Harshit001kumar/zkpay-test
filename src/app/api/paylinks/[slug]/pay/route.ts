@@ -6,7 +6,9 @@ import {
   resolveAllowedToken,
   computePaylinkQuote,
   resolveOpenPaylinkInputAtomic,
+  resolveEffectivePaylinkStatus,
 } from "@/lib/server/paylinkStore";
+import { startDirectPaylinkWatch } from "@/lib/server/paylinkDirectWatcher";
 import { createSwapOrder } from "@/lib/server/swapRouter";
 
 export const dynamic = "force-dynamic";
@@ -20,13 +22,14 @@ export async function POST(
   if (rateLimitResp) return rateLimitResp;
 
   try {
-    const paylink = await getPaylinkBySlug(params.slug);
-    if (!paylink) {
+    const rawPaylink = await getPaylinkBySlug(params.slug);
+    if (!rawPaylink) {
       return NextResponse.json(
         { success: false, error: "NOT_FOUND", message: "Paylink not found." },
         { status: 404, headers: rateLimit.headers }
       );
     }
+    const paylink = resolveEffectivePaylinkStatus(rawPaylink);
 
     if (paylink.status === "PAUSED") {
       return NextResponse.json(
@@ -35,10 +38,28 @@ export async function POST(
       );
     }
 
+    if (paylink.status === "EXPIRED") {
+      return NextResponse.json(
+        { success: false, error: "PAYLINK_EXPIRED", message: "This invoice has expired." },
+        { status: 400, headers: rateLimit.headers }
+      );
+    }
+
     if (paylink.status === "PAID") {
       return NextResponse.json(
-        { success: false, error: "PAYLINK_ALREADY_PAID", message: "This single-use Paylink has already been paid." },
+        { success: false, error: "PAYLINK_ALREADY_PAID", message: "This single-use invoice has already been paid." },
         { status: 400, headers: rateLimit.headers }
+      );
+    }
+
+    if (paylink.status === "PROCESSING") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "PAYLINK_PAYMENT_IN_PROGRESS",
+          message: "A payment for this invoice has already been detected and is confirming.",
+        },
+        { status: 409, headers: rateLimit.headers }
       );
     }
 
@@ -84,14 +105,52 @@ export async function POST(
       );
     }
 
-    // Same-asset transfers do not need a cross-chain swap
+    // Same-asset & same-chain transfers use the tracked Direct On-Chain Watcher (0% fee, $0 gas)
     if (originToken.assetId.toLowerCase() === paylink.receiveAssetId.toLowerCase()) {
+      let expectedAtomic = "0";
+      let expectedFormatted = "0";
+      if (paylink.amountMode === "FIXED") {
+        const directQuote = await computePaylinkQuote({
+          paylink,
+          fromAsset: originToken.assetId,
+          originChain: originToken.blockchain,
+        });
+        if (directQuote.mode === "DIRECT_SAME_ASSET") {
+          expectedAtomic = directQuote.expectedAmountAtomic || "0";
+          expectedFormatted = directQuote.amountInFormatted || "0";
+        }
+      } else {
+        const openResolved = await resolveOpenPaylinkInputAtomic({
+          originToken,
+          amountHuman:
+            typeof body?.amountHuman === "string"
+              ? body.amountHuman
+              : typeof body?.amount === "string" || typeof body?.amount === "number"
+              ? String(body.amount)
+              : undefined,
+          amountAtomic: typeof body?.amountAtomic === "string" ? body.amountAtomic : undefined,
+          amountUsd: typeof body?.amountUsd === "number" ? body.amountUsd : undefined,
+        });
+        expectedAtomic = openResolved.atomic;
+        expectedFormatted = openResolved.formatted;
+      }
+
+      const watch = await startDirectPaylinkWatch({
+        paylink,
+        expectedAmountAtomic: expectedAtomic,
+        expectedAmountFormatted: expectedFormatted,
+      });
+
       return NextResponse.json(
         {
           success: true,
           mode: "DIRECT_SAME_ASSET",
+          watchId: watch.watchId,
           depositAddress: paylink.recipientAddress,
-          message: "Same currency selected — send directly to the recipient address with 0% swap fee.",
+          expectedAmountAtomic: watch.expectedAmountAtomic,
+          expectedAmountFormatted: watch.expectedAmountFormatted,
+          expiresAt: watch.expiresAt,
+          message: "Direct transfer watch started — status will automatically update to PAID once confirmed.",
         },
         { headers: rateLimit.headers }
       );

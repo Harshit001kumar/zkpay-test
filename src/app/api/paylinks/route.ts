@@ -5,6 +5,7 @@ import {
   listPaylinksForUser,
   listSavedAddressesForUser,
   getPaylinkPaymentsByIds,
+  resolveEffectivePaylinkStatus,
 } from "@/lib/server/paylinkStore";
 import { enforceRateLimit } from "@/lib/server/rateLimit";
 
@@ -30,7 +31,7 @@ export async function GET(req: Request) {
 
     const statsById = await getPaylinkPaymentsByIds(paylinks.map((p) => p.id));
     const enriched = paylinks.map((p) => ({
-      ...p,
+      ...resolveEffectivePaylinkStatus(p),
       stats: statsById[p.id] || {
         totalCount: 0,
         settledCount: 0,
@@ -81,17 +82,31 @@ export async function POST(req: Request) {
       );
     }
 
+    const amountMode =
+      body.amountMode === "FIXED" || body.amountMode === "OPEN"
+        ? body.amountMode
+        : body.fixedAmount !== undefined && String(body.fixedAmount).trim() !== ""
+        ? "FIXED"
+        : "OPEN";
+
     const paylink = await createPaylink({
       creatorUserId: auth.userId,
       title: typeof body.title === "string" ? body.title : undefined,
       description: typeof body.description === "string" ? body.description : undefined,
+      clientName: typeof body.clientName === "string" ? body.clientName : undefined,
+      expiresInHours:
+        typeof body.expiresInHours === "number"
+          ? body.expiresInHours
+          : typeof body.expiresInHours === "string" && body.expiresInHours.trim()
+          ? Number(body.expiresInHours)
+          : undefined,
       receiveAssetId: String(receiveAsset),
       receiveChain: typeof body.receiveChain === "string" ? body.receiveChain : undefined,
       recipientAddress: String(recipientAddress),
-      amountMode: body.amountMode === "FIXED" ? "FIXED" : "OPEN",
+      amountMode,
       fixedAmount: body.fixedAmount !== undefined ? String(body.fixedAmount) : undefined,
       fixedCurrency: body.fixedCurrency === "ASSET" ? "ASSET" : "USD",
-      singleUse: Boolean(body.singleUse),
+      singleUse: typeof body.singleUse === "boolean" ? body.singleUse : amountMode === "FIXED",
       customSlug: typeof body.customSlug === "string" ? body.customSlug : undefined,
       addressLabel: typeof body.addressLabel === "string" ? body.addressLabel : undefined,
     });

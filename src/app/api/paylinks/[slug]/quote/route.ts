@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { enforceRateLimit } from "@/lib/server/rateLimit";
-import { getPaylinkBySlug, computePaylinkQuote } from "@/lib/server/paylinkStore";
+import {
+  getPaylinkBySlug,
+  computePaylinkQuote,
+  resolveEffectivePaylinkStatus,
+} from "@/lib/server/paylinkStore";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -13,13 +17,14 @@ export async function POST(
   if (rateLimitResp) return rateLimitResp;
 
   try {
-    const paylink = await getPaylinkBySlug(params.slug);
-    if (!paylink) {
+    const rawPaylink = await getPaylinkBySlug(params.slug);
+    if (!rawPaylink) {
       return NextResponse.json(
         { success: false, error: "NOT_FOUND", message: "Paylink not found." },
         { status: 404, headers: rateLimit.headers }
       );
     }
+    const paylink = resolveEffectivePaylinkStatus(rawPaylink);
 
     if (paylink.status === "PAUSED") {
       return NextResponse.json(
@@ -28,10 +33,28 @@ export async function POST(
       );
     }
 
+    if (paylink.status === "EXPIRED") {
+      return NextResponse.json(
+        { success: false, error: "PAYLINK_EXPIRED", message: "This invoice has expired." },
+        { status: 400, headers: rateLimit.headers }
+      );
+    }
+
     if (paylink.status === "PAID") {
       return NextResponse.json(
-        { success: false, error: "PAYLINK_ALREADY_PAID", message: "This single-use Paylink has already been paid." },
+        { success: false, error: "PAYLINK_ALREADY_PAID", message: "This single-use invoice has already been paid." },
         { status: 400, headers: rateLimit.headers }
+      );
+    }
+
+    if (paylink.status === "PROCESSING") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "PAYLINK_PAYMENT_IN_PROGRESS",
+          message: "A payment for this invoice has already been detected and is confirming.",
+        },
+        { status: 409, headers: rateLimit.headers }
       );
     }
 

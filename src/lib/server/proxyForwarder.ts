@@ -910,6 +910,11 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     const claimedFwd = await claimOrderForForwarding(order.swapId);
     if (!claimedFwd) return order;
+    if (order.paylinkId) {
+      import("./paylinkStore")
+        .then((m) => m.markPaylinkProcessing(order.paylinkId!, order.swapId))
+        .catch(() => {});
+    }
 
     let forwardTxHash = "";
     let feeTxHash = "";
@@ -1272,6 +1277,11 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     const claimedFwd = await claimOrderForForwarding(order.swapId);
     if (!claimedFwd) return order;
+    if (order.paylinkId) {
+      import("./paylinkStore")
+        .then((m) => m.markPaylinkProcessing(order.paylinkId!, order.swapId))
+        .catch(() => {});
+    }
 
     try {
     const rawKey = getDecryptedProxyPrivateKey(order);
@@ -1979,6 +1989,11 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
 
     const claimedFwd = await claimOrderForForwarding(order.swapId);
     if (!claimedFwd) return order;
+    if (order.paylinkId) {
+      import("./paylinkStore")
+        .then((m) => m.markPaylinkProcessing(order.paylinkId!, order.swapId))
+        .catch(() => {});
+    }
 
     const privKeyHex = getDecryptedProxyPrivateKey(order);
 
@@ -2191,6 +2206,11 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
     ) {
       if (balanceSatoshis >= minThreshold && balanceSatoshis > 5000n && order.status === "PENDING_DEPOSIT") {
         const detected = await updateProxySwapOrder(order.swapId, { status: "DETECTED" }).catch(() => null);
+        if (order.paylinkId) {
+          import("./paylinkStore")
+            .then((m) => m.markPaylinkProcessing(order.paylinkId!, order.swapId))
+            .catch(() => {});
+        }
         return detected || { ...order, status: "DETECTED" };
       }
       return order; // Awaiting 1 confirmation
@@ -2202,6 +2222,11 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     const claimedFwd = await claimOrderForForwarding(order.swapId);
     if (!claimedFwd) return order;
+    if (order.paylinkId) {
+      import("./paylinkStore")
+        .then((m) => m.markPaylinkProcessing(order.paylinkId!, order.swapId))
+        .catch(() => {});
+    }
 
     const privKeyHex = getDecryptedProxyPrivateKey(order);
 
@@ -4160,23 +4185,50 @@ export async function reconcileForwardedSolverOrder(
         ...(settledAmountFormatted ? { settledAmountFormatted } : {}),
       };
     await creditPartnerFeeOnSettlement(updatedOrder).catch(() => {});
+    if (updatedOrder.paylinkId) {
+      import("./paylinkStore")
+        .then((m) =>
+          m.markPaylinkPaidIfSingleUse(updatedOrder.paylinkId!, {
+            swapId: updatedOrder.swapId,
+            txHash: safeDestHash || updatedOrder.forwardTxHash || rawOriginHash,
+            explorerUrl: safeDestExplorer || getExplorerTxUrl(updatedOrder.destinationChain, safeDestHash || updatedOrder.forwardTxHash || ""),
+            fromAsset: updatedOrder.fromAsset,
+            fromChain: updatedOrder.chain,
+            amountIn: updatedOrder.totalAmountFormatted,
+            amountOut: settledAmountFormatted || updatedOrder.expectedAmountOutFormatted,
+            mode: "SWAP",
+          })
+        )
+        .catch(() => {});
+    }
     return updatedOrder;
   }
 
   if (rawSt === "REFUNDED") {
-    return (await updateProxySwapOrder(order.swapId, { status: "REFUNDED" })) || {
+    const refunded = (await updateProxySwapOrder(order.swapId, { status: "REFUNDED" })) || {
       ...order,
-      status: "REFUNDED",
+      status: "REFUNDED" as const,
     };
+    if (order.paylinkId) {
+      import("./paylinkStore")
+        .then((m) => m.unlockPaylinkIfFailed(order.paylinkId!, order.swapId))
+        .catch(() => {});
+    }
+    return refunded;
   }
 
   if (rawSt === "FAILED" || rawSt === "INCOMPLETE_DEPOSIT") {
-    return (
+    const failed =
       (await updateProxySwapOrder(order.swapId, {
         status: "FAILED",
         error: `Solver reported ${rawSt}`,
-      })) || { ...order, status: "FAILED" }
-    );
+      })) || { ...order, status: "FAILED" as const };
+    if (order.paylinkId) {
+      import("./paylinkStore")
+        .then((m) => m.unlockPaylinkIfFailed(order.paylinkId!, order.swapId))
+        .catch(() => {});
+    }
+    return failed;
   }
 
   const ageMs = Date.now() - (Number(order.forwardBroadcastAt || order.createdAt) || 0);
@@ -4344,6 +4396,11 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
             if (hasFundsState === false) {
               if (order.status === "PENDING_DEPOSIT" || order.status === "DETECTED") {
                 await updateProxySwapOrder(order.swapId, { status: "EXPIRED" });
+                if (order.paylinkId) {
+                  import("./paylinkStore")
+                    .then((m) => m.unlockPaylinkIfFailed(order.paylinkId!, order.swapId))
+                    .catch(() => {});
+                }
                 processed++;
               }
               continue;
@@ -4377,6 +4434,13 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
                 console.log(
                   `[ProxySweeperDaemon] Automatically refunded expired deposit for order ${order.swapId} to user ${order.refundTo}. Tx: ${refundRes.txHash}`
                 );
+                if (claimedRefund.paylinkId) {
+                  import("./paylinkStore")
+                    .then((m) =>
+                      m.unlockPaylinkIfFailed(claimedRefund.paylinkId!, claimedRefund.swapId)
+                    )
+                    .catch(() => {});
+                }
                 processed++;
               } else {
                 await updateProxySwapOrder(order.swapId, {
@@ -4451,6 +4515,14 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
           console.warn(`[ProxySweeperDaemon] Settlement check warning for ${order.swapId}:`, settleErr);
         }
       }
+    }
+
+    // Phase 4: Poll active same-asset direct Paylink watches so invoices mark PAID even if browser closed
+    try {
+      const { pollActiveDirectPaylinkWatches } = await import("./paylinkDirectWatcher");
+      processed += await pollActiveDirectPaylinkWatches(15);
+    } catch (directPollErr) {
+      console.warn("[ProxySweeperDaemon] Direct paylink watch polling warning:", directPollErr);
     }
   } catch (daemonErr) {
     console.warn("[ProxySweeperDaemon] Sweeper tick error:", daemonErr);

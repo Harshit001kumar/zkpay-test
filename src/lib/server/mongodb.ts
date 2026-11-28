@@ -169,6 +169,12 @@ export async function initMongoIndexes(db: Db): Promise<void> {
       .createIndex({ userId: 1, chain: 1, address: 1 }, { unique: true, sparse: true })
       .catch(() => {});
 
+    const paylinkDirectWatches = db.collection("paylink_direct_watches");
+    await paylinkDirectWatches.createIndex({ watchId: 1 }, { unique: true, sparse: true }).catch(() => {});
+    await paylinkDirectWatches.createIndex({ paylinkId: 1, createdAt: -1 }).catch(() => {});
+    await paylinkDirectWatches.createIndex({ status: 1, expiresAt: 1 }).catch(() => {});
+    await paylinkDirectWatches.createIndex({ claimedTxKey: 1 }, { unique: true, sparse: true }).catch(() => {});
+
     // api_keys (keyHash unique, userId)
     const apiKeys = db.collection("api_keys");
     await apiKeys.createIndex({ keyHash: 1 }, { unique: true, sparse: true }).catch(() => {});

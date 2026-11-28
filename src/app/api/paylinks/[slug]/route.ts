@@ -8,7 +8,10 @@ import {
   deletePaylinkForUser,
   getPaylinkPaymentsByIds,
   markPaylinkPaidIfSingleUse,
+  markPaylinkProcessing,
+  resolveEffectivePaylinkStatus,
 } from "@/lib/server/paylinkStore";
+import { pollDirectWatchesForPaylink } from "@/lib/server/paylinkDirectWatcher";
 import { getLiveTokenPriceUsd } from "@/lib/server/priceService";
 
 export const dynamic = "force-dynamic";
@@ -29,15 +32,52 @@ export async function GET(
       );
     }
 
-    if (paylink.singleUse && paylink.status === "ACTIVE") {
+    if (paylink.singleUse && (paylink.status === "ACTIVE" || paylink.status === "PROCESSING")) {
+      await pollDirectWatchesForPaylink(paylink.id).catch(() => {});
       const statsMap = await getPaylinkPaymentsByIds([paylink.id]);
       const stats = statsMap[paylink.id];
-      const settled = stats?.payments.find((p) => p.status.toUpperCase() === "SETTLED");
+      const settled = stats?.payments.find(
+        (p) => p.status.toUpperCase() === "SETTLED" || p.status.toUpperCase() === "SUCCESS"
+      );
       if (settled) {
-        await markPaylinkPaidIfSingleUse(paylink.id, settled.swapId);
-        paylink = (await getPaylinkBySlug(params.slug)) || { ...paylink, status: "PAID", paidSwapId: settled.swapId };
+        await markPaylinkPaidIfSingleUse(paylink.id, {
+          swapId: settled.swapId,
+          txHash: settled.destinationTxHash || undefined,
+          explorerUrl: settled.destinationExplorerUrl || undefined,
+          fromAsset: settled.fromAsset,
+          fromChain: settled.originChain,
+          amountIn: settled.amountInFormatted,
+          amountOut: settled.amountOutFormatted,
+          mode: settled.fromAsset === paylink.receiveSymbol && settled.originChain === paylink.receiveChain ? "DIRECT_SAME_ASSET" : "SWAP",
+        });
+        paylink = (await getPaylinkBySlug(params.slug)) || {
+          ...paylink,
+          status: "PAID",
+          paidSwapId: settled.swapId,
+          paidFromAsset: settled.fromAsset,
+          paidFromChain: settled.originChain,
+          paidAmountIn: settled.amountInFormatted,
+          paidAmountOut: settled.amountOutFormatted,
+          paidTxHash: settled.destinationTxHash || undefined,
+          paidExplorerUrl: settled.destinationExplorerUrl || undefined,
+        };
+      } else if (paylink.status === "ACTIVE") {
+        const detected = stats?.payments.find((p) => {
+          const s = p.status.toUpperCase();
+          return s === "DETECTED" || s === "PAYING_OUT" || s === "FORWARDING" || s === "FORWARDED";
+        });
+        if (detected) {
+          await markPaylinkProcessing(paylink.id, detected.swapId);
+          paylink = (await getPaylinkBySlug(params.slug)) || {
+            ...paylink,
+            status: "PROCESSING",
+            activePaymentId: detected.swapId,
+          };
+        }
       }
     }
+
+    paylink = resolveEffectivePaylinkStatus(paylink);
 
     const receivePriceUsd = await getLiveTokenPriceUsd(paylink.receiveSymbol).catch(() => 0);
 

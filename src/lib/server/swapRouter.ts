@@ -1653,7 +1653,25 @@ export async function getSwapStatus(depositAddress: string) {
 
       if (currentOrder.status === "SETTLED" && currentOrder.paylinkId) {
         import("./paylinkStore")
-          .then((m) => m.markPaylinkPaidIfSingleUse(currentOrder.paylinkId!, currentOrder.swapId))
+          .then((m) =>
+            m.markPaylinkPaidIfSingleUse(currentOrder.paylinkId!, {
+              swapId: currentOrder.swapId,
+              txHash: currentOrder.destinationTxHash || currentOrder.forwardTxHash,
+              explorerUrl: currentOrder.destinationExplorerUrl,
+              fromAsset: currentOrder.fromAsset,
+              fromChain: currentOrder.chain,
+              amountIn: currentOrder.totalAmountFormatted,
+              amountOut: currentOrder.settledAmountFormatted || currentOrder.expectedAmountOutFormatted,
+              mode: "SWAP",
+            })
+          )
+          .catch(() => {});
+      } else if (
+        currentOrder.paylinkId &&
+        (currentOrder.status === "DETECTED" || currentOrder.status === "PAYING_OUT")
+      ) {
+        import("./paylinkStore")
+          .then((m) => m.markPaylinkProcessing(currentOrder.paylinkId!, currentOrder.swapId))
           .catch(() => {});
       }
 
@@ -1739,7 +1757,18 @@ export async function getSwapStatus(depositAddress: string) {
           );
           if (currentOrder.paylinkId) {
             import("./paylinkStore")
-              .then((m) => m.markPaylinkPaidIfSingleUse(currentOrder.paylinkId!, currentOrder.swapId))
+              .then((m) =>
+                m.markPaylinkPaidIfSingleUse(currentOrder.paylinkId!, {
+                  swapId: currentOrder.swapId,
+                  txHash: solverStatus.destinationTxHash || currentOrder.forwardTxHash || solverStatus.originTxHash || undefined,
+                  explorerUrl: solverStatus.destinationExplorerUrl || undefined,
+                  fromAsset: currentOrder.fromAsset,
+                  fromChain: currentOrder.chain,
+                  amountIn: currentOrder.totalAmountFormatted,
+                  amountOut: solverStatus.settledAmount || currentOrder.expectedAmountOutFormatted,
+                  mode: "SWAP",
+                })
+              )
               .catch(() => {});
           }
         } else if (solverStatus.status === "settled" && !currentOrder.feeCredited) {
@@ -1754,6 +1783,11 @@ export async function getSwapStatus(depositAddress: string) {
             (await updateProxySwapOrder(currentOrder.swapId, {
               status: "REFUNDED",
             })) || currentOrder;
+          if (currentOrder.paylinkId) {
+            import("./paylinkStore")
+              .then((m) => m.unlockPaylinkIfFailed(currentOrder.paylinkId!, currentOrder.swapId))
+              .catch(() => {});
+          }
         } else if (
           solverStatus.status === "failed" &&
           currentOrder.status !== "FAILED" &&
@@ -1763,6 +1797,11 @@ export async function getSwapStatus(depositAddress: string) {
             (await updateProxySwapOrder(currentOrder.swapId, {
               status: "FAILED",
             })) || currentOrder;
+          if (currentOrder.paylinkId) {
+            import("./paylinkStore")
+              .then((m) => m.unlockPaylinkIfFailed(currentOrder.paylinkId!, currentOrder.swapId))
+              .catch(() => {});
+          }
         } else if (
           isSolverActiveOrDone &&
           (currentOrder.status === "PENDING_DEPOSIT" ||
@@ -1774,6 +1813,15 @@ export async function getSwapStatus(depositAddress: string) {
               status: "FORWARDED",
               ...(solverStatus.originTxHash ? { forwardTxHash: solverStatus.originTxHash } : {}),
             })) || currentOrder;
+          if (currentOrder.paylinkId) {
+            import("./paylinkStore")
+              .then((m) => m.markPaylinkProcessing(currentOrder.paylinkId!, currentOrder.swapId))
+              .catch(() => {});
+          }
+        } else if (currentOrder.paylinkId && isSolverActiveOrDone && solverStatus.status !== "settled") {
+          import("./paylinkStore")
+            .then((m) => m.markPaylinkProcessing(currentOrder.paylinkId!, currentOrder.swapId))
+            .catch(() => {});
         }
 
         if (
@@ -1852,7 +1900,25 @@ export async function getSwapStatus(depositAddress: string) {
         }
         if (upperMapped === "SETTLED" && directOrder.paylinkId) {
           const m = await import("./paylinkStore");
-          await m.markPaylinkPaidIfSingleUse(directOrder.paylinkId, directOrder.swapId);
+          await m.markPaylinkPaidIfSingleUse(directOrder.paylinkId, {
+            swapId: directOrder.swapId,
+            txHash: directStatus.destinationTxHash || directStatus.originTxHash || undefined,
+            explorerUrl: directStatus.destinationExplorerUrl || undefined,
+            fromAsset: directOrder.fromAsset,
+            fromChain: directOrder.originChain,
+            amountIn: directOrder.totalAmountFormatted,
+            amountOut: directStatus.settledAmount || directOrder.estimatedAmountOut,
+            mode: "SWAP",
+          });
+        } else if (
+          (directStatus.status === "processing" || directStatus.rawStatus === "KNOWN_DEPOSIT_TX") &&
+          directOrder.paylinkId
+        ) {
+          const m = await import("./paylinkStore");
+          await m.markPaylinkProcessing(directOrder.paylinkId, directOrder.swapId);
+        } else if ((upperMapped === "REFUNDED" || upperMapped === "FAILED") && directOrder.paylinkId) {
+          const m = await import("./paylinkStore");
+          await m.unlockPaylinkIfFailed(directOrder.paylinkId, directOrder.swapId);
         }
       })
       .catch(() => {});

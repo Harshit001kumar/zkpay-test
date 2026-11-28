@@ -499,7 +499,18 @@ export async function processInternalLiquidityOrder(
         })) || { ...order, status: "SETTLED" as const };
       if (reconciledOrder.paylinkId) {
         import("./paylinkStore")
-          .then((m) => m.markPaylinkPaidIfSingleUse(reconciledOrder.paylinkId!, reconciledOrder.swapId))
+          .then((m) =>
+            m.markPaylinkPaidIfSingleUse(reconciledOrder.paylinkId!, {
+              swapId: reconciledOrder.swapId,
+              txHash: reconciledOrder.destinationTxHash || order.destinationTxHash,
+              explorerUrl: reconciledOrder.destinationExplorerUrl || order.destinationExplorerUrl,
+              fromAsset: originDef.symbol,
+              fromChain: reconciledOrder.chain,
+              amountIn: reconciledOrder.totalAmountFormatted,
+              amountOut: reconciledOrder.settledAmountFormatted || reconciledOrder.expectedAmountOutFormatted,
+              mode: "SWAP",
+            })
+          )
           .catch(() => {});
       }
       const sweepRes = await sweepInternalProxyToLiquidityWallet(reconciledOrder);
@@ -523,6 +534,11 @@ export async function processInternalLiquidityOrder(
         ? `Payout tx ${order.destinationTxHash} reverted on-chain; automatically refunded 100% to ${order.refundTo}.`
         : `Payout tx ${order.destinationTxHash} reverted on-chain; auto-refund requires attention: ${refundRes.message}`,
     });
+    if (order.paylinkId && refundRes.success) {
+      import("./paylinkStore")
+        .then((m) => m.unlockPaylinkIfFailed(order.paylinkId!, order.swapId))
+        .catch(() => {});
+    }
     return refunded || order;
   }
 
@@ -565,6 +581,11 @@ export async function processInternalLiquidityOrder(
           const detected = await updateProxySwapOrder(order.swapId, {
             status: "DETECTED",
           });
+          if (order.paylinkId) {
+            import("./paylinkStore")
+              .then((m) => m.markPaylinkProcessing(order.paylinkId!, order.swapId))
+              .catch(() => {});
+          }
           return detected || { ...order, status: "DETECTED" };
         }
         return order;
@@ -592,6 +613,11 @@ export async function processInternalLiquidityOrder(
           order.status === "PENDING_DEPOSIT"
         ) {
           const detected = await updateProxySwapOrder(order.swapId, { status: "DETECTED" });
+          if (order.paylinkId) {
+            import("./paylinkStore")
+              .then((m) => m.markPaylinkProcessing(order.paylinkId!, order.swapId))
+              .catch(() => {});
+          }
           return detected || { ...order, status: "DETECTED" };
         }
         return order;
@@ -628,6 +654,11 @@ export async function processInternalLiquidityOrder(
       if (finalizedBal < minThreshold || finalizedBal <= 0n) {
         if (latestBal >= minThreshold && order.status === "PENDING_DEPOSIT") {
           const detected = await updateProxySwapOrder(order.swapId, { status: "DETECTED" });
+          if (order.paylinkId) {
+            import("./paylinkStore")
+              .then((m) => m.markPaylinkProcessing(order.paylinkId!, order.swapId))
+              .catch(() => {});
+          }
           return detected || { ...order, status: "DETECTED" };
         }
         return order;
@@ -664,6 +695,14 @@ export async function processInternalLiquidityOrder(
     return (await getProxyOrderBySwapId(order.swapId)) || order;
   }
 
+  const unlockPaylinkOnRefund = () => {
+    if (claimed.paylinkId) {
+      import("./paylinkStore")
+        .then((m) => m.unlockPaylinkIfFailed(claimed.paylinkId!, claimed.swapId))
+        .catch(() => {});
+    }
+  };
+
   // SECURITY GUARD 1: Reject & 100% auto-refund over-deposits (>105% of quoted amount)
   // Prevents an attacker from quoting $1 (passing maxSwapUsd & reserve checks) and depositing $10,000 to drain the hot wallet.
   const maxAllowedDepositAtomic = (expectedAtomic * 105n) / 100n;
@@ -683,6 +722,7 @@ export async function processInternalLiquidityOrder(
         ? `Deposit (${formatCleanHuman(confirmedDepositAtomic, originDef.decimals, 6)} ${originDef.symbol}) exceeded quoted amount by >5%; automatically refunded to ${claimed.refundTo}.`
         : `Over-deposit (>105% of quote) rejected; automatic refund pending: ${refundRes.message}`,
     });
+    unlockPaylinkOnRefund();
     return updated || claimed;
   }
 
@@ -707,6 +747,7 @@ export async function processInternalLiquidityOrder(
         ? `Live price oracle verification unavailable at payout time; automatically refunded 100% to ${claimed.refundTo}.`
         : `Live price oracle verification unavailable; auto-refund pending: ${refundRes.message}`,
     });
+    unlockPaylinkOnRefund();
     return updated || claimed;
   }
 
@@ -777,6 +818,7 @@ export async function processInternalLiquidityOrder(
         ? `${reason}; automatically refunded 100% to ${claimed.refundTo}.`
         : `${reason}; auto-refund pending: ${refundRes.message}`,
     });
+    unlockPaylinkOnRefund();
     return updated || claimed;
   }
 
@@ -808,12 +850,18 @@ export async function processInternalLiquidityOrder(
         ? `${reason}; automatically refunded 100% to ${claimed.refundTo}.`
         : `${reason}; auto-refund pending: ${refundRes.message}`,
     });
+    unlockPaylinkOnRefund();
     return updated || claimed;
   }
 
   // Dispatch destination payout from our Liquidity Hot Wallet (persisting destinationTxHash immediately on broadcast)
   let payoutRes: { txHash: string; explorerUrl: string; fromAddress: string };
   try {
+    if (claimed.paylinkId) {
+      import("./paylinkStore")
+        .then((m) => m.markPaylinkProcessing(claimed.paylinkId!, claimed.swapId))
+        .catch(() => {});
+    }
     payoutRes = await sendFromLiquidityWallet({
       assetKey: destDef.assetKey,
       toAddress: claimed.recipient,
@@ -877,6 +925,11 @@ export async function processInternalLiquidityOrder(
         ? `Liquidity payout could not be completed (${payoutErr?.message || "error"}); automatically refunded 100% to ${claimed.refundTo}.`
         : `Liquidity payout failed (${payoutErr?.message || "error"}); automatic refund requires attention: ${refundRes.message}`,
     });
+    if (claimed.paylinkId && refundRes.success) {
+      import("./paylinkStore")
+        .then((m) => m.unlockPaylinkIfFailed(claimed.paylinkId!, claimed.swapId))
+        .catch(() => {});
+    }
     return refundedOrder || claimed;
   }
 
@@ -931,7 +984,18 @@ export async function processInternalLiquidityOrder(
   // and only credit partner withdrawable USD fee balance after the origin deposit sweep succeeds.
   if (settledOrder.paylinkId) {
     import("./paylinkStore")
-      .then((m) => m.markPaylinkPaidIfSingleUse(settledOrder.paylinkId!, settledOrder.swapId))
+      .then((m) =>
+        m.markPaylinkPaidIfSingleUse(settledOrder.paylinkId!, {
+          swapId: settledOrder.swapId,
+          txHash: settledOrder.destinationTxHash || payoutRes.txHash,
+          explorerUrl: settledOrder.destinationExplorerUrl || payoutRes.explorerUrl,
+          fromAsset: originDef.symbol,
+          fromChain: settledOrder.chain,
+          amountIn: totalInFormatted,
+          amountOut: settledAmountFormatted,
+          mode: "SWAP",
+        })
+      )
       .catch(() => {});
   }
   const sweepRes = await sweepInternalProxyToLiquidityWallet(settledOrder);

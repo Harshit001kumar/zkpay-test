@@ -56,8 +56,10 @@ interface PaylinkPaymentSummary {
 interface PaylinkItem {
   id: string;
   slug: string;
+  invoiceNumber?: string;
   title: string;
   description?: string;
+  clientName?: string;
   receiveAssetId: string;
   receiveSymbol: string;
   receiveChain: string;
@@ -67,7 +69,15 @@ interface PaylinkItem {
   fixedAmount?: string;
   fixedCurrency?: "USD" | "ASSET";
   singleUse: boolean;
-  status: "ACTIVE" | "PAUSED" | "PAID";
+  status: "ACTIVE" | "PROCESSING" | "PAID" | "PAUSED" | "EXPIRED";
+  expiresAt?: number;
+  paidAt?: number;
+  paidTxHash?: string;
+  paidExplorerUrl?: string;
+  paidFromAsset?: string;
+  paidFromChain?: string;
+  paidAmountIn?: string;
+  paidAmountOut?: string;
   createdAt: number;
   updatedAt: number;
   stats?: {
@@ -113,18 +123,20 @@ export function InAppPaylinks() {
   const [savedAddresses, setSavedAddresses] = useState<SavedAddressItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Creator form state
+  // Creator form state (defaults to Invoice mode: FIXED + singleUse)
   const [selectedToken, setSelectedToken] = useState<SwapTokenItem>(defaultReceiveToken);
   const [recipientAddress, setRecipientAddress] = useState("");
   const [addressLabel, setAddressLabel] = useState("");
   const [title, setTitle] = useState("");
-  const [amountMode, setAmountMode] = useState<"OPEN" | "FIXED">("OPEN");
+  const [clientName, setClientName] = useState("");
+  const [amountMode, setAmountMode] = useState<"OPEN" | "FIXED">("FIXED");
   const [fixedAmount, setFixedAmount] = useState("25");
   const [fixedCurrency, setFixedCurrency] = useState<"USD" | "ASSET">("USD");
+  const [expiresInHours, setExpiresInHours] = useState<string>("168");
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [customSlug, setCustomSlug] = useState("");
   const [description, setDescription] = useState("");
-  const [singleUse, setSingleUse] = useState(false);
+  const [singleUse, setSingleUse] = useState(true);
 
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -330,6 +342,9 @@ export function InAppPaylinks() {
         body: JSON.stringify({
           title: title.trim() || undefined,
           description: description.trim() || undefined,
+          clientName: clientName.trim() || undefined,
+          expiresInHours:
+            expiresInHours && Number(expiresInHours) > 0 ? Number(expiresInHours) : undefined,
           receiveAssetId: selectedToken.assetId,
           receiveChain: selectedToken.blockchain,
           recipientAddress: addrTrimmed,
@@ -351,9 +366,9 @@ export function InAppPaylinks() {
       const url = fullPayUrl(data.paylink.slug);
       setNewlyCreatedUrl(url);
       setTitle("");
+      setClientName("");
       setDescription("");
       setCustomSlug("");
-      setSingleUse(false);
       await loadPaylinks();
     } catch (err: any) {
       setFormError(err?.message || "Network error creating Paylink.");
@@ -412,28 +427,59 @@ export function InAppPaylinks() {
       <div className="flex items-start justify-between gap-3 px-1">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-on-surface">
-            Paylinks
+            Invoices &amp; Paylinks
           </h1>
           <p className="text-xs sm:text-sm text-on-surface-variant mt-0.5">
-            Get paid in your chosen coin — anyone can pay with any supported crypto.
+            Send a crypto invoice — payers pay in any coin, you receive your chosen crypto.
           </p>
         </div>
         <button
           type="button"
           onClick={loadPaylinks}
           disabled={loading}
-          aria-label="Refresh Paylinks"
+          aria-label="Refresh Invoices"
           className="h-9 w-9 rounded-xl bg-surface-container border border-outline-variant text-on-surface-variant hover:text-on-surface flex items-center justify-center shrink-0 cursor-pointer disabled:opacity-50"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
         </button>
       </div>
 
-      {/* Create Paylink Card */}
+      {/* Create Invoice / Paylink Card */}
       <form
         onSubmit={handleCreatePaylink}
         className="rounded-2xl bg-surface-container border border-outline-variant p-4 sm:p-5 space-y-4"
       >
+        {/* Mode Switch: Invoice vs Reusable Link */}
+        <div className="grid grid-cols-2 p-1 rounded-xl bg-surface-container-low border border-outline-variant h-10">
+          <button
+            type="button"
+            onClick={() => {
+              setAmountMode("FIXED");
+              setSingleUse(true);
+            }}
+            className={`rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+              amountMode === "FIXED" && singleUse
+                ? "bg-secondary text-on-secondary"
+                : "text-on-surface-variant hover:text-on-surface"
+            }`}
+          >
+            Invoice (Fixed · 1x)
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAmountMode("OPEN");
+              setSingleUse(false);
+            }}
+            className={`rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+              !(amountMode === "FIXED" && singleUse)
+                ? "bg-secondary text-on-secondary"
+                : "text-on-surface-variant hover:text-on-surface"
+            }`}
+          >
+            Open Link (Reusable)
+          </button>
+        </div>
         {/* 1. Receive Currency */}
         <div className="space-y-1.5">
           <span className="text-xs font-medium text-on-surface-variant block">
@@ -572,17 +618,17 @@ export function InAppPaylinks() {
           </div>
         </div>
 
-        {/* 3. Label & Amount Mode */}
+        {/* 3. Label & Billed To */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-medium text-on-surface-variant block mb-1.5">
-              Title (optional)
+              Invoice title (optional)
             </label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder={`Pay ${selectedToken.symbol}`}
+              placeholder={`Invoice (${selectedToken.symbol})`}
               maxLength={80}
               className="w-full h-11 px-3 rounded-xl bg-surface-container-low border border-outline-variant text-base sm:text-xs text-on-surface placeholder:text-on-surface-variant/60 focus:outline-none focus:border-secondary/60"
             />
@@ -590,24 +636,42 @@ export function InAppPaylinks() {
 
           <div>
             <label className="text-xs font-medium text-on-surface-variant block mb-1.5">
-              Amount type
+              Billed to / Client (optional)
             </label>
-            <div className="grid grid-cols-2 p-1 rounded-xl bg-surface-container-low border border-outline-variant h-11">
-              {(["OPEN", "FIXED"] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setAmountMode(m)}
-                  className={`rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                    amountMode === m
-                      ? "bg-secondary text-on-secondary"
-                      : "text-on-surface-variant hover:text-on-surface"
-                  }`}
-                >
-                  {m === "OPEN" ? "Any amount" : "Fixed amount"}
-                </button>
-              ))}
-            </div>
+            <input
+              type="text"
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
+              placeholder="e.g. Acme Studio or @handle"
+              maxLength={80}
+              className="w-full h-11 px-3 rounded-xl bg-surface-container-low border border-outline-variant text-base sm:text-xs text-on-surface placeholder:text-on-surface-variant/60 focus:outline-none focus:border-secondary/60"
+            />
+          </div>
+        </div>
+
+        {/* Expiry selector */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-xs font-medium text-on-surface-variant">Due / Expiry</span>
+          <div className="inline-flex p-1 rounded-xl bg-surface-container-low border border-outline-variant">
+            {[
+              { label: "24h", val: "24" },
+              { label: "7d", val: "168" },
+              { label: "30d", val: "720" },
+              { label: "Never", val: "" },
+            ].map((opt) => (
+              <button
+                key={opt.label}
+                type="button"
+                onClick={() => setExpiresInHours(opt.val)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition-colors ${
+                  expiresInHours === opt.val
+                    ? "bg-on-surface text-surface"
+                    : "text-on-surface-variant hover:text-on-surface"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -714,7 +778,13 @@ export function InAppPaylinks() {
           className="w-full h-12 px-5 rounded-xl bg-secondary hover:brightness-110 disabled:bg-surface-container-high disabled:text-on-surface-variant disabled:cursor-not-allowed text-on-secondary font-semibold text-sm transition-colors cursor-pointer flex items-center justify-center gap-2"
         >
           {creating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-          <span>{creating ? "Creating Paylink…" : `Create ${selectedToken.symbol} Paylink`}</span>
+          <span>
+            {creating
+              ? "Creating…"
+              : singleUse && amountMode === "FIXED"
+              ? `Create ${selectedToken.symbol} Invoice`
+              : `Create ${selectedToken.symbol} Paylink`}
+          </span>
         </button>
       </form>
 
@@ -802,19 +872,32 @@ export function InAppPaylinks() {
                       />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
+                          {item.invoiceNumber && (
+                            <span className="font-mono text-[10px] font-bold text-on-surface-variant">
+                              {item.invoiceNumber}
+                            </span>
+                          )}
                           <span className="text-sm font-semibold text-on-surface truncate">
                             {item.title}
                           </span>
                           <span
                             className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              item.status === "ACTIVE"
+                              item.status === "PAID"
                                 ? "bg-secondary/15 text-secondary"
-                                : item.status === "PAID"
+                                : item.status === "PROCESSING"
                                 ? "bg-primary/15 text-primary"
+                                : item.status === "ACTIVE"
+                                ? "bg-surface-container-high text-on-surface border border-outline-variant"
                                 : "bg-warning/15 text-warning"
                             }`}
                           >
-                            {item.status}
+                            {item.status === "ACTIVE"
+                              ? item.singleUse
+                                ? "UNPAID"
+                                : "ACTIVE"
+                              : item.status === "PROCESSING"
+                              ? "DETECTED"
+                              : item.status}
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs text-on-surface-variant mt-0.5 flex-wrap">
@@ -829,7 +912,38 @@ export function InAppPaylinks() {
                                 : `${item.fixedAmount} ${item.receiveSymbol}`
                               : "Any amount"}
                           </span>
+                          {item.clientName && (
+                            <>
+                              <span>·</span>
+                              <span className="truncate max-w-[120px]">{item.clientName}</span>
+                            </>
+                          )}
                         </div>
+                        {item.status === "PAID" && (item.paidAmountOut || item.paidExplorerUrl) && (
+                          <div className="flex items-center gap-2 text-[11px] text-secondary mt-1">
+                            <CheckCircle2 className="w-3 h-3 shrink-0" />
+                            <span>
+                              Paid{" "}
+                              {item.paidAmountIn && item.paidFromAsset
+                                ? `${item.paidAmountIn} ${item.paidFromAsset} → `
+                                : ""}
+                              {item.paidAmountOut
+                                ? `${item.paidAmountOut} ${item.receiveSymbol}`
+                                : item.receiveSymbol}
+                            </span>
+                            {typeof item.paidExplorerUrl === "string" &&
+                              item.paidExplorerUrl.startsWith("https://") && (
+                                <a
+                                  href={item.paidExplorerUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="underline inline-flex items-center gap-0.5"
+                                >
+                                  Tx <ExternalLink className="w-2.5 h-2.5" />
+                                </a>
+                              )}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -882,7 +996,7 @@ export function InAppPaylinks() {
                       <ExternalLink className="w-4 h-4" />
                     </Link>
 
-                    {item.status !== "PAID" && (
+                    {(item.status === "ACTIVE" || item.status === "PAUSED") && (
                       <button
                         type="button"
                         disabled={busyLinkId === item.id}

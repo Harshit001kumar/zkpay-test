@@ -26,9 +26,11 @@ export interface SavedReceivingAddress {
 export interface PaylinkRecord {
   id: string;
   slug: string;
+  invoiceNumber?: string;
   creatorUserId: string;
   title: string;
   description?: string;
+  clientName?: string;
   receiveAssetId: string;
   receiveSymbol: string;
   receiveChain: string;
@@ -38,10 +40,31 @@ export interface PaylinkRecord {
   fixedAmount?: string;
   fixedCurrency?: "USD" | "ASSET";
   singleUse: boolean;
-  status: "ACTIVE" | "PAUSED" | "PAID";
+  status: "ACTIVE" | "PROCESSING" | "PAID" | "PAUSED" | "EXPIRED";
+  expiresAt?: number;
+  activePaymentId?: string;
   paidSwapId?: string;
+  paidAt?: number;
+  paidTxHash?: string;
+  paidExplorerUrl?: string;
+  paidFromAsset?: string;
+  paidFromChain?: string;
+  paidAmountIn?: string;
+  paidAmountOut?: string;
+  paidMode?: "SWAP" | "DIRECT_SAME_ASSET";
   createdAt: number;
   updatedAt: number;
+}
+
+export interface PaylinkReceiptDetails {
+  swapId?: string;
+  txHash?: string;
+  explorerUrl?: string;
+  fromAsset?: string;
+  fromChain?: string;
+  amountIn?: string;
+  amountOut?: string;
+  mode?: "SWAP" | "DIRECT_SAME_ASSET";
 }
 
 export type PublicPaylinkView = Omit<PaylinkRecord, "creatorUserId">;
@@ -72,6 +95,7 @@ export interface DirectPaylinkQuoteResult {
   originToken: SwapTokenItem;
   receiveToken: SwapTokenItem;
   depositAddress: string;
+  expectedAmountAtomic?: string | null;
   amountInFormatted: string | null;
   amountOutFormatted: string | null;
   targetReceiveTokens?: string | null;
@@ -244,8 +268,23 @@ export function validateCustomSlug(raw: string): string {
   return clean;
 }
 
+export function generateInvoiceNumber(): string {
+  return `INV-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+}
+
+/**
+ * Computes effective status (auto-expiring ACTIVE invoices whose expiresAt has passed).
+ */
+export function resolveEffectivePaylinkStatus(rec: PaylinkRecord, now = Date.now()): PaylinkRecord {
+  if (rec.status === "ACTIVE" && rec.expiresAt && now > rec.expiresAt) {
+    return { ...rec, status: "EXPIRED" };
+  }
+  return rec;
+}
+
 export function sanitizePublicPaylink(rec: PaylinkRecord): PublicPaylinkView {
-  const { creatorUserId: _hidden, ...pub } = rec;
+  const effective = resolveEffectivePaylinkStatus(rec);
+  const { creatorUserId: _hidden, ...pub } = effective;
   return pub;
 }
 
@@ -453,6 +492,8 @@ export async function createPaylink(params: {
   creatorUserId: string;
   title?: string;
   description?: string;
+  clientName?: string;
+  expiresInHours?: number;
   receiveAssetId: string;
   receiveChain?: string;
   recipientAddress: string;
@@ -546,14 +587,23 @@ export async function createPaylink(params: {
   const normalizedRecipient = normalizeAddressForChain(token.blockchain, params.recipientAddress);
   const cleanTitle = (params.title || "").trim().slice(0, 80) || `Pay ${token.symbol}`;
   const cleanDesc = (params.description || "").trim().slice(0, 160) || undefined;
+  const cleanClient = (params.clientName || "").trim().slice(0, 80) || undefined;
   const now = Date.now();
+  const expiresAt =
+    typeof params.expiresInHours === "number" &&
+    Number.isFinite(params.expiresInHours) &&
+    params.expiresInHours > 0
+      ? now + Math.min(2160, Math.max(1, params.expiresInHours)) * 3600_000
+      : undefined;
 
   const record: PaylinkRecord = {
     id: `pl_${crypto.randomBytes(8).toString("hex")}`,
     slug,
+    invoiceNumber: generateInvoiceNumber(),
     creatorUserId: params.creatorUserId,
     title: cleanTitle,
     ...(cleanDesc ? { description: cleanDesc } : {}),
+    ...(cleanClient ? { clientName: cleanClient } : {}),
     receiveAssetId: token.assetId,
     receiveSymbol: token.symbol,
     receiveChain: token.blockchain,
@@ -563,6 +613,7 @@ export async function createPaylink(params: {
     ...(cleanFixedAmount ? { fixedAmount: cleanFixedAmount, fixedCurrency: cleanFixedCurrency } : {}),
     singleUse: Boolean(params.singleUse),
     status: "ACTIVE",
+    ...(expiresAt ? { expiresAt } : {}),
     createdAt: now,
     updatedAt: now,
   };
@@ -623,6 +674,7 @@ export async function updatePaylinkForUser(
         {
           creatorUserId: userId,
           $or: [{ slug: cleanKey }, { id: (slugOrId || "").trim() }],
+          ...(updates.status ? { status: { $nin: ["PAID", "PROCESSING"] } } : {}),
         } as any,
         { $set: updates },
         { returnDocument: "after", projection: { _id: 0 } }
@@ -643,6 +695,9 @@ export async function updatePaylinkForUser(
   const existing =
     paylinksBySlug.get(cleanKey) || paylinksById.get((slugOrId || "").trim()) || null;
   if (!existing || existing.creatorUserId !== userId) return null;
+  if (updates.status && (existing.status === "PAID" || existing.status === "PROCESSING")) {
+    return null;
+  }
   const merged = { ...existing, ...updates };
   cachePaylink(merged);
   return merged;
@@ -684,9 +739,13 @@ export async function deletePaylinkForUser(
   return true;
 }
 
-export async function markPaylinkPaidIfSingleUse(
+/**
+ * Transitions a single-use invoice from ACTIVE -> PROCESSING as soon as a real deposit is detected,
+ * preventing concurrent second payers while on-chain confirmation/settlement finishes.
+ */
+export async function markPaylinkProcessing(
   paylinkId: string,
-  swapId?: string
+  paymentId?: string
 ): Promise<void> {
   const cleanId = (paylinkId || "").trim();
   if (!cleanId) return;
@@ -699,10 +758,68 @@ export async function markPaylinkPaidIfSingleUse(
         { id: cleanId, singleUse: true, status: "ACTIVE" } as any,
         {
           $set: {
-            status: "PAID",
-            ...(swapId ? { paidSwapId: swapId } : {}),
+            status: "PROCESSING",
+            ...(paymentId ? { activePaymentId: paymentId } : {}),
             updatedAt: now,
           },
+        }
+      );
+    }
+  } catch (err) {
+    console.warn("[PaylinkStore] markPaylinkProcessing warning:", err);
+  }
+
+  const cached = paylinksById.get(cleanId);
+  if (cached && cached.singleUse && cached.status === "ACTIVE") {
+    const updated: PaylinkRecord = {
+      ...cached,
+      status: "PROCESSING",
+      ...(paymentId ? { activePaymentId: paymentId } : {}),
+      updatedAt: now,
+    };
+    cachePaylink(updated);
+  }
+}
+
+/**
+ * Transitions a single-use invoice from ACTIVE | PROCESSING -> PAID once payment confirms/settles
+ * and persists the permanent receipt metadata. Backward-compatible with string swapId or receipt object.
+ */
+export async function markPaylinkPaidIfSingleUse(
+  paylinkId: string,
+  swapIdOrReceipt?: string | PaylinkReceiptDetails
+): Promise<void> {
+  const cleanId = (paylinkId || "").trim();
+  if (!cleanId) return;
+  const now = Date.now();
+
+  const receipt: PaylinkReceiptDetails =
+    typeof swapIdOrReceipt === "string"
+      ? { swapId: swapIdOrReceipt }
+      : swapIdOrReceipt || {};
+
+  const paidFields: Partial<PaylinkRecord> = {
+    status: "PAID",
+    paidAt: now,
+    updatedAt: now,
+    ...(receipt.swapId ? { paidSwapId: receipt.swapId } : {}),
+    ...(receipt.txHash ? { paidTxHash: receipt.txHash } : {}),
+    ...(receipt.explorerUrl ? { paidExplorerUrl: receipt.explorerUrl } : {}),
+    ...(receipt.fromAsset ? { paidFromAsset: receipt.fromAsset } : {}),
+    ...(receipt.fromChain ? { paidFromChain: receipt.fromChain } : {}),
+    ...(receipt.amountIn ? { paidAmountIn: receipt.amountIn } : {}),
+    ...(receipt.amountOut ? { paidAmountOut: receipt.amountOut } : {}),
+    ...(receipt.mode ? { paidMode: receipt.mode } : {}),
+  };
+
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      await db.collection<PaylinkRecord>(PAYLINKS_COLLECTION).updateOne(
+        { id: cleanId, singleUse: true, status: { $in: ["ACTIVE", "PROCESSING"] } } as any,
+        {
+          $set: paidFields,
+          $unset: { activePaymentId: "" },
         }
       );
     }
@@ -711,11 +828,60 @@ export async function markPaylinkPaidIfSingleUse(
   }
 
   const cached = paylinksById.get(cleanId);
-  if (cached && cached.singleUse && cached.status === "ACTIVE") {
+  if (cached && cached.singleUse && (cached.status === "ACTIVE" || cached.status === "PROCESSING")) {
     const updated: PaylinkRecord = {
       ...cached,
-      status: "PAID",
-      ...(swapId ? { paidSwapId: swapId } : {}),
+      ...paidFields,
+      activePaymentId: undefined,
+    };
+    cachePaylink(updated);
+  }
+}
+
+/**
+ * Auto-unlocks a PROCESSING invoice back to ACTIVE (or EXPIRED if past due date)
+ * when its in-flight payment fails or is refunded.
+ */
+export async function unlockPaylinkIfFailed(
+  paylinkId: string,
+  failedPaymentId?: string
+): Promise<void> {
+  const cleanId = (paylinkId || "").trim();
+  if (!cleanId) return;
+  const now = Date.now();
+
+  try {
+    const db = await getMongoDb();
+    if (db) {
+      const doc = await db
+        .collection<PaylinkRecord>(PAYLINKS_COLLECTION)
+        .findOne({ id: cleanId, singleUse: true, status: "PROCESSING" } as any);
+      if (doc && (!failedPaymentId || !doc.activePaymentId || doc.activePaymentId === failedPaymentId)) {
+        const nextStatus: PaylinkRecord["status"] =
+          doc.expiresAt && now > doc.expiresAt ? "EXPIRED" : "ACTIVE";
+        await db.collection<PaylinkRecord>(PAYLINKS_COLLECTION).updateOne(
+          { id: cleanId, singleUse: true, status: "PROCESSING" } as any,
+          { $set: { status: nextStatus, updatedAt: now }, $unset: { activePaymentId: "" } }
+        );
+      }
+    }
+  } catch (err) {
+    console.warn("[PaylinkStore] unlockPaylinkIfFailed warning:", err);
+  }
+
+  const cached = paylinksById.get(cleanId);
+  if (
+    cached &&
+    cached.singleUse &&
+    cached.status === "PROCESSING" &&
+    (!failedPaymentId || !cached.activePaymentId || cached.activePaymentId === failedPaymentId)
+  ) {
+    const nextStatus: PaylinkRecord["status"] =
+      cached.expiresAt && now > cached.expiresAt ? "EXPIRED" : "ACTIVE";
+    const updated: PaylinkRecord = {
+      ...cached,
+      status: nextStatus,
+      activePaymentId: undefined,
       updatedAt: now,
     };
     cachePaylink(updated);
@@ -737,11 +903,12 @@ export async function getPaylinkPaymentsByIds(
 
   let proxyOrders: ProxySwapOrder[] = [];
   let directOrders: DirectSwapOrder[] = [];
+  let directWatches: any[] = [];
 
   try {
     const db = await getMongoDb();
     if (db) {
-      const [pDocs, dDocs] = await Promise.all([
+      const [pDocs, dDocs, wDocs] = await Promise.all([
         db
           .collection<ProxySwapOrder>("proxy_swap_orders")
           .find({ paylinkId: { $in: paylinkIds } } as any, { projection: { _id: 0, encryptedPrivateKey: 0 } })
@@ -754,9 +921,19 @@ export async function getPaylinkPaymentsByIds(
           .sort({ createdAt: -1 })
           .limit(200)
           .toArray(),
+        db
+          .collection("paylink_direct_watches")
+          .find(
+            { paylinkId: { $in: paylinkIds }, status: { $in: ["DETECTED", "CONFIRMED"] } } as any,
+            { projection: { _id: 0 } }
+          )
+          .sort({ createdAt: -1 })
+          .limit(200)
+          .toArray(),
       ]);
       proxyOrders = pDocs;
       directOrders = dDocs;
+      directWatches = wDocs;
     } else {
       const recent = await getRecentProxyOrders(100);
       proxyOrders = recent.filter((o) => o.paylinkId && paylinkIds.includes(o.paylinkId));
@@ -822,6 +999,24 @@ export async function getPaylinkPaymentsByIds(
     });
   }
 
+  for (const w of directWatches) {
+    if (!w.paylinkId) continue;
+    const amt = w.receivedAmountFormatted || w.expectedAmountFormatted || "—";
+    pushEntry(w.paylinkId, {
+      swapId: w.watchId,
+      fromAsset: w.symbol,
+      originChain: w.chain,
+      amountInFormatted: amt,
+      toAsset: w.symbol,
+      destinationChain: w.chain,
+      amountOutFormatted: amt,
+      status: w.status === "CONFIRMED" ? "SETTLED" : "DETECTED",
+      destinationTxHash: w.txHash || null,
+      destinationExplorerUrl: w.explorerUrl || null,
+      createdAt: w.createdAt,
+    });
+  }
+
   for (const pid of paylinkIds) {
     out[pid].payments.sort((a, b) => b.createdAt - a.createdAt);
   }
@@ -834,13 +1029,20 @@ export async function getPaylinkPaymentsByIds(
  * so concurrent payers cannot obtain duplicate active settlement orders before it transitions to PAID.
  */
 export async function hasInFlightSingleUsePayment(paylinkId: string): Promise<boolean> {
-  if (!paylinkId || !isMongoConfigured()) return false;
+  if (!paylinkId) return false;
+  const cached = paylinksById.get(paylinkId);
+  if (cached && cached.singleUse && cached.status === "PROCESSING") return true;
+  if (!isMongoConfigured()) return false;
   try {
     const db = await getMongoDb();
     if (!db) return false;
     const cutoff = Date.now() - 15 * 60_000;
 
-    const [activeProxy, activeDirect] = await Promise.all([
+    const [plDoc, activeProxy, activeDirect, activeWatch] = await Promise.all([
+      db.collection<PaylinkRecord>(PAYLINKS_COLLECTION).findOne(
+        { id: paylinkId, singleUse: true, status: "PROCESSING" } as any,
+        { projection: { id: 1 } }
+      ),
       db.collection("proxy_swap_orders").findOne(
         {
           paylinkId,
@@ -857,9 +1059,17 @@ export async function hasInFlightSingleUsePayment(paylinkId: string): Promise<bo
         },
         { projection: { swapId: 1 } }
       ),
+      db.collection("paylink_direct_watches").findOne(
+        {
+          paylinkId,
+          createdAt: { $gt: cutoff },
+          status: { $in: ["DETECTED", "CONFIRMED"] },
+        },
+        { projection: { watchId: 1 } }
+      ),
     ]);
 
-    return Boolean(activeProxy || activeDirect);
+    return Boolean(plDoc || activeProxy || activeDirect || activeWatch);
   } catch (err) {
     console.warn("[PaylinkStore] hasInFlightSingleUsePayment failed:", err);
     return false;
@@ -956,11 +1166,13 @@ export async function computePaylinkQuote(params: {
     if (paylink.amountMode === "FIXED") {
       const fixedNum = Number(paylink.fixedAmount || "0");
       if (paylink.fixedCurrency === "ASSET") {
+        const expectedAtomic = toAtomicUnitsString(paylink.fixedAmount || "0", paylink.receiveDecimals);
         return {
           mode: "DIRECT_SAME_ASSET",
           originToken,
           receiveToken,
           depositAddress: paylink.recipientAddress,
+          expectedAmountAtomic: expectedAtomic,
           amountInFormatted: paylink.fixedAmount || "0",
           amountOutFormatted: paylink.fixedAmount || "0",
           targetReceiveTokens: paylink.fixedAmount || "0",
@@ -974,11 +1186,13 @@ export async function computePaylinkQuote(params: {
         throw makeError(`Live USD price unavailable for ${paylink.receiveSymbol}.`, "PRICE_UNAVAILABLE", 503);
       }
       const exactTokens = formatCleanDecimal(fixedNum / recPrice, Math.min(6, paylink.receiveDecimals));
+      const expectedAtomic = toAtomicUnitsString(exactTokens, paylink.receiveDecimals);
       return {
         mode: "DIRECT_SAME_ASSET",
         originToken,
         receiveToken,
         depositAddress: paylink.recipientAddress,
+        expectedAmountAtomic: expectedAtomic,
         amountInFormatted: exactTokens,
         amountOutFormatted: exactTokens,
         targetReceiveTokens: exactTokens,
@@ -1058,15 +1272,12 @@ export async function computePaylinkQuote(params: {
     isZeroFeeChain(originToken.blockchain) ||
     !isProxySupportedChain(originToken.blockchain, originToken.symbol);
   const grossMultiplier = isDirectZeroFee ? 1.0075 : 1.0285;
-  const extraStableCents =
-    (originToken.symbol === "USDC" || originToken.symbol === "USDT") &&
-    !isDirectZeroFee &&
-    targetReceiveUsd * 0.02 < 0.02
-      ? 0.02
-      : 0;
+  // Gross up the universal $0.02 minimum ZkPay fee across all proxied origins (LTC, SOL, Polygon, Base, BSC)
+  const extraMinFeeUsd =
+    !isDirectZeroFee && targetReceiveUsd * 0.02 < 0.02 ? 0.02 : 0;
 
   const initialHuman = formatCleanDecimal(
-    (targetReceiveUsd * grossMultiplier + extraStableCents) / originPriceUsd,
+    (targetReceiveUsd * grossMultiplier + extraMinFeeUsd) / originPriceUsd,
     Math.min(8, originToken.decimals)
   );
   let finalAtomic = toAtomicUnitsString(initialHuman, originToken.decimals);

@@ -31,8 +31,10 @@ import {
 interface PublicPaylink {
   id: string;
   slug: string;
+  invoiceNumber?: string;
   title: string;
   description?: string;
+  clientName?: string;
   receiveAssetId: string;
   receiveSymbol: string;
   receiveChain: string;
@@ -42,10 +44,28 @@ interface PublicPaylink {
   fixedAmount?: string;
   fixedCurrency?: "USD" | "ASSET";
   singleUse: boolean;
-  status: "ACTIVE" | "PAUSED" | "PAID";
+  status: "ACTIVE" | "PROCESSING" | "PAID" | "PAUSED" | "EXPIRED";
+  expiresAt?: number;
   paidSwapId?: string;
+  paidAt?: number;
+  paidTxHash?: string;
+  paidExplorerUrl?: string;
+  paidFromAsset?: string;
+  paidFromChain?: string;
+  paidAmountIn?: string;
+  paidAmountOut?: string;
+  paidMode?: "SWAP" | "DIRECT_SAME_ASSET";
   createdAt: number;
   updatedAt: number;
+}
+
+interface StoredDirectWatch {
+  watchId: string;
+  depositAddress: string;
+  expectedAmountFormatted: string;
+  symbol: string;
+  chain: string;
+  expiresAt: number;
 }
 
 interface StoredPaylinkOrder {
@@ -130,6 +150,15 @@ export function PaylinkCheckout({ slug }: { slug: string }) {
   const [activePayment, setActivePayment] = useState<StoredPaylinkOrder | null>(null);
   const [orderStatus, setOrderStatus] = useState<any | null>(null);
 
+  // Same-asset direct watch state
+  const directStorageKey = `zkpay_paylink_direct_${slug.toLowerCase()}`;
+  const [activeDirectWatch, setActiveDirectWatch] = useState<StoredDirectWatch | null>(null);
+  const [directWatchStatus, setDirectWatchStatus] = useState<any | null>(null);
+  const [startingDirectWatch, setStartingDirectWatch] = useState(false);
+  const [manualTxHash, setManualTxHash] = useState("");
+  const [verifyingManualTx, setVerifyingManualTx] = useState(false);
+  const [manualTxError, setManualTxError] = useState<string | null>(null);
+
   // UI controls
   const [pickerOpen, setPickerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -182,22 +211,32 @@ export function PaylinkCheckout({ slug }: { slug: string }) {
     loadPaylink();
   }, [loadPaylink]);
 
-  // Restore active order from localStorage if present & unexpired
+  // Restore active swap or direct watch from localStorage if present & unexpired
   useEffect(() => {
     try {
       const raw = localStorage.getItem(storageKey);
-      if (!raw) return;
-      const parsed: StoredPaylinkOrder = JSON.parse(raw);
-      const deadline = parsed?.order?.deposit?.deadline;
-      if (parsed?.order?.deposit?.address && (!deadline || new Date(deadline).getTime() > Date.now() - 3600_000)) {
-        setActivePayment(parsed);
-      } else {
-        localStorage.removeItem(storageKey);
+      if (raw) {
+        const parsed: StoredPaylinkOrder = JSON.parse(raw);
+        const deadline = parsed?.order?.deposit?.deadline;
+        if (parsed?.order?.deposit?.address && (!deadline || new Date(deadline).getTime() > Date.now() - 3600_000)) {
+          setActivePayment(parsed);
+        } else {
+          localStorage.removeItem(storageKey);
+        }
+      }
+      const rawDirect = localStorage.getItem(directStorageKey);
+      if (rawDirect) {
+        const parsedDirect: StoredDirectWatch = JSON.parse(rawDirect);
+        if (parsedDirect?.watchId && (!parsedDirect.expiresAt || parsedDirect.expiresAt > Date.now() - 1800_000)) {
+          setActiveDirectWatch(parsedDirect);
+        } else {
+          localStorage.removeItem(directStorageKey);
+        }
       }
     } catch {
       // ignore storage errors
     }
-  }, [storageKey]);
+  }, [storageKey, directStorageKey]);
 
   const isSameAsset = Boolean(
     paylink &&
@@ -304,6 +343,9 @@ export function PaylinkCheckout({ slug }: { slug: string }) {
           raw === "EXPIRED"
         ) {
           stopPolling();
+          if (st === "SETTLED" || st === "SUCCESS" || raw === "SETTLED" || raw === "SUCCESS") {
+            loadPaylink();
+          }
         }
       } catch {
         // transient poll error
@@ -313,7 +355,53 @@ export function PaylinkCheckout({ slug }: { slug: string }) {
     poll();
     intervalId = setInterval(poll, 5000);
     return () => stopPolling();
-  }, [activePayment?.order?.deposit?.address]);
+  }, [activePayment?.order?.deposit?.address, loadPaylink]);
+
+  // Live status polling when a same-asset direct watch is active
+  useEffect(() => {
+    const wid = activeDirectWatch?.watchId;
+    if (!wid || !paylink) return;
+
+    let active = true;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const pollDirect = async () => {
+      if (!active || (typeof document !== "undefined" && document.hidden)) return;
+      try {
+        const res = await fetch(
+          `/api/paylinks/${encodeURIComponent(paylink.slug)}/direct-status?watchId=${encodeURIComponent(wid)}`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!active || !data.success || !data.watch) return;
+        setDirectWatchStatus(data.watch);
+
+        if (data.watch.status === "CONFIRMED" || data.paylinkStatus === "PAID") {
+          if (timer) clearInterval(timer);
+          try {
+            localStorage.removeItem(directStorageKey);
+          } catch {}
+          loadPaylink();
+        } else if (data.watch.status === "EXPIRED") {
+          if (timer) clearInterval(timer);
+        }
+      } catch {}
+    };
+
+    pollDirect();
+    timer = setInterval(pollDirect, 5000);
+    return () => {
+      active = false;
+      if (timer) clearInterval(timer);
+    };
+  }, [activeDirectWatch?.watchId, paylink?.slug, directStorageKey, loadPaylink]);
+
+  // Refresh PROCESSING invoices automatically for other visitors waiting on lock
+  useEffect(() => {
+    if (!paylink || paylink.status !== "PROCESSING" || activePayment || activeDirectWatch) return;
+    const t = setInterval(loadPaylink, 6000);
+    return () => clearInterval(t);
+  }, [paylink?.status, activePayment, activeDirectWatch, loadPaylink]);
 
   useEffect(() => {
     if (!pickerOpen) return;
@@ -424,14 +512,94 @@ export function PaylinkCheckout({ slug }: { slug: string }) {
   const handleResetPayment = () => {
     try {
       localStorage.removeItem(storageKey);
+      localStorage.removeItem(directStorageKey);
     } catch {
       // ignore
     }
     setActivePayment(null);
     setOrderStatus(null);
+    setActiveDirectWatch(null);
+    setDirectWatchStatus(null);
+    setManualTxHash("");
+    setManualTxError(null);
     setShowQr(false);
     setCreateError(null);
     loadPaylink();
+  };
+
+  const handleStartDirectWatch = async () => {
+    if (!paylink || !fromToken || !isSameAsset) return;
+    setStartingDirectWatch(true);
+    setManualTxError(null);
+    setCreateError(null);
+    try {
+      const res = await fetch(`/api/paylinks/${encodeURIComponent(paylink.slug)}/pay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fromAsset: fromToken.assetId,
+          originChain: fromToken.blockchain,
+          ...(paylink.amountMode === "OPEN" && amountHuman.trim()
+            ? { amountHuman: amountHuman.trim() }
+            : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.watchId) {
+        setCreateError(data.message || data.error || "Unable to start direct transfer tracker.");
+        return;
+      }
+      const stored: StoredDirectWatch = {
+        watchId: data.watchId,
+        depositAddress: data.depositAddress || paylink.recipientAddress,
+        expectedAmountFormatted: data.expectedAmountFormatted || amountHuman.trim() || "0",
+        symbol: paylink.receiveSymbol,
+        chain: paylink.receiveChain,
+        expiresAt: data.expiresAt || Date.now() + 30 * 60_000,
+      };
+      setActiveDirectWatch(stored);
+      setDirectWatchStatus({ status: "AWAITING_TX" });
+      try {
+        localStorage.setItem(directStorageKey, JSON.stringify(stored));
+      } catch {}
+    } catch (err: any) {
+      setCreateError(err?.message || "Network error starting direct transfer tracker.");
+    } finally {
+      setStartingDirectWatch(false);
+    }
+  };
+
+  const handleVerifyManualDirectTx = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!paylink || !activeDirectWatch || !manualTxHash.trim()) return;
+    setVerifyingManualTx(true);
+    setManualTxError(null);
+    try {
+      const res = await fetch(`/api/paylinks/${encodeURIComponent(paylink.slug)}/direct-status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          watchId: activeDirectWatch.watchId,
+          txHash: manualTxHash.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.verified) {
+        setManualTxError(data.message || "Could not verify transaction hash yet.");
+        return;
+      }
+      setDirectWatchStatus(data.watch);
+      if (data.watch?.status === "CONFIRMED" || data.paylinkStatus === "PAID") {
+        try {
+          localStorage.removeItem(directStorageKey);
+        } catch {}
+        loadPaylink();
+      }
+    } catch (err: any) {
+      setManualTxError(err?.message || "Verification failed.");
+    } finally {
+      setVerifyingManualTx(false);
+    }
   };
 
   const deadlineSec = useCountdown(activePayment?.order?.deposit?.deadline || null);
@@ -487,17 +655,91 @@ export function PaylinkCheckout({ slug }: { slug: string }) {
               Go to ZkPay
             </Link>
           </div>
-        ) : paylink.status !== "ACTIVE" && !activePayment ? (
-          <div className="rounded-2xl bg-surface-container border border-outline-variant p-6 text-center space-y-4">
-            <div
-              className={`w-11 h-11 rounded-full mx-auto flex items-center justify-center ${
-                paylink.status === "PAID"
-                  ? "bg-secondary/15 text-secondary"
-                  : "bg-warning/15 text-warning"
-              }`}
+        ) : paylink.status === "PAID" && !activePayment ? (
+          /* ── PAID INVOICE RECEIPT VIEW ── */
+          <div className="rounded-2xl bg-surface-container border border-outline-variant p-5 sm:p-6 space-y-5 animate-fade-in">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-mono text-xs font-bold text-on-surface-variant">
+                {paylink.invoiceNumber || "INVOICE"}
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-secondary/15 text-secondary inline-flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" /> PAID
+              </span>
+            </div>
+
+            <div className="text-center space-y-2 py-2">
+              <div className="w-12 h-12 rounded-full bg-secondary/15 text-secondary mx-auto flex items-center justify-center">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+              <h1 className="text-lg font-bold text-on-surface">{paylink.title}</h1>
+              {paylink.clientName && (
+                <p className="text-xs text-on-surface-variant">Billed to {paylink.clientName}</p>
+              )}
+            </div>
+
+            <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant space-y-2.5 text-xs">
+              {paylink.paidAmountIn && paylink.paidFromAsset && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-on-surface-variant">Paid by customer</span>
+                  <span className="font-mono font-semibold text-on-surface">
+                    {paylink.paidAmountIn} {paylink.paidFromAsset}
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-on-surface-variant">Settled to receiver</span>
+                <span className="font-mono font-semibold text-secondary">
+                  {paylink.paidAmountOut
+                    ? `${paylink.paidAmountOut} ${paylink.receiveSymbol}`
+                    : `${paylink.receiveSymbol} (${chainName(paylink.receiveChain)})`}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-on-surface-variant">Recipient wallet</span>
+                <span className="font-mono text-on-surface">{shortAddr(paylink.recipientAddress, 6, 5)}</span>
+              </div>
+              {paylink.paidAt && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-on-surface-variant">Paid on</span>
+                  <span className="text-on-surface">
+                    {new Date(paylink.paidAt).toLocaleString()}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {typeof paylink.paidExplorerUrl === "string" &&
+              paylink.paidExplorerUrl.startsWith("https://") && (
+                <a
+                  href={paylink.paidExplorerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full h-11 rounded-xl bg-secondary/15 border border-secondary/30 text-secondary text-xs font-semibold flex items-center justify-center gap-1.5"
+                >
+                  <span>View Settlement on Explorer</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              )}
+
+            <button
+              type="button"
+              onClick={() =>
+                copyText(
+                  typeof window !== "undefined" ? window.location.href : `https://zkpay.top/pay/${paylink.slug}`,
+                  "receipt-link"
+                )
+              }
+              className="w-full h-11 rounded-xl bg-surface-container-high border border-outline-variant text-xs font-medium text-on-surface inline-flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              {paylink.status === "PAID" ? (
-                <CheckCircle2 className="w-5 h-5" />
+              {copiedKey === "receipt-link" ? <Check className="w-3.5 h-3.5 text-secondary" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedKey === "receipt-link" ? "Receipt Link Copied" : "Copy Receipt Link"}</span>
+            </button>
+          </div>
+        ) : paylink.status !== "ACTIVE" && !activePayment && !activeDirectWatch ? (
+          <div className="rounded-2xl bg-surface-container border border-outline-variant p-6 text-center space-y-4">
+            <div className="w-11 h-11 rounded-full mx-auto flex items-center justify-center bg-warning/15 text-warning">
+              {paylink.status === "PROCESSING" ? (
+                <RefreshCw className="w-5 h-5 animate-spin" />
               ) : (
                 <Lock className="w-5 h-5" />
               )}
@@ -505,8 +747,10 @@ export function PaylinkCheckout({ slug }: { slug: string }) {
             <div className="space-y-1">
               <h1 className="text-lg font-bold text-on-surface">{paylink.title}</h1>
               <p className="text-xs text-on-surface-variant">
-                {paylink.status === "PAID"
-                  ? "This single-use payment link has already been paid."
+                {paylink.status === "PROCESSING"
+                  ? "Payment detected on-chain — confirming settlement. Status updates automatically."
+                  : paylink.status === "EXPIRED"
+                  ? "This invoice has passed its due date and expired."
                   : "This payment link is temporarily paused by its creator."}
               </p>
             </div>
@@ -517,6 +761,183 @@ export function PaylinkCheckout({ slug }: { slug: string }) {
               Powered by ZkPay
             </Link>
           </div>
+        ) : activeDirectWatch ? (
+          /* ── SAME-ASSET DIRECT WATCHER TRACKER ── */
+          (() => {
+            const st = String(directWatchStatus?.status || "AWAITING_TX").toUpperCase();
+            const isConfirmed = st === "CONFIRMED";
+            const isDetected = st === "DETECTED";
+            const isExpired = st === "EXPIRED";
+            const displayAmt =
+              directWatchStatus?.receivedAmountFormatted ||
+              activeDirectWatch.expectedAmountFormatted;
+            const stepIdx = isConfirmed ? 2 : isDetected ? 1 : 0;
+
+            return (
+              <div className="rounded-2xl bg-surface-container border border-outline-variant p-4 sm:p-6 space-y-5 animate-fade-in">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${
+                        isExpired ? "bg-error" : "bg-secondary animate-pulse"
+                      }`}
+                    />
+                    <h2 className="text-base font-semibold text-on-surface truncate">
+                      {isConfirmed
+                        ? "Invoice Paid"
+                        : isDetected
+                        ? "Transfer Detected"
+                        : `Pay ${paylink.title}`}
+                    </h2>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleResetPayment}
+                    className="h-9 px-2.5 rounded-xl inline-flex items-center gap-1.5 text-xs font-medium text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{isConfirmed ? "Receipt" : "Change coin"}</span>
+                  </button>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-secondary/10 border border-secondary/30 flex items-center justify-between gap-2 text-xs">
+                  <span className="font-semibold text-secondary">Direct Transfer · 0% Fee</span>
+                  <span className="font-mono font-bold text-on-surface">
+                    {displayAmt && displayAmt !== "0"
+                      ? `${displayAmt} ${activeDirectWatch.symbol}`
+                      : activeDirectWatch.symbol}
+                  </span>
+                </div>
+
+                {stepIdx === 0 && !isExpired && (
+                  <div className="space-y-3">
+                    <div>
+                      <span className="text-xs font-medium text-on-surface-variant block mb-1.5">
+                        Send {activeDirectWatch.symbol} ({chainName(activeDirectWatch.chain)}) directly to:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => copyText(activeDirectWatch.depositAddress, "dw-addr")}
+                        className="w-full text-left p-3.5 rounded-xl bg-surface-container-low border border-outline-variant font-mono text-sm leading-relaxed text-on-surface break-all hover:border-secondary/40 cursor-pointer"
+                      >
+                        {activeDirectWatch.depositAddress}
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-[1fr_auto_auto] gap-2">
+                      <button
+                        type="button"
+                        onClick={() => copyText(activeDirectWatch.depositAddress, "dw-addr")}
+                        className="h-12 px-4 rounded-xl bg-secondary text-on-secondary text-sm font-semibold inline-flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        {copiedKey === "dw-addr" ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                        <span>{copiedKey === "dw-addr" ? "Copied" : "Copy address"}</span>
+                      </button>
+                      {activeDirectWatch.expectedAmountFormatted &&
+                        activeDirectWatch.expectedAmountFormatted !== "0" && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              copyText(activeDirectWatch.expectedAmountFormatted, "dw-amt")
+                            }
+                            className="h-12 px-4 rounded-xl bg-surface-container-high border border-outline-variant text-on-surface text-sm font-medium inline-flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            {copiedKey === "dw-amt" ? (
+                              <Check className="w-4 h-4 text-secondary" />
+                            ) : (
+                              <Copy className="w-4 h-4" />
+                            )}
+                            <span>Amount</span>
+                          </button>
+                        )}
+                      <button
+                        type="button"
+                        onClick={() => setShowQr((v) => !v)}
+                        aria-label="Toggle QR code"
+                        className="h-12 w-12 rounded-xl border bg-surface-container-high border-outline-variant text-on-surface inline-flex items-center justify-center cursor-pointer"
+                      >
+                        <QrCode className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    {showQr && (
+                      <div className="flex justify-center pt-1">
+                        <div className="w-52 h-52 rounded-xl bg-white p-2">
+                          <LocalQrCode value={activeDirectWatch.depositAddress} size={240} alt="Wallet QR" />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Optional Instant Tx Hash Paste */}
+                    <form onSubmit={handleVerifyManualDirectTx} className="pt-2 space-y-2">
+                      <span className="text-[11px] text-on-surface-variant block">
+                        Already sent? Paste transaction hash to verify immediately:
+                      </span>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={manualTxHash}
+                          onChange={(e) => setManualTxHash(e.target.value)}
+                          placeholder="Tx hash (0x... or txid)"
+                          className="flex-1 h-10 px-3 rounded-xl bg-surface-container-low border border-outline-variant font-mono text-xs text-on-surface focus:outline-none focus:border-secondary/60"
+                        />
+                        <button
+                          type="submit"
+                          disabled={verifyingManualTx || !manualTxHash.trim()}
+                          className="h-10 px-3.5 rounded-xl bg-surface-container-high border border-outline-variant text-xs font-semibold text-on-surface disabled:opacity-50 cursor-pointer"
+                        >
+                          {verifyingManualTx ? "Checking…" : "Verify"}
+                        </button>
+                      </div>
+                      {manualTxError && (
+                        <p className="text-[11px] text-error">{manualTxError}</p>
+                      )}
+                    </form>
+                  </div>
+                )}
+
+                <ol className="space-y-0 pt-1">
+                  {[
+                    "Awaiting direct transfer",
+                    "Transfer detected on-chain",
+                    "Invoice marked PAID",
+                  ].map((label, idx) => {
+                    const done = !isExpired && (isConfirmed || idx < stepIdx);
+                    const current = !isExpired && !isConfirmed && idx === stepIdx;
+                    return (
+                      <li key={label} className="flex items-start gap-3">
+                        <div className="flex flex-col items-center">
+                          <span
+                            className={`w-5 h-5 rounded-full flex items-center justify-center border ${
+                              done
+                                ? "bg-secondary border-secondary text-on-secondary"
+                                : current
+                                ? "border-secondary text-secondary"
+                                : "border-outline-variant text-transparent"
+                            }`}
+                          >
+                            {done ? (
+                              <Check className="w-3 h-3" strokeWidth={3} />
+                            ) : current ? (
+                              <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" />
+                            ) : null}
+                          </span>
+                          {idx < 2 && (
+                            <span
+                              className={`w-px flex-1 min-h-[18px] ${
+                                done ? "bg-secondary/60" : "bg-outline-variant"
+                              }`}
+                            />
+                          )}
+                        </div>
+                        <p className="pb-3 -mt-0.5 text-sm font-medium text-on-surface">{label}</p>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            );
+          })()
         ) : activePayment ? (
           /* ── STEP 2: ACTIVE DEPOSIT & 4-STEP SETTLEMENT TRACKER ── */
           (() => {
@@ -835,14 +1256,36 @@ export function PaylinkCheckout({ slug }: { slug: string }) {
             );
           })()
         ) : (
-          /* ── STEP 1: CHOOSE ANY PAY CURRENCY & AMOUNT ── */
+          /* ── STEP 1: INVOICE SUMMARY + CHOOSE ANY PAY CURRENCY & AMOUNT ── */
           <div className="rounded-2xl bg-surface-container border border-outline-variant p-4 sm:p-6 space-y-5 animate-fade-in">
+            {/* Invoice Top Bar */}
+            <div className="flex items-center justify-between gap-2 pb-3 border-b border-outline-variant/60">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs font-bold text-on-surface-variant">
+                  {paylink.invoiceNumber || "INVOICE"}
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-warning/15 text-warning">
+                  {paylink.singleUse ? "UNPAID" : "ACTIVE"}
+                </span>
+              </div>
+              {paylink.expiresAt && (
+                <span className="text-[11px] text-on-surface-variant">
+                  Due {new Date(paylink.expiresAt).toLocaleDateString()}
+                </span>
+              )}
+            </div>
+
             {/* Recipient & Paylink Summary */}
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 space-y-1">
                 <h1 className="text-lg sm:text-xl font-bold text-on-surface break-words">
                   {paylink.title}
                 </h1>
+                {paylink.clientName && (
+                  <p className="text-xs text-on-surface-variant">
+                    Billed to <span className="text-on-surface font-medium">{paylink.clientName}</span>
+                  </p>
+                )}
                 {paylink.description && (
                   <p className="text-xs text-on-surface-variant">{paylink.description}</p>
                 )}
@@ -925,7 +1368,39 @@ export function PaylinkCheckout({ slug }: { slug: string }) {
                   <span className="text-on-surface-variant">Same currency selected</span>
                 </div>
 
-                {paylink.amountMode === "FIXED" && (
+                {paylink.amountMode === "OPEN" ? (
+                  <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-on-surface-variant">
+                        Amount you pay ({fromToken.symbol})
+                      </span>
+                      <div className="flex items-center gap-1">
+                        {presetsFor(fromToken).map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => setAmountHuman(p)}
+                            className={`h-6 px-2 rounded-md font-mono text-[11px] cursor-pointer transition-colors ${
+                              amountHuman === p
+                                ? "bg-secondary/20 text-secondary font-semibold"
+                                : "bg-surface-container text-on-surface-variant hover:text-on-surface"
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={amountHuman}
+                      onChange={(e) => setAmountHuman(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full bg-transparent font-mono text-2xl font-bold text-on-surface placeholder:text-on-surface-variant/40 focus:outline-none tabular-nums"
+                    />
+                  </div>
+                ) : (
                   (() => {
                     const directAmt =
                       quoteResult?.amountInFormatted ||
@@ -962,47 +1437,28 @@ export function PaylinkCheckout({ slug }: { slug: string }) {
                   })()
                 )}
 
-                <div>
-                  <span className="text-xs font-medium text-on-surface-variant block mb-1.5">
-                    Send {paylink.receiveSymbol} ({chainName(paylink.receiveChain)}) directly to:
+                <button
+                  type="button"
+                  disabled={
+                    startingDirectWatch ||
+                    (paylink.amountMode === "OPEN" &&
+                      (!amountHuman.trim() || !(Number(amountHuman) > 0)))
+                  }
+                  onClick={handleStartDirectWatch}
+                  className="w-full h-14 px-5 rounded-xl bg-secondary hover:brightness-110 disabled:opacity-60 text-on-secondary font-semibold text-base transition-colors cursor-pointer flex items-center justify-center gap-2"
+                >
+                  {startingDirectWatch && <RefreshCw className="w-4 h-4 animate-spin" />}
+                  <span>
+                    {startingDirectWatch
+                      ? "Starting transfer watch…"
+                      : `Pay ${paylink.receiveSymbol} Directly (0% Fee)`}
                   </span>
-                  <div className="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant font-mono text-sm text-on-surface break-all">
-                    {paylink.recipientAddress}
-                  </div>
-                </div>
+                </button>
 
-                <div className="grid grid-cols-[1fr_auto] gap-2">
-                  <button
-                    type="button"
-                    onClick={() => copyText(paylink.recipientAddress, "direct-addr")}
-                    className="h-12 px-4 rounded-xl bg-secondary text-on-secondary text-sm font-semibold inline-flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    {copiedKey === "direct-addr" ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                    <span>{copiedKey === "direct-addr" ? "Address copied" : "Copy address"}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowQr((v) => !v)}
-                    aria-label="Toggle QR code"
-                    className={`h-12 w-12 rounded-xl border inline-flex items-center justify-center cursor-pointer ${
-                      showQr
-                        ? "bg-secondary/15 border-secondary/40 text-secondary"
-                        : "bg-surface-container-high border-outline-variant text-on-surface"
-                    }`}
-                  >
-                    <QrCode className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {showQr && (
-                  <div className="flex justify-center pt-1 animate-fade-in-up">
-                    <div className="w-52 h-52 rounded-xl bg-white p-2">
-                      <LocalQrCode
-                        value={paylink.recipientAddress}
-                        size={240}
-                        alt="Recipient wallet QR code"
-                      />
-                    </div>
+                {createError && (
+                  <div className="p-3 rounded-xl bg-error/10 border border-error/25 text-xs text-error flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{createError}</span>
                   </div>
                 )}
               </div>
