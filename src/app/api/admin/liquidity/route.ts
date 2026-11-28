@@ -29,7 +29,7 @@ export async function GET(req: Request) {
   try {
     await reconcileActiveRebalances().catch(() => {});
 
-    const [config, balances, recentTransfers, recentRebalances, db, ltcPrice, solPrice, usdtPrice] = await Promise.all([
+    const [config, balances, recentTransfers, recentRebalances, db, ltcPrice, solPrice, usdtPrice, polPrice] = await Promise.all([
       getLiquidityPoolConfig(),
       getLiquidityBalances(),
       getRecentLiquidityTransfers(50),
@@ -38,6 +38,7 @@ export async function GET(req: Request) {
       getLiveTokenPriceUsd("LTC"),
       getLiveTokenPriceUsd("SOL"),
       getLiveTokenPriceUsd("USDT"),
+      getLiveTokenPriceUsd("POL"),
     ]);
 
     const prices: Record<string, number> = {
@@ -45,6 +46,7 @@ export async function GET(req: Request) {
       SOL: solPrice || 0,
       USDT: usdtPrice || 1,
       USDC: 1,
+      POL: polPrice || 0.25,
     };
 
     let allOrders: ProxySwapOrder[] = [];
@@ -70,6 +72,7 @@ export async function GET(req: Request) {
     let grossPoolFeesUsd = 0;
     let zkpayNetPoolFeesUsd = 0;
     let partnerPoolFeesUsd = 0;
+    let estimatedPoolGasUsd = 0;
 
     const feesByAsset: Record<
       string,
@@ -139,12 +142,17 @@ export async function GET(req: Request) {
         ? Number(BigInt(o.partnerFeeAmount)) / Math.pow(10, decimals)
         : 0;
 
-      const grossFeeUsd = Math.round(grossFeeTokens * priceUsd * 10000) / 10000;
+      const payoutFixedTokens = o.payoutFixedFeeAmount
+        ? Number(BigInt(o.payoutFixedFeeAmount)) / 1_000_000
+        : 0;
+      const payoutFixedUsd = payoutFixedTokens * (prices.USDT || 1);
+
+      const grossFeeUsd = Math.round((grossFeeTokens * priceUsd + payoutFixedUsd) * 10000) / 10000;
       const partnerFeeUsd =
         typeof o.partnerFeeUsd === "number" && o.partnerFeeUsd > 0
           ? o.partnerFeeUsd
           : Math.round(partnerFeeTokens * priceUsd * 10000) / 10000;
-      const zkpayFeeUsd = Math.round(zkpayFeeTokens * priceUsd * 10000) / 10000;
+      const zkpayFeeUsd = Math.round((zkpayFeeTokens * priceUsd + payoutFixedUsd) * 10000) / 10000;
 
       if (o.status === "SETTLED") {
         poolSwapsSettled++;
@@ -152,6 +160,23 @@ export async function GET(req: Request) {
         grossPoolFeesUsd += grossFeeUsd;
         zkpayNetPoolFeesUsd += zkpayFeeUsd;
         partnerPoolFeesUsd += partnerFeeUsd;
+
+        // Estimate origin sweep + destination payout network gas paid by ZkPay
+        const origChain = (o.chain || "").toLowerCase();
+        const dstChain = (o.destinationChain || "").toLowerCase();
+        const sweepGasUsd =
+          origChain === "polygon"
+            ? 0.0045 * prices.POL
+            : origChain === "ltc"
+            ? 0.00003 * prices.LTC
+            : 0.000005 * prices.SOL;
+        const payoutGasUsd =
+          dstChain === "polygon"
+            ? 0.003 * prices.POL
+            : dstChain === "ltc"
+            ? 0.00003 * prices.LTC
+            : 0.000005 * prices.SOL;
+        estimatedPoolGasUsd += sweepGasUsd + payoutGasUsd;
 
         if (!feesByAsset[sym]) {
           feesByAsset[sym] = {
@@ -269,6 +294,8 @@ export async function GET(req: Request) {
         totalPoolVolumeUsd: Math.round(totalPoolVolumeUsd * 100) / 100,
         grossPoolFeesUsd: Math.round(grossPoolFeesUsd * 10000) / 10000,
         zkpayNetPoolFeesUsd: Math.round(zkpayNetPoolFeesUsd * 10000) / 10000,
+        estimatedPoolGasUsd: Math.round(estimatedPoolGasUsd * 10000) / 10000,
+        trueNetProfitUsd: Math.round((zkpayNetPoolFeesUsd - estimatedPoolGasUsd) * 10000) / 10000,
         partnerPoolFeesUsd: Math.round(partnerPoolFeesUsd * 10000) / 10000,
         solverFeesToPoolUsd: Math.round(solverFeesToPoolUsd * 10000) / 10000,
       },

@@ -434,16 +434,22 @@ export async function GET(req: Request) {
       let totalInHuman = 0;
       let grossFeeHuman = 0;
       let partnerFeeHuman = 0;
+      let payoutFixedUsd = 0;
       try {
         totalInHuman = Number(BigInt(ord.totalAmountIn || "0")) / Math.pow(10, decimals);
         grossFeeHuman = Number(BigInt(ord.feeAmount || "0")) / Math.pow(10, decimals);
         partnerFeeHuman = Number(BigInt(ord.partnerFeeAmount || "0")) / Math.pow(10, decimals);
+        if (ord.payoutFixedFeeAmount && ord.payoutFixedFeeAmount !== "0") {
+          payoutFixedUsd = (Number(BigInt(ord.payoutFixedFeeAmount)) / 1_000_000) * (livePrices.USDT || 1);
+        }
       } catch {
         // ignore
       }
 
       const swapVolumeUsd = Math.round(totalInHuman * tokenPriceUsd * 100) / 100;
-      const grossFeeUsd = isSettled ? Math.round(grossFeeHuman * tokenPriceUsd * 10000) / 10000 : 0;
+      const grossFeeUsd = isSettled
+        ? Math.round((grossFeeHuman * tokenPriceUsd + payoutFixedUsd) * 10000) / 10000
+        : 0;
       const partnerFeeUsd = isSettled
         ? credit?.feeUsd !== undefined
           ? credit.feeUsd

@@ -2516,13 +2516,17 @@ export default function AdminPage() {
 
                 <div className="p-4 rounded-xl bg-success/10 border border-success/25 space-y-1">
                   <span className="text-[10px] font-bold text-success uppercase tracking-wider block">
-                    Pool Fees Generated
+                    Net Pool Profit (After Gas)
                   </span>
                   <div className="text-2xl font-black text-white">
-                    ${(liquidityData?.summary?.zkpayNetPoolFeesUsd || 0).toFixed(4)}
+                    ${(
+                      liquidityData?.summary?.trueNetProfitUsd ??
+                      liquidityData?.summary?.zkpayNetPoolFeesUsd ??
+                      0
+                    ).toFixed(4)}
                   </div>
                   <span className="text-[10px] text-success/80 block">
-                    Gross: ${(liquidityData?.summary?.grossPoolFeesUsd || 0).toFixed(4)} • Partner: ${(liquidityData?.summary?.partnerPoolFeesUsd || 0).toFixed(4)}
+                    ZkPay Fees: ${(liquidityData?.summary?.zkpayNetPoolFeesUsd || 0).toFixed(4)} • Gas: -${(liquidityData?.summary?.estimatedPoolGasUsd || 0).toFixed(4)} • Partner: ${(liquidityData?.summary?.partnerPoolFeesUsd || 0).toFixed(4)}
                   </span>
                 </div>
 

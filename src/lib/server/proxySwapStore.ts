@@ -33,6 +33,7 @@ export interface ProxySwapOrder {
   zkpayFeeBps?: number; // ZkPay share of % fee
   partnerFeeBps?: number; // Partner share of % fee
   fixedFeeAmount?: string; // Conditional 0.02 USDC/USDT in atomic units when zkpayPercentFee < $0.02 (ZkPay only)
+  payoutFixedFeeAmount?: string; // 0.02 USDT deducted from Polygon USDT pool payouts when zkpay % fee < $0.02
   status:
     | "PENDING_DEPOSIT"
     | "DETECTED"

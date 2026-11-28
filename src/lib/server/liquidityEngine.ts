@@ -20,7 +20,7 @@ import {
   updateProxySwapOrder,
   getDecryptedProxyPrivateKey,
 } from "./proxySwapStore";
-import { getFreshTokenPriceUsd, getLiveTokenPriceUsd } from "./priceService";
+import { getFreshTokenPriceUsd, getLiveTokenPriceUsd, computeTwoCentsAtomic } from "./priceService";
 import { getLtcBalanceAndUtxos, sweepLtcDeposit, LTC_DUST_THRESHOLD_SATOSHIS } from "./ltcClient";
 import {
   getResilientPublicClientForChain,
@@ -31,6 +31,7 @@ import {
 import { createWalletClient, fallback } from "viem";
 import {
   sendResilientErc20Transfer,
+  sweepProxyNativeDustToRelayer,
   sendSolanaMultiTransfer,
   waitForSolanaSignature,
   recoverProxyDeposit,
@@ -43,6 +44,20 @@ const ERC20_BALANCE_ABI = parseAbi([
 ]);
 
 const POLYGON_FINALITY_CONFIRMATIONS = 32n;
+
+// 0.02 USDT deducted from Polygon USDT pool payouts when ZkPay's % fee is < $0.02 (covers POL gas we pay).
+export const POLYGON_USDT_PAYOUT_FIXED_FEE_ATOMIC = 20_000n;
+
+export function computePayoutFixedFee(
+  destAssetKey: string,
+  zkpayFeeUsd: number
+): bigint {
+  if (destAssetKey !== "polygon:USDT") return 0n;
+  // 0.019 epsilon avoids double-charging when ~$0.02 fixed fee was already collected on input
+  return !Number.isFinite(zkpayFeeUsd) || zkpayFeeUsd < 0.019
+    ? POLYGON_USDT_PAYOUT_FIXED_FEE_ATOMIC
+    : 0n;
+}
 
 /**
  * Pure BigInt fixed-point output calculation (10^8 USD scaling) to avoid JS float overflow on 18-dec tokens.
@@ -109,6 +124,7 @@ export async function quoteInternalLiquiditySwap(params: {
   destinationChain: string;
   totalAmountIn: string;
   netSwapAmount: string;
+  zkpayFeeAtomic?: string;
   slippageBps?: number | null;
 }): Promise<InternalQuoteAttempt> {
   const originDef = resolvePoolAsset(params.originAssetId, params.originChain);
@@ -174,7 +190,7 @@ export async function quoteInternalLiquiditySwap(params: {
   }
 
   const spreadBps = Math.min(500, Math.max(0, Number(config.spreadBufferBps) || 0));
-  const amountOutAtomic = computeOutputAtomicBigInt(
+  const grossOutAtomic = computeOutputAtomicBigInt(
     netInAtomic,
     originDef.decimals,
     originPriceUsd,
@@ -182,6 +198,14 @@ export async function quoteInternalLiquiditySwap(params: {
     destPriceUsd,
     spreadBps
   );
+  let quoteZkpayFeeAtomic = 0n;
+  try {
+    quoteZkpayFeeAtomic = BigInt(params.zkpayFeeAtomic || "0");
+  } catch {}
+  const quoteZkpayFeeUsd =
+    Number(formatUnits(quoteZkpayFeeAtomic, originDef.decimals)) * originPriceUsd;
+  const payoutFixedFee = computePayoutFixedFee(destDef.assetKey, quoteZkpayFeeUsd);
+  const amountOutAtomic = grossOutAtomic > payoutFixedFee ? grossOutAtomic - payoutFixedFee : 0n;
 
   if (amountOutAtomic <= 0n) {
     return { eligible: false, reason: "ZERO_OUTPUT" };
@@ -367,6 +391,14 @@ export async function sweepInternalProxyToLiquidityWallet(
           return { swept: false, error: `Polygon USDT sweep ${res.txHash} awaiting confirmation.` };
         }
       }
+
+      // Automatically return leftover native POL gas from the single-use proxy back to the Relayer
+      await sweepProxyNativeDustToRelayer(
+        "polygon",
+        publicClient,
+        walletClient,
+        proxyAccount
+      ).catch(() => {});
     }
 
     await updateProxySwapOrder(order.swapId, {
@@ -637,30 +669,54 @@ export async function processInternalLiquidityOrder(
   const maxAllowedDepositAtomic = (expectedAtomic * 105n) / 100n;
   if (confirmedDepositAtomic > maxAllowedDepositAtomic) {
     console.warn(
-      `[LiquidityEngine] Over-deposit rejected for ${claimed.swapId}: confirmed=${confirmedDepositAtomic}, maxAllowed=${maxAllowedDepositAtomic}. Auto-refunding 100%.`
+      `[LiquidityEngine] Over-deposit rejected for ${claimed.swapId}: confirmed=${confirmedDepositAtomic}, maxAllowed=${maxAllowedDepositAtomic}. Auto-refunding.`
     );
     const refundRes = await recoverProxyDeposit(claimed.proxyDepositAddress, {
       action: "refund",
       allowFromPayingOut: true,
+      chargeRefundGasFee: true,
     });
     const updated = await updateProxySwapOrder(claimed.swapId, {
       status: refundRes.success ? "REFUNDED" : "REFUND_PENDING",
       refundTxHash: refundRes.txHash,
       error: refundRes.success
-        ? `Deposit (${formatCleanHuman(confirmedDepositAtomic, originDef.decimals, 6)} ${originDef.symbol}) exceeded quoted amount by >5%; automatically refunded 100% to ${claimed.refundTo}.`
+        ? `Deposit (${formatCleanHuman(confirmedDepositAtomic, originDef.decimals, 6)} ${originDef.symbol}) exceeded quoted amount by >5%; automatically refunded to ${claimed.refundTo}.`
         : `Over-deposit (>105% of quote) rejected; automatic refund pending: ${refundRes.message}`,
     });
     return updated || claimed;
   }
 
-  // Recompute exact fee & net input on actual confirmed deposit (preserving identical 200 bps / 50-50 / $0.02 rules)
+  // SECURITY GUARD 2: Re-verify live multi-oracle spot prices at payout time
+  // Protects pool against 20-minute free-option arbitrage while protecting user against >3% adverse slippage.
+  const [liveOriginPrice, liveDestPrice, poolCfg] = await Promise.all([
+    getFreshTokenPriceUsd(originDef.symbol, 45_000),
+    getFreshTokenPriceUsd(destDef.symbol, 45_000),
+    getLiquidityPoolConfig(),
+  ]);
+
+  if (liveOriginPrice <= 0 || liveDestPrice <= 0) {
+    const refundRes = await recoverProxyDeposit(claimed.proxyDepositAddress, {
+      action: "refund",
+      allowFromPayingOut: true,
+      chargeRefundGasFee: false,
+    });
+    const updated = await updateProxySwapOrder(claimed.swapId, {
+      status: refundRes.success ? "REFUNDED" : "REFUND_PENDING",
+      refundTxHash: refundRes.txHash,
+      error: refundRes.success
+        ? `Live price oracle verification unavailable at payout time; automatically refunded 100% to ${claimed.refundTo}.`
+        : `Live price oracle verification unavailable; auto-refund pending: ${refundRes.message}`,
+    });
+    return updated || claimed;
+  }
+
+  // Recompute exact fee & net input on actual confirmed deposit (enforcing $0.02 min ZkPay fee across all pool assets)
   const zkpayBps = BigInt(claimed.zkpayFeeBps ?? 200);
   const partnerBps = BigInt(claimed.partnerFeeBps ?? 0);
-  const isStable = originDef.symbol === "USDT";
-  const twoCentsUnits = isStable ? 20_000n : 0n;
+  const twoCentsUnits = computeTwoCentsAtomic(originDef.symbol, originDef.decimals, liveOriginPrice);
 
   const zkpayPercentFee = (confirmedDepositAtomic * zkpayBps) / 10000n;
-  const actualFixedFee = isStable && zkpayPercentFee < twoCentsUnits ? twoCentsUnits : 0n;
+  const actualFixedFee = twoCentsUnits > 0n && zkpayPercentFee < twoCentsUnits ? twoCentsUnits : 0n;
   const actualZkpayFee = zkpayPercentFee + actualFixedFee;
   const actualPartnerFee = partnerBps > 0n ? (confirmedDepositAtomic * partnerBps) / 10000n : 0n;
   const actualTotalFee = actualZkpayFee + actualPartnerFee;
@@ -675,31 +731,8 @@ export async function processInternalLiquidityOrder(
       ? (baseExpectedOut * actualNetIn) / baseNetIn
       : 0n;
 
-  // SECURITY GUARD 2: Re-verify live multi-oracle spot prices at payout time
-  // Protects pool against 20-minute free-option arbitrage while protecting user against >3% adverse slippage.
-  const [liveOriginPrice, liveDestPrice, poolCfg] = await Promise.all([
-    getFreshTokenPriceUsd(originDef.symbol, 45_000),
-    getFreshTokenPriceUsd(destDef.symbol, 45_000),
-    getLiquidityPoolConfig(),
-  ]);
-
-  if (liveOriginPrice <= 0 || liveDestPrice <= 0) {
-    const refundRes = await recoverProxyDeposit(claimed.proxyDepositAddress, {
-      action: "refund",
-      allowFromPayingOut: true,
-    });
-    const updated = await updateProxySwapOrder(claimed.swapId, {
-      status: refundRes.success ? "REFUNDED" : "REFUND_PENDING",
-      refundTxHash: refundRes.txHash,
-      error: refundRes.success
-        ? `Live price oracle verification unavailable at payout time; automatically refunded 100% to ${claimed.refundTo}.`
-        : `Live price oracle verification unavailable; auto-refund pending: ${refundRes.message}`,
-    });
-    return updated || claimed;
-  }
-
   const spreadBps = Math.max(0, Math.min(500, Number(poolCfg.spreadBufferBps ?? 25)));
-  const liveSpotOutAtomic = computeOutputAtomicBigInt(
+  const liveGrossOutAtomic = computeOutputAtomicBigInt(
     actualNetIn,
     originDef.decimals,
     liveOriginPrice,
@@ -707,6 +740,11 @@ export async function processInternalLiquidityOrder(
     liveDestPrice,
     spreadBps
   );
+  const actualZkpayFeeUsd =
+    Number(formatUnits(actualZkpayFee, originDef.decimals)) * liveOriginPrice;
+  const payoutFixedFee = computePayoutFixedFee(destDef.assetKey, actualZkpayFeeUsd);
+  const liveSpotOutAtomic =
+    liveGrossOutAtomic > payoutFixedFee ? liveGrossOutAtomic - payoutFixedFee : 0n;
 
   // SECURITY GUARD 2B: Enforce emergency kill switch & velocity circuit breakers immediately before payout
   const depositUsd = Number(formatUnits(confirmedDepositAtomic, originDef.decimals)) * liveOriginPrice;
@@ -750,16 +788,18 @@ export async function processInternalLiquidityOrder(
     actualOutAtomic = hardCapOutAtomic;
   }
 
-  // If market moved >3% against the quote during deposit confirmation, auto-refund 100%
+  // If market moved >3% against the quote during deposit confirmation, auto-refund 100% (free);
+  // if user under-deposited so net output is 0 after fees, charge user-fault refund gas fee.
   const minAcceptableOutAtomic = (quotedOutAtomic * 97n) / 100n;
   if (actualOutAtomic <= 0n || actualOutAtomic < minAcceptableOutAtomic) {
-    const reason =
-      actualOutAtomic <= 0n
-        ? "Deposit too small after fee calculation"
-        : "Market price moved >3% beyond quote slippage tolerance during confirmation";
+    const isUnderDepositFault = actualNetIn <= 0n || actualOutAtomic <= 0n;
+    const reason = isUnderDepositFault
+      ? "Deposit too small after fee calculation"
+      : "Market price moved >3% beyond quote slippage tolerance during confirmation";
     const refundRes = await recoverProxyDeposit(claimed.proxyDepositAddress, {
       action: "refund",
       allowFromPayingOut: true,
+      chargeRefundGasFee: isUnderDepositFault,
     });
     const updated = await updateProxySwapOrder(claimed.swapId, {
       status: refundRes.success ? "REFUNDED" : "REFUND_PENDING",
@@ -851,6 +891,7 @@ export async function processInternalLiquidityOrder(
       netSwapAmount: actualNetIn.toString(),
       feeAmount: actualTotalFee.toString(),
       fixedFeeAmount: actualFixedFee.toString(),
+      ...(payoutFixedFee > 0n ? { payoutFixedFeeAmount: payoutFixedFee.toString() } : {}),
       zkpayFeeAmount: actualZkpayFee.toString(),
       partnerFeeAmount: actualPartnerFee.toString(),
       settledAmountFormatted,

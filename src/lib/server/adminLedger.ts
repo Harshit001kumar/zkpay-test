@@ -153,9 +153,12 @@ export function computeProxySwapUsdEstimates(
     | "partnerFeeBps"
     | "feeAmount"
     | "fixedFeeAmount"
+    | "payoutFixedFeeAmount"
     | "zkpayFeeAmount"
     | "partnerFeeAmount"
     | "partnerFeeUsd"
+    | "feeConfirmedOnChain"
+    | "fulfillmentMode"
     | "apiKeyId"
     | "partnerUserId"
     | "partnerFeeRecipient"
@@ -176,6 +179,15 @@ export function computeProxySwapUsdEstimates(
   const safePrice = Number.isFinite(priceUsd) && priceUsd > 0 ? priceUsd : 0;
   const amountUsdEstimate = round4(amountTokens * safePrice);
 
+  // Never count unconfirmed/reverted solver fee transfers as earned revenue
+  if (o.fulfillmentMode !== "INTERNAL_POOL" && o.feeConfirmedOnChain === false) {
+    return {
+      amountUsdEstimate,
+      zkpayFeeUsdEstimate: 0,
+      partnerFeeUsdEstimate: 0,
+    };
+  }
+
   const hasPartner = Boolean(o.apiKeyId || o.partnerUserId || o.partnerFeeRecipient);
   const zkpayBps = o.zkpayFeeBps ?? (hasPartner ? 100 : 200);
   const partnerBps =
@@ -195,6 +207,11 @@ export function computeProxySwapUsdEstimates(
   } else {
     const fixedFeeUsd = atomicToNumber(o.fixedFeeAmount, decimals) * safePrice;
     zkpayFeeUsdEstimate = (amountUsdEstimate * zkpayBps) / 10000 + fixedFeeUsd;
+  }
+
+  // Add Polygon USDT payout fixed fee ($0.02 = 20,000 atomic units) when deducted on pool payout
+  if (o.payoutFixedFeeAmount && o.payoutFixedFeeAmount !== "0") {
+    zkpayFeeUsdEstimate += atomicToNumber(o.payoutFixedFeeAmount, 6) * 1.0;
   }
 
   let partnerFeeUsdEstimate = 0;

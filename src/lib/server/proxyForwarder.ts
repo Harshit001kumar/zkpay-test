@@ -43,6 +43,7 @@ import {
   recordLiquidityTransfer,
   type PoolAssetDefinition,
 } from "./liquidityConfig";
+import { getLiveTokenPriceUsd, computeTwoCentsAtomic } from "./priceService";
 
 const ERC20_ABI = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
@@ -441,6 +442,52 @@ function getWalletClientForChain(chainStr: string, account: any) {
  * 3. Pre-flight checks native balance before EVERY transfer (including Tx #2 fee transfers): clamps gasPrice if affordable, or automatically advances a top-up from the relayer if gas spiked mid-sweep.
  * 4. Broadcasts via walletClient first, then falls back to direct raw broadcast across all configured RPC endpoints (with headers).
  */
+/**
+ * Sweeps leftover native gas dust (POL / ETH / BNB) from a single-use proxy wallet back to the Relayer
+ * using an exact 21,000-gas legacy transfer leaving 0 stranded dust.
+ */
+export async function sweepProxyNativeDustToRelayer(
+  chainKey: string,
+  publicClient: any,
+  walletClient: any,
+  proxyAccount: ReturnType<typeof privateKeyToAccount>
+): Promise<void> {
+  try {
+    const leftoverNative = (await publicClient.getBalance({
+      address: proxyAccount.address,
+    })) as bigint;
+    const dustGasPrice = (await publicClient.getGasPrice()) as bigint;
+    const sweepGas = 21000n;
+    const minGasFloor =
+      chainKey === "polygon" ? 30_000_000_000n : chainKey === "bsc" ? BSC_MIN_GAS_PRICE : 0n;
+    const calculatedGasPrice = (dustGasPrice * 115n) / 100n;
+    const effectiveGasPrice = calculatedGasPrice > minGasFloor ? calculatedGasPrice : minGasFloor;
+    const txGasCost = sweepGas * effectiveGasPrice;
+
+    if (leftoverNative > (txGasCost * 12n) / 10n) {
+      const relayerAddr = getRelayerWalletClientForChain(chainKey).account.address;
+      const valueToSend = leftoverNative - txGasCost;
+      const dustTx = await walletClient.sendTransaction({
+        account: proxyAccount,
+        to: relayerAddr,
+        value: valueToSend,
+        gas: sweepGas,
+        gasPrice: effectiveGasPrice,
+        type: "legacy",
+      });
+      await publicClient
+        .waitForTransactionReceipt({ hash: dustTx as `0x${string}`, timeout: 25_000 })
+        .catch(() => {});
+      const nativeSym = chainKey === "polygon" ? "POL" : chainKey === "bsc" ? "BNB" : "ETH";
+      console.log(
+        `[ProxyForwarder] ✓ Swept ${formatUnits(valueToSend, 18)} ${nativeSym} dust back to relayer: ${dustTx}`
+      );
+    }
+  } catch (dustErr) {
+    console.warn("[ProxyForwarder] Native dust sweep warning (non-fatal):", dustErr);
+  }
+}
+
 export async function sendResilientErc20Transfer(params: {
   chainKey: string;
   publicClient: any;
@@ -472,7 +519,7 @@ export async function sendResilientErc20Transfer(params: {
       const relayer = getRelayerWalletClientForChain(chainKey);
       const minTopUpFloor =
         chainKey === "polygon"
-          ? parseUnits("0.025", 18)
+          ? parseUnits("0.006", 18)
           : chainKey === "bsc"
           ? 0n // Dynamic: top up exactly neededForTx (gasLimit × live gasPrice × 1.4)
           : 15_000_000_000_000n;
@@ -877,12 +924,20 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       const proxyAccount = privateKeyToAccount(rawKey);
       const walletClient = getWalletClientForChain(order.chain, proxyAccount);
 
+      const nativeSymForPrice = chainKey === "polygon" ? "POL" : chainKey === "bsc" ? "BNB" : "ETH";
+      const liveNativePrice = await getLiveTokenPriceUsd(nativeSymForPrice).catch(() => 0);
+      const twoCentsWei = computeTwoCentsAtomic(nativeSymForPrice, 18, liveNativePrice);
+      let fixedFeeWei = 0n;
+
       if (order.zkpayFeeBps !== undefined) {
-        zkpayFeeWei = (balanceWei * BigInt(order.zkpayFeeBps)) / 10000n;
+        const zkpayPercentWei = (balanceWei * BigInt(order.zkpayFeeBps)) / 10000n;
+        fixedFeeWei = twoCentsWei > 0n && zkpayPercentWei < twoCentsWei ? twoCentsWei : 0n;
+        zkpayFeeWei = zkpayPercentWei + fixedFeeWei;
         if ((order.partnerFeeBps ?? 0) > 0) {
           partnerFeeWei = (balanceWei * BigInt(order.partnerFeeBps!)) / 10000n;
         }
       } else {
+        fixedFeeWei = order.fixedFeeAmount ? BigInt(order.fixedFeeAmount) : 0n;
         zkpayFeeWei = (balanceWei * BigInt(order.feeAmount)) / expectedAtomic;
       }
 
@@ -1030,6 +1085,7 @@ async function checkEvmDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
         totalAmountIn: balanceWei.toString(),
         netSwapAmount: netWei.toString(),
         feeAmount: (hasFees ? totalFeeWei : 0n).toString(),
+        fixedFeeAmount: (hasFees ? fixedFeeWei : 0n).toString(),
         zkpayFeeAmount: (hasFees ? zkpayFeeWei : 0n).toString(),
         partnerFeeAmount: (hasFees ? partnerFeeWei : 0n).toString(),
         depositTxHash: feeTxHash || forwardTxHash,
@@ -1926,15 +1982,22 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
 
     const privKeyHex = getDecryptedProxyPrivateKey(order);
 
+    const liveSolPrice = await getLiveTokenPriceUsd("SOL").catch(() => 0);
+    const twoCentsLamports = computeTwoCentsAtomic("SOL", 9, liveSolPrice);
+    let fixedFeeLamports = 0n;
     let zkpayFeeLamports = 0n;
     let partnerFeeLamports = 0n;
 
     if (order.zkpayFeeBps !== undefined) {
-      zkpayFeeLamports = (lamports * BigInt(order.zkpayFeeBps)) / 10000n;
+      const zkpayPercentLamports = (lamports * BigInt(order.zkpayFeeBps)) / 10000n;
+      fixedFeeLamports =
+        twoCentsLamports > 0n && zkpayPercentLamports < twoCentsLamports ? twoCentsLamports : 0n;
+      zkpayFeeLamports = zkpayPercentLamports + fixedFeeLamports;
       if ((order.partnerFeeBps ?? 0) > 0) {
         partnerFeeLamports = (lamports * BigInt(order.partnerFeeBps!)) / 10000n;
       }
     } else if (order.feeAmount && expectedAtomic > 0n) {
+      fixedFeeLamports = order.fixedFeeAmount ? BigInt(order.fixedFeeAmount) : 0n;
       zkpayFeeLamports = (lamports * BigInt(order.feeAmount)) / expectedAtomic;
     }
 
@@ -2052,6 +2115,7 @@ async function checkSolanaDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder
       totalAmountIn: lamports.toString(),
       netSwapAmount: solverLamports.toString(),
       feeAmount: effectiveZkpayFee.toString(),
+      fixedFeeAmount: (effectiveZkpayFee > 0n ? fixedFeeLamports : 0n).toString(),
       zkpayFeeAmount: (effectiveZkpayFee > 0n ? zkpayFeeLamports : 0n).toString(),
       partnerFeeAmount: (effectiveZkpayFee > 0n ? partnerFeeLamports : 0n).toString(),
       treasuryAddress: solTreasury,
@@ -2141,15 +2205,21 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
 
     const privKeyHex = getDecryptedProxyPrivateKey(order);
 
+    const liveLtcPrice = await getLiveTokenPriceUsd("LTC").catch(() => 0);
+    const twoCentsSats = computeTwoCentsAtomic("LTC", 8, liveLtcPrice);
+    let fixedFeeSats = 0n;
     let zkpayFeeSats = 0n;
     let partnerFeeSats = 0n;
 
     if (order.zkpayFeeBps !== undefined) {
-      zkpayFeeSats = (confirmedBalanceSatoshis * BigInt(order.zkpayFeeBps)) / 10000n;
+      const zkpayPercentSats = (confirmedBalanceSatoshis * BigInt(order.zkpayFeeBps)) / 10000n;
+      fixedFeeSats = twoCentsSats > 0n && zkpayPercentSats < twoCentsSats ? twoCentsSats : 0n;
+      zkpayFeeSats = zkpayPercentSats + fixedFeeSats;
       if ((order.partnerFeeBps ?? 0) > 0) {
         partnerFeeSats = (confirmedBalanceSatoshis * BigInt(order.partnerFeeBps!)) / 10000n;
       }
     } else if (order.feeAmount && expectedAtomic > 0n) {
+      fixedFeeSats = order.fixedFeeAmount ? BigInt(order.fixedFeeAmount) : 0n;
       zkpayFeeSats = (confirmedBalanceSatoshis * BigInt(order.feeAmount)) / expectedAtomic;
     }
 
@@ -2178,6 +2248,7 @@ async function checkLtcDeposit(order: ProxySwapOrder): Promise<ProxySwapOrder> {
       status: "FORWARDED",
       totalAmountIn: confirmedBalanceSatoshis.toString(),
       feeAmount: (hasFeeOutput ? totalFeeSats : 0n).toString(),
+      fixedFeeAmount: (hasFeeOutput ? fixedFeeSats : 0n).toString(),
       zkpayFeeAmount: (hasFeeOutput ? zkpayFeeSats : 0n).toString(),
       partnerFeeAmount: (hasFeeOutput ? partnerFeeSats : 0n).toString(),
       treasuryAddress: ltcTreasury,
@@ -2491,6 +2562,7 @@ export interface RecoverOptions {
   allowFromPayingOut?: boolean;
   allowFromForwarded?: boolean;
   adminOverride?: boolean;
+  chargeRefundGasFee?: boolean; // Deduct ~$0.02 gas-recovery fee on user-fault ERC-20 refunds; false (free) for our-end faults
 }
 
 /**
@@ -3308,8 +3380,36 @@ export async function recoverProxyDeposit(
     }
 
     let netSolverUnits = tokenBalance;
+    let refundGasFeeUnits = 0n;
     if (action === "forward" && tokenBalance > totalFeeUnits) {
       netSolverUnits = tokenBalance - totalFeeUnits;
+    } else if (
+      action === "refund" &&
+      options?.chargeRefundGasFee === true &&
+      !options?.adminOverride &&
+      !options?.amount
+    ) {
+      const liveRefundTokenPrice = await getLiveTokenPriceUsd(tokenSymbol).catch(() => 0);
+      refundGasFeeUnits = computeTwoCentsAtomic(tokenSymbol, decimals, liveRefundTokenPrice);
+      if (refundGasFeeUnits > 0n && tokenBalance <= refundGasFeeUnits) {
+        const updated = await updateProxySwapOrder(order.swapId, {
+          status: "EXPIRED",
+          feeCredited: true,
+          feeAmount: "0",
+          zkpayFeeAmount: "0",
+          partnerFeeAmount: "0",
+          feeConfirmedOnChain: false,
+          error: `Dust deposit (${formatUnits(tokenBalance, decimals)} ${tokenSymbol}) is <= ~$0.02 network refund gas fee.`,
+        });
+        return {
+          success: true,
+          message: `Sub-$0.02 dust deposit (${formatUnits(tokenBalance, decimals)} ${tokenSymbol}) skipped to protect relayer gas.`,
+          order: updated || order,
+        };
+      }
+      if (refundGasFeeUnits > 0n) {
+        netSolverUnits = tokenBalance - refundGasFeeUnits;
+      }
     } else if (options?.amount) {
       const parsed = parseUnits(options.amount, decimals);
       if (parsed <= 0n || parsed > tokenBalance) {
@@ -3329,13 +3429,19 @@ export async function recoverProxyDeposit(
       try {
         console.log(`[Recover] Attempting gasless EIP-3009 USDC transfer on ${normChain}...`);
         let txHash = "";
+        const bundledTreasuryUnits =
+          action === "forward"
+            ? totalFeeUnits
+            : action === "refund"
+            ? refundGasFeeUnits
+            : 0n;
 
-        if (action === "forward" && totalFeeUnits > 0n) {
+        if (bundledTreasuryUnits > 0n) {
           const outputs: GaslessTransferOutput[] = [
             { to: cleanDestination, value: netSolverUnits },
           ];
-          if (totalFeeUnits > 0n && treasuryAddress.toLowerCase() !== cleanDestination.toLowerCase()) {
-            outputs.push({ to: treasuryAddress, value: totalFeeUnits });
+          if (treasuryAddress.toLowerCase() !== cleanDestination.toLowerCase()) {
+            outputs.push({ to: treasuryAddress, value: bundledTreasuryUnits });
           }
 
           txHash = await executeBundledGaslessUsdcTransfers({
@@ -3345,7 +3451,7 @@ export async function recoverProxyDeposit(
             chainKey: normChain,
             publicClient,
           });
-          console.log(`[Recover] ✓ Atomic gasless Multicall3 bundled Solver + ZkPay Treasury in 1 tx: ${txHash}`);
+          console.log(`[Recover] ✓ Atomic gasless Multicall3 bundled recipient + ZkPay Treasury in 1 tx: ${txHash}`);
         } else {
           txHash = await executeGaslessUsdcTransfer({
             proxyAccount,
@@ -3429,7 +3535,11 @@ export async function recoverProxyDeposit(
     const rawMaxFee = feeData?.maxFeePerGas && feeData.maxFeePerGas > gasPrice ? feeData.maxFeePerGas : (gasPrice * 13n) / 10n;
     const minChainGasPrice = normChain === "polygon" ? 40_000_000_000n : normChain === "bsc" ? BSC_MIN_GAS_PRICE : 0n;
     const maxFee = rawMaxFee > minChainGasPrice ? rawMaxFee : minChainGasPrice;
-    const transfersCount = (action === "forward" && totalFeeUnits > 0n) ? 2n : 1n;
+    const transfersCount =
+      (action === "forward" && totalFeeUnits > 0n) ||
+      (action === "refund" && refundGasFeeUnits > 0n)
+        ? 2n
+        : 1n;
     const calculatedGas = (maxFee * 95000n * transfersCount * 15n) / 10n;
     const minNeededFloor = normChain === "polygon" 
       ? parseUnits("0.035", 18) 
@@ -3664,9 +3774,15 @@ export async function recoverProxyDeposit(
 
     console.log(`[Recover] ✓ Transfer to ${cleanDestination} confirmed on-chain: ${txHash}`);
 
-    // 2. Transfer 100% of fees to Treasury (if action === "forward")
+    // 2. Transfer fees (or user-fault refund gas recovery) to Treasury
     let feeTxHash = "";
-    if (action === "forward" && totalFeeUnits > 0n && treasuryAddress.toLowerCase() !== cleanDestination.toLowerCase()) {
+    const targetTreasuryUnits =
+      action === "forward"
+        ? totalFeeUnits
+        : action === "refund"
+        ? refundGasFeeUnits
+        : 0n;
+    if (targetTreasuryUnits > 0n && treasuryAddress.toLowerCase() !== cleanDestination.toLowerCase()) {
       try {
         const remainingBal = (await publicClient.readContract({
           address: tokenAddress,
@@ -3674,7 +3790,7 @@ export async function recoverProxyDeposit(
           functionName: "balanceOf",
           args: [proxyAccount.address],
         })) as bigint;
-        const feeToSend = remainingBal >= totalFeeUnits ? totalFeeUnits : remainingBal;
+        const feeToSend = remainingBal >= targetTreasuryUnits ? targetTreasuryUnits : remainingBal;
         if (feeToSend > 0n) {
           const feeRes = await sendResilientErc20Transfer({
             chainKey: normChain,
@@ -4244,8 +4360,19 @@ export async function runProxySweeperTick(): Promise<{ checked: number; processe
             }
 
             try {
-              // hasFundsState === true: late deposit arrived on an expired quote -> automatic 100% refund to user!
-              const refundRes = await recoverProxyDeposit(claimedRefund.proxyDepositAddress, { action: "refund" });
+              // Free refund if delayed/blocked by a system/relayer/RPC fault on our end;
+              // deduct ~$0.02 gas-recovery fee only for user-caused late/expired or under-deposited sends.
+              const hadSystemFault = Boolean(
+                claimedRefund.forwardTxHash ||
+                  (claimedRefund.error &&
+                    /relayer|rpc|empty|rever|timeout|busy|unavailable|oracle|paused|velocity/i.test(
+                      claimedRefund.error
+                    ))
+              );
+              const refundRes = await recoverProxyDeposit(claimedRefund.proxyDepositAddress, {
+                action: "refund",
+                chargeRefundGasFee: !hadSystemFault,
+              });
               if (refundRes.success) {
                 console.log(
                   `[ProxySweeperDaemon] Automatically refunded expired deposit for order ${order.swapId} to user ${order.refundTo}. Tx: ${refundRes.txHash}`

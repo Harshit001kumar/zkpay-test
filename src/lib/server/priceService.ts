@@ -383,3 +383,38 @@ export async function getFreshTokenPriceUsd(symbol: string, maxAgeMs = 60_000): 
   VERIFIED_POOL_PRICE_CACHE.set(normSym, { priceUsd: verifiedPrice, timestamp: Date.now() });
   return verifiedPrice;
 }
+
+/**
+ * Computes ~$0.02 USD worth of any supported token in atomic units (rounded up).
+ * Used to enforce the universal $0.02 minimum ZkPay fee floor (identical to Polygon USDT)
+ * whenever ZkPay's percentage fee share is < $0.02, and for user-fault ERC-20 refund gas recovery.
+ */
+export function computeTwoCentsAtomic(
+  symbol: string,
+  decimals: number,
+  priceUsd?: number | null
+): bigint {
+  if (decimals < 0 || !Number.isInteger(decimals)) return 0n;
+  const normSym = (symbol || "").trim().toUpperCase();
+
+  if (STABLECOIN_SYMBOLS.has(normSym) || normSym.includes("USD")) {
+    return decimals >= 2 ? 2n * 10n ** BigInt(decimals - 2) : 1n;
+  }
+
+  if (typeof priceUsd === "number" && Number.isFinite(priceUsd) && priceUsd > 0) {
+    const priceE8 = BigInt(Math.round(priceUsd * 1e8));
+    if (priceE8 > 0n) {
+      const numerator = 2_000_000n * 10n ** BigInt(decimals);
+      return (numerator + priceE8 - 1n) / priceE8;
+    }
+  }
+
+  // Safe conservative fallbacks (~$0.02) if live oracle price is temporarily unavailable
+  if (normSym === "LTC" && decimals === 8) return 25_000n;
+  if ((normSym === "SOL" || normSym === "WSOL") && decimals === 9) return 150_000n;
+  if (normSym === "BNB" && decimals === 18) return 35_000_000_000_000n;
+  if ((normSym === "ETH" || normSym === "WETH") && decimals === 18) return 8_000_000_000_000n;
+  if ((normSym === "POL" || normSym === "MATIC") && decimals === 18) return 80_000_000_000_000_000n;
+
+  return 0n;
+}

@@ -47,6 +47,7 @@ import {
 } from "./directSwapStore";
 import { checkAndForwardProxyDeposit, wakeProxySweeperDaemon } from "./proxyForwarder";
 import { creditPartnerFeeOnSettlement } from "./partnerBalanceStore";
+import { getLiveTokenPriceUsd, computeTwoCentsAtomic } from "./priceService";
 import {
   quoteInternalLiquiditySwap,
   processInternalLiquidityOrder,
@@ -57,7 +58,7 @@ const ONECLICK_API = "https://1click.chaindefuser.com/v0";
 // Protocol constants
 export const NEAR_INTENTS_PROTOCOL_FEE_BPS = 25; // 0.25% fixed protocol overhead
 export const DEFAULT_CUSTOM_FEE_BPS = 200;        // 2.00% default
-export const MIN_CUSTOM_FEE_BPS = 20;             // 0.20% minimum custom fee
+export const MIN_CUSTOM_FEE_BPS = 170;            // 1.70% strict minimum custom fee
 export const MAX_CUSTOM_FEE_BPS = 450;            // 4.50% max custom fee (leaves headroom for 25 bps overhead < 500 bps cap)
 
 // Conditional fixed fee (0.02 units) charged on proxied USDC/USDT API swaps when ZkPay % fee < $0.02.
@@ -129,7 +130,8 @@ export interface UpfrontFeeBreakdown {
 export function computeUpfrontFees(
   totalAtomic: bigint,
   feeSplit: FeeSplitResult,
-  originAssetId: string
+  originAssetId: string,
+  originPriceUsd?: number | null
 ): UpfrontFeeBreakdown {
   if (feeSplit.isDirectRoute) {
     return {
@@ -144,21 +146,21 @@ export function computeUpfrontFees(
   }
 
   const meta = getOriginTokenMeta(originAssetId);
-  const isStable = !!meta && (meta.symbol === "USDC" || meta.symbol === "USDT") && meta.decimals >= 2;
-
   const partnerFee = feeSplit.partnerFeeBps > 0
     ? (totalAtomic * BigInt(feeSplit.partnerFeeBps)) / 10000n
     : 0n;
   const zkpayPercentFee = (totalAtomic * BigInt(feeSplit.zkpayFeeBps)) / 10000n;
-  const twoCentsUnits = isStable ? FIXED_STABLE_FEE_CENTS * 10n ** BigInt(meta!.decimals - 2) : 0n;
-  const fixedFee = isStable && zkpayPercentFee < twoCentsUnits ? twoCentsUnits : 0n;
+  const twoCentsUnits = meta
+    ? computeTwoCentsAtomic(meta.symbol, meta.decimals, originPriceUsd)
+    : 0n;
+  const fixedFee = twoCentsUnits > 0n && zkpayPercentFee < twoCentsUnits ? twoCentsUnits : 0n;
   const zkpayFee = zkpayPercentFee + fixedFee;
   const totalFee = zkpayFee + partnerFee;
 
   if (totalAtomic <= totalFee) {
     const err: any = new Error(
       fixedFee > 0n
-        ? `Amount is too small: it must be larger than the fees (${feeSplit.totalCustomFeeBps / 100}% + 0.02 ${meta!.symbol} fixed fee).`
+        ? `Amount is too small: it must be larger than the fees (${feeSplit.totalCustomFeeBps / 100}% + ~$0.02 minimum network fee).`
         : `Amount is too small to cover the ${feeSplit.totalCustomFeeBps / 100}% platform fee.`
     );
     err.code = "AMOUNT_BELOW_MINIMUM";
@@ -927,7 +929,10 @@ export async function getSwapQuote(params: SwapQuoteParams) {
   const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain, originSymbol, hasPartnerAttribution);
 
   // Compute upfront fee deduction (single source of truth)
-  const fees = computeUpfrontFees(BigInt(normalizedAmount), feeSplit, originAssetId);
+  const originPriceUsd = !feeSplit.isDirectRoute
+    ? await getLiveTokenPriceUsd(originSymbol).catch(() => 0)
+    : 0;
+  const fees = computeUpfrontFees(BigInt(normalizedAmount), feeSplit, originAssetId, originPriceUsd);
   const netSwapAmount = fees.netSwapAmount.toString();
   const feeAmount = fees.totalFee.toString();
 
@@ -949,6 +954,7 @@ export async function getSwapQuote(params: SwapQuoteParams) {
       destinationChain: resolvedDestChain,
       totalAmountIn: normalizedAmount,
       netSwapAmount,
+      zkpayFeeAtomic: fees.zkpayFee.toString(),
       slippageBps: clampedSlippage,
     });
     if (
@@ -1238,7 +1244,10 @@ export async function createSwapOrder(params: CreateSwapParams) {
   const feeSplit = calculateFeeSplit(totalFeeBps, feeRecipient, resolvedOriginChain, originSymbol, hasPartnerAttribution);
 
   // Compute upfront fee deduction (single source of truth)
-  const fees = computeUpfrontFees(BigInt(normalizedAmount), feeSplit, originAssetId);
+  const originPriceUsd = !feeSplit.isDirectRoute
+    ? await getLiveTokenPriceUsd(originSymbol).catch(() => 0)
+    : 0;
+  const fees = computeUpfrontFees(BigInt(normalizedAmount), feeSplit, originAssetId, originPriceUsd);
   const netSwapAmount = fees.netSwapAmount.toString();
   const feeAmount = fees.totalFee.toString();
 
@@ -1260,6 +1269,7 @@ export async function createSwapOrder(params: CreateSwapParams) {
         destinationChain: resolvedDestChain,
         totalAmountIn: normalizedAmount,
         netSwapAmount,
+        zkpayFeeAtomic: fees.zkpayFee.toString(),
         slippageBps: clampedSlippage,
       });
 
